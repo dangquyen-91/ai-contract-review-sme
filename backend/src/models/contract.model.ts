@@ -1,0 +1,42 @@
+import { Schema, model, Types, InferSchemaType } from 'mongoose';
+
+export const CONTRACT_TYPES = [
+  'sales',
+  'service',
+  'lease',
+  'labor',
+  'nda',
+  'other',
+] as const;
+
+export const CONTRACT_STATUSES = [
+  'uploaded',
+  'processing',
+  'reviewed',
+  'archived',
+] as const;
+
+export const RISK_LEVELS = ['high', 'medium', 'low', 'none'] as const;
+
+const contractSchema = new Schema(
+  {
+    orgId: { type: Types.ObjectId, ref: 'Organization', required: true, index: true },
+    uploadedBy: { type: Types.ObjectId, ref: 'User', required: true },
+    title: { type: String, required: true, trim: true },
+    type: { type: String, enum: CONTRACT_TYPES, required: true, index: true },
+    status: { type: String, enum: CONTRACT_STATUSES, default: 'uploaded', index: true },
+    overallRiskLevel: { type: String, enum: RISK_LEVELS, default: 'none', index: true },
+    // Object storage reference (MinIO/S3) — populated once the upload/storage module lands.
+    fileKey: { type: String },
+    fileName: { type: String },
+    mimeType: { type: String },
+    // Populated by future OCR/extraction pipeline.
+    extractedText: { type: String, select: false },
+  },
+  { timestamps: true },
+);
+
+contractSchema.index({ title: 'text' });
+
+export type Contract = InferSchemaType<typeof contractSchema>;
+export const ContractModel = model('Contract', contractSchema);
