@@ -26,11 +26,11 @@ const contractSchema = new Schema(
     type: { type: String, enum: CONTRACT_TYPES, required: true, index: true },
     status: { type: String, enum: CONTRACT_STATUSES, default: 'uploaded', index: true },
     overallRiskLevel: { type: String, enum: RISK_LEVELS, default: 'none', index: true },
-    // Object storage reference (MinIO/S3) — populated once the upload/storage module lands.
     fileKey: { type: String },
+    fileUrl: { type: String },
+    fileResourceType: { type: String },
     fileName: { type: String },
     mimeType: { type: String },
-    // Populated by future OCR/extraction pipeline.
     extractedText: { type: String, select: false },
   },
   { timestamps: true },
