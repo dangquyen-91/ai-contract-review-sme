@@ -84,6 +84,13 @@ components:
           type: string
         riskLevel:
           type: string
+        fileUrl:
+          type: string
+          description: Cloudinary secure URL of the uploaded contract file
+        fileName:
+          type: string
+        mimeType:
+          type: string
         createdAt:
           type: string
           format: date-time

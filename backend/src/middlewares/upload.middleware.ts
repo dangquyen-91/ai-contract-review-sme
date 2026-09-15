@@ -10,7 +10,7 @@ const ALLOWED_MIME_TYPES = new Set([
 
 const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
 
-// Buffered in memory for now; swap storage engine once MinIO/S3 upload is wired up.
+// Buffered in memory, then streamed straight to Cloudinary (see storage.service.ts).
 export const contractFileUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: MAX_FILE_SIZE_BYTES },

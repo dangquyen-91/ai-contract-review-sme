@@ -3,12 +3,13 @@ import { AppError } from '../errors/AppError';
 import { PaginationParams } from '../utils/pagination';
 import { Contract, ContractModel } from '../models/contract.model';
 import { CreateContractInput, ListContractsQuery } from '../validations/contract.validation';
+import { deleteContractFile } from './storage.service';
 
 interface CreateContractParams {
   orgId: string;
   uploadedBy: string;
   input: CreateContractInput;
-  file?: { key: string; name: string; mimeType: string };
+  file?: { key: string; url: string; resourceType: string; name: string; mimeType: string };
 }
 
 export async function createContract({ orgId, uploadedBy, input, file }: CreateContractParams) {
@@ -18,6 +19,8 @@ export async function createContract({ orgId, uploadedBy, input, file }: CreateC
     title: input.title,
     type: input.type,
     fileKey: file?.key,
+    fileUrl: file?.url,
+    fileResourceType: file?.resourceType,
     fileName: file?.name,
     mimeType: file?.mimeType,
   });
@@ -54,8 +57,14 @@ export async function getContractById(orgId: string, id: string) {
 }
 
 export async function deleteContract(orgId: string, id: string) {
-  const result = await ContractModel.deleteOne({ _id: id, orgId });
-  if (result.deletedCount === 0) {
+  const contract = await ContractModel.findOne({ _id: id, orgId });
+  if (!contract) {
     throw AppError.notFound('Contract not found');
+  }
+
+  await ContractModel.deleteOne({ _id: id, orgId });
+
+  if (contract.fileKey && contract.fileResourceType) {
+    await deleteContractFile(contract.fileKey, contract.fileResourceType);
   }
 }

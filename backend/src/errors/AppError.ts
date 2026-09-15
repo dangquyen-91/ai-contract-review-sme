@@ -28,4 +28,8 @@ export class AppError extends Error {
   static conflict(message: string) {
     return new AppError(message, 409);
   }
+
+  static internal(message = 'Internal server error') {
+    return new AppError(message, 500);
+  }
 }

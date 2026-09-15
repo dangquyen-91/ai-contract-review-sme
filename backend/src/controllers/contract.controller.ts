@@ -4,15 +4,18 @@ import { ok, paginated } from '../utils/ApiResponse';
 import { parsePagination } from '../utils/pagination';
 import { AppError } from '../errors/AppError';
 import * as contractService from '../services/contract.service';
+import { uploadContractFile } from '../services/storage.service';
 import { ListContractsQuery } from '../validations/contract.validation';
 
 export const createContractHandler = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) throw AppError.unauthorized();
 
-  // TODO: once object storage (MinIO/S3) module is scaffolded, upload req.file.buffer
-  // there and store the returned key instead of leaving fileKey undefined.
   const file = req.file
-    ? { key: '', name: req.file.originalname, mimeType: req.file.mimetype }
+    ? {
+        ...(await uploadContractFile(req.file.buffer, req.user.orgId, req.file.originalname)),
+        name: req.file.originalname,
+        mimeType: req.file.mimetype,
+      }
     : undefined;
 
   const contract = await contractService.createContract({
