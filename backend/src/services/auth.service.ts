@@ -27,7 +27,6 @@ export async function register(input: RegisterInput) {
   const org = await OrganizationModel.create({ name: input.orgName });
   const passwordHash = await bcrypt.hash(input.password, 10);
 
-  // First user of a new org is the administrator
   const user = await UserModel.create({
     orgId: org._id,
     name: input.name,

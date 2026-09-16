@@ -15,6 +15,7 @@ export const createContractHandler = asyncHandler(async (req: Request, res: Resp
         ...(await uploadContractFile(req.file.buffer, req.user.orgId, req.file.originalname)),
         name: req.file.originalname,
         mimeType: req.file.mimetype,
+        buffer: req.file.buffer,
       }
     : undefined;
 

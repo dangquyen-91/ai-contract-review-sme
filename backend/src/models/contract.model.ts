@@ -1,13 +1,7 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
 
-export const CONTRACT_TYPES = [
-  'sales',
-  'service',
-  'lease',
-  'labor',
-  'nda',
-  'other',
-] as const;
+// sales = mua bán hàng hóa, service = cung ứng dịch vụ, labor = lao động, saas = thuê phần mềm/công nghệ
+export const CONTRACT_TYPES = ['sales', 'service', 'labor', 'saas'] as const;
 
 export const CONTRACT_STATUSES = [
   'uploaded',
@@ -17,6 +11,14 @@ export const CONTRACT_STATUSES = [
 ] as const;
 
 export const RISK_LEVELS = ['high', 'medium', 'low', 'none'] as const;
+
+export const EXTRACTION_STATUSES = [
+  'pending',
+  'processing',
+  'completed',
+  'failed',
+  'unsupported',
+] as const;
 
 const contractSchema = new Schema(
   {
@@ -32,6 +34,8 @@ const contractSchema = new Schema(
     fileName: { type: String },
     mimeType: { type: String },
     extractedText: { type: String, select: false },
+    extractionStatus: { type: String, enum: EXTRACTION_STATUSES, default: 'pending', index: true },
+    extractionError: { type: String },
   },
   { timestamps: true },
 );

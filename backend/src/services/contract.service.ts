@@ -4,15 +4,25 @@ import { PaginationParams } from '../utils/pagination';
 import { Contract, ContractModel } from '../models/contract.model';
 import { CreateContractInput, ListContractsQuery } from '../validations/contract.validation';
 import { deleteContractFile } from './storage.service';
+import { extractContractText } from './textExtraction.service';
 
 interface CreateContractParams {
   orgId: string;
   uploadedBy: string;
   input: CreateContractInput;
-  file?: { key: string; url: string; resourceType: string; name: string; mimeType: string };
+  file?: {
+    key: string;
+    url: string;
+    resourceType: string;
+    name: string;
+    mimeType: string;
+    buffer: Buffer;
+  };
 }
 
 export async function createContract({ orgId, uploadedBy, input, file }: CreateContractParams) {
+  const extraction = file ? await extractContractText(file.buffer, file.mimeType) : undefined;
+
   return ContractModel.create({
     orgId,
     uploadedBy,
@@ -23,6 +33,9 @@ export async function createContract({ orgId, uploadedBy, input, file }: CreateC
     fileResourceType: file?.resourceType,
     fileName: file?.name,
     mimeType: file?.mimeType,
+    extractedText: extraction?.text,
+    extractionStatus: extraction?.status ?? 'pending',
+    extractionError: extraction?.error,
   });
 }
 
