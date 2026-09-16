@@ -18,6 +18,14 @@ export const CONTRACT_STATUSES = [
 
 export const RISK_LEVELS = ['high', 'medium', 'low', 'none'] as const;
 
+export const EXTRACTION_STATUSES = [
+  'pending',
+  'processing',
+  'completed',
+  'failed',
+  'unsupported',
+] as const;
+
 const contractSchema = new Schema(
   {
     orgId: { type: Types.ObjectId, ref: 'Organization', required: true, index: true },
@@ -32,6 +40,8 @@ const contractSchema = new Schema(
     fileName: { type: String },
     mimeType: { type: String },
     extractedText: { type: String, select: false },
+    extractionStatus: { type: String, enum: EXTRACTION_STATUSES, default: 'pending', index: true },
+    extractionError: { type: String },
   },
   { timestamps: true },
 );
