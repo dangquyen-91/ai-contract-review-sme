@@ -1,4 +1,8 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# LawScan frontend
+
+Landing page tiếng Việt sử dụng Next.js App Router, TypeScript và Tailwind CSS. Xem [tài liệu landing page](LANDING.md) để biết cấu trúc component, hành vi, kiểm tra và giới hạn.
+
+Chạy các lệnh dưới đây trong thư mục `frontend/`. Trang chủ không cần backend.
 
 ## Getting Started
 
@@ -16,7 +20,7 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+You can start editing the page by modifying `app/(marketing)/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 

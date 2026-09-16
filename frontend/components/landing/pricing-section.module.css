@@ -1,0 +1,116 @@
+.section {
+  margin-top: 76px;
+  padding: 76px 0 64px;
+  background: radial-gradient(ellipse at 50% 45%, #eaf1ff80, transparent 65%), #f7f9fc;
+  border-block: 1px solid #e9eef5;
+}
+.container { max-width: 1200px; }
+.heading { text-align: center; }
+.heading .eyebrow { justify-content: center; color: #52688b; margin-bottom: 18px; }
+.heading h2 { font-size: clamp(34px, 3.4vw, 49px); font-weight: 720; line-height: 1.16; letter-spacing: -1.8px; }
+.heading h2 span { color: #64748b; }
+.heading > p:last-child { color: #61708b; font-size: 16px; margin-top: 20px; }
+.billingControls { display: flex; flex-direction: column; align-items: center; gap: 12px; margin: 30px 0 40px; }
+.billingSwitch { display: grid; grid-template-columns: 1fr 1fr; position: relative; gap: 4px; padding: 5px; border: 1px solid #e0e6ef; border-radius: 14px; background: #eaf0f6; min-width: 272px; }
+.billingSwitch label { position: relative; z-index: 1; cursor: pointer; }
+.billingSwitch label > span { display: grid; place-items: center; min-height: 42px; padding: 8px 19px; font-size: 14px; font-weight: 550; color: #5e6c82; transition: color .22s; border-radius: 9px; }
+.billingSwitch input:checked + span { color: #fff; }
+.billingSwitch input:focus-visible + span { outline: 3px solid #0066ff; outline-offset: 4px; }
+.switchIndicator { position: absolute; top: 5px; bottom: 5px; left: 5px; width: calc((100% - 14px) / 2); background: #13233d; border-radius: 9px; box-shadow: 0 2px 5px #0b173020; transition: transform .3s cubic-bezier(.22,1,.36,1); }
+.billingSwitch[data-cycle="yearly"] .switchIndicator { transform: translateX(calc(100% + 4px)); }
+.yearlyHint { display: inline-flex; align-items: center; gap: 6px; color: #3768b1; font-size: 12px; }
+.plans { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 22px; }
+.card { position: relative; display: flex; flex-direction: column; min-width: 0; padding: 30px 28px 25px; border: 1px solid #dce4ef; border-radius: 22px; background: #fff; box-shadow: 0 5px 15px -9px #162c4e20; transition: border-color .25s, box-shadow .25s, translate .25s; }
+.recommended { background: linear-gradient(180deg, #f0f6ff, #fff 40%); border-color: #0066ff; box-shadow: 0 0 0 1px #0066ff, 0 18px 45px -25px #0066ff50; }
+.cardHeading { display: flex; align-items: center; gap: 10px; min-height: 36px; flex-wrap: wrap; }
+.cardHeading h3 { font-size: 22px; font-weight: 650; letter-spacing: -.6px; }
+.planIcon { display: grid; place-items: center; color: #536782; }
+.recommended .planIcon { color: #0066ff; }
+.badge { margin-left: auto; color: #075ada; background: #e0ecff; border: 1px solid #c6dcff; border-radius: 20px; font-size: 10px; font-weight: 650; padding: 5px 9px; white-space: nowrap; }
+.description { color: #63718a; font-size: 14px; line-height: 1.65; margin-top: 15px; min-height: 47px; }
+.priceArea { margin-top: 28px; }
+.price { display: flex; align-items: baseline; gap: 3px; flex-wrap: wrap; font-variant-numeric: tabular-nums; }
+.price > span:first-child { font-size: clamp(40px, 3.7vw, 54px); line-height: 1.2; font-weight: 650; letter-spacing: -2.8px; }
+.price sup { position: static; font-size: 22px; font-weight: 500; line-height: 1; align-self: flex-start; padding-top: 10px; margin-left: 2px; }
+.pricePeriod { color: #738096; font-size: 12px; margin-left: 5px; }
+.billingNote { color: #63718a; font-size: 12px; line-height: 1.65; margin-top: 10px; min-height: 40px; }
+.planButton { display: flex; align-items: center; justify-content: center; gap: 10px; width: 100%; min-height: 49px; padding: 12px 15px; border: 1px solid transparent; border-radius: 10px; font-size: 14px; font-weight: 600; line-height: 1.4; text-align: center; margin-top: 23px; cursor: pointer; transition: background .2s, box-shadow .2s, translate .2s; }
+.planButton > svg { flex-shrink: 0; transition: translate .2s; }
+.primaryButton { background: #0066ff; color: white; box-shadow: 0 5px 12px -5px #0066ff60; }
+.secondaryButton { background: #fff; border-color: #d3dce9; color: #17253e; }
+.section .primaryButton:hover, .dialog .primaryButton:hover { background: #0058dd; color: white; }
+.section .secondaryButton:hover { border-color: #94b5e5; background: #f5f8fc; color: #17253e; }
+.benefits { margin-top: 26px; padding-top: 24px; border-top: 1px solid #e5ebf3; }
+.benefits > p { color: #33445d; font-size: 12px; font-weight: 600; margin-bottom: 19px; }
+.benefits ul { display: grid; gap: 14px; }
+.benefits li { display: flex; gap: 10px; align-items: flex-start; color: #455670; font-size: 13px; line-height: 1.5; }
+.benefits li svg { color: #405676; flex-shrink: 0; margin-top: 2px; }
+.recommended .benefits li svg { color: #0066ff; }
+.cardFootnote { font-size: 11px; color: #758197; padding-top: 28px; margin-top: auto; }
+.disclaimer { text-align: center; font-size: 12px; color: #6c7a91; margin-top: 28px; }
+
+.dialog { width: min(480px, calc(100% - 32px)); max-height: calc(100dvh - 48px); margin: auto; padding: 28px; border: 1px solid #d5e1f2; border-radius: 22px; color: #080e2f; background: white; box-shadow: 0 30px 100px #0003; }
+.dialog::backdrop { background: #09172c80; backdrop-filter: blur(5px); }
+.dialogTop { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.dialogLabel { font-size: 11px; font-weight: 600; color: #0066ff; text-transform: uppercase; letter-spacing: 1.5px; }
+.closeButton { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #f2f5fa; color: #43536c; font-size: 24px; }
+.dialog h2 { font-size: 29px; font-weight: 650; letter-spacing: -.8px; }
+.dialogDescription { color: #62718a; margin-top: 10px; font-size: 14px; }
+.dialogSummary { display: grid; gap: 12px; padding: 20px; margin-top: 22px; border-radius: 12px; background: #f5f8fc; font-size: 13px; }
+.dialogSummary > div { display: flex; justify-content: space-between; gap: 12px; }
+.dialogSummary dt { color: #63718a; }
+.dialogSummary dd { text-align: right; font-weight: 600; }
+.dialogFeatures { display: grid; gap: 12px; margin-top: 22px; color: #43536c; font-size: 13px; }
+.dialogFeatures li { display: flex; align-items: flex-start; gap: 10px; }
+.dialogFeatures svg { flex-shrink: 0; color: #0066ff; margin-top: 2px; }
+.dialog :is(a, button):focus-visible { outline: 3px solid #0066ff; outline-offset: 4px; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .priceArea { animation: price-in .3s ease-out both; }
+  .dialog[open] { animation: dialog-in .22s ease-out; }
+  .dialog[open]::backdrop { animation: backdrop-in .2s ease-out; }
+}
+@keyframes price-in { from { opacity: .3; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(10px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@media (hover: hover) and (pointer: fine) {
+  .card:hover { translate: 0 -5px; border-color: #a9c1e6; box-shadow: 0 20px 40px -22px #1e3e6f40; }
+  .recommended:hover { border-color: #0066ff; box-shadow: 0 0 0 1px #0066ff, 0 24px 48px -22px #0066ff50; }
+  .planButton:hover > svg { translate: 3px 0; }
+}
+.card:focus-within { border-color: #0066ff; }
+@media (max-width: 1100px) {
+  .plans { gap: 16px; }
+  .card { padding: 25px 20px; }
+  .cardHeading { gap: 8px; }
+  .cardHeading h3 { font-size: 20px; }
+  .badge { font-size: 9px; padding: 4px 6px; }
+  .price > span:first-child { font-size: 40px; }
+  .pricePeriod { width: 100%; margin: 5px 0 0; }
+}
+@media (max-width: 800px) {
+  .section { margin-top: 48px; padding-block: 56px 44px; }
+  .plans { grid-template-columns: 1fr; max-width: 500px; margin-inline: auto; gap: 22px; }
+  .card { padding: 28px; }
+  .price > span:first-child { font-size: 52px; }
+  .pricePeriod { width: auto; margin: 0 0 0 5px; }
+  .description, .billingNote { min-height: 0; }
+  .badge { font-size: 10px; padding: 5px 9px; }
+  .heading h2 { font-size: 38px; }
+  .heading > p:last-child { max-width: 400px; margin-inline: auto; font-size: 15px; }
+}
+@media (max-width: 420px) {
+  .heading h2 { font-size: 32px; letter-spacing: -1.1px; }
+  .card { padding: 25px 22px; }
+  .price > span:first-child { font-size: 45px; }
+  .price sup { font-size: 18px; }
+  .pricePeriod { font-size: 11px; }
+  .billingSwitch { min-width: 250px; }
+  .benefits li { font-size: 13px; }
+  .dialog { padding: 20px; }
+  .dialogSummary { padding: 15px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .switchIndicator, .billingSwitch label > span, .card, .planButton, .planButton > svg { transition: none; }
+  .card:hover, .planButton:hover > svg { translate: none; }
+}
