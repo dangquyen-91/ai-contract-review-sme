@@ -91,6 +91,13 @@ components:
           type: string
         mimeType:
           type: string
+        extractionStatus:
+          type: string
+          enum: [pending, processing, completed, failed, unsupported]
+          description: Status of text extraction (OCR/parsing) from the uploaded file
+        extractionError:
+          type: string
+          description: Error message when extractionStatus is "failed"
         createdAt:
           type: string
           format: date-time
