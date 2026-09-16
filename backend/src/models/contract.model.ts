@@ -1,13 +1,7 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
 
-export const CONTRACT_TYPES = [
-  'sales',
-  'service',
-  'lease',
-  'labor',
-  'nda',
-  'other',
-] as const;
+// sales = mua bán hàng hóa, service = cung ứng dịch vụ, labor = lao động, saas = thuê phần mềm/công nghệ
+export const CONTRACT_TYPES = ['sales', 'service', 'labor', 'saas'] as const;
 
 export const CONTRACT_STATUSES = [
   'uploaded',

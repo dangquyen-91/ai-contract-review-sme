@@ -3,9 +3,9 @@ import { cloudinary, isCloudinaryConfigured } from '../config/cloudinary';
 import { AppError } from '../errors/AppError';
 
 export interface UploadedFile {
-  key: string; // Cloudinary public_id, used later to delete the asset
-  url: string; // secure_url, safe to serve directly to the client
-  resourceType: string; // 'image' | 'raw' | 'video', needed to delete the asset later
+  key: string;
+  url: string;
+  resourceType: string;
 }
 
 export async function uploadContractFile(

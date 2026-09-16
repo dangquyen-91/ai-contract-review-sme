@@ -80,6 +80,8 @@ components:
           type: string
         type:
           type: string
+          enum: [sales, service, labor, saas]
+          description: "Contract type: sales (mua bán hàng hóa), service (cung ứng dịch vụ), labor (lao động), saas (thuê phần mềm/công nghệ)"
         status:
           type: string
         riskLevel:
@@ -115,6 +117,7 @@ components:
           maxLength: 300
         type:
           type: string
+          enum: [sales, service, labor, saas]
         file:
           type: string
           format: binary
@@ -214,7 +217,7 @@ paths:
           schema: { type: string, enum: [asc, desc] }
         - in: query
           name: type
-          schema: { type: string }
+          schema: { type: string, enum: [sales, service, labor, saas] }
         - in: query
           name: status
           schema: { type: string }
