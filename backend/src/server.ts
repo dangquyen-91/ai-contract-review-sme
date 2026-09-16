@@ -2,9 +2,11 @@ import { createApp } from './app';
 import { connectDB, disconnectDB } from './config/db';
 import { env } from './config/env';
 import { logger } from './config/logger';
+import { seedDefaultRoles } from './services/role.service';
 
 async function bootstrap() {
   await connectDB();
+  await seedDefaultRoles();
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {

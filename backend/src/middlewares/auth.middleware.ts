@@ -2,8 +2,9 @@ import { NextFunction, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
+import { RoleCode } from '../models/role.model';
 
-export type UserRole = 'administrator' | 'manager' | 'staff';
+export type UserRole = RoleCode;
 
 export interface AccessTokenPayload {
   sub: string; // user id

@@ -4,8 +4,14 @@ import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
 import { UserModel } from '../models/user.model';
 import { OrganizationModel } from '../models/organization.model';
+import { Role } from '../models/role.model';
+import { getRoleByCode } from './role.service';
 import { AccessTokenPayload } from '../middlewares/auth.middleware';
 import { LoginInput, RegisterInput } from '../validations/auth.validation';
+
+function roleCodeOf(user: { roleId: unknown }) {
+  return (user.roleId as Role).code as AccessTokenPayload['role'];
+}
 
 const ACCESS_TOKEN_TTL = env.JWT_ACCESS_EXPIRES_IN as SignOptions['expiresIn'];
 const REFRESH_TOKEN_TTL = env.JWT_REFRESH_EXPIRES_IN as SignOptions['expiresIn'];
@@ -26,21 +32,25 @@ export async function register(input: RegisterInput) {
 
   const org = await OrganizationModel.create({ name: input.orgName });
   const passwordHash = await bcrypt.hash(input.password, 10);
+  const adminRole = await getRoleByCode('administrator');
 
-  const user = await UserModel.create({
+  const created = await UserModel.create({
     orgId: org._id,
+    roleId: adminRole._id,
     name: input.name,
     email: input.email,
     passwordHash,
-    role: 'administrator',
   });
+  const user = await created.populate('roleId');
 
-  const tokens = signTokens({ sub: user.id, role: user.role as AccessTokenPayload['role'], orgId: org.id });
+  const tokens = signTokens({ sub: user.id, role: roleCodeOf(user), orgId: org.id });
   return { user, ...tokens };
 }
 
 export async function login(input: LoginInput) {
-  const user = await UserModel.findOne({ email: input.email }).select('+passwordHash');
+  const user = await UserModel.findOne({ email: input.email })
+    .select('+passwordHash')
+    .populate('roleId');
   if (!user || !user.isActive) {
     throw AppError.unauthorized('Invalid credentials');
   }
@@ -52,7 +62,7 @@ export async function login(input: LoginInput) {
 
   const tokens = signTokens({
     sub: user.id,
-    role: user.role as AccessTokenPayload['role'],
+    role: roleCodeOf(user),
     orgId: user.orgId.toString(),
   });
   return { user, ...tokens };
@@ -66,14 +76,14 @@ export async function refresh(refreshToken: string) {
     throw AppError.unauthorized('Invalid or expired refresh token');
   }
 
-  const user = await UserModel.findById(payload.sub);
+  const user = await UserModel.findById(payload.sub).populate('roleId');
   if (!user || !user.isActive) {
     throw AppError.unauthorized('Invalid refresh token');
   }
 
   return signTokens({
     sub: user.id,
-    role: user.role as AccessTokenPayload['role'],
+    role: roleCodeOf(user),
     orgId: user.orgId.toString(),
   });
 }

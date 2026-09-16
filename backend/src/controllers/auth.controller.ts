@@ -3,6 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import * as authService from '../services/auth.service';
 import { User } from '../models/user.model';
+import { Role } from '../models/role.model';
 import { HydratedDocument } from 'mongoose';
 
 function toPublicUser(user: HydratedDocument<User>) {
@@ -10,7 +11,7 @@ function toPublicUser(user: HydratedDocument<User>) {
     id: user._id.toString(),
     name: user.name,
     email: user.email,
-    role: user.role,
+    role: (user.roleId as unknown as Role).code,
     orgId: user.orgId.toString(),
   };
 }
