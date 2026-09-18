@@ -2,6 +2,7 @@ import { FilterQuery } from 'mongoose';
 import { AppError } from '../errors/AppError';
 import { PaginationParams } from '../utils/pagination';
 import { Contract, ContractModel } from '../models/contract.model';
+import { ClauseModel } from '../models/clause.model';
 import { CreateContractInput, ListContractsQuery } from '../validations/contract.validation';
 import { deleteContractFile } from './storage.service';
 import { extractContractText } from './textExtraction.service';
@@ -76,6 +77,7 @@ export async function deleteContract(orgId: string, id: string) {
   }
 
   await ContractModel.deleteOne({ _id: id, orgId });
+  await ClauseModel.deleteMany({ contractId: id });
 
   if (contract.fileKey && contract.fileResourceType) {
     await deleteContractFile(contract.fileKey, contract.fileResourceType);
