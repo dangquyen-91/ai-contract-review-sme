@@ -177,6 +177,7 @@
 .backLink:hover { color: #0868ed; }
 .mobileTopbar { display: none; }
 .formCard { width: min(460px, 100%); }
+.registerCard { padding-block: 22px; }
 .authTabs { width: fit-content; display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; border: 1px solid #e0e6ef; border-radius: 11px; background: #f4f6f9; }
 .authTabs a { min-width: 92px; padding: 8px 13px; color: #718097; border-radius: 8px; text-align: center; text-decoration: none; font-size: 11px; font-weight: 650; }
 .authTabs a[aria-current="page"] { color: #11203c; background: #fff; box-shadow: 0 2px 7px #19365f12; }
@@ -184,14 +185,18 @@
 .kicker { color: #0870f6; font-size: 10px; font-weight: 720; letter-spacing: 1.3px; text-transform: uppercase; }
 .formHeader h1 { margin-top: 8px; color: #0b1530; font-size: clamp(32px, 3.3vw, 42px); line-height: 1.12; letter-spacing: -1.6px; }
 .formHeader > p:last-child { margin-top: 10px; color: #69788e; font-size: 13px; line-height: 1.6; }
+.accountRoleNote { display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; padding: 11px 12px; color: #285074; border: 1px solid #cfe0f4; border-radius: 10px; background: #f3f8ff; }
+.accountRoleNote > svg { width: 18px; flex: 0 0 auto; margin-top: 1px; color: #0868ed; }.accountRoleNote strong, .accountRoleNote span { display: block; }.accountRoleNote strong { color: #183958; font-size: 10px; }.accountRoleNote span { margin-top: 3px; color: #637991; font-size: 9px; line-height: 1.45; }
 .form { display: grid; gap: 15px; margin-top: 26px; }
 .field { display: grid; gap: 7px; color: #253650; font-size: 11px; font-weight: 650; }
 .inputShell { position: relative; box-sizing: border-box; display: flex; align-items: center; min-height: 50px; border: 1px solid #d5deea; border-radius: 10px; background: #fff; transition: border-color .18s, box-shadow .18s, background .18s; }
 .inputShell:focus-within { border-color: #1675f5; background: #fff; box-shadow: 0 0 0 4px #0870f612; }
+.inputShellError { border-color: #d45264; background: #fffafa; }.inputShellError:focus-within { border-color: #c83a50; box-shadow: 0 0 0 4px #d84c6212; }
 .inputShell > svg { width: 18px; margin-left: 14px; flex: 0 0 auto; color: #8290a3; }
 .inputShell input { flex: 1 1 auto; width: auto; min-width: 0; height: 48px; box-sizing: border-box; padding: 0 13px; color: #111c34; border: 0; outline: 0; background: transparent; font: inherit; font-size: 13px; font-weight: 450; }
 .inputShell input:focus, .inputShell input:focus-visible { outline: 0; box-shadow: none; }
 .inputShell input::placeholder { color: #a0aaba; }
+.fieldError { margin-top: -2px; color: #b52f43; font-size: 9px; font-weight: 530; line-height: 1.4; }
 .passwordToggle { width: 42px; height: 42px; display: grid; place-items: center; flex: 0 0 auto; margin-right: 3px; color: #76859a; border-radius: 8px; cursor: pointer; }
 .passwordToggle:hover { color: #0868ed; background: #f0f5fc; }
 .passwordToggle svg { width: 17px; }
