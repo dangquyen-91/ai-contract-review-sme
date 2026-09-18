@@ -1,4 +1,5 @@
 import { HeroSection } from "@/components/landing/hero-section";
+import { ClauseReviewPlayground } from "@/components/landing/clause-review-playground";
 import { HowItWorksSection } from "@/components/landing/how-it-works-section";
 import { FeaturesSection } from "@/components/landing/features-section";
 import { CollaborationSection } from "@/components/landing/collaboration-section";
@@ -14,6 +15,7 @@ export default function Home() {
   return (
     <main id="main-content">
       <HeroSection />
+      <ClauseReviewPlayground />
       <HowItWorksSection />
       <FeaturesSection />
       <AnalysisWalkthrough />
