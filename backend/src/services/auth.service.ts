@@ -10,7 +10,11 @@ import { AccessTokenPayload } from '../middlewares/auth.middleware';
 import { LoginInput, RegisterInput } from '../validations/auth.validation';
 
 function roleCodeOf(user: { roleId: unknown }) {
-  return (user.roleId as Role).code as AccessTokenPayload['role'];
+  const role = user.roleId as Role | null | undefined;
+  if (!role || typeof role !== 'object' || !('code' in role)) {
+    throw AppError.internal('User role reference is invalid or unpopulated');
+  }
+  return role.code as AccessTokenPayload['role'];
 }
 
 const ACCESS_TOKEN_TTL = env.JWT_ACCESS_EXPIRES_IN as SignOptions['expiresIn'];

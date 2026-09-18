@@ -2,8 +2,6 @@ import { GoogleGenAI, Schema } from '@google/genai';
 import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
 
-// Thin wrapper around the LLM provider. Call sites only depend on `generateJson`,
-// so swapping Gemini for another provider later only means rewriting this file.
 export const isLlmConfigured = Boolean(env.GEMINI_API_KEY);
 
 const client = env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: env.GEMINI_API_KEY }) : null;
@@ -19,6 +17,9 @@ export async function generateJson(prompt: string, responseSchema?: Schema): Pro
     config: {
       responseMimeType: 'application/json',
       ...(responseSchema ? { responseSchema } : {}),
+      httpOptions: {
+        retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 5 },
+      },
     },
   });
 
