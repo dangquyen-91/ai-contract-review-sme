@@ -9,6 +9,7 @@ import {
   getContractHandler,
   listContractsHandler,
 } from '../controllers/contract.controller';
+import { listClausesHandler, segmentClausesHandler } from '../controllers/clause.controller';
 import {
   contractIdParamSchema,
   createContractSchema,
@@ -30,6 +31,19 @@ router.post(
 );
 
 router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandler);
+
+router.get(
+  '/:id/clauses',
+  validate({ params: contractIdParamSchema }),
+  listClausesHandler,
+);
+
+router.post(
+  '/:id/clauses/segment',
+  requireRole('administrator', 'manager', 'staff'),
+  validate({ params: contractIdParamSchema }),
+  segmentClausesHandler,
+);
 
 router.delete(
   '/:id',
