@@ -30,6 +30,7 @@ export async function segmentClauses(orgId: string, contractId: string) {
           title: clause.title,
           text: clause.text,
           category: clause.category,
+          summary: clause.summary,
         })),
       );
     }
