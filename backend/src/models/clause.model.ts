@@ -23,6 +23,7 @@ const clauseSchema = new Schema(
     title: { type: String },
     text: { type: String, required: true },
     category: { type: String, enum: CLAUSE_CATEGORIES, required: true, index: true },
+    summary: { type: String, required: true },
   },
   { timestamps: true },
 );

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware';
 import { requireRole } from '../middlewares/rbac.middleware';
+import { aiLimiter } from '../middlewares/rateLimit.middleware';
 import { validate } from '../middlewares/validate.middleware';
 import { contractFileUpload } from '../middlewares/upload.middleware';
 import {
@@ -41,6 +42,7 @@ router.get(
 router.post(
   '/:id/clauses/segment',
   requireRole('administrator', 'manager', 'staff'),
+  aiLimiter,
   validate({ params: contractIdParamSchema }),
   segmentClausesHandler,
 );
