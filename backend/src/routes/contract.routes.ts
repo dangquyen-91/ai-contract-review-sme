@@ -11,6 +11,7 @@ import {
   listContractsHandler,
 } from '../controllers/contract.controller';
 import { listClausesHandler, segmentClausesHandler } from '../controllers/clause.controller';
+import { detectRisksHandler, listRiskFindingsHandler } from '../controllers/risk.controller';
 import {
   contractIdParamSchema,
   createContractSchema,
@@ -45,6 +46,20 @@ router.post(
   aiLimiter,
   validate({ params: contractIdParamSchema }),
   segmentClausesHandler,
+);
+
+router.get(
+  '/:id/risks',
+  validate({ params: contractIdParamSchema }),
+  listRiskFindingsHandler,
+);
+
+router.post(
+  '/:id/risks/detect',
+  requireRole('administrator', 'manager', 'staff'),
+  aiLimiter,
+  validate({ params: contractIdParamSchema }),
+  detectRisksHandler,
 );
 
 router.delete(
