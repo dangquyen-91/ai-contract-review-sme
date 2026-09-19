@@ -9,6 +9,7 @@ export interface SegmentedClause {
   title?: string;
   text: string;
   category: (typeof CLAUSE_CATEGORIES)[number];
+  summary: string;
 }
 
 const clauseResultSchema = z.object({
@@ -17,6 +18,7 @@ const clauseResultSchema = z.object({
       title: z.string().nullable().optional(),
       text: z.string().min(1),
       category: z.enum(CLAUSE_CATEGORIES),
+      summary: z.string().min(1),
     }),
   ),
 });
@@ -32,8 +34,9 @@ const responseSchema = {
           title: { type: Type.STRING, nullable: true },
           text: { type: Type.STRING },
           category: { type: Type.STRING, enum: [...CLAUSE_CATEGORIES] },
+          summary: { type: Type.STRING },
         },
-        required: ['text', 'category'],
+        required: ['text', 'category', 'summary'],
       },
     },
   },
@@ -49,6 +52,7 @@ Rules:
 - "text" must be the verbatim clause text copied from the contract (same language, no paraphrasing or translation).
 - "title" is the clause heading if the contract has one (e.g. "Dieu 3: Thanh toan"), otherwise omit it.
 - "category" must be exactly one of: ${CLAUSE_CATEGORIES.join(', ')}. Use "other" if nothing fits.
+- "summary" must be a short (1-3 sentences) plain-language explanation of the clause written in Vietnamese, understandable to someone with no legal background, regardless of the language of "text".
 - Keep clauses in the same order they appear in the contract.
 - If the text has no clear clause structure, use your best judgement to split it into logically distinct provisions.
 
@@ -71,5 +75,6 @@ export async function segmentContractClauses(contractText: string): Promise<Segm
     title: clause.title ?? undefined,
     text: clause.text,
     category: clause.category,
+    summary: clause.summary,
   }));
 }
