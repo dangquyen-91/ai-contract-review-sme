@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PricingPlans } from "./pricing-plans";
 import styles from "./pricing-section.module.css";
 
@@ -13,6 +14,7 @@ export function PricingSection() {
         <PricingPlans />
         <p className={styles.disclaimer}>
           Giá và hạn mức minh họa. LawScan chưa mở đăng ký gói hoặc thanh toán.
+          {" "}<Link href="/goi-dich-vu" className="text-link">Xem trang gói dịch vụ →</Link>
         </p>
       </div>
     </section>

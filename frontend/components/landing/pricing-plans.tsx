@@ -44,7 +44,7 @@ const plans: Plan[] = [
     recommended: true,
     featureHeading: "Đủ cho công việc hằng ngày",
     features: [
-      "30 hợp đồng mỗi tháng",
+      "20 lượt phân tích, tối đa 300 trang mỗi tháng",
       "3 thành viên trong doanh nghiệp",
       "Phát hiện rủi ro, gợi ý chỉnh sửa",
       "Giải thích kèm nguồn tham chiếu",
@@ -60,7 +60,7 @@ const plans: Plan[] = [
     icon: "team",
     featureHeading: "Mọi quyền lợi Cơ bản, cộng thêm",
     features: [
-      "100 hợp đồng mỗi tháng",
+      "80 lượt phân tích, tối đa 1.500 trang mỗi tháng",
       "10 thành viên trong doanh nghiệp",
       "Hạn mức dùng chung cho đội ngũ",
       "Phân quyền theo vai trò",
