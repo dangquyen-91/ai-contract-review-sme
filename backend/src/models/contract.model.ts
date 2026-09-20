@@ -22,6 +22,8 @@ export const EXTRACTION_STATUSES = [
 
 export const SEGMENTATION_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
 
+export const RISK_DETECTION_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
+
 const contractSchema = new Schema(
   {
     orgId: { type: Types.ObjectId, ref: 'Organization', required: true, index: true },
@@ -45,6 +47,13 @@ const contractSchema = new Schema(
       index: true,
     },
     segmentationError: { type: String },
+    riskDetectionStatus: {
+      type: String,
+      enum: RISK_DETECTION_STATUSES,
+      default: 'pending',
+      index: true,
+    },
+    riskDetectionError: { type: String },
   },
   { timestamps: true },
 );
