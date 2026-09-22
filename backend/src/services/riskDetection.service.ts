@@ -6,7 +6,7 @@ import { RISK_SEVERITIES } from '../models/riskFinding.model';
 import { AppError } from '../errors/AppError';
 import { generateJson } from './llm.service';
 
-const CONTRACT_TYPE_LABELS: Record<(typeof CONTRACT_TYPES)[number], string> = {
+export const CONTRACT_TYPE_LABELS: Record<(typeof CONTRACT_TYPES)[number], string> = {
   sales: 'hop dong mua ban hang hoa',
   service: 'hop dong cung ung dich vu',
   labor: 'hop dong lao dong',

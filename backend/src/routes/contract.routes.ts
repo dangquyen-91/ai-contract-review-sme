@@ -12,6 +12,7 @@ import {
 } from '../controllers/contract.controller';
 import { listClausesHandler, segmentClausesHandler } from '../controllers/clause.controller';
 import { detectRisksHandler, listRiskFindingsHandler } from '../controllers/risk.controller';
+import { generateContractSummaryHandler } from '../controllers/summary.controller';
 import {
   contractIdParamSchema,
   createContractSchema,
@@ -46,6 +47,14 @@ router.post(
   aiLimiter,
   validate({ params: contractIdParamSchema }),
   segmentClausesHandler,
+);
+
+router.post(
+  '/:id/summary',
+  requireRole('administrator', 'manager', 'staff'),
+  aiLimiter,
+  validate({ params: contractIdParamSchema }),
+  generateContractSummaryHandler,
 );
 
 router.get(
