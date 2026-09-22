@@ -24,6 +24,8 @@ export const SEGMENTATION_STATUSES = ['pending', 'processing', 'completed', 'fai
 
 export const RISK_DETECTION_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
 
+export const SUMMARY_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
+
 const contractSchema = new Schema(
   {
     orgId: { type: Types.ObjectId, ref: 'Organization', required: true, index: true },
@@ -54,6 +56,9 @@ const contractSchema = new Schema(
       index: true,
     },
     riskDetectionError: { type: String },
+    summary: { type: String },
+    summaryStatus: { type: String, enum: SUMMARY_STATUSES, default: 'pending', index: true },
+    summaryError: { type: String },
   },
   { timestamps: true },
 );
