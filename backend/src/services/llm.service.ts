@@ -35,7 +35,7 @@ export async function generateJson(prompt: string, responseSchema?: Schema): Pro
   }
 }
 
-export async function embedText(text: string): Promise<number[]> {
+export async function embedText(text: string, outputDimensionality?: number): Promise<number[]> {
   if (!client) {
     throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
   }
@@ -44,6 +44,7 @@ export async function embedText(text: string): Promise<number[]> {
     model: env.GEMINI_EMBEDDING_MODEL,
     contents: text,
     config: {
+      ...(outputDimensionality ? { outputDimensionality } : {}),
       httpOptions: {
         retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 5 },
       },

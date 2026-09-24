@@ -122,7 +122,7 @@ export async function ingestLegalSource({
 
   let inserted = 0;
   for (const chunk of chunks) {
-    const embedding = await embedText(chunk.chunkText);
+    const embedding = await embedText(chunk.chunkText, EMBEDDING_DIMENSIONS);
     await LegalKnowledgeChunkModel.create({
       legalSourceId: legalSource._id,
       chunkText: chunk.chunkText,
