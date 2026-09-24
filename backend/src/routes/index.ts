@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes';
 import contractRoutes from './contract.routes';
+import legalSourceRoutes from './legalSource.routes';
 
 const router = Router();
 
@@ -8,7 +9,6 @@ router.get('/health', (_req, res) => res.json({ success: true, data: { status: '
 
 router.use('/auth', authRoutes);
 router.use('/contracts', contractRoutes);
-
-// Future modules plug in here: /clauses, /risks, /dashboard, /users, /kb (RAG knowledge base)
+router.use('/kb/legal-sources', legalSourceRoutes);
 
 export default router;

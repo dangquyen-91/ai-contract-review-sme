@@ -3,10 +3,12 @@ import { connectDB, disconnectDB } from './config/db';
 import { env } from './config/env';
 import { logger } from './config/logger';
 import { seedDefaultRoles } from './services/role.service';
+import { ensureLegalVectorIndex } from './services/legalKnowledgeIngest.service';
 
 async function bootstrap() {
   await connectDB();
   await seedDefaultRoles();
+  await ensureLegalVectorIndex();
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {
