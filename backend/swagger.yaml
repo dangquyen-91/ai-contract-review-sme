@@ -10,6 +10,7 @@ security:
 tags:
   - name: Auth
   - name: Contracts
+  - name: LegalKB
 
 components:
   securitySchemes:
@@ -229,6 +230,61 @@ components:
         file:
           type: string
           format: binary
+
+    LegalSource:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+          description: 'e.g. "Bo luat Dan su 2015"'
+        sourceType:
+          type: string
+          enum: [law, standard_template]
+        citationLabel:
+          type: string
+          description: 'Short label used when citing this source, e.g. "BLDS 2015"'
+        issuingBody:
+          type: string
+        effectiveDate:
+          type: string
+          format: date-time
+        chunkCount:
+          type: integer
+          description: Number of LegalKnowledgeChunk documents produced from this source (list endpoint only)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateLegalSourceRequest:
+      type: object
+      required: [title, sourceType, citationLabel, file]
+      properties:
+        title:
+          type: string
+          minLength: 2
+          maxLength: 300
+        sourceType:
+          type: string
+          enum: [law, standard_template]
+        citationLabel:
+          type: string
+          minLength: 1
+          maxLength: 100
+        issuingBody:
+          type: string
+          maxLength: 200
+        effectiveDate:
+          type: string
+          format: date
+        file:
+          type: string
+          format: binary
+          description: Legal document to chunk and embed (pdf, docx, or txt)
 
 paths:
   /auth/register:
@@ -556,6 +612,77 @@ paths:
                   $ref: '#/components/schemas/RiskFinding'
         '400':
           description: Clauses not segmented yet, or LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources:
+    get:
+      tags: [LegalKB]
+      summary: List legal sources in the knowledge base (with chunk counts)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LegalSource'
+    post:
+      tags: [LegalKB]
+      summary: Upload a legal document (pdf/docx/txt), chunk it by "Dieu N" headings, and embed each chunk (Gemini)
+      description: Admin only. Rate-limited (AI cost control). Each chunk is embedded individually, so a large document (e.g. a full law) can take a while.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateLegalSourceRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSource'
+        '400':
+          description: Validation error, unsupported file type, or LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires administrator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    delete:
+      tags: [LegalKB]
+      summary: Delete a legal source and all of its chunks
+      description: Admin only.
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          description: Requires administrator role
           content:
             application/json:
               schema:
