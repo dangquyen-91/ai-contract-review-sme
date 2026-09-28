@@ -19,6 +19,13 @@ export interface ClauseInput {
   text: string;
 }
 
+export interface LegalExcerptInput {
+  number: number;
+  citationLabel: string;
+  articleRef?: string;
+  text: string;
+}
+
 export interface ClauseRiskFinding {
   findingType: 'clause_risk';
   clauseIndex: number;
@@ -26,6 +33,7 @@ export interface ClauseRiskFinding {
   title: string;
   explanation: string;
   suggestedRevision?: string;
+  citedExcerptNumbers: number[];
 }
 
 export interface MissingClauseFinding {
@@ -35,6 +43,7 @@ export interface MissingClauseFinding {
   title: string;
   explanation: string;
   suggestedRevision?: string;
+  citedExcerptNumbers: number[];
 }
 
 export type RiskDetectionFinding = ClauseRiskFinding | MissingClauseFinding;
@@ -49,6 +58,7 @@ const findingResultSchema = z.object({
         title: z.string().min(1),
         explanation: z.string().min(1),
         suggestedRevision: z.string().nullable().optional(),
+        citedExcerptNumbers: z.array(z.number().int()).nullable().optional(),
       }),
       z.object({
         findingType: z.literal('missing_clause'),
@@ -57,6 +67,7 @@ const findingResultSchema = z.object({
         title: z.string().min(1),
         explanation: z.string().min(1),
         suggestedRevision: z.string().nullable().optional(),
+        citedExcerptNumbers: z.array(z.number().int()).nullable().optional(),
       }),
     ]),
   ),
@@ -81,6 +92,11 @@ const responseSchema = {
           title: { type: Type.STRING },
           explanation: { type: Type.STRING },
           suggestedRevision: { type: Type.STRING, nullable: true },
+          citedExcerptNumbers: {
+            type: Type.ARRAY,
+            items: { type: Type.INTEGER },
+            nullable: true,
+          },
         },
         required: ['findingType', 'severity', 'title', 'explanation'],
       },
@@ -89,10 +105,21 @@ const responseSchema = {
   required: ['findings'],
 };
 
-function buildPrompt(contractType: (typeof CONTRACT_TYPES)[number], clauses: ClauseInput[]): string {
+function buildPrompt(
+  contractType: (typeof CONTRACT_TYPES)[number],
+  clauses: ClauseInput[],
+  legalExcerpts: LegalExcerptInput[],
+): string {
   const clauseList = clauses
     .map((c) => `[index=${c.index}] (${c.category}) ${c.text}`)
     .join('\n\n');
+
+  const legalContextBlock =
+    legalExcerpts.length > 0
+      ? `\n\nBelow are excerpts from Vietnamese legal sources that may be relevant to these clauses (retrieved by semantic search, may or may not actually apply):\n"""\n${legalExcerpts
+          .map((e) => `[${e.number}] (${e.citationLabel}${e.articleRef ? `, ${e.articleRef}` : ''}) ${e.text}`)
+          .join('\n\n')}\n"""\n\nWhen a finding's reasoning genuinely relies on one of these excerpts, set "citedExcerptNumbers" to the matching excerpt number(s) (e.g. [1] or [1, 3]). If none of the excerpts actually support the finding, leave "citedExcerptNumbers" empty - do not cite an excerpt just because it was provided.`
+      : '';
 
   return `You are a legal risk analyst reviewing a Vietnamese contract of type "${CONTRACT_TYPE_LABELS[contractType]}".
 
@@ -108,7 +135,7 @@ Rules:
 - "title" is a short (max ~10 words) Vietnamese label for the finding.
 - "explanation" is 1-4 sentences in Vietnamese, plain language, explaining why it is risky or why the missing clause matters.
 - "suggestedRevision" (optional) is a short Vietnamese suggestion of how to reword the clause, or what clause text to add.
-- If there are no risks and nothing missing, return an empty "findings" array.
+- If there are no risks and nothing missing, return an empty "findings" array.${legalContextBlock}
 
 Clauses:
 """
@@ -119,13 +146,18 @@ ${clauseList}
 export async function detectContractRisks(
   contractType: (typeof CONTRACT_TYPES)[number],
   clauses: ClauseInput[],
+  legalExcerpts: LegalExcerptInput[] = [],
 ): Promise<RiskDetectionFinding[]> {
-  const raw = await generateJson(buildPrompt(contractType, clauses), responseSchema);
+  const raw = await generateJson(buildPrompt(contractType, clauses, legalExcerpts), responseSchema);
 
   const parsed = findingResultSchema.safeParse(raw);
   if (!parsed.success) {
     throw AppError.internal('LLM returned an unexpected risk detection format.');
   }
+
+  const validExcerptNumbers = new Set(legalExcerpts.map((e) => e.number));
+  const sanitizeCitations = (numbers: number[] | null | undefined) =>
+    (numbers ?? []).filter((n) => validExcerptNumbers.has(n));
 
   return parsed.data.findings.map((finding) =>
     finding.findingType === 'clause_risk'
@@ -136,6 +168,7 @@ export async function detectContractRisks(
           title: finding.title,
           explanation: finding.explanation,
           suggestedRevision: finding.suggestedRevision ?? undefined,
+          citedExcerptNumbers: sanitizeCitations(finding.citedExcerptNumbers),
         }
       : {
           findingType: 'missing_clause',
@@ -144,6 +177,7 @@ export async function detectContractRisks(
           title: finding.title,
           explanation: finding.explanation,
           suggestedRevision: finding.suggestedRevision ?? undefined,
+          citedExcerptNumbers: sanitizeCitations(finding.citedExcerptNumbers),
         },
   );
 }
