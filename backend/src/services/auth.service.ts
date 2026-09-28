@@ -3,7 +3,6 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
 import { UserModel } from '../models/user.model';
-import { OrganizationModel } from '../models/organization.model';
 import { Role } from '../models/role.model';
 import { getRoleByCode } from './role.service';
 import { AccessTokenPayload } from '../middlewares/auth.middleware';
@@ -34,12 +33,10 @@ export async function register(input: RegisterInput) {
     throw AppError.conflict('Email already registered');
   }
 
-  const org = await OrganizationModel.create({ name: input.orgName });
   const passwordHash = await bcrypt.hash(input.password, 10);
   const adminRole = await getRoleByCode('administrator');
 
   const created = await UserModel.create({
-    orgId: org._id,
     roleId: adminRole._id,
     name: input.name,
     email: input.email,
@@ -47,7 +44,7 @@ export async function register(input: RegisterInput) {
   });
   const user = await created.populate('roleId');
 
-  const tokens = signTokens({ sub: user.id, role: roleCodeOf(user), orgId: org.id });
+  const tokens = signTokens({ sub: user.id, role: roleCodeOf(user) });
   return { user, ...tokens };
 }
 
@@ -67,7 +64,7 @@ export async function login(input: LoginInput) {
   const tokens = signTokens({
     sub: user.id,
     role: roleCodeOf(user),
-    orgId: user.orgId.toString(),
+    orgId: user.orgId?.toString(),
   });
   return { user, ...tokens };
 }
@@ -88,6 +85,6 @@ export async function refresh(refreshToken: string) {
   return signTokens({
     sub: user.id,
     role: roleCodeOf(user),
-    orgId: user.orgId.toString(),
+    orgId: user.orgId?.toString(),
   });
 }

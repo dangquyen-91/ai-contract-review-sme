@@ -4,6 +4,7 @@ const organizationSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     taxCode: { type: String, trim: true },
+    address: { type: String, trim: true },
   },
   { timestamps: true },
 );

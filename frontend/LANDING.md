@@ -27,12 +27,13 @@ app/
   (marketing)/
     layout.tsx               # Header/Footer dành riêng cho marketing
     page.tsx                 # Ghép các section, route /
-    marketing.css            # Style giới hạn trong .lawscan
 components/
   layout/                    # Header, MobileMenu, Footer
   landing/                   # Các section và ContractDemo
   ui/                        # Brand và bộ icon SVG nhỏ
-public/lawscan.svg            # Biểu tượng trình duyệt
+styles/                      # Global CSS và các CSS Module
+public/logo-transparent.png   # Logo nền trong suốt và biểu tượng trình duyệt
+public/logo-mark.png          # Biểu tượng vuông dùng ở kích thước nhỏ
 ```
 
 - `HeroSection`: tiêu đề, CTA và `ContractDemo` với ba tình huống điều khoản.

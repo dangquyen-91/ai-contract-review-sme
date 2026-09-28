@@ -9,8 +9,10 @@ export type UserRole = RoleCode;
 export interface AccessTokenPayload {
   sub: string; // user id
   role: UserRole;
-  orgId: string;
+  orgId?: string;
 }
+
+export type OrganizationAccessTokenPayload = AccessTokenPayload & { orgId: string };
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -36,4 +38,10 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   } catch {
     next(AppError.unauthorized('Invalid or expired token'));
   }
+}
+
+export function getOrganizationUser(req: Request): OrganizationAccessTokenPayload {
+  if (!req.user) throw AppError.unauthorized();
+  if (!req.user.orgId) throw AppError.forbidden('Organization setup required');
+  return req.user as OrganizationAccessTokenPayload;
 }

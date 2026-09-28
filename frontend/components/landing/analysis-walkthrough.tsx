@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
-import styles from "./landing-depth.module.css";
+import styles from "@/styles/landing-depth.module.css";
 
 const steps = [
   {

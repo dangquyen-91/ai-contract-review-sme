@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
-import styles from "./trust-section.module.css";
+import styles from "@/styles/trust-section.module.css";
 
 const principles = [
   {

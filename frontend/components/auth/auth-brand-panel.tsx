@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
-import styles from "@/app/(auth)/auth.module.css";
+import styles from "@/styles/auth.module.css";
 
 function ReviewAnnotationCard({ tone, title, children }: { tone: "warning" | "suggestion"; title: string; children: React.ReactNode }) {
   return (

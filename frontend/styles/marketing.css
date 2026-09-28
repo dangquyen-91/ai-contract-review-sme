@@ -172,6 +172,7 @@
 .lawscan .site-footer :is(a, summary):focus-visible { outline-color: #83b8ff; }
 .lawscan .site-footer .brand { font-size: 32px; color: white; }
 .lawscan .site-footer .brand svg { width: 34px; height: 42px; filter: drop-shadow(0 0 12px #0875ff45); }
+.lawscan .site-footer .brand-image img { filter: grayscale(1) brightness(0) invert(1); opacity: .94; }
 .lawscan .brand-description { margin-top: 20px; color: #c4d2e9; font-size: 19px; line-height: 1.55; letter-spacing: -.3px; }
 .lawscan .footer-explore { display: inline-flex; gap: 12px; align-items: center; margin-top: 20px; color: #88baff; font-size: 14px; }
 .lawscan .footer-explore:hover { color: white; }

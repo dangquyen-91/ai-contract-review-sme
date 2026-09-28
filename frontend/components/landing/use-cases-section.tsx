@@ -1,5 +1,5 @@
 import { Icon } from "@/components/ui/icon";
-import styles from "./landing-depth.module.css";
+import styles from "@/styles/landing-depth.module.css";
 
 const cases = [
   { icon: "briefcase", role: "Chủ doanh nghiệp", title: "Nắm nhanh điều cần quyết định", text: "Xem nghĩa vụ, thời hạn và các điểm cần hỏi lại trước khi đồng ý với đối tác.", items: ["Tóm tắt nội dung chính", "Ưu tiên rủi ro cần xử lý"] },

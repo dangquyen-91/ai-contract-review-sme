@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Icon } from "@/components/ui/icon";
-import styles from "./pricing-section.module.css";
+import styles from "@/styles/pricing-section.module.css";
 
 type BillingCycle = "monthly" | "yearly";
 type Plan = {
