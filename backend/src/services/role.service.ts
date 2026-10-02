@@ -26,6 +26,11 @@ const DEFAULT_ROLES: Array<{ code: RoleCode; name: string; description: string }
     code: 'reviewer',
     name: 'Reviewer',
     description: 'Review and approve contracts within their scope',
+  },
+  {
+    code: 'user',
+    name: 'User',
+    description: 'Normal user using system'
   }
 ];
 

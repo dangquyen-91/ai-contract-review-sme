@@ -34,10 +34,10 @@ export async function register(input: RegisterInput) {
   }
 
   const passwordHash = await bcrypt.hash(input.password, 10);
-  const adminRole = await getRoleByCode('administrator');
+  const userRole = await getRoleByCode('user');
 
   const created = await UserModel.create({
-    roleId: adminRole._id,
+    roleId: userRole._id,
     name: input.name,
     email: input.email,
     passwordHash,
@@ -87,4 +87,18 @@ export async function refresh(refreshToken: string) {
     role: roleCodeOf(user),
     orgId: user.orgId?.toString(),
   });
+}
+
+export async function completeOnboarding(userId: string) {
+  const user = await UserModel.findByIdAndUpdate(
+    userId,
+    { $set: { hasCompletedOnboarding: true } },
+    { new: true },
+  ).populate('roleId');
+
+  if (!user || !user.isActive) {
+    throw AppError.unauthorized('User is inactive or no longer exists');
+  }
+
+  return user;
 }

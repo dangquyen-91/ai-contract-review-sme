@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
+import type { AuthUser } from "@/types/auth";
 
 const allowedActions = new Set(["login", "register", "refresh", "logout"]);
 const accessTokenMaxAge = 15 * 60;
@@ -13,6 +15,7 @@ function clearSessionCookies(response: NextResponse, secure: boolean) {
   response.cookies.set("lawscan_access", "", options);
   response.cookies.set("lawscan_refresh", "", options);
   response.cookies.set("lawscan_remember", "", options);
+  response.cookies.set(userSessionCookie, "", options);
 }
 
 export async function POST(request: NextRequest, context: RouteContext<"/api/auth/[action]">) {
@@ -63,7 +66,11 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
       return response;
     }
 
-    const { accessToken, refreshToken: nextRefreshToken, user } = payload.data;
+    const { accessToken, refreshToken: nextRefreshToken, user } = payload.data as {
+      accessToken: string;
+      refreshToken: string;
+      user?: AuthUser;
+    };
     const response = NextResponse.json({
       success: true,
       data: isRefresh ? { refreshed: true } : { user },
@@ -78,6 +85,12 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
       ...options,
       ...(remember ? { maxAge: refreshTokenMaxAge } : {}),
     });
+    if (user) {
+      response.cookies.set(userSessionCookie, encodeSessionUser(user), {
+        ...options,
+        ...(remember ? { maxAge: refreshTokenMaxAge } : {}),
+      });
+    }
     return response;
   } catch {
     return NextResponse.json(

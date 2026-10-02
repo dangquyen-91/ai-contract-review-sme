@@ -32,7 +32,7 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 let refreshPromise: Promise<unknown> | null = null;
 
 function isAuthRequest(url?: string) {
-  return ["/auth/login", "/auth/register", "/auth/refresh", "/auth/logout"].some((path) => url?.endsWith(path));
+  return ["/auth/login", "/auth/register", "/auth/refresh", "/auth/logout", "/auth/onboarding"].some((path) => url?.endsWith(path));
 }
 
 function refreshSession() {

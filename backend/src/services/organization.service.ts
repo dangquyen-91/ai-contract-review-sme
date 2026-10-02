@@ -2,6 +2,7 @@ import { AppError } from '../errors/AppError';
 import { ContractModel } from '../models/contract.model';
 import { OrganizationModel } from '../models/organization.model';
 import { UserModel } from '../models/user.model';
+import { getRoleByCode } from './role.service';
 import {
   CreateOrganizationInput,
   UpdateOrganizationInput,
@@ -16,10 +17,17 @@ export async function createOrganization(userId: string, input: CreateOrganizati
   if (!user) throw AppError.notFound('User not found');
   if (user.orgId) throw AppError.conflict('User already belongs to an organization');
 
+  const ownerRole = await getRoleByCode('owner');
   const organization = await OrganizationModel.create(input);
   const updatedUser = await UserModel.findOneAndUpdate(
     { _id: userId, orgId: null },
-    { $set: { orgId: organization._id } },
+    {
+      $set: {
+        orgId: organization._id,
+        roleId: ownerRole._id,
+        hasCompletedOnboarding: true,
+      },
+    },
     { new: true },
   );
 
