@@ -23,17 +23,17 @@
 }
 
 .contextBrand {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  font-size: 18px;
-  font-weight: 720;
-  letter-spacing: -0.35px;
+  position: relative;
+  z-index: 2;
+  display: inline-flex;
+  width: fit-content;
+  color: #ffffff;
+  text-decoration: none;
 }
 
-.contextBrand :global(.brand-image) {
-  width: 34px;
-  height: 34px;
+.contextBrand :global(.brand-image img) {
+  filter: grayscale(1) brightness(0) invert(1);
+  opacity: 0.94;
 }
 
 .contextCopy {
@@ -116,6 +116,9 @@
 
 .mobileBrand {
   display: none;
+  width: fit-content;
+  color: var(--onboarding-ink);
+  text-decoration: none;
 }
 
 .decisionContent {

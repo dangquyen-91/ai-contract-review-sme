@@ -15,8 +15,22 @@ export function CompanyChoice() {
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  function continueWithoutOrganization() {
-    router.replace("/");
+  async function continueWithoutOrganization() {
+    setError("");
+    setIsSubmitting(true);
+
+    try {
+      await authApi.completeOnboarding();
+      router.replace("/");
+      router.refresh();
+    } catch (requestError) {
+      setError(
+        isApiClientError(requestError)
+          ? requestError.message
+          : "Không thể hoàn tất thiết lập. Vui lòng thử lại.",
+      );
+      setIsSubmitting(false);
+    }
   }
 
   async function createOrganization(event: FormEvent<HTMLFormElement>) {
@@ -57,7 +71,7 @@ export function CompanyChoice() {
           </header>
 
           <div className={styles.choiceList} role="group" aria-label="Chọn trạng thái tổ chức">
-            <button className={styles.choice} type="button" onClick={continueWithoutOrganization}>
+            <button className={styles.choice} type="button" disabled={isSubmitting} onClick={continueWithoutOrganization}>
               <span className={styles.choiceIcon}><Icon name="user" /></span>
               <span className={styles.choiceCopy}>
                 <strong>Chưa</strong>
@@ -75,6 +89,8 @@ export function CompanyChoice() {
               <span className={styles.choiceArrow}><Icon name="arrow" /></span>
             </button>
           </div>
+
+          {error && <p className={styles.error} role="alert">{error}</p>}
 
           <p className={styles.helper}><Icon name="shield" />Thông tin tổ chức được bảo vệ trong tài khoản của bạn.</p>
         </>

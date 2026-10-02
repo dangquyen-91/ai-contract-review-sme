@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { decodeSessionUser, encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
+
+const refreshTokenMaxAge = 7 * 24 * 60 * 60;
 
 export async function POST(request: NextRequest) {
   const accessToken = request.cookies.get("lawscan_access")?.value;
@@ -22,7 +25,28 @@ export async function POST(request: NextRequest) {
       cache: "no-store",
     });
     const payload = await upstream.json();
-    return NextResponse.json(payload, { status: upstream.status });
+    const response = NextResponse.json(payload, { status: upstream.status });
+
+    if (upstream.ok && typeof payload.data?.id === "string") {
+      const user = decodeSessionUser(request.cookies.get(userSessionCookie)?.value);
+      if (user) {
+        const remember = request.cookies.get("lawscan_remember")?.value === "1";
+        response.cookies.set(userSessionCookie, encodeSessionUser({
+          ...user,
+          role: "owner",
+          orgId: payload.data.id,
+          hasCompletedOnboarding: true,
+        }), {
+          httpOnly: true,
+          sameSite: "lax",
+          secure: process.env.NODE_ENV === "production",
+          path: "/",
+          ...(remember ? { maxAge: refreshTokenMaxAge } : {}),
+        });
+      }
+    }
+
+    return response;
   } catch {
     return NextResponse.json(
       { success: false, error: { message: "Không thể kết nối máy chủ LawScan. Vui lòng thử lại." } },

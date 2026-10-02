@@ -29,8 +29,35 @@
 .lawscan .ls-button.outline:hover { background: #edf4ff; }
 .lawscan .site-header .ls-button { min-width: 124px; border-radius: 13px; }
 .lawscan .header-actions { gap: 24px; }
+.lawscan .user-avatar { width: 44px; height: 44px; display: inline-grid; place-items: center; flex: 0 0 auto; color: white; border: 2px solid white; border-radius: 50%; background: linear-gradient(135deg, #0875ff, #0049b8); box-shadow: 0 0 0 1px #b9d3f7, 0 6px 18px #075fc333; font-size: 14px; font-weight: 720; letter-spacing: .4px; text-decoration: none; }
+.lawscan .user-avatar:hover { color: white; background: linear-gradient(135deg, #005fe0, #003b96); box-shadow: 0 0 0 2px #8bbcff, 0 8px 20px #075fc344; }
+.lawscan .account-menu { position: relative; }
+.lawscan .account-menu-trigger { border: 2px solid white; padding: 0; font-family: inherit; }
+.lawscan .account-menu-trigger[aria-expanded="true"] { box-shadow: 0 0 0 3px #bed7ff, 0 8px 20px #075fc344; }
+.lawscan .account-dropdown { position: absolute; top: calc(100% + 14px); right: 0; z-index: 30; width: 286px; color: var(--ls-ink); background: #fff; border: 1px solid #dce4ef; border-radius: 14px; box-shadow: 0 18px 50px -18px #17284959, 0 6px 16px #17284914; transform-origin: top right; animation: account-dropdown-in .16s ease-out; }
+.lawscan .account-dropdown::before { content: ""; position: absolute; top: -5px; right: 19px; width: 10px; height: 10px; background: #fff; border-top: 1px solid #dce4ef; border-left: 1px solid #dce4ef; transform: rotate(45deg); }
+.lawscan .account-dropdown-profile { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 17px 18px; border-bottom: 1px solid #e7edf5; }
+.lawscan .account-dropdown-avatar { display: grid; place-items: center; width: 38px; height: 38px; flex: 0 0 auto; color: #075bcf; background: #e9f2ff; border-radius: 50%; font-size: 12px; font-weight: 740; letter-spacing: .3px; }
+.lawscan .account-dropdown-profile > span:last-child { min-width: 0; }
+.lawscan .account-dropdown-profile strong, .lawscan .account-dropdown-profile small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lawscan .account-dropdown-profile strong { font-size: 14px; line-height: 1.4; }
+.lawscan .account-dropdown-profile small { margin-top: 2px; color: var(--ls-muted); font-size: 12px; }
+.lawscan .account-dropdown-actions { padding: 7px; }
+.lawscan .account-dropdown-actions :is(a, button) { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 42px; padding: 9px 11px; color: #34415f; background: transparent; border: 0; border-radius: 8px; font: inherit; font-size: 13px; font-weight: 560; text-align: left; }
+.lawscan .account-dropdown-actions :is(a, button):hover { color: #075bcf; background: #f0f6ff; }
+.lawscan .account-dropdown-actions svg { width: 18px; height: 18px; flex: 0 0 auto; }
+.lawscan .account-dropdown-actions button { color: #a42f43; }
+.lawscan .account-dropdown-actions button:hover { color: #92263a; background: #fff3f5; }
+.lawscan .account-dropdown-actions button svg { transform: rotate(180deg); }
+.lawscan .account-dropdown-actions button:disabled { opacity: .6; cursor: wait; }
+@keyframes account-dropdown-in { from { opacity: 0; transform: translateY(-5px) scale(.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .lawscan .mobile-navigation .mobile-register { margin-top: 6px; color: white; background: #0066ff; border-radius: 8px; text-align: center; }
 .lawscan .mobile-navigation .mobile-register:hover { color: white; background: #0058dc; }
+.lawscan .mobile-navigation .mobile-account { display: flex; align-items: center; gap: 12px; margin-top: 6px; border-top: 1px solid var(--ls-line); }
+.lawscan .mobile-account .user-avatar { width: 38px; height: 38px; font-size: 12px; }
+.lawscan .mobile-account strong, .lawscan .mobile-account small { display: block; }
+.lawscan .mobile-account strong { font-size: 14px; }
+.lawscan .mobile-account small { max-width: 220px; overflow: hidden; color: var(--ls-muted); font-size: 11px; font-weight: 400; text-overflow: ellipsis; white-space: nowrap; }
 .lawscan .menu-toggle { display: grid; place-items: center; width: 44px; height: 44px; border: 1px solid var(--ls-line); border-radius: 8px; }
 .lawscan .menu-lines { display: grid; gap: 6px; }
 .lawscan .menu-lines i { width: 20px; height: 2px; background: var(--ls-ink); transition: transform .18s; }

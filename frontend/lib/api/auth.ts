@@ -25,6 +25,13 @@ export const authApi = {
     });
   },
 
+  completeOnboarding() {
+    return apiRequest<AuthSession>({
+      url: "/auth/onboarding",
+      method: "POST",
+    });
+  },
+
   logout() {
     return apiRequest<{ loggedOut: true }>({
       url: "/auth/logout",

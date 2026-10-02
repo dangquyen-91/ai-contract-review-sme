@@ -3,7 +3,7 @@ import type { authFormSchema, loginFormSchema, registerFormSchema } from "@/sche
 
 export type AuthMode = "login" | "register";
 
-export type UserRole = "administrator" | "manager" | "staff" | "owner" | "reviewer";
+export type UserRole = "administrator" | "manager" | "staff" | "owner" | "reviewer" | "user";
 
 export type AuthUser = {
   id: string;
@@ -11,6 +11,7 @@ export type AuthUser = {
   email: string;
   role: UserRole;
   orgId: string | null;
+  hasCompletedOnboarding: boolean;
 };
 
 export type LoginFormValues = z.infer<typeof loginFormSchema>;

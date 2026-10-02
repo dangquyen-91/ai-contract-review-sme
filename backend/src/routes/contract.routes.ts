@@ -27,7 +27,7 @@ router.get('/', validate({ query: listContractsQuerySchema }), listContractsHand
 
 router.post(
   '/',
-  requireRole('administrator', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff'),
   contractFileUpload.single('file'),
   validate({ body: createContractSchema }),
   createContractHandler,
@@ -43,7 +43,7 @@ router.get(
 
 router.post(
   '/:id/clauses/segment',
-  requireRole('administrator', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff'),
   aiLimiter,
   validate({ params: contractIdParamSchema }),
   segmentClausesHandler,
@@ -51,7 +51,7 @@ router.post(
 
 router.post(
   '/:id/summary',
-  requireRole('administrator', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff'),
   aiLimiter,
   validate({ params: contractIdParamSchema }),
   generateContractSummaryHandler,
@@ -65,7 +65,7 @@ router.get(
 
 router.post(
   '/:id/risks/detect',
-  requireRole('administrator', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff'),
   aiLimiter,
   validate({ params: contractIdParamSchema }),
   detectRisksHandler,
@@ -73,7 +73,7 @@ router.post(
 
 router.delete(
   '/:id',
-  requireRole('administrator', 'manager'),
+  requireRole('administrator', 'owner', 'manager'),
   validate({ params: contractIdParamSchema }),
   deleteContractHandler,
 );

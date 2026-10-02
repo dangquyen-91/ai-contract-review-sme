@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { CompanyChoice } from "@/components/onboarding/company-choice";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
@@ -13,10 +14,9 @@ export default function ChooseOrganizationPage() {
   return (
     <main className={styles.page}>
       <aside className={styles.contextPanel}>
-        <div className={styles.contextBrand}>
-          <Brand markOnly />
-          <span>LawScan</span>
-        </div>
+        <Link className={styles.contextBrand} href="/" aria-label="LawScan — về trang chủ">
+          <Brand />
+        </Link>
 
         <div className={styles.contextCopy}>
           <p>Thiết lập một lần</p>
@@ -31,7 +31,7 @@ export default function ChooseOrganizationPage() {
       </aside>
 
       <section className={styles.decisionPanel}>
-        <div className={styles.mobileBrand}><Brand /></div>
+        <Link className={styles.mobileBrand} href="/" aria-label="LawScan — về trang chủ"><Brand /></Link>
         <CompanyChoice />
       </section>
     </main>

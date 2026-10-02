@@ -84,7 +84,13 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           ? "Tài khoản của bạn đã được tạo."
           : "Chào mừng bạn quay lại LawScan.",
       });
-      router.push(session.user.orgId ? "/dashboard" : "/chon-to-chuc");
+      router.push(
+        session.user.orgId
+          ? "/dashboard"
+          : session.user.hasCompletedOnboarding
+            ? "/"
+            : "/chon-to-chuc",
+      );
       router.refresh();
     } catch (error) {
       if (!isApiClientError(error)) {
