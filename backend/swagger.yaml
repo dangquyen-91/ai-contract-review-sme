@@ -209,12 +209,36 @@ components:
         detectedBy:
           type: string
           enum: [rule, llm, hybrid]
+        citations:
+          type: array
+          description: Legal sources the LLM actually relied on for this finding (RAG), populated by GET/POST risk endpoints
+          items:
+            $ref: '#/components/schemas/RiskCitation'
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+
+    RiskCitation:
+      type: object
+      properties:
+        legalKnowledgeChunkId:
+          type: string
+        citationLabel:
+          type: string
+          description: 'e.g. "BLDS 2015"'
+        sourceTitle:
+          type: string
+        articleRef:
+          type: string
+          description: 'e.g. "Dieu 418, Khoan 2"'
+        chunkText:
+          type: string
+        relevanceScore:
+          type: number
+          description: Cosine similarity score from the vector search retrieval (0-1)
 
     CreateContractRequest:
       type: object
@@ -599,8 +623,8 @@ paths:
           pattern: '^[a-f\d]{24}$'
     post:
       tags: [Contracts]
-      summary: Run risk detection for a contract via LLM (Gemini)
-      description: Requires clauses to already be segmented (segmentationStatus = completed). Replaces any previously detected findings and recomputes the contract's overallRiskLevel. Rate-limited (AI cost control).
+      summary: Run risk detection for a contract via LLM (Gemini), grounded with RAG citations
+      description: Requires clauses to already be segmented (segmentationStatus = completed). Retrieves relevant legal excerpts per clause via vector search and asks the LLM to cite the ones it actually relied on (returned as each finding's "citations"). Replaces any previously detected findings and recomputes the contract's overallRiskLevel. Rate-limited (AI cost control).
       responses:
         '200':
           description: OK
