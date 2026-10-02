@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
-import styles from "./landing-depth.module.css";
+import styles from "@/styles/landing-depth.module.css";
 
 const tabs = [
   { id: "overview", label: "Tổng quan", heading: "Những điều cần biết trước", text: "Hợp đồng dịch vụ 12 tháng, thanh toán theo nghiệm thu. Có 3 điểm cần làm rõ trước khi ký.", items: ["Phạm vi: cung cấp dịch vụ", "Thời hạn: 12 tháng", "Thanh toán: sau nghiệm thu"] },

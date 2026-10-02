@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { BillingCycle, demoOrganization, formatMoney, monthlyPrice, SubscriptionPlan } from "@/lib/subscription-plans";
-import styles from "@/app/goi-dich-vu/subscription.module.css";
+import styles from "@/styles/subscription.module.css";
 
 export function SubscriptionConfirmation({ plan, cycle }: { plan: SubscriptionPlan; cycle: BillingCycle }) {
   const [confirmed, setConfirmed] = useState(false);

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PricingPlans } from "./pricing-plans";
-import styles from "./pricing-section.module.css";
+import styles from "@/styles/pricing-section.module.css";
 
 export function PricingSection() {
   return (

@@ -12,7 +12,7 @@ function toPublicUser(user: HydratedDocument<User>) {
     name: user.name,
     email: user.email,
     role: (user.roleId as unknown as Role).code,
-    orgId: user.orgId.toString(),
+    orgId: user.orgId?.toString() ?? null,
   };
 }
 

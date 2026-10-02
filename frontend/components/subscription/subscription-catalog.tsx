@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
 import { BillingCycle, formatMoney, monthlyPrice, subscriptionPlans } from "@/lib/subscription-plans";
-import styles from "@/app/goi-dich-vu/subscription.module.css";
+import styles from "@/styles/subscription.module.css";
 
 const comparison = [
   ["Lượt phân tích / tháng", "20", "80"],
