@@ -1,12 +1,16 @@
+import { Types } from 'mongoose';
 import { AppError } from '../errors/AppError';
 import { ClauseModel } from '../models/clause.model';
-import { ContractModel, RISK_LEVELS } from '../models/contract.model';
+import { ContractModel } from '../models/contract.model';
+import { RISK_LEVELS } from '../models/contractVersion.model';
 import { RiskFindingModel } from '../models/riskFinding.model';
 import { RiskCitationModel } from '../models/riskCitation.model';
 import { LegalKnowledgeChunkModel } from '../models/legalKnowledgeChunk.model';
 import { LegalSourceModel } from '../models/legalSource.model';
 import { detectContractRisks, LegalExcerptInput } from './riskDetection.service';
 import { searchLegalChunks, LegalChunkMatch } from './legalRetrieval.service';
+import { getCurrentVersion } from './contractVersion.service';
+import { getMandatoryTaxonomyForContractType } from './clauseTypeTaxonomy.service';
 
 const SEVERITY_RANK: Record<(typeof RISK_LEVELS)[number], number> = {
   high: 3,
@@ -15,11 +19,20 @@ const SEVERITY_RANK: Record<(typeof RISK_LEVELS)[number], number> = {
   none: 0,
 };
 
+const MISSING_CLAUSE_SEVERITY: (typeof RISK_LEVELS)[number] = 'medium';
+
 const LEGAL_EXCERPTS_PER_CLAUSE = 3;
 
 interface LegalExcerptMeta {
   chunkId: string;
   score: number;
+}
+
+interface PopulatedClauseType {
+  _id: Types.ObjectId;
+  code: string;
+  name: string;
+  description: string;
 }
 
 async function buildLegalExcerpts(
@@ -104,73 +117,87 @@ export async function detectRisks(orgId: string, contractId: string) {
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  if (contract.segmentationStatus !== 'completed') {
+
+  const version = await getCurrentVersion(contractId);
+  if (version.segmentationStatus !== 'completed') {
     throw AppError.badRequest('Contract clauses have not been segmented yet');
   }
 
-  const clauses = await ClauseModel.find({ contractId: contract._id }).sort({ index: 1 });
+  const clauses = await ClauseModel.find({ contractVersionId: version._id })
+    .sort({ index: 1 })
+    .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
   if (clauses.length === 0) {
     throw AppError.badRequest('Contract has no clauses to analyze');
   }
 
-  contract.riskDetectionStatus = 'processing';
-  await contract.save();
+  version.riskDetectionStatus = 'processing';
+  await version.save();
 
   try {
     const { excerpts, metaByNumber } = await buildLegalExcerpts(clauses);
 
-    const findings = await detectContractRisks(
+    const llmFindings = await detectContractRisks(
       contract.type,
-      clauses.map((c) => ({ index: c.index, category: c.category, text: c.text })),
+      clauses.map((c) => ({ index: c.index, category: c.clauseTypeId.code, text: c.text })),
       excerpts,
+    );
+
+    const presentTaxonomyIds = new Set(clauses.map((c) => c.clauseTypeId._id.toString()));
+    const mandatoryTaxonomy = await getMandatoryTaxonomyForContractType(contract.type);
+    const missingTaxonomy = mandatoryTaxonomy.filter(
+      (t) => !presentTaxonomyIds.has(t._id.toString()),
     );
 
     const clauseIdByIndex = new Map(clauses.map((c) => [c.index, c._id]));
 
-    const oldFindingIds = await RiskFindingModel.find({ contractId: contract._id }).distinct('_id');
+    const oldFindingIds = await RiskFindingModel.find({
+      contractVersionId: version._id,
+    }).distinct('_id');
     await RiskCitationModel.deleteMany({ riskFindingId: { $in: oldFindingIds } });
-    await RiskFindingModel.deleteMany({ contractId: contract._id });
+    await RiskFindingModel.deleteMany({ contractVersionId: version._id });
 
     let overallRiskLevel: (typeof RISK_LEVELS)[number] = 'none';
     const pending: { doc: Record<string, unknown>; citedExcerptNumbers: number[] }[] = [];
-    for (const finding of findings) {
+
+    for (const finding of llmFindings) {
       if (SEVERITY_RANK[finding.severity] > SEVERITY_RANK[overallRiskLevel]) {
         overallRiskLevel = finding.severity;
       }
+      const clauseId = clauseIdByIndex.get(finding.clauseIndex);
+      if (!clauseId) continue; // LLM referenced a clause index that doesn't exist; skip it
+      pending.push({
+        doc: {
+          contractVersionId: version._id,
+          orgId,
+          clauseId,
+          findingType: 'clause_risk' as const,
+          severity: finding.severity,
+          title: finding.title,
+          explanation: finding.explanation,
+          suggestedRevision: finding.suggestedRevision,
+          detectedBy: 'llm' as const,
+        },
+        citedExcerptNumbers: finding.citedExcerptNumbers,
+      });
+    }
 
-      if (finding.findingType === 'clause_risk') {
-        const clauseId = clauseIdByIndex.get(finding.clauseIndex);
-        if (!clauseId) continue; // LLM referenced a clause index that doesn't exist; skip it
-        pending.push({
-          doc: {
-            contractId: contract._id,
-            orgId,
-            clauseId,
-            findingType: 'clause_risk' as const,
-            severity: finding.severity,
-            title: finding.title,
-            explanation: finding.explanation,
-            suggestedRevision: finding.suggestedRevision,
-            detectedBy: 'llm' as const,
-          },
-          citedExcerptNumbers: finding.citedExcerptNumbers,
-        });
-      } else {
-        pending.push({
-          doc: {
-            contractId: contract._id,
-            orgId,
-            expectedClauseCategory: finding.expectedClauseCategory,
-            findingType: 'missing_clause' as const,
-            severity: finding.severity,
-            title: finding.title,
-            explanation: finding.explanation,
-            suggestedRevision: finding.suggestedRevision,
-            detectedBy: 'llm' as const,
-          },
-          citedExcerptNumbers: finding.citedExcerptNumbers,
-        });
-      }
+    if (SEVERITY_RANK[MISSING_CLAUSE_SEVERITY] > SEVERITY_RANK[overallRiskLevel] && missingTaxonomy.length > 0) {
+      overallRiskLevel = MISSING_CLAUSE_SEVERITY;
+    }
+    for (const taxonomy of missingTaxonomy) {
+      pending.push({
+        doc: {
+          contractVersionId: version._id,
+          orgId,
+          expectedClauseTypeId: taxonomy._id,
+          findingType: 'missing_clause' as const,
+          severity: MISSING_CLAUSE_SEVERITY,
+          title: `Thieu dieu khoan ${taxonomy.name}`,
+          explanation: `Hop dong loai nay thuong can co dieu khoan ve "${taxonomy.name}" (${taxonomy.description}), nhung khong tim thay dieu khoan nao thuoc loai nay trong hop dong.`,
+          detectedBy: 'rule' as const,
+        },
+        citedExcerptNumbers: [],
+      });
     }
 
     const inserted = pending.length > 0 ? await RiskFindingModel.insertMany(pending.map((p) => p.doc)) : [];
@@ -191,21 +218,20 @@ export async function detectRisks(orgId: string, contractId: string) {
       await RiskCitationModel.insertMany(citationDocs);
     }
 
-    contract.overallRiskLevel = overallRiskLevel;
-    contract.riskDetectionStatus = 'completed';
-    contract.riskDetectionError = undefined;
-    await contract.save();
+    version.overallRiskLevel = overallRiskLevel;
+    version.riskDetectionStatus = 'completed';
+    version.riskDetectionError = undefined;
+    await version.save();
   } catch (err) {
-    contract.riskDetectionStatus = 'failed';
-    contract.riskDetectionError = err instanceof Error ? err.message : 'Risk detection failed';
-    await contract.save();
+    version.riskDetectionStatus = 'failed';
+    version.riskDetectionError = err instanceof Error ? err.message : 'Risk detection failed';
+    await version.save();
     throw err;
   }
 
-  const savedFindings = await RiskFindingModel.find({ contractId: contract._id }).sort({
-    severity: 1,
-    createdAt: 1,
-  });
+  const savedFindings = await RiskFindingModel.find({ contractVersionId: version._id })
+    .sort({ severity: 1, createdAt: 1 })
+    .populate('expectedClauseTypeId');
   return attachCitations(savedFindings);
 }
 
@@ -214,6 +240,9 @@ export async function listRiskFindings(orgId: string, contractId: string) {
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const findings = await RiskFindingModel.find({ contractId }).sort({ createdAt: 1 });
+  const version = await getCurrentVersion(contractId);
+  const findings = await RiskFindingModel.find({ contractVersionId: version._id })
+    .sort({ createdAt: 1 })
+    .populate('expectedClauseTypeId');
   return attachCitations(findings);
 }

@@ -1,13 +1,12 @@
 import { Type } from '@google/genai';
 import { z } from 'zod';
-import { CLAUSE_CATEGORIES } from '../models/clause.model';
 import { CONTRACT_TYPES } from '../models/contract.model';
 import { AppError } from '../errors/AppError';
 import { generateJson } from './llm.service';
 import { CONTRACT_TYPE_LABELS } from './riskDetection.service';
 
 export interface ClauseSummaryInput {
-  category: (typeof CLAUSE_CATEGORIES)[number];
+  category: string;
   summary: string;
 }
 

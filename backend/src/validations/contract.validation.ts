@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { CONTRACT_STATUSES, CONTRACT_TYPES, RISK_LEVELS } from '../models/contract.model';
+import { CONTRACT_STATUSES, CONTRACT_TYPES } from '../models/contract.model';
+import { RISK_LEVELS } from '../models/contractVersion.model';
 
 export const createContractSchema = z.object({
   title: z.string().min(2).max(300),

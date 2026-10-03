@@ -1,6 +1,6 @@
 import { Type } from '@google/genai';
 import { z } from 'zod';
-import { CLAUSE_CATEGORIES } from '../models/clause.model';
+import { CLAUSE_CATEGORIES } from '../models/clauseTypeTaxonomy.model';
 import { AppError } from '../errors/AppError';
 import { generateJson } from './llm.service';
 
