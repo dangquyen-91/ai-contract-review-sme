@@ -8,6 +8,7 @@ import {
   createContractHandler,
   deleteContractHandler,
   getContractHandler,
+  getContractTextHandler,
   listContractsHandler,
 } from '../controllers/contract.controller';
 import { listClausesHandler, segmentClausesHandler } from '../controllers/clause.controller';
@@ -35,6 +36,8 @@ router.post(
 );
 
 router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandler);
+
+router.get('/:id/text', validate({ params: contractIdParamSchema }), getContractTextHandler);
 
 router.get(
   '/:id/clauses',

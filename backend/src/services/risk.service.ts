@@ -75,8 +75,26 @@ async function attachCitations<T extends { _id: unknown; toObject: () => Record<
   const findingIds = findings.map((f) => f._id);
   const citations = await RiskCitationModel.find({ riskFindingId: { $in: findingIds } });
 
+  const clauseIds = findings
+    .map((f) => (f.toObject() as { clauseId?: Types.ObjectId | null }).clauseId)
+    .filter((id): id is Types.ObjectId => Boolean(id));
+  const clauseDocs =
+    clauseIds.length > 0
+      ? await ClauseModel.find({ _id: { $in: clauseIds } }).select('index title startOffset endOffset')
+      : [];
+  const clauseById = new Map(
+    clauseDocs.map((c) => [
+      c._id.toString(),
+      { index: c.index, title: c.title, startOffset: c.startOffset, endOffset: c.endOffset },
+    ]),
+  );
+  const withClause = (f: T) => {
+    const obj = f.toObject() as { clauseId?: Types.ObjectId | null };
+    return { ...obj, clause: obj.clauseId ? (clauseById.get(obj.clauseId.toString()) ?? null) : null };
+  };
+
   if (citations.length === 0) {
-    return findings.map((f) => ({ ...f.toObject(), citations: [] }));
+    return findings.map((f) => ({ ...withClause(f), citations: [] }));
   }
 
   const chunkIds = [...new Set(citations.map((c) => c.legalKnowledgeChunkId.toString()))];
@@ -107,7 +125,7 @@ async function attachCitations<T extends { _id: unknown; toObject: () => Record<
   }
 
   return findings.map((f) => ({
-    ...f.toObject(),
+    ...withClause(f),
     citations: citationsByFindingId.get((f._id as { toString(): string }).toString()) ?? [],
   }));
 }

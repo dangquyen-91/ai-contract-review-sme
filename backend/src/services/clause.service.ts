@@ -4,6 +4,7 @@ import { ContractModel } from '../models/contract.model';
 import { segmentContractClauses } from './clauseSegmentation.service';
 import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
 import { getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
+import { locateClauseOffsets } from '../utils/clauseOffsets';
 
 export async function segmentClauses(orgId: string, contractId: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
@@ -25,8 +26,13 @@ export async function segmentClauses(orgId: string, contractId: string) {
 
     await ClauseModel.deleteMany({ contractVersionId: versionWithText._id });
     if (clauses.length > 0) {
+      const offsets = locateClauseOffsets(
+        versionWithText.extractedText,
+        clauses.map((c) => c.text),
+      );
       await ClauseModel.insertMany(
-        clauses.map((clause) => ({
+        clauses.map((clause, i) => ({
+          ...offsets[i],
           contractVersionId: versionWithText._id,
           orgId,
           index: clause.index,

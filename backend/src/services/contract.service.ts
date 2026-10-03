@@ -9,7 +9,7 @@ import { RiskCitationModel } from '../models/riskCitation.model';
 import { CreateContractInput, ListContractsQuery } from '../validations/contract.validation';
 import { deleteContractFile } from './storage.service';
 import { extractContractText } from './textExtraction.service';
-import { getCurrentVersion } from './contractVersion.service';
+import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
 
 interface CreateContractParams {
   orgId: string;
@@ -132,4 +132,19 @@ export async function deleteContract(orgId: string, id: string) {
       await deleteContractFile(version.fileKey, version.fileResourceType);
     }
   }
+}
+
+export async function getContractText(orgId: string, id: string) {
+  const contract = await ContractModel.findOne({ _id: id, orgId });
+  if (!contract) {
+    throw AppError.notFound('Contract not found');
+  }
+  const version = await getCurrentVersionWithText(id);
+  return {
+    text: version.extractedText ?? '',
+    extractionStatus: version.extractionStatus,
+    fileUrl: version.fileUrl,
+    fileName: version.fileName,
+    mimeType: version.mimeType,
+  };
 }

@@ -50,3 +50,9 @@ export const deleteContractHandler = asyncHandler(async (req: Request, res: Resp
   await contractService.deleteContract(req.user.orgId, req.params.id);
   res.status(204).send();
 });
+
+export const getContractTextHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) throw AppError.unauthorized();
+  const text = await contractService.getContractText(req.user.orgId, req.params.id);
+  ok(res, text);
+});
