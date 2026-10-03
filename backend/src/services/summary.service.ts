@@ -10,7 +10,11 @@ interface PopulatedClauseType {
   code: string;
 }
 
-export async function generateContractSummary(orgId: string, contractId: string) {
+export async function generateContractSummary(
+  orgId: string,
+  contractId: string,
+  analysisFocus?: string,
+) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
@@ -29,12 +33,14 @@ export async function generateContractSummary(orgId: string, contractId: string)
   }
 
   version.summaryStatus = 'processing';
+  if (analysisFocus) version.analysisFocus = analysisFocus;
   await version.save();
 
   try {
     const summary = await summarizeContract(
       contract.type,
       clauses.map((c) => ({ category: c.clauseTypeId.code, summary: c.summary })),
+      version.analysisFocus ?? undefined,
     );
 
     version.summary = summary;

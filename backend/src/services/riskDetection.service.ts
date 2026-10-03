@@ -78,7 +78,12 @@ function buildPrompt(
   contractType: (typeof CONTRACT_TYPES)[number],
   clauses: ClauseInput[],
   legalExcerpts: LegalExcerptInput[],
+  analysisFocus?: string,
 ): string {
+  const focusBlock = analysisFocus
+    ? `\n\nThe user asked for this specific analysis direction (follow it when judging risk, e.g. which party's interests to protect): "${analysisFocus}"`
+    : '';
+
   const clauseList = clauses
     .map((c) => `[index=${c.index}] (${c.category}) ${c.text}`)
     .join('\n\n');
@@ -100,7 +105,7 @@ Rules:
 - "title" is a short (max ~10 words) Vietnamese label for the finding.
 - "explanation" is 1-4 sentences in Vietnamese, plain language, explaining why it is risky.
 - "suggestedRevision" (optional) is a short Vietnamese suggestion of how to reword the clause.
-- If there are no risks, return an empty "findings" array.${legalContextBlock}
+- If there are no risks, return an empty "findings" array.${focusBlock}${legalContextBlock}
 
 Clauses:
 """
@@ -112,8 +117,12 @@ export async function detectContractRisks(
   contractType: (typeof CONTRACT_TYPES)[number],
   clauses: ClauseInput[],
   legalExcerpts: LegalExcerptInput[] = [],
+  analysisFocus?: string,
 ): Promise<ClauseRiskFinding[]> {
-  const raw = await generateJson(buildPrompt(contractType, clauses, legalExcerpts), responseSchema);
+  const raw = await generateJson(
+    buildPrompt(contractType, clauses, legalExcerpts, analysisFocus),
+    responseSchema,
+  );
 
   const parsed = findingResultSchema.safeParse(raw);
   if (!parsed.success) {

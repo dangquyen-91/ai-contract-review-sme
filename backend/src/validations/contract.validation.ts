@@ -22,5 +22,9 @@ export const contractIdParamSchema = z.object({
   id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
 });
 
+export const analysisFocusBodySchema = z.object({
+  analysisFocus: z.string().trim().min(1).max(1000).optional(),
+});
+
 export type CreateContractInput = z.infer<typeof createContractSchema>;
 export type ListContractsQuery = z.infer<typeof listContractsQuerySchema>;

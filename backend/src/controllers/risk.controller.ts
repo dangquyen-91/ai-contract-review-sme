@@ -6,7 +6,11 @@ import * as riskService from '../services/risk.service';
 
 export const detectRisksHandler = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) throw AppError.unauthorized();
-  const findings = await riskService.detectRisks(req.user.orgId, req.params.id);
+  const findings = await riskService.detectRisks(
+    req.user.orgId,
+    req.params.id,
+    req.body?.analysisFocus,
+  );
   ok(res, findings);
 });
 

@@ -25,14 +25,19 @@ const responseSchema = {
 function buildPrompt(
   contractType: (typeof CONTRACT_TYPES)[number],
   clauses: ClauseSummaryInput[],
+  analysisFocus?: string,
 ): string {
+  const focusBlock = analysisFocus
+    ? `\n\nThe user asked for this specific analysis direction, so emphasize the parts of the contract relevant to it: "${analysisFocus}"`
+    : '';
+
   const clauseList = clauses.map((c) => `- (${c.category}) ${c.summary}`).join('\n');
 
   return `You are a legal analyst writing a plain-language overview of a Vietnamese contract of type "${CONTRACT_TYPE_LABELS[contractType]}" for a small business owner with no legal background.
 
 Below is a list of short summaries of each clause already extracted from the contract, in order.
 
-Write ONE cohesive Vietnamese summary of the whole contract, 4-8 sentences, plain language, covering: the purpose of the contract, the main obligations of each party, key payment terms, and duration/termination/renewal terms if present. Do not just concatenate the clause summaries - synthesize them into a coherent overview. Do not analyze risk here (that is done separately).
+Write ONE cohesive Vietnamese summary of the whole contract, 4-8 sentences, plain language, covering: the purpose of the contract, the main obligations of each party, key payment terms, and duration/termination/renewal terms if present. Do not just concatenate the clause summaries - synthesize them into a coherent overview. Do not analyze risk here (that is done separately).${focusBlock}
 
 Clause summaries:
 """
@@ -43,8 +48,9 @@ ${clauseList}
 export async function summarizeContract(
   contractType: (typeof CONTRACT_TYPES)[number],
   clauses: ClauseSummaryInput[],
+  analysisFocus?: string,
 ): Promise<string> {
-  const raw = await generateJson(buildPrompt(contractType, clauses), responseSchema);
+  const raw = await generateJson(buildPrompt(contractType, clauses, analysisFocus), responseSchema);
 
   const parsed = summaryResultSchema.safeParse(raw);
   if (!parsed.success) {

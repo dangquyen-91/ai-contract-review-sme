@@ -112,7 +112,7 @@ async function attachCitations<T extends { _id: unknown; toObject: () => Record<
   }));
 }
 
-export async function detectRisks(orgId: string, contractId: string) {
+export async function detectRisks(orgId: string, contractId: string, analysisFocus?: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
@@ -131,6 +131,7 @@ export async function detectRisks(orgId: string, contractId: string) {
   }
 
   version.riskDetectionStatus = 'processing';
+  if (analysisFocus) version.analysisFocus = analysisFocus;
   await version.save();
 
   try {
@@ -140,6 +141,7 @@ export async function detectRisks(orgId: string, contractId: string) {
       contract.type,
       clauses.map((c) => ({ index: c.index, category: c.clauseTypeId.code, text: c.text })),
       excerpts,
+      version.analysisFocus ?? undefined,
     );
 
     const presentTaxonomyIds = new Set(clauses.map((c) => c.clauseTypeId._id.toString()));
