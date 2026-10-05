@@ -6,6 +6,7 @@ import { ContractVersionModel } from '../models/contractVersion.model';
 import { ClauseModel } from '../models/clause.model';
 import { RiskFindingModel } from '../models/riskFinding.model';
 import { RiskCitationModel } from '../models/riskCitation.model';
+import { ChatMessageModel } from '../models/chatMessage.model';
 import { CreateContractInput, ListContractsQuery } from '../validations/contract.validation';
 import { deleteContractFile } from './storage.service';
 import { extractContractText } from './textExtraction.service';
@@ -124,6 +125,7 @@ export async function deleteContract(orgId: string, id: string) {
   await RiskCitationModel.deleteMany({ riskFindingId: { $in: findingIds } });
   await RiskFindingModel.deleteMany({ contractVersionId: { $in: versionIds } });
   await ClauseModel.deleteMany({ contractVersionId: { $in: versionIds } });
+  await ChatMessageModel.deleteMany({ contractVersionId: { $in: versionIds } });
   await ContractVersionModel.deleteMany({ contractId: id });
   await ContractModel.deleteOne({ _id: id, orgId });
 

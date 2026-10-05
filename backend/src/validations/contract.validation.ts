@@ -26,5 +26,9 @@ export const analysisFocusBodySchema = z.object({
   analysisFocus: z.string().trim().min(1).max(1000).optional(),
 });
 
+export const chatMessageBodySchema = z.object({
+  message: z.string().trim().min(1).max(5000),
+});
+
 export type CreateContractInput = z.infer<typeof createContractSchema>;
 export type ListContractsQuery = z.infer<typeof listContractsQuerySchema>;

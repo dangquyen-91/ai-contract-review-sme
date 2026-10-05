@@ -14,8 +14,10 @@ import {
 import { listClausesHandler, segmentClausesHandler } from '../controllers/clause.controller';
 import { detectRisksHandler, listRiskFindingsHandler } from '../controllers/risk.controller';
 import { generateContractSummaryHandler } from '../controllers/summary.controller';
+import { askAboutContractHandler, listChatMessagesHandler } from '../controllers/chat.controller';
 import {
   analysisFocusBodySchema,
+  chatMessageBodySchema,
   contractIdParamSchema,
   createContractSchema,
   listContractsQuerySchema,
@@ -73,6 +75,16 @@ router.post(
   aiLimiter,
   validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
   detectRisksHandler,
+);
+
+router.get('/:id/chat', validate({ params: contractIdParamSchema }), listChatMessagesHandler);
+
+router.post(
+  '/:id/chat',
+  requireRole('administrator', 'manager', 'staff'),
+  aiLimiter,
+  validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
+  askAboutContractHandler,
 );
 
 router.delete(

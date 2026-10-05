@@ -35,6 +35,29 @@ export async function generateJson(prompt: string, responseSchema?: Schema): Pro
   }
 }
 
+export async function generateText(prompt: string, systemInstruction?: string): Promise<string> {
+  if (!client) {
+    throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
+  }
+
+  const response = await client.models.generateContent({
+    model: env.GEMINI_MODEL,
+    contents: prompt,
+    config: {
+      ...(systemInstruction ? { systemInstruction } : {}),
+      httpOptions: {
+        retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 5 },
+      },
+    },
+  });
+
+  const text = response.text;
+  if (!text) {
+    throw AppError.internal('LLM returned an empty response.');
+  }
+  return text;
+}
+
 export async function embedText(text: string, outputDimensionality?: number): Promise<number[]> {
   if (!client) {
     throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
