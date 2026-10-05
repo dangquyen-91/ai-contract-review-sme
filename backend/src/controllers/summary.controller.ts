@@ -6,6 +6,10 @@ import * as summaryService from '../services/summary.service';
 
 export const generateContractSummaryHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
-  const contract = await summaryService.generateContractSummary(user.orgId, req.params.id);
+  const contract = await summaryService.generateContractSummary(
+    user.orgId,
+    req.params.id,
+    req.body?.analysisFocus,
+  );
   ok(res, contract);
 });

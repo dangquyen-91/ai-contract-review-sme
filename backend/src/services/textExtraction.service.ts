@@ -1,7 +1,7 @@
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 import { createWorker } from 'tesseract.js';
-import { EXTRACTION_STATUSES } from '../models/contract.model';
+import { EXTRACTION_STATUSES } from '../models/contractVersion.model';
 
 export type ExtractionStatus = (typeof EXTRACTION_STATUSES)[number];
 

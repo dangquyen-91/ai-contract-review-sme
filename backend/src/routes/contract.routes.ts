@@ -8,12 +8,24 @@ import {
   createContractHandler,
   deleteContractHandler,
   getContractHandler,
+  getContractTextHandler,
   listContractsHandler,
 } from '../controllers/contract.controller';
 import { listClausesHandler, segmentClausesHandler } from '../controllers/clause.controller';
-import { detectRisksHandler, listRiskFindingsHandler } from '../controllers/risk.controller';
+import {
+  detectRisksHandler,
+  detectRisksStreamHandler,
+  listRiskFindingsHandler,
+} from '../controllers/risk.controller';
 import { generateContractSummaryHandler } from '../controllers/summary.controller';
 import {
+  askAboutContractHandler,
+  listChatMessagesHandler,
+  streamAboutContractHandler,
+} from '../controllers/chat.controller';
+import {
+  analysisFocusBodySchema,
+  chatMessageBodySchema,
   contractIdParamSchema,
   createContractSchema,
   listContractsQuerySchema,
@@ -35,6 +47,8 @@ router.post(
 
 router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandler);
 
+router.get('/:id/text', validate({ params: contractIdParamSchema }), getContractTextHandler);
+
 router.get(
   '/:id/clauses',
   validate({ params: contractIdParamSchema }),
@@ -53,7 +67,7 @@ router.post(
   '/:id/summary',
   requireRole('administrator', 'owner', 'manager', 'staff'),
   aiLimiter,
-  validate({ params: contractIdParamSchema }),
+  validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
   generateContractSummaryHandler,
 );
 
@@ -67,8 +81,34 @@ router.post(
   '/:id/risks/detect',
   requireRole('administrator', 'owner', 'manager', 'staff'),
   aiLimiter,
-  validate({ params: contractIdParamSchema }),
+  validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
   detectRisksHandler,
+);
+
+router.get('/:id/chat', validate({ params: contractIdParamSchema }), listChatMessagesHandler);
+
+router.post(
+  '/:id/chat',
+  requireRole('administrator', 'manager', 'staff'),
+  aiLimiter,
+  validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
+  askAboutContractHandler,
+);
+
+router.post(
+  '/:id/risks/detect/stream',
+  requireRole('administrator', 'manager', 'staff'),
+  aiLimiter,
+  validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
+  detectRisksStreamHandler,
+);
+
+router.post(
+  '/:id/chat/stream',
+  requireRole('administrator', 'manager', 'staff'),
+  aiLimiter,
+  validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
+  streamAboutContractHandler,
 );
 
 router.delete(

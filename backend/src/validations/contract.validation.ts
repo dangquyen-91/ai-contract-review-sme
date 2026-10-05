@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { CONTRACT_STATUSES, CONTRACT_TYPES, RISK_LEVELS } from '../models/contract.model';
+import { CONTRACT_STATUSES, CONTRACT_TYPES } from '../models/contract.model';
+import { RISK_LEVELS } from '../models/contractVersion.model';
 
 export const createContractSchema = z.object({
   title: z.string().min(2).max(300),
@@ -19,6 +20,14 @@ export const listContractsQuerySchema = z.object({
 
 export const contractIdParamSchema = z.object({
   id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
+});
+
+export const analysisFocusBodySchema = z.object({
+  analysisFocus: z.string().trim().min(1).max(1000).optional(),
+});
+
+export const chatMessageBodySchema = z.object({
+  message: z.string().trim().min(1).max(5000),
 });
 
 export type CreateContractInput = z.infer<typeof createContractSchema>;

@@ -34,3 +34,74 @@ export async function generateJson(prompt: string, responseSchema?: Schema): Pro
     throw AppError.internal('LLM returned a response that was not valid JSON.');
   }
 }
+
+export async function generateText(prompt: string, systemInstruction?: string): Promise<string> {
+  if (!client) {
+    throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
+  }
+
+  const response = await client.models.generateContent({
+    model: env.GEMINI_MODEL,
+    contents: prompt,
+    config: {
+      ...(systemInstruction ? { systemInstruction } : {}),
+      httpOptions: {
+        retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 5 },
+      },
+    },
+  });
+
+  const text = response.text;
+  if (!text) {
+    throw AppError.internal('LLM returned an empty response.');
+  }
+  return text;
+}
+
+export async function* generateTextStream(
+  prompt: string,
+  systemInstruction?: string,
+): AsyncGenerator<string> {
+  if (!client) {
+    throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
+  }
+
+  const stream = await client.models.generateContentStream({
+    model: env.GEMINI_MODEL,
+    contents: prompt,
+    config: {
+      ...(systemInstruction ? { systemInstruction } : {}),
+      httpOptions: {
+        retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 5 },
+      },
+    },
+  });
+
+  for await (const chunk of stream) {
+    if (chunk.text) yield chunk.text;
+  }
+}
+
+export async function embedText(text: string, outputDimensionality?: number): Promise<number[]> {
+  if (!client) {
+    throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
+  }
+
+  const response = await client.models.embedContent({
+    model: env.GEMINI_EMBEDDING_MODEL,
+    contents: text,
+    config: {
+      ...(outputDimensionality ? { outputDimensionality } : {}),
+      httpOptions: {
+        retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 5 },
+      },
+    },
+  });
+
+  const values = response.embeddings?.[0]?.values;
+  if (!values || values.length === 0) {
+    throw AppError.internal('LLM returned an empty embedding.');
+  }
+
+  return values;
+}
