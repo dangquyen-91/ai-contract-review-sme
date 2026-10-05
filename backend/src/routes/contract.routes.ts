@@ -15,6 +15,8 @@ import { listClausesHandler, segmentClausesHandler } from '../controllers/clause
 import {
   detectRisksHandler,
   detectRisksStreamHandler,
+  removeProposedRevisionHandler,
+  updateProposedRevisionHandler,
   listRiskFindingsHandler,
 } from '../controllers/risk.controller';
 import { generateContractSummaryHandler } from '../controllers/summary.controller';
@@ -28,7 +30,9 @@ import {
   chatMessageBodySchema,
   contractIdParamSchema,
   createContractSchema,
+  findingParamSchema,
   listContractsQuerySchema,
+  updateProposedRevisionBodySchema,
 } from '../validations/contract.validation';
 
 const router = Router();
@@ -85,11 +89,25 @@ router.post(
   detectRisksHandler,
 );
 
+router.patch(
+  '/:id/risks/:findingId',
+  requireRole('administrator', 'owner', 'manager', 'staff'),
+  validate({ params: findingParamSchema, body: updateProposedRevisionBodySchema }),
+  updateProposedRevisionHandler,
+);
+
+router.delete(
+  '/:id/risks/:findingId/revision',
+  requireRole('administrator', 'owner', 'manager', 'staff'),
+  validate({ params: findingParamSchema }),
+  removeProposedRevisionHandler,
+);
+
 router.get('/:id/chat', validate({ params: contractIdParamSchema }), listChatMessagesHandler);
 
 router.post(
   '/:id/chat',
-  requireRole('administrator', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
   askAboutContractHandler,
@@ -97,7 +115,7 @@ router.post(
 
 router.post(
   '/:id/risks/detect/stream',
-  requireRole('administrator', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
   detectRisksStreamHandler,
@@ -105,7 +123,7 @@ router.post(
 
 router.post(
   '/:id/chat/stream',
-  requireRole('administrator', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
   streamAboutContractHandler,

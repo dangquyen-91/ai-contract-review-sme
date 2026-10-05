@@ -923,7 +923,7 @@ paths:
     post:
       tags: [Contracts]
       summary: Run hybrid (rule-based + LLM) risk detection for a contract, grounded with RAG citations
-      description: Requires clauses to already be segmented (segmentationStatus = completed). Produces two kinds of findings - "clause_risk" (detectedBy=llm, Gemini reviews each clause, retrieving relevant legal excerpts per clause via vector search and citing the ones it actually relied on) and "missing_clause" (detectedBy=rule, a deterministic check for mandatory clause types - per ClauseTypeTaxonomy.isMandatory/applicableContractTypes - that aren't present). Replaces any previously detected findings and recomputes the contract version's overallRiskLevel. Rate-limited (AI cost control).
+      description: Requires clauses to already be segmented (segmentationStatus = completed). Produces two kinds of findings - "clause_risk" (detectedBy=llm, Gemini reviews each clause, retrieving relevant legal excerpts per clause via vector search and citing the ones it relied on) and "missing_clause" (a rule determines which mandatory clause types - per ClauseTypeTaxonomy.isMandatory/applicableContractTypes - are absent, then Gemini explains each and drafts a clause to add; detectedBy=hybrid, or rule if Gemini skipped it). Each finding has problem / consequences / legalBasis / recommendations / proposedRevision. Also sets the version overallAssessment and overallRiskLevel. The new findings replace the previous ones only once saved successfully. Returns 409 if a run is already in progress for the contract (a run stuck over 10 minutes is considered stale). Rate-limited (AI cost control).
       requestBody:
         required: false
         content:
@@ -951,8 +951,94 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: Risk detection is already running for this contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/risks/{findingId}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: findingId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    patch:
+      tags: [Contracts]
+      summary: Edit the proposed revision of a finding
+      description: Updates proposedRevision.revisedText and/or reason and marks it isEdited=true. Only findings of the contract's current version can be edited; 404 if the finding has no proposed revision. Roles - administrator, owner, manager, staff.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                revisedText:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        '200':
+          description: The updated finding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskFinding'
+        '404':
+          description: Contract, finding or proposed revision not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/risks/{findingId}/revision:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: findingId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    delete:
+      tags: [Contracts]
+      summary: Remove the proposed revision of a finding
+      description: Clears proposedRevision; the finding itself is kept. Roles - administrator, owner, manager, staff.
+      responses:
+        '200':
+          description: The finding without proposedRevision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskFinding'
+        '404':
+          description: Contract or finding not found
           content:
             application/json:
               schema:

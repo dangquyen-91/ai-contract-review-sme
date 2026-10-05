@@ -42,3 +42,24 @@ export const detectRisksStreamHandler = asyncHandler(async (req: Request, res: R
     res.end();
   }
 });
+
+export const updateProposedRevisionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getOrganizationUser(req);
+  const finding = await riskService.updateProposedRevision(
+    user.orgId,
+    req.params.id,
+    req.params.findingId,
+    req.body,
+  );
+  ok(res, finding);
+});
+
+export const removeProposedRevisionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getOrganizationUser(req);
+  const finding = await riskService.removeProposedRevision(
+    user.orgId,
+    req.params.id,
+    req.params.findingId,
+  );
+  ok(res, finding);
+});

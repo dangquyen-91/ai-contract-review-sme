@@ -177,6 +177,7 @@ function buildPrompt(
 Below is the list of clauses already segmented and classified from this contract. Review each clause for risk. For findings about an existing clause, set "clauseIndex" to that clause's index. Look for things like: vague scope, penalty terms, auto-renewal, unilateral termination rights, liability limitation/exclusion, unfavorable payment terms, one-sided obligations.
 
 Rules:
+- Write every Vietnamese field ("title", "problem", "consequences", "legalBasis", "recommendations", "reason", "overallAssessment") with full Vietnamese diacritics, even if the contract text itself has none. Only "originalText" and "revisedText" follow the contract's own language and spelling style.
 - Only report real, specific risks. Do not invent findings for clauses that are fair and standard.
 - "severity" must be exactly one of: ${RISK_SEVERITIES.join(', ')}.
 - "title" is a short (max ~15 words) Vietnamese label for the finding.

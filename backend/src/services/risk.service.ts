@@ -379,3 +379,47 @@ export async function listRiskFindings(orgId: string, contractId: string) {
   );
   return attachCitations(sortFindings(findings));
 }
+
+async function loadFindingOfCurrentVersion(orgId: string, contractId: string, findingId: string) {
+  const contract = await ContractModel.findOne({ _id: contractId, orgId });
+  if (!contract) {
+    throw AppError.notFound('Contract not found');
+  }
+  const version = await getCurrentVersion(contractId);
+  const finding = await RiskFindingModel.findOne({
+    _id: findingId,
+    orgId,
+    contractVersionId: version._id,
+  }).populate('expectedClauseTypeId');
+  if (!finding) {
+    throw AppError.notFound('Risk finding not found');
+  }
+  return finding;
+}
+
+export async function updateProposedRevision(
+  orgId: string,
+  contractId: string,
+  findingId: string,
+  input: { revisedText?: string; reason?: string },
+) {
+  const finding = await loadFindingOfCurrentVersion(orgId, contractId, findingId);
+  if (!finding.proposedRevision) {
+    throw AppError.notFound('This finding has no proposed revision');
+  }
+
+  if (input.revisedText !== undefined) finding.proposedRevision.revisedText = input.revisedText;
+  if (input.reason !== undefined) finding.proposedRevision.reason = input.reason;
+  finding.proposedRevision.isEdited = true;
+  await finding.save();
+
+  return (await attachCitations([finding]))[0];
+}
+
+export async function removeProposedRevision(orgId: string, contractId: string, findingId: string) {
+  const finding = await loadFindingOfCurrentVersion(orgId, contractId, findingId);
+  finding.proposedRevision = undefined;
+  await finding.save();
+
+  return (await attachCitations([finding]))[0];
+}
