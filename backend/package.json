@@ -28,6 +28,7 @@
     "mongoose": "^8.6.0",
     "morgan": "^1.10.0",
     "multer": "^2.0.1",
+    "mupdf": "^1.28.1",
     "pdf-parse": "^1.1.1",
     "swagger-ui-express": "^5.0.1",
     "tesseract.js": "^5.1.1",
