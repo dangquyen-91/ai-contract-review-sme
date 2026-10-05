@@ -43,6 +43,7 @@ const contractVersionSchema = new Schema(
       index: true,
     },
     riskDetectionError: { type: String },
+    overallAssessment: { type: [String], default: [] },
     overallRiskLevel: { type: String, enum: RISK_LEVELS, default: 'none', index: true },
     analysisFocus: { type: String },
     summary: { type: String },

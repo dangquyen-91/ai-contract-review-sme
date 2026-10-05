@@ -45,7 +45,7 @@ async function buildContractContext(
       ? findings
           .map((f) => {
             const where = f.clauseId ? `clause ${(clauseIndexById.get(f.clauseId.toString()) ?? 0) + 1}` : 'missing clause';
-            return `- (${f.severity}, ${where}) ${f.title}: ${f.explanation}`;
+            return `- (${f.severity}, ${where}) ${f.title}: ${f.problem.join(' ')}`;
           })
           .join('\n')
       : '(no risk findings recorded)';

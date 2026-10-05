@@ -181,6 +181,11 @@ components:
         riskDetectionError:
           type: string
           description: Error message when riskDetectionStatus is "failed"
+        overallAssessment:
+          type: array
+          items:
+            type: string
+          description: '"Đánh giá tổng quan" bullets (Vietnamese), written together with the findings by /risks/detect'
         overallRiskLevel:
           type: string
           enum: [high, medium, low, none]
@@ -329,11 +334,47 @@ components:
           enum: [high, medium, low]
         title:
           type: string
-        explanation:
-          type: string
-          description: Plain-language Vietnamese explanation of the risk
-        suggestedRevision:
-          type: string
+        problem:
+          type: array
+          items:
+            type: string
+          description: '"Vấn đề" bullets - what exactly is wrong or ambiguous (Vietnamese)'
+        consequences:
+          type: array
+          items:
+            type: string
+          description: '"Hệ quả thực tế" bullets'
+        legalBasis:
+          type: array
+          description: '"Cơ sở pháp lý" items. legalKnowledgeChunkIds match RiskCitation.legalKnowledgeChunkId in `citations`, so the UI can render source markers like [A], [B].'
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+              legalKnowledgeChunkIds:
+                type: array
+                items:
+                  type: string
+        recommendations:
+          type: array
+          items:
+            type: string
+          description: '"Sửa thành" bullets'
+        proposedRevision:
+          type: object
+          nullable: true
+          description: Suggested rewrite shown as a diff (originalText struck through, revisedText added)
+          properties:
+            originalText:
+              type: string
+              description: Text of the clause being replaced; absent for "missing_clause" (revisedText is then a whole new clause to insert)
+            revisedText:
+              type: string
+            reason:
+              type: string
+            isEdited:
+              type: boolean
         status:
           type: string
           enum: [open, acknowledged, dismissed, resolved]

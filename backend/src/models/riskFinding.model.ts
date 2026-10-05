@@ -8,6 +8,24 @@ export const RISK_FINDING_STATUSES = ['open', 'acknowledged', 'dismissed', 'reso
 
 export const RISK_DETECTED_BY = ['rule', 'llm', 'hybrid'] as const;
 
+const legalBasisSchema = new Schema(
+  {
+    text: { type: String, required: true },
+    legalKnowledgeChunkIds: { type: [Types.ObjectId], ref: 'LegalKnowledgeChunk', default: [] },
+  },
+  { _id: false },
+);
+
+const proposedRevisionSchema = new Schema(
+  {
+    originalText: { type: String },
+    revisedText: { type: String, required: true },
+    reason: { type: String },
+    isEdited: { type: Boolean, default: false },
+  },
+  { _id: false },
+);
+
 const riskFindingSchema = new Schema(
   {
     contractVersionId: {
@@ -22,8 +40,11 @@ const riskFindingSchema = new Schema(
     findingType: { type: String, enum: RISK_FINDING_TYPES, required: true },
     severity: { type: String, enum: RISK_SEVERITIES, required: true },
     title: { type: String, required: true },
-    explanation: { type: String, required: true },
-    suggestedRevision: { type: String },
+    problem: { type: [String], default: [] },
+    consequences: { type: [String], default: [] },
+    legalBasis: { type: [legalBasisSchema], default: [] },
+    recommendations: { type: [String], default: [] },
+    proposedRevision: { type: proposedRevisionSchema, default: undefined },
     status: { type: String, enum: RISK_FINDING_STATUSES, default: 'open', index: true },
     detectedBy: { type: String, enum: RISK_DETECTED_BY, required: true },
   },
