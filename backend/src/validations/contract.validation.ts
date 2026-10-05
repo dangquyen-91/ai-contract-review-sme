@@ -32,3 +32,16 @@ export const chatMessageBodySchema = z.object({
 
 export type CreateContractInput = z.infer<typeof createContractSchema>;
 export type ListContractsQuery = z.infer<typeof listContractsQuerySchema>;
+
+export const findingParamSchema = contractIdParamSchema.extend({
+  findingId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid finding id'),
+});
+
+export const updateProposedRevisionBodySchema = z
+  .object({
+    revisedText: z.string().trim().min(1).max(10000).optional(),
+    reason: z.string().trim().min(1).max(2000).optional(),
+  })
+  .refine((v) => v.revisedText !== undefined || v.reason !== undefined, {
+    message: 'Provide revisedText and/or reason',
+  });

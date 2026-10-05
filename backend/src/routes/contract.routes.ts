@@ -15,6 +15,8 @@ import { listClausesHandler, segmentClausesHandler } from '../controllers/clause
 import {
   detectRisksHandler,
   detectRisksStreamHandler,
+  removeProposedRevisionHandler,
+  updateProposedRevisionHandler,
   listRiskFindingsHandler,
 } from '../controllers/risk.controller';
 import { generateContractSummaryHandler } from '../controllers/summary.controller';
@@ -28,7 +30,9 @@ import {
   chatMessageBodySchema,
   contractIdParamSchema,
   createContractSchema,
+  findingParamSchema,
   listContractsQuerySchema,
+  updateProposedRevisionBodySchema,
 } from '../validations/contract.validation';
 
 const router = Router();
@@ -83,6 +87,20 @@ router.post(
   aiLimiter,
   validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
   detectRisksHandler,
+);
+
+router.patch(
+  '/:id/risks/:findingId',
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
+  validate({ params: findingParamSchema, body: updateProposedRevisionBodySchema }),
+  updateProposedRevisionHandler,
+);
+
+router.delete(
+  '/:id/risks/:findingId/revision',
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
+  validate({ params: findingParamSchema }),
+  removeProposedRevisionHandler,
 );
 
 router.get('/:id/chat', validate({ params: contractIdParamSchema }), listChatMessagesHandler);

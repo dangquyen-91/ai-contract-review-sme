@@ -27,7 +27,7 @@ async function loadContractContext(orgId: string, contractId: string) {
 
 async function buildContractContext(
   contract: { type: keyof typeof CONTRACT_TYPE_LABELS },
-  version: { _id: unknown; summary?: string | null; analysisFocus?: string | null },
+  version: { _id: unknown; summaryPoints?: string[]; overallAssessment?: string[]; analysisFocus?: string | null },
 ): Promise<string> {
   const clauses = await ClauseModel.find({ contractVersionId: version._id }).sort({ index: 1 });
   const findings = await RiskFindingModel.find({ contractVersionId: version._id }).populate<{
@@ -45,7 +45,7 @@ async function buildContractContext(
       ? findings
           .map((f) => {
             const where = f.clauseId ? `clause ${(clauseIndexById.get(f.clauseId.toString()) ?? 0) + 1}` : 'missing clause';
-            return `- (${f.severity}, ${where}) ${f.title}: ${f.explanation}`;
+            return `- (${f.severity}, ${where}) ${f.title}: ${f.problem.join(' ')}`;
           })
           .join('\n')
       : '(no risk findings recorded)';
@@ -53,7 +53,12 @@ async function buildContractContext(
   return [
     `Contract type: ${CONTRACT_TYPE_LABELS[contract.type]}`,
     version.analysisFocus ? `Analysis focus requested by user: ${version.analysisFocus}` : '',
-    version.summary ? `Summary:\n${version.summary}` : '',
+    version.summaryPoints?.length
+      ? `Summary:\n${version.summaryPoints.map((p) => `- ${p}`).join('\n')}`
+      : '',
+    version.overallAssessment?.length
+      ? `Overall assessment:\n${version.overallAssessment.map((p) => `- ${p}`).join('\n')}`
+      : '',
     `Clauses:\n"""\n${clauseBlock}\n"""`,
     `Risk findings:\n${findingBlock}`,
   ]

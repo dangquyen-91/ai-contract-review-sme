@@ -37,13 +37,13 @@ export async function generateContractSummary(
   await version.save();
 
   try {
-    const summary = await summarizeContract(
+    const summaryPoints = await summarizeContract(
       contract.type,
       clauses.map((c) => ({ category: c.clauseTypeId.code, summary: c.summary })),
       version.analysisFocus ?? undefined,
     );
 
-    version.summary = summary;
+    version.summaryPoints = summaryPoints;
     version.summaryStatus = 'completed';
     version.summaryError = undefined;
     await version.save();
