@@ -1,15 +1,15 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
-import { AppError } from '../errors/AppError';
+import { getOrganizationUser } from '../middlewares/auth.middleware';
 import * as chatService from '../services/chat.service';
 import { initSse, sendError, sendEvent } from '../utils/sse';
 
 export const askAboutContractHandler = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) throw AppError.unauthorized();
+  const user = getOrganizationUser(req);
   const result = await chatService.askAboutContract(
-    req.user.orgId,
-    req.user.sub,
+    user.orgId,
+    user.sub,
     req.params.id,
     req.body.message,
   );
@@ -17,19 +17,19 @@ export const askAboutContractHandler = asyncHandler(async (req: Request, res: Re
 });
 
 export const listChatMessagesHandler = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) throw AppError.unauthorized();
-  const messages = await chatService.listChatMessages(req.user.orgId, req.params.id);
+  const user = getOrganizationUser(req);
+  const messages = await chatService.listChatMessages(user.orgId, req.params.id);
   ok(res, messages);
 });
 
 export const streamAboutContractHandler = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) throw AppError.unauthorized();
+  const user = getOrganizationUser(req);
 
   initSse(res);
   try {
     await chatService.streamAboutContract(
-      req.user.orgId,
-      req.user.sub,
+      user.orgId,
+      user.sub,
       req.params.id,
       req.body.message,
       (token) => sendEvent(res, 'token', { text: token }),
