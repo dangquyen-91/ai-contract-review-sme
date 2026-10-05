@@ -130,7 +130,14 @@ async function attachCitations<T extends { _id: unknown; toObject: () => Record<
   }));
 }
 
-export async function detectRisks(orgId: string, contractId: string, analysisFocus?: string) {
+export type RiskDetectionStage = 'retrieving_legal_sources' | 'analyzing_clauses' | 'saving_findings';
+
+export async function detectRisks(
+  orgId: string,
+  contractId: string,
+  analysisFocus?: string,
+  onProgress?: (stage: RiskDetectionStage) => void,
+) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
@@ -153,8 +160,10 @@ export async function detectRisks(orgId: string, contractId: string, analysisFoc
   await version.save();
 
   try {
+    onProgress?.('retrieving_legal_sources');
     const { excerpts, metaByNumber } = await buildLegalExcerpts(clauses);
 
+    onProgress?.('analyzing_clauses');
     const llmFindings = await detectContractRisks(
       contract.type,
       clauses.map((c) => ({ index: c.index, category: c.clauseTypeId.code, text: c.text })),
@@ -170,6 +179,7 @@ export async function detectRisks(orgId: string, contractId: string, analysisFoc
 
     const clauseIdByIndex = new Map(clauses.map((c) => [c.index, c._id]));
 
+    onProgress?.('saving_findings');
     const oldFindingIds = await RiskFindingModel.find({
       contractVersionId: version._id,
     }).distinct('_id');

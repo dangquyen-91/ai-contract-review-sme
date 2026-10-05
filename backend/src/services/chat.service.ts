@@ -4,7 +4,7 @@ import { ClauseModel } from '../models/clause.model';
 import { ContractModel } from '../models/contract.model';
 import { RiskFindingModel } from '../models/riskFinding.model';
 import { getCurrentVersion } from './contractVersion.service';
-import { generateText } from './llm.service';
+import { generateText, generateTextStream } from './llm.service';
 import { CONTRACT_TYPE_LABELS } from './riskDetection.service';
 
 const HISTORY_LIMIT = 10;
@@ -73,25 +73,62 @@ async function buildHistoryBlock(contractVersionId: unknown): Promise<string> {
   return `Previous conversation:\n${lines}\n\n`;
 }
 
-export async function askAboutContract(
-  orgId: string,
-  userId: string,
-  contractId: string,
-  message: string,
-) {
+async function prepareChat(orgId: string, contractId: string, message: string) {
   const { contract, version } = await loadContractContext(orgId, contractId);
 
   const contextBlock = await buildContractContext(contract, version);
   const historyBlock = await buildHistoryBlock(version._id);
   const prompt = `${contextBlock}\n\n${historyBlock}User question: ${message}`;
 
-  const reply = await generateText(prompt, SYSTEM_INSTRUCTION);
+  return { versionId: version._id, prompt };
+}
 
+async function saveExchange(
+  versionId: unknown,
+  orgId: string,
+  userId: string,
+  message: string,
+  reply: string,
+) {
   await ChatMessageModel.insertMany([
-    { contractVersionId: version._id, orgId, userId, role: 'user', content: message },
-    { contractVersionId: version._id, orgId, userId, role: 'assistant', content: reply },
+    { contractVersionId: versionId, orgId, userId, role: 'user', content: message },
+    { contractVersionId: versionId, orgId, userId, role: 'assistant', content: reply },
   ]);
+}
 
+export async function askAboutContract(
+  orgId: string,
+  userId: string,
+  contractId: string,
+  message: string,
+) {
+  const { versionId, prompt } = await prepareChat(orgId, contractId, message);
+  const reply = await generateText(prompt, SYSTEM_INSTRUCTION);
+  await saveExchange(versionId, orgId, userId, message, reply);
+  return { reply };
+}
+
+// Streams the answer chunk by chunk through onToken; the exchange is saved only once the
+// full reply has been generated, so an aborted/failed stream leaves no half-finished message.
+export async function streamAboutContract(
+  orgId: string,
+  userId: string,
+  contractId: string,
+  message: string,
+  onToken: (token: string) => void,
+) {
+  const { versionId, prompt } = await prepareChat(orgId, contractId, message);
+
+  let reply = '';
+  for await (const token of generateTextStream(prompt, SYSTEM_INSTRUCTION)) {
+    reply += token;
+    onToken(token);
+  }
+  if (!reply) {
+    throw AppError.internal('LLM returned an empty response.');
+  }
+
+  await saveExchange(versionId, orgId, userId, message, reply);
   return { reply };
 }
 

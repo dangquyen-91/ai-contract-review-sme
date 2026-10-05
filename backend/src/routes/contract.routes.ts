@@ -12,9 +12,17 @@ import {
   listContractsHandler,
 } from '../controllers/contract.controller';
 import { listClausesHandler, segmentClausesHandler } from '../controllers/clause.controller';
-import { detectRisksHandler, listRiskFindingsHandler } from '../controllers/risk.controller';
+import {
+  detectRisksHandler,
+  detectRisksStreamHandler,
+  listRiskFindingsHandler,
+} from '../controllers/risk.controller';
 import { generateContractSummaryHandler } from '../controllers/summary.controller';
-import { askAboutContractHandler, listChatMessagesHandler } from '../controllers/chat.controller';
+import {
+  askAboutContractHandler,
+  listChatMessagesHandler,
+  streamAboutContractHandler,
+} from '../controllers/chat.controller';
 import {
   analysisFocusBodySchema,
   chatMessageBodySchema,
@@ -85,6 +93,22 @@ router.post(
   aiLimiter,
   validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
   askAboutContractHandler,
+);
+
+router.post(
+  '/:id/risks/detect/stream',
+  requireRole('administrator', 'manager', 'staff'),
+  aiLimiter,
+  validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
+  detectRisksStreamHandler,
+);
+
+router.post(
+  '/:id/chat/stream',
+  requireRole('administrator', 'manager', 'staff'),
+  aiLimiter,
+  validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
+  streamAboutContractHandler,
 );
 
 router.delete(

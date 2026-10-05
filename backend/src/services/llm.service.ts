@@ -58,6 +58,30 @@ export async function generateText(prompt: string, systemInstruction?: string): 
   return text;
 }
 
+export async function* generateTextStream(
+  prompt: string,
+  systemInstruction?: string,
+): AsyncGenerator<string> {
+  if (!client) {
+    throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
+  }
+
+  const stream = await client.models.generateContentStream({
+    model: env.GEMINI_MODEL,
+    contents: prompt,
+    config: {
+      ...(systemInstruction ? { systemInstruction } : {}),
+      httpOptions: {
+        retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 5 },
+      },
+    },
+  });
+
+  for await (const chunk of stream) {
+    if (chunk.text) yield chunk.text;
+  }
+}
+
 export async function embedText(text: string, outputDimensionality?: number): Promise<number[]> {
   if (!client) {
     throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
