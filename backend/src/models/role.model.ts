@@ -1,6 +1,6 @@
 import { Schema, model, InferSchemaType } from 'mongoose';
 
-export const ROLE_CODES = ['administrator', 'manager', 'staff'] as const;
+export const ROLE_CODES = ['administrator', 'manager', 'staff', 'owner','reviewer','user'] as const;
 export type RoleCode = (typeof ROLE_CODES)[number];
 
 const roleSchema = new Schema(

@@ -5,7 +5,7 @@ import { AuthShell } from "@/components/auth/auth-shell";
 
 export const metadata: Metadata = {
   title: "Đăng ký | LawScan",
-  description: "Tạo không gian làm việc LawScan cho doanh nghiệp của bạn.",
+  description: "Tạo tài khoản LawScan để bắt đầu rà soát hợp đồng.",
 };
 
 export default function RegisterPage() {

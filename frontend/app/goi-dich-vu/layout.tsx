@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
 import { demoOrganization } from "@/lib/subscription-plans";
-import styles from "./subscription.module.css";
+import styles from "@/styles/subscription.module.css";
 
 export const metadata = { title: "Gói dịch vụ | LawScan", robots: { index: false, follow: false } };
 

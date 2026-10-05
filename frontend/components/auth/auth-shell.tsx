@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
-import styles from "@/app/(auth)/auth.module.css";
+import styles from "@/styles/auth.module.css";
 
 export function AuthShell({ panel, children }: { panel: ReactNode; children: ReactNode }) {
   return (

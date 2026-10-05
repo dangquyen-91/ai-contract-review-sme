@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
-import styles from "./clause-review-playground.module.css";
+import styles from "@/styles/clause-review-playground.module.css";
 
 const scenarios = [
   {

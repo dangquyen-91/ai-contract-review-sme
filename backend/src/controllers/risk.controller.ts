@@ -1,14 +1,14 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
-import { AppError } from '../errors/AppError';
+import { getOrganizationUser } from '../middlewares/auth.middleware';
 import * as riskService from '../services/risk.service';
 import { initSse, sendError, sendEvent } from '../utils/sse';
 
 export const detectRisksHandler = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) throw AppError.unauthorized();
+  const user = getOrganizationUser(req);
   const findings = await riskService.detectRisks(
-    req.user.orgId,
+    user.orgId,
     req.params.id,
     req.body?.analysisFocus,
   );
@@ -16,18 +16,18 @@ export const detectRisksHandler = asyncHandler(async (req: Request, res: Respons
 });
 
 export const listRiskFindingsHandler = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) throw AppError.unauthorized();
-  const findings = await riskService.listRiskFindings(req.user.orgId, req.params.id);
+  const user = getOrganizationUser(req);
+  const findings = await riskService.listRiskFindings(user.orgId, req.params.id);
   ok(res, findings);
 });
 
 export const detectRisksStreamHandler = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) throw AppError.unauthorized();
+  const user = getOrganizationUser(req);
 
   initSse(res);
   try {
     const findings = await riskService.detectRisks(
-      req.user.orgId,
+      user.orgId,
       req.params.id,
       req.body?.analysisFocus,
       (stage) => sendEvent(res, 'progress', { stage }),

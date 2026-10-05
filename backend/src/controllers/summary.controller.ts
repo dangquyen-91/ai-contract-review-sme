@@ -1,13 +1,13 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
-import { AppError } from '../errors/AppError';
+import { getOrganizationUser } from '../middlewares/auth.middleware';
 import * as summaryService from '../services/summary.service';
 
 export const generateContractSummaryHandler = asyncHandler(async (req: Request, res: Response) => {
-  if (!req.user) throw AppError.unauthorized();
+  const user = getOrganizationUser(req);
   const contract = await summaryService.generateContractSummary(
-    req.user.orgId,
+    user.orgId,
     req.params.id,
     req.body?.analysisFocus,
   );

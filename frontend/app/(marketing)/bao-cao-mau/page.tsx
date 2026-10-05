@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { PrintReportButton } from "@/components/report/print-report-button";
-import styles from "./sample-report.module.css";
+import styles from "@/styles/sample-report.module.css";
 
 export const metadata: Metadata = {
   title: "Báo cáo rà soát mẫu | LawScan",

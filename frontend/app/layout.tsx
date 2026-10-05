@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Lora } from "next/font/google";
-import "./globals.css";
+import { AppToaster } from "@/components/ui/toaster";
+import { QueryProvider } from "@/providers/query-provider";
+import "@/styles/globals.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,7 +23,7 @@ const lora = Lora({
 
 export const metadata: Metadata = {
   title: "LawScan — Nhìn rõ rủi ro. Trước khi bạn ký.",
-  icons: { icon: "/lawscan.svg", shortcut: "/lawscan.svg" },
+  icons: { icon: "/logo-transparent.png", shortcut: "/logo-transparent.png" },
   description: "Trợ lý AI hỗ trợ doanh nghiệp rà soát sơ bộ hợp đồng mua bán và dịch vụ tiếng Việt: hiểu điều khoản, phát hiện rủi ro và đối chiếu nguồn tham chiếu.",
 };
 
@@ -31,7 +33,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="vi"
       className={`${geistSans.variable} ${geistMono.variable} ${lora.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <QueryProvider>{children}</QueryProvider>
+        <AppToaster />
+      </body>
     </html>
   );
 }

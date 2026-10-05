@@ -1,20 +1,32 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
-import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { get, useForm, useWatch, type FieldError as FormFieldError, type FieldErrors, type FieldPath, type SubmitHandler } from "react-hook-form";
+import { toast } from "sonner";
 import { Icon } from "@/components/ui/icon";
-import { loginFormSchema, registerFormSchema } from "@/lib/auth-validation";
-import styles from "@/app/(auth)/auth.module.css";
+import { useAuthMutation } from "@/hooks/use-auth";
+import { isApiClientError } from "@/lib/api/client";
+import { authFormSchema } from "@/schemas/auth.schema";
+import type { AuthFormValues, AuthMode, AuthMutationVariables } from "@/types/auth";
+import styles from "@/styles/auth.module.css";
 
-type FieldErrors = Record<string, string>;
+const authFields = new Set<FieldPath<AuthFormValues>>([
+  "name",
+  "email",
+  "password",
+  "confirmPassword",
+  "remember",
+]);
 
-function firstIssueByField(issues: Array<{ path: PropertyKey[]; message: string }>) {
-  return issues.reduce<FieldErrors>((errors, issue) => {
-    const field = String(issue.path[0] ?? "form");
-    if (!errors[field]) errors[field] = issue.message;
-    return errors;
-  }, {});
+function isAuthField(field: string): field is FieldPath<AuthFormValues> {
+  return authFields.has(field as FieldPath<AuthFormValues>);
+}
+
+function getFieldError(errors: FieldErrors<AuthFormValues>, field: FieldPath<AuthFormValues>) {
+  return get(errors, field) as FormFieldError | undefined;
 }
 
 function FieldError({ id, message }: { id: string; message?: string }) {
@@ -22,80 +34,81 @@ function FieldError({ id, message }: { id: string; message?: string }) {
   return <span id={id} className={styles.fieldError} role="alert">{message}</span>;
 }
 
-export function AuthForm({ mode }: { mode: "login" | "register" }) {
+export function AuthForm({ mode }: { mode: AuthMode }) {
   const isRegister = mode === "register";
   const router = useRouter();
-  const [message, setMessage] = useState("");
-  const [errors, setErrors] = useState<FieldErrors>({});
-  const [submitting, setSubmitting] = useState(false);
+  const authMutation = useAuthMutation();
   const [showPassword, setShowPassword] = useState(false);
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const {
+    control,
+    formState: { errors, isSubmitting },
+    handleSubmit,
+    register,
+    setError,
+  } = useForm<AuthFormValues>({
+    resolver: zodResolver(authFormSchema),
+    mode: "onBlur",
+    defaultValues: {
+      mode,
+      email: "",
+      password: "",
+      remember: false,
+      name: "",
+      confirmPassword: "",
+    },
+  });
 
-  function clearError(field: string) {
-    setErrors((current) => {
-      if (!current[field]) return current;
-      const next = { ...current };
-      delete next[field];
-      return next;
-    });
-  }
+  const password = useWatch({ control, name: "password" }) ?? "";
+  const confirmPassword = useWatch({ control, name: "confirmPassword" }) ?? "";
+  const nameError = getFieldError(errors, "name");
+  const confirmPasswordError = getFieldError(errors, "confirmPassword");
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setMessage("");
-    setErrors({});
+  const submit: SubmitHandler<AuthFormValues> = async (values) => {
+    let request: AuthMutationVariables;
 
-    const form = new FormData(event.currentTarget);
-    const raw = Object.fromEntries(form.entries());
-    let body: Record<string, unknown>;
-
-    if (isRegister) {
-      const result = registerFormSchema.safeParse(raw);
-      if (!result.success) {
-        setErrors(firstIssueByField(result.error.issues));
-        return;
-      }
-      const { confirmPassword: _confirmPassword, ...registration } = result.data;
+    if (values.mode === "register") {
+      const { confirmPassword: _confirmPassword, mode: _mode, ...data } = values;
       void _confirmPassword;
-      body = registration;
+      void _mode;
+      request = { mode: "register", data };
     } else {
-      const result = loginFormSchema.safeParse({ ...raw, remember: form.get("remember") === "on" });
-      if (!result.success) {
-        setErrors(firstIssueByField(result.error.issues));
-        return;
-      }
-      body = result.data;
+      const { mode: _mode, ...data } = values;
+      void _mode;
+      request = { mode: "login", data };
     }
 
-    setSubmitting(true);
     try {
-      const response = await fetch(`/api/auth/${mode}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+      const session = await authMutation.mutateAsync(request);
+      toast.success(isRegister ? "Đăng ký thành công" : "Đăng nhập thành công", {
+        description: isRegister
+          ? "Tài khoản của bạn đã được tạo."
+          : "Chào mừng bạn quay lại LawScan.",
       });
-      const payload = await response.json();
-      if (!response.ok) {
-        const details = payload.error?.details;
-        if (details && typeof details === "object") {
-          const serverErrors = Object.entries(details).reduce<FieldErrors>((result, [field, value]) => {
-            if (Array.isArray(value) && typeof value[0] === "string") result[field] = value[0];
-            return result;
-          }, {});
-          if (Object.keys(serverErrors).length) setErrors(serverErrors);
-        }
-        setMessage(payload.error?.message ?? "Không thể xử lý yêu cầu. Vui lòng thử lại.");
+      router.push(
+        session.user.orgId
+          ? "/dashboard"
+          : session.user.hasCompletedOnboarding
+            ? "/"
+            : "/chon-to-chuc",
+      );
+      router.refresh();
+    } catch (error) {
+      if (!isApiClientError(error)) {
+        const message = "Đã xảy ra lỗi không xác định. Vui lòng thử lại.";
+        setError("root.server", { message });
+        toast.error(message);
         return;
       }
-      router.push("/");
-      router.refresh();
-    } catch {
-      setMessage("Không thể kết nối máy chủ LawScan. Vui lòng thử lại.");
-    } finally {
-      setSubmitting(false);
+
+      for (const [field, messages] of Object.entries(error.details ?? {})) {
+        if (isAuthField(field) && messages[0]) {
+          setError(field, { type: "server", message: messages[0] });
+        }
+      }
+      setError("root.server", { type: "server", message: error.message });
+      toast.error(error.message);
     }
-  }
+  };
 
   const passwordLongEnough = password.length >= 12;
   const passwordWithinLimit = new TextEncoder().encode(password).length <= 72;
@@ -111,50 +124,45 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
 
       <header className={styles.formHeader}>
         <p className={styles.kicker}>{isRegister ? "Bắt đầu với LawScan" : "Chào mừng trở lại"}</p>
-        <h1>{isRegister ? "Tạo không gian làm việc" : "Đăng nhập vào LawScan"}</h1>
-        <p>{isRegister ? "Thiết lập tài khoản đầu tiên cho doanh nghiệp của bạn." : "Tiếp tục công việc rà soát hợp đồng của bạn."}</p>
+        <h1>{isRegister ? "Tạo tài khoản LawScan" : "Đăng nhập vào LawScan"}</h1>
+        <p>{isRegister ? "Đăng ký tài khoản để bắt đầu sử dụng LawScan." : "Tiếp tục công việc rà soát hợp đồng của bạn."}</p>
       </header>
 
-      {isRegister && <div className={styles.accountRoleNote}><Icon name="shield" /><p><strong>Bạn sẽ là quản trị viên đầu tiên</strong><span>Tài khoản này được gắn với không gian làm việc của doanh nghiệp.</span></p></div>}
+      <form onSubmit={handleSubmit(submit)} className={styles.form} noValidate>
+        <input type="hidden" {...register("mode")} />
 
-      <form onSubmit={submit} className={styles.form} noValidate>
         {isRegister && (
           <>
-            <label className={styles.field} htmlFor="orgName">
-              <span>Tên doanh nghiệp</span>
-              <span className={`${styles.inputShell} ${errors.orgName ? styles.inputShellError : ""}`}><Icon name="building" /><input id="orgName" name="orgName" autoComplete="organization" maxLength={200} required aria-invalid={Boolean(errors.orgName)} aria-describedby={errors.orgName ? "orgName-error" : undefined} onInput={() => clearError("orgName")} placeholder="Ví dụ: Công ty An Phát" /></span>
-              <FieldError id="orgName-error" message={errors.orgName} />
-            </label>
             <label className={styles.field} htmlFor="name">
               <span>Họ và tên</span>
-              <span className={`${styles.inputShell} ${errors.name ? styles.inputShellError : ""}`}><Icon name="user" /><input id="name" name="name" autoComplete="name" maxLength={100} required aria-invalid={Boolean(errors.name)} aria-describedby={errors.name ? "name-error" : undefined} onInput={() => clearError("name")} placeholder="Nguyễn Minh Anh" /></span>
-              <FieldError id="name-error" message={errors.name} />
+              <span className={`${styles.inputShell} ${nameError ? styles.inputShellError : ""}`}><Icon name="user" /><input id="name" autoComplete="name" maxLength={100} aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "name-error" : undefined} placeholder="Nguyễn Minh Anh" {...register("name")} /></span>
+              <FieldError id="name-error" message={nameError?.message} />
             </label>
           </>
         )}
 
         <label className={styles.field} htmlFor="email">
           <span>Email công việc</span>
-          <span className={`${styles.inputShell} ${errors.email ? styles.inputShellError : ""}`}><Icon name="mail" /><input id="email" type="email" name="email" autoComplete="email" inputMode="email" maxLength={254} required aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? "email-error" : undefined} onInput={() => clearError("email")} placeholder="ban@doanhnghiep.vn" /></span>
-          <FieldError id="email-error" message={errors.email} />
+          <span className={`${styles.inputShell} ${errors.email ? styles.inputShellError : ""}`}><Icon name="mail" /><input id="email" type="email" autoComplete="email" inputMode="email" maxLength={254} aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? "email-error" : undefined} placeholder="ban@doanhnghiep.vn" {...register("email")} /></span>
+          <FieldError id="email-error" message={errors.email?.message} />
         </label>
 
         <label className={styles.field} htmlFor="password">
           <span>Mật khẩu</span>
           <span className={`${styles.inputShell} ${errors.password ? styles.inputShellError : ""}`}>
             <Icon name="lock" />
-            <input id="password" type={showPassword ? "text" : "password"} name="password" value={password} onChange={(event) => { setPassword(event.target.value); clearError("password"); }} autoComplete={isRegister ? "new-password" : "current-password"} required aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? "password-error" : undefined} placeholder={isRegister ? "Tối thiểu 12 ký tự" : "Nhập mật khẩu"} />
+            <input id="password" type={showPassword ? "text" : "password"} autoComplete={isRegister ? "new-password" : "current-password"} aria-invalid={Boolean(errors.password)} aria-describedby={errors.password ? "password-error" : undefined} placeholder={isRegister ? "Tối thiểu 12 ký tự" : "Nhập mật khẩu"} {...register("password")} />
             <button className={styles.passwordToggle} type="button" aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}><Icon name={showPassword ? "eyeOff" : "eye"} /></button>
           </span>
-          <FieldError id="password-error" message={errors.password} />
+          <FieldError id="password-error" message={errors.password?.message} />
         </label>
 
         {isRegister && (
           <>
             <label className={styles.field} htmlFor="confirmPassword">
               <span>Nhập lại mật khẩu</span>
-              <span className={`${styles.inputShell} ${errors.confirmPassword ? styles.inputShellError : ""}`}><Icon name="lock" /><input id="confirmPassword" type={showPassword ? "text" : "password"} name="confirmPassword" value={confirmPassword} onChange={(event) => { setConfirmPassword(event.target.value); clearError("confirmPassword"); }} autoComplete="new-password" required aria-invalid={Boolean(errors.confirmPassword)} aria-describedby={errors.confirmPassword ? "confirmPassword-error" : undefined} placeholder="Nhập lại mật khẩu vừa tạo" /></span>
-              <FieldError id="confirmPassword-error" message={errors.confirmPassword} />
+              <span className={`${styles.inputShell} ${confirmPasswordError ? styles.inputShellError : ""}`}><Icon name="lock" /><input id="confirmPassword" type={showPassword ? "text" : "password"} autoComplete="new-password" aria-invalid={Boolean(confirmPasswordError)} aria-describedby={confirmPasswordError ? "confirmPassword-error" : undefined} placeholder="Nhập lại mật khẩu vừa tạo" {...register("confirmPassword")} /></span>
+              <FieldError id="confirmPassword-error" message={confirmPasswordError?.message} />
             </label>
             <div className={styles.passwordHint} aria-live="polite">
               <span className={passwordLongEnough ? styles.hintPassed : ""}><i />Ít nhất 12 ký tự</span>
@@ -164,18 +172,18 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
           </>
         )}
 
-        {!isRegister && <label className={styles.remember}><input type="checkbox" name="remember" /><span>Ghi nhớ đăng nhập trên thiết bị này</span></label>}
+        {!isRegister && <label className={styles.remember}><input type="checkbox" {...register("remember")} /><span>Ghi nhớ đăng nhập trên thiết bị này</span></label>}
 
-        {message && <p className={styles.error} role="alert"><span>!</span>{message}</p>}
+        {errors.root?.server?.message && <p className={styles.error} role="alert"><span>!</span>{errors.root.server.message}</p>}
 
-        <button className={styles.submitButton} type="submit" disabled={submitting}>
-          <span>{submitting ? "Đang xử lý…" : isRegister ? "Tạo tài khoản quản trị" : "Đăng nhập"}</span>
-          {submitting ? <i className={styles.spinner} aria-hidden="true" /> : <Icon name="arrow" />}
+        <button className={styles.submitButton} type="submit" disabled={isSubmitting}>
+          <span>{isSubmitting ? "Đang xử lý…" : isRegister ? "Tạo tài khoản" : "Đăng nhập"}</span>
+          {isSubmitting ? <i className={styles.spinner} aria-hidden="true" /> : <Icon name="arrow" />}
         </button>
       </form>
 
       <p className={styles.switchText}>{isRegister ? "Đã có tài khoản?" : "Chưa có tài khoản?"} <Link href={isRegister ? "/dang-nhap" : "/dang-ky"}>{isRegister ? "Đăng nhập" : "Tạo tài khoản"}</Link></p>
-      <p className={styles.notice}>{isRegister ? "LawScan chỉ dùng thông tin trên để tạo không gian làm việc và tài khoản quản trị của doanh nghiệp." : "AI hỗ trợ rà soát sơ bộ và không thay thế tư vấn pháp lý chuyên nghiệp."}</p>
+      <p className={styles.notice}>{isRegister ? "LawScan chỉ dùng thông tin trên để tạo và bảo vệ tài khoản của bạn." : "AI hỗ trợ rà soát sơ bộ và không thay thế tư vấn pháp lý chuyên nghiệp."}</p>
     </div>
   );
 }

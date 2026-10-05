@@ -17,6 +17,21 @@ const DEFAULT_ROLES: Array<{ code: RoleCode; name: string; description: string }
     name: 'Staff',
     description: 'Upload and view contracts assigned to them',
   },
+  {
+    code: 'owner',
+    name: 'Owner',
+    description: 'Full access to manage their own contracts and review outcomes',
+  },
+  {
+    code: 'reviewer',
+    name: 'Reviewer',
+    description: 'Review and approve contracts within their scope',
+  },
+  {
+    code: 'user',
+    name: 'User',
+    description: 'Normal user using system'
+  }
 ];
 
 export async function seedDefaultRoles(): Promise<void> {
