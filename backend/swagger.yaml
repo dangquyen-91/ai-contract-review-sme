@@ -981,7 +981,7 @@ paths:
     patch:
       tags: [Contracts]
       summary: Edit the proposed revision of a finding
-      description: Updates proposedRevision.revisedText and/or reason and marks it isEdited=true. Only findings of the contract's current version can be edited; 404 if the finding has no proposed revision. Roles - administrator, owner, manager, staff.
+      description: Updates proposedRevision.revisedText and/or reason and marks it isEdited=true. Only findings of the contract's current version can be edited; 404 if the finding has no proposed revision. Roles - administrator, owner, manager, staff, reviewer, user.
       requestBody:
         required: true
         content:
@@ -1029,7 +1029,7 @@ paths:
     delete:
       tags: [Contracts]
       summary: Remove the proposed revision of a finding
-      description: Clears proposedRevision; the finding itself is kept. Roles - administrator, owner, manager, staff.
+      description: Clears proposedRevision; the finding itself is kept. Roles - administrator, owner, manager, staff, reviewer, user.
       responses:
         '200':
           description: The finding without proposedRevision

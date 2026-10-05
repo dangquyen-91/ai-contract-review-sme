@@ -91,14 +91,14 @@ router.post(
 
 router.patch(
   '/:id/risks/:findingId',
-  requireRole('administrator', 'owner', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   validate({ params: findingParamSchema, body: updateProposedRevisionBodySchema }),
   updateProposedRevisionHandler,
 );
 
 router.delete(
   '/:id/risks/:findingId/revision',
-  requireRole('administrator', 'owner', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   validate({ params: findingParamSchema }),
   removeProposedRevisionHandler,
 );
