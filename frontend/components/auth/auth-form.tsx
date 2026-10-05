@@ -85,11 +85,11 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           : "Chào mừng bạn quay lại LawScan.",
       });
       router.push(
-        session.user.orgId
-          ? "/dashboard"
-          : session.user.hasCompletedOnboarding
-            ? "/"
-            : "/chon-to-chuc",
+        !session.user.hasCompletedOnboarding
+          ? "/chon-to-chuc"
+          : ["owner", "administrator", "manager"].includes(session.user.role)
+            ? "/dashboard/owner"
+            : "/dashboard/user",
       );
       router.refresh();
     } catch (error) {

@@ -39,7 +39,7 @@ router.get('/', validate({ query: listContractsQuerySchema }), listContractsHand
 
 router.post(
   '/',
-  requireRole('administrator', 'owner', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'user'),
   contractFileUpload.single('file'),
   validate({ body: createContractSchema }),
   createContractHandler,
@@ -57,7 +57,7 @@ router.get(
 
 router.post(
   '/:id/clauses/segment',
-  requireRole('administrator', 'owner', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   aiLimiter,
   validate({ params: contractIdParamSchema }),
   segmentClausesHandler,
@@ -65,7 +65,7 @@ router.post(
 
 router.post(
   '/:id/summary',
-  requireRole('administrator', 'owner', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
   generateContractSummaryHandler,
@@ -79,7 +79,7 @@ router.get(
 
 router.post(
   '/:id/risks/detect',
-  requireRole('administrator', 'owner', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
   detectRisksHandler,
@@ -89,7 +89,7 @@ router.get('/:id/chat', validate({ params: contractIdParamSchema }), listChatMes
 
 router.post(
   '/:id/chat',
-  requireRole('administrator', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
   askAboutContractHandler,
@@ -97,7 +97,7 @@ router.post(
 
 router.post(
   '/:id/risks/detect/stream',
-  requireRole('administrator', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
   detectRisksStreamHandler,
@@ -105,7 +105,7 @@ router.post(
 
 router.post(
   '/:id/chat/stream',
-  requireRole('administrator', 'manager', 'staff'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
   streamAboutContractHandler,

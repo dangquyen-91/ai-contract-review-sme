@@ -16,7 +16,7 @@ const navigationItems = [
 export function MobileMenu({ user }: { user: AuthUser | null }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
-  const accountHref = user?.orgId ? "/dashboard" : "/chon-to-chuc";
+  const accountHref = !user?.hasCompletedOnboarding ? "/chon-to-chuc" : ["owner", "administrator", "manager"].includes(user.role) ? "/dashboard/owner" : "/dashboard/user";
 
   return (
     <div className="lg:hidden" onKeyDown={(event) => { if (event.key === "Escape") { setOpen(false); trigger.current?.focus(); } }}>

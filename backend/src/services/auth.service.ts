@@ -1,8 +1,10 @@
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
+import { HydratedDocument } from 'mongoose';
 import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
-import { UserModel } from '../models/user.model';
+import { User, UserModel } from '../models/user.model';
+import { OrganizationModel } from '../models/organization.model';
 import { Role } from '../models/role.model';
 import { getRoleByCode } from './role.service';
 import { AccessTokenPayload } from '../middlewares/auth.middleware';
@@ -14,6 +16,25 @@ function roleCodeOf(user: { roleId: unknown }) {
     throw AppError.internal('User role reference is invalid or unpopulated');
   }
   return role.code as AccessTokenPayload['role'];
+}
+
+async function ensurePersonalWorkspace(user: HydratedDocument<User>): Promise<HydratedDocument<User>> {
+  if (user.orgId || !user.hasCompletedOnboarding) return user;
+
+  const organization = await OrganizationModel.create({ name: `Không gian cá nhân của ${user.name}`, isPersonal: true });
+  const updated = await UserModel.findOneAndUpdate(
+    { _id: user._id, orgId: null },
+    { $set: { orgId: organization._id } },
+    { new: true },
+  ).populate('roleId');
+
+  if (!updated) {
+    await OrganizationModel.deleteOne({ _id: organization._id });
+    const existing = await UserModel.findById(user._id).populate('roleId');
+    if (!existing) throw AppError.notFound('User not found');
+    return existing;
+  }
+  return updated;
 }
 
 const ACCESS_TOKEN_TTL = env.JWT_ACCESS_EXPIRES_IN as SignOptions['expiresIn'];
@@ -49,7 +70,7 @@ export async function register(input: RegisterInput) {
 }
 
 export async function login(input: LoginInput) {
-  const user = await UserModel.findOne({ email: input.email })
+  let user = await UserModel.findOne({ email: input.email })
     .select('+passwordHash')
     .populate('roleId');
   if (!user || !user.isActive) {
@@ -59,6 +80,10 @@ export async function login(input: LoginInput) {
   const valid = await bcrypt.compare(input.password, user.passwordHash);
   if (!valid) {
     throw AppError.unauthorized('Invalid credentials');
+  }
+
+  if (roleCodeOf(user) === 'user' && user.hasCompletedOnboarding && !user.orgId) {
+    user = await ensurePersonalWorkspace(user) as typeof user;
   }
 
   const tokens = signTokens({
@@ -77,9 +102,13 @@ export async function refresh(refreshToken: string) {
     throw AppError.unauthorized('Invalid or expired refresh token');
   }
 
-  const user = await UserModel.findById(payload.sub).populate('roleId');
+  let user = await UserModel.findById(payload.sub).populate('roleId');
   if (!user || !user.isActive) {
     throw AppError.unauthorized('Invalid refresh token');
+  }
+
+  if (roleCodeOf(user) === 'user' && user.hasCompletedOnboarding && !user.orgId) {
+    user = await ensurePersonalWorkspace(user) as typeof user;
   }
 
   return signTokens({
@@ -100,5 +129,8 @@ export async function completeOnboarding(userId: string) {
     throw AppError.unauthorized('User is inactive or no longer exists');
   }
 
+  if (roleCodeOf(user) === 'user' && !user.orgId) {
+    return ensurePersonalWorkspace(user);
+  }
   return user;
 }

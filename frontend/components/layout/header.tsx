@@ -9,7 +9,7 @@ export async function Header() {
   const cookieStore = await cookies();
   const hasSession = cookieStore.has("lawscan_access") || cookieStore.has("lawscan_refresh");
   const user = hasSession ? decodeSessionUser(cookieStore.get(userSessionCookie)?.value) : null;
-  const accountHref = user?.orgId ? "/dashboard" : "/chon-to-chuc";
+  const accountHref = !user?.hasCompletedOnboarding ? "/chon-to-chuc" : ["owner", "administrator", "manager"].includes(user.role) ? "/dashboard/owner" : "/dashboard/user";
 
   return (
     <header className="site-header ls-container flex items-center justify-between gap-6">

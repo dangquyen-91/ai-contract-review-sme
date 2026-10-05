@@ -252,6 +252,7 @@ export async function detectRisks(
     version.riskDetectionStatus = 'completed';
     version.riskDetectionError = undefined;
     await version.save();
+    await ContractModel.updateOne({ _id: contractId, orgId }, { $set: { status: 'reviewed' } });
   } catch (err) {
     version.riskDetectionStatus = 'failed';
     version.riskDetectionError = err instanceof Error ? err.message : 'Risk detection failed';
