@@ -13,11 +13,23 @@ function ensureOrganizationAccess(organizationId: string, userOrganizationId: st
 }
 
 export async function createOrganization(userId: string, input: CreateOrganizationInput) {
-  const user = await UserModel.findById(userId).select('orgId');
+  const user = await UserModel.findById(userId).select('orgId roleId');
   if (!user) throw AppError.notFound('User not found');
-  if (user.orgId) throw AppError.conflict('User already belongs to an organization');
 
   const ownerRole = await getRoleByCode('owner');
+  if (user.orgId) {
+    const personal = await OrganizationModel.findOne({ _id: user.orgId, isPersonal: true });
+    if (!personal) throw AppError.conflict('User already belongs to an organization');
+    const organization = await OrganizationModel.findOneAndUpdate(
+      { _id: personal._id, isPersonal: true },
+      { $set: { ...input, isPersonal: false } },
+      { new: true, runValidators: true },
+    );
+    if (!organization) throw AppError.conflict('Organization has already been configured');
+    await UserModel.updateOne({ _id: userId, orgId: personal._id }, { $set: { roleId: ownerRole._id } });
+    return organization;
+  }
+
   const organization = await OrganizationModel.create(input);
   const updatedUser = await UserModel.findOneAndUpdate(
     { _id: userId, orgId: null },

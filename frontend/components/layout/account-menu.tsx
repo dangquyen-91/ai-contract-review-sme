@@ -82,7 +82,7 @@ export function AccountMenu({ user, accountHref }: { user: AuthUser; accountHref
           <div className="account-dropdown-actions">
             <Link href={accountHref} role="menuitem" onClick={() => setOpen(false)}>
               <Icon name="user" />
-              Tài khoản của tôi
+              Không gian làm việc
             </Link>
             <button type="button" role="menuitem" onClick={logout} disabled={isLoggingOut}>
               <Icon name="arrow" />

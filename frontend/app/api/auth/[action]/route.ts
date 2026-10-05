@@ -94,7 +94,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
     return response;
   } catch {
     return NextResponse.json(
-      { success: false, error: { message: "Không thể kết nối máy chủ LawScan. Hãy kiểm tra backend đang chạy." } },
+      { success: false, error: { message: "Không thể kết nối máy chủ LawScan." } },
       { status: 503 },
     );
   }

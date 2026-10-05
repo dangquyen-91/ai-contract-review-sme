@@ -144,3 +144,7 @@ vite.config.ts.timestamp-*
 
 # Tesseract OCR language data (auto-downloaded by tesseract.js on first run)
 *.traineddata
+
+# Local browser QA artifacts
+.playwright-cli/
+output/playwright/

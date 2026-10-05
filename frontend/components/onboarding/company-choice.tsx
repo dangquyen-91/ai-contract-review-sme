@@ -3,9 +3,9 @@
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/ui/icon";
+import { useCreateOrganizationMutation } from "@/hooks/use-organizations";
 import { authApi } from "@/lib/api/auth";
 import { isApiClientError } from "@/lib/api/client";
-import { organizationsApi } from "@/lib/api/organizations";
 import styles from "@/styles/onboarding.module.css";
 
 export function CompanyChoice() {
@@ -14,6 +14,7 @@ export function CompanyChoice() {
   const [name, setName] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const createOrganizationMutation = useCreateOrganizationMutation();
 
   async function continueWithoutOrganization() {
     setError("");
@@ -21,7 +22,8 @@ export function CompanyChoice() {
 
     try {
       await authApi.completeOnboarding();
-      router.replace("/");
+      await authApi.refreshToken();
+      router.replace("/dashboard/user");
       router.refresh();
     } catch (requestError) {
       setError(
@@ -46,9 +48,9 @@ export function CompanyChoice() {
     setIsSubmitting(true);
 
     try {
-      await organizationsApi.create({ name: organizationName });
+      await createOrganizationMutation.mutateAsync({ name: organizationName });
       await authApi.refreshToken();
-      router.replace("/dashboard");
+      router.replace("/dashboard/owner");
       router.refresh();
     } catch (requestError) {
       setError(
