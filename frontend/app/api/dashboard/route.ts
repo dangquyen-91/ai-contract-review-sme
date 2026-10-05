@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 
 type AccessClaims = {
   orgId?: string;
@@ -71,18 +72,29 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(payload, { status: response.status });
     }
 
+    const user = decodeSessionUser(request.cookies.get(userSessionCookie)?.value);
+    const contracts = (contractsPayload.data as Array<Record<string, unknown>>).map((contract) => {
+      const currentVersion = contract.currentVersion as { overallRiskLevel?: string; fileName?: string } | undefined;
+      return {
+        ...contract,
+        overallRiskLevel: currentVersion?.overallRiskLevel ?? "none",
+        fileName: currentVersion?.fileName,
+      };
+    });
+
     return NextResponse.json({
       success: true,
       data: {
         organization: organizationPayload.data,
-        contracts: contractsPayload.data,
-        totalContracts: contractsPayload.meta?.total ?? contractsPayload.data.length,
+        contracts,
+        totalContracts: contractsPayload.meta?.total ?? contracts.length,
         stats: {
           processing: processingPayload.meta?.total ?? 0,
           reviewed: reviewedPayload.meta?.total ?? 0,
           highRisk: highRiskPayload.meta?.total ?? 0,
         },
-        role: claims.role ?? "owner",
+        role: claims.role ?? "user",
+        user: user ? { name: user.name, email: user.email } : null,
       },
     });
   } catch {

@@ -19,6 +19,7 @@ export async function segmentClauses(orgId: string, contractId: string) {
 
   versionWithText.segmentationStatus = 'processing';
   await versionWithText.save();
+  await ContractModel.updateOne({ _id: contractId, orgId }, { $set: { status: 'processing' } });
 
   try {
     const clauses = await segmentContractClauses(versionWithText.extractedText);
