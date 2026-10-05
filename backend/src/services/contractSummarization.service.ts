@@ -11,15 +11,15 @@ export interface ClauseSummaryInput {
 }
 
 const summaryResultSchema = z.object({
-  summary: z.string().min(1),
+  points: z.array(z.string().min(1)).min(1),
 });
 
 const responseSchema = {
   type: Type.OBJECT,
   properties: {
-    summary: { type: Type.STRING },
+    points: { type: Type.ARRAY, items: { type: Type.STRING } },
   },
-  required: ['summary'],
+  required: ['points'],
 };
 
 function buildPrompt(
@@ -37,7 +37,7 @@ function buildPrompt(
 
 Below is a list of short summaries of each clause already extracted from the contract, in order.
 
-Write ONE cohesive Vietnamese summary of the whole contract, 4-8 sentences, plain language, covering: the purpose of the contract, the main obligations of each party, key payment terms, and duration/termination/renewal terms if present. Do not just concatenate the clause summaries - synthesize them into a coherent overview. Do not analyze risk here (that is done separately).${focusBlock}
+Write the overview as 3-5 Vietnamese bullet points ("points"), each one short sentence or two, covering: the purpose of the contract and the parties, the contract value and payment terms, the duration, and the termination/renewal terms if present. Do not just concatenate the clause summaries - synthesize them. Do not analyze risk here (that is done separately).${focusBlock}
 
 Clause summaries:
 """
@@ -49,7 +49,7 @@ export async function summarizeContract(
   contractType: (typeof CONTRACT_TYPES)[number],
   clauses: ClauseSummaryInput[],
   analysisFocus?: string,
-): Promise<string> {
+): Promise<string[]> {
   const raw = await generateJson(buildPrompt(contractType, clauses, analysisFocus), responseSchema);
 
   const parsed = summaryResultSchema.safeParse(raw);
@@ -57,5 +57,5 @@ export async function summarizeContract(
     throw AppError.internal('LLM returned an unexpected contract summary format.');
   }
 
-  return parsed.data.summary;
+  return parsed.data.points;
 }
