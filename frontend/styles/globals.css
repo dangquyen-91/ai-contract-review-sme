@@ -1,56 +1,263 @@
 @import "tailwindcss";
-
-.brand-image {
-  position: relative;
-  display: block;
-  width: 185px;
-  height: 66px;
-  flex: 0 0 auto;
-  overflow: hidden;
-}
-
-.brand-image img {
-  position: absolute;
-  top: -22px;
-  left: -2px;
-  width: 189px;
-  height: 103px;
-  max-width: none;
-}
-
-.brand-mark-only .brand-image {
-  width: 40px;
-  height: 40px;
-}
-
-.brand-mark-only .brand-image img {
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-}
-
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  @apply [--background:#ffffff] [--foreground:#171717] dark:[--background:#0a0a0a] dark:[--foreground:#ededed];
 }
-
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
+body {
+  @apply [background:var(--background)] text-[color:var(--foreground)] [font-family:Arial,Helvetica,sans-serif];
+}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Migrated keyframes */
+@keyframes spin {
+ to {
+  transform: rotate(360deg);
+ }
+}
+
+@keyframes auth-enter {
+ from {
+  opacity: 0;
+  transform: translateY(10px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes scan {
+ 0% {
+  left: -22%;
+  opacity: 0;
+ }
+ 20% {
+  opacity: 1;
+ }
+ 100% {
+  left: 108%;
+  opacity: 0;
+ }
+}
+
+@keyframes layerIn {
+ from {
+  opacity: 0;
+  transform: translateY(9px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes shimmer {
+ to {
+  background-position: -200% 0;
+ }
+}
+
+@keyframes spin {
+ to {
+  transform: rotate(360deg);
+ }
+}
+
+@keyframes content-swap {
+ from {
+  opacity: .3;
+  transform: translateY(6px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes card-swap {
+ from {
+  opacity: 0;
+  transform: translateY(12px) scale(.985);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+ }
+}
+
+@keyframes document-swap {
+ from {
+  opacity: .45;
+  transform: translateY(4px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes finding-swap {
+ from {
+  opacity: 0;
+  transform: translateY(5px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes account-dropdown-in {
+ from {
+  opacity: 0;
+  transform: translateY(-5px) scale(.98);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+ }
+}
+
+@keyframes ls-stage-bounce {
+ 0%, 34%, 100% {
+  transform: translateY(0);
+ }
+ 8% {
+  transform: translateY(-11px);
+ }
+ 16% {
+  transform: translateY(0);
+ }
+ 23% {
+  transform: translateY(-4px);
+ }
+}
+
+@keyframes ls-scan {
+ 0% {
+  transform: translateY(-100%);
+  opacity: 0;
+ }
+ 15%, 70% {
+  opacity: 1;
+ }
+ 100% {
+  transform: translateY(0);
+  opacity: 0;
+ }
+}
+
+@keyframes ls-clause-in {
+ from {
+  opacity: .35;
+  transform: translateY(4px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes ls-highlight {
+ from {
+  background-color: transparent;
+  border-color: transparent;
+ }
+ to {
+  background-color: #ffedc5;
+  border-color: #0875ff;
+ }
+}
+
+@keyframes ls-connect {
+ from {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+ }
+ to {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+ }
+}
+
+@keyframes ls-note-in {
+ from {
+  opacity: 0;
+  transform: translateY(12px) scale(.98);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+ }
+}
+
+@keyframes ls-paper-hop {
+ 0%, 34%, 100% {
+  transform: rotate(-5deg) translateY(0);
+ }
+ 8% {
+  transform: rotate(-5deg) translateY(-10px);
+ }
+ 15% {
+  transform: rotate(-5deg) translateY(0);
+ }
+ 23% {
+  transform: rotate(-5deg) translateY(-4px);
+ }
+}
+
+@keyframes ls-note-hop {
+ 0%, 28%, 100% {
+  translate: 0 0;
+ }
+ 9% {
+  translate: 0 -6px;
+ }
+ 17% {
+  translate: 0 0;
+ }
+ 22% {
+  translate: 0 -2px;
+ }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@keyframes price-in {
+  from {
+    opacity: .3;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }

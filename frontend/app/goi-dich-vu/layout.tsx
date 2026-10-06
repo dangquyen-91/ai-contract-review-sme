@@ -2,28 +2,27 @@ import Link from "next/link";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
 import { demoOrganization } from "@/lib/subscription-plans";
-import styles from "@/styles/subscription.module.css";
 
 export const metadata = { title: "Gói dịch vụ | LawScan", robots: { index: false, follow: false } };
 
 export default function SubscriptionLayout({ children }: { children: React.ReactNode }) {
-  return <div className={styles.shell}>
-    <a href="#subscription-content" className={styles.skip}>Đến nội dung chính</a>
-    <aside className={styles.sidebar}>
-      <Link href="/" className={styles.brand} aria-label="LawScan — về trang chủ"><Brand /></Link>
-      <div className={styles.organization}><Icon name="building" /><div><strong>{demoOrganization}</strong><span>Doanh nghiệp mẫu</span></div></div>
-      <p className={styles.navLabel}>KHÔNG GIAN DOANH NGHIỆP</p>
+  return <div className="[--blue:#0066ff] [--ink:#080e2f] [--muted:#5e6c8e] [--line:#dce4ef] [--surface:#fff] [--soft:#eef5ff] flex min-h-screen text-[color:var(--ink)] [background:#f7f9fc] [font-family:var(--font-geist-sans),Arial,sans-serif] text-[length:14px] leading-[1.6] [&_*]:box-border [&_a]:[text-decoration:none] [&_button]:cursor-pointer [&_summary]:cursor-pointer [&:is(a,_button,_input,_summary,_[tabindex])]:focus-visible:[outline:3px_solid_var(--blue)] [&:is(a,_button,_input,_summary,_[tabindex])]:focus-visible:outline-offset-4 [&_button]:disabled:cursor-default [&_button]:disabled:opacity-75 [&_ul]:[list-style:none] [&_ul]:grid [&_ul]:gap-[13px] [&_ul]:p-0 [&_li]:flex [&_li]:items-start [&_li]:gap-2.5 [&_li]:text-[length:13px] [&_li_svg]:text-[color:var(--blue)] [&_li_svg]:shrink-0 [&_li_svg]:mt-0.5 [@media_(max-width:_800px)]:block [&_*]:motion-reduce:!transition-none [&_*::before]:motion-reduce:!transition-none [&_*::after]:motion-reduce:!transition-none">
+    <a href="#subscription-content" className="fixed top-[-100px] [background:white] z-10 p-3 left-4 focus:top-4">Đến nội dung chính</a>
+    <aside className="w-[252px] shrink-0 [border-right:1px_solid_var(--line)] [background:var(--surface)] flex flex-col sticky h-screen px-5 py-8 top-0 [&_nav]:grid [&_nav]:gap-[7px] [&_nav_a]:flex [&_nav_a]:gap-[11px] [&_nav_a]:items-center [&_nav_a]:text-[color:var(--muted)] [&_nav_a]:text-[length:13px] [&_nav_a]:p-3 [&_nav_a]:rounded-lg [&_nav_a]:hover:[background:#f5f7fa] [&_nav_svg]:w-[19px] [&_nav_svg]:h-[19px] [@media_(max-width:_1150px)]:w-[215px] [@media_(max-width:_1150px)]:[padding-inline:14px] [@media_(max-width:_800px)]:static [@media_(max-width:_800px)]:w-full [@media_(max-width:_800px)]:h-auto [@media_(max-width:_800px)]:flex-row [@media_(max-width:_800px)]:justify-between [@media_(max-width:_800px)]:items-center [@media_(max-width:_800px)]:gap-3 [@media_(max-width:_800px)]:[border-right:0] [@media_(max-width:_800px)]:[border-bottom:1px_solid_var(--line)] [@media_(max-width:_800px)]:px-[22px] [@media_(max-width:_800px)]:py-4 [&_nav]:[@media_(max-width:_800px)]:flex [&_nav_a]:[@media_(max-width:_800px)]:text-[length:12px] [&_nav_a]:[@media_(max-width:_800px)]:p-2 [&_nav_a:nth-child(2)]:[@media_(max-width:_800px)]:hidden [&_nav_svg]:[@media_(max-width:_800px)]:hidden [@media_(max-width:_580px)]:[padding-inline:20px]">
+      <Link href="/" className="[&.brand]:flex [&.brand]:items-center [&.brand]:gap-[9px] [&.brand]:text-[length:25px] [&.brand]:font-[750] [&.brand]:tracking-[-1px] [&_svg]:w-[29px] [&_svg]:h-[35px] px-2.5 py-0 [@media_(max-width:_800px)]:p-0 [&.brand]:[@media_(max-width:_800px)]:text-[length:22px] [&_svg]:[@media_(max-width:_800px)]:w-6" aria-label="LawScan — về trang chủ"><Brand /></Link>
+      <div className="flex items-center gap-2.5 border border-[color:var(--line)] mt-10 mb-7 mx-0 px-2.5 py-3.5 rounded-xl border-solid [&>_svg]:text-[color:var(--blue)] [&>_svg]:shrink-0 [&_strong]:block [&_strong]:text-[length:13px] [&_span]:block [&_span]:text-[length:12px] [&_span]:text-[color:var(--muted)] [@media_(max-width:_800px)]:hidden"><Icon name="building" /><div><strong>{demoOrganization}</strong><span>Doanh nghiệp mẫu</span></div></div>
+      <p className="text-[length:9px] font-[650] tracking-[1px] text-[color:var(--muted)] mb-3.5 px-2.5 py-0 [@media_(max-width:_800px)]:hidden">KHÔNG GIAN DOANH NGHIỆP</p>
       <nav aria-label="Điều hướng doanh nghiệp">
-        <Link href="/goi-dich-vu" className={styles.navActive}><Icon name="briefcase" />Gói dịch vụ</Link>
+        <Link href="/goi-dich-vu" className="text-[color:var(--blue)] [background:var(--soft)] font-[650]"><Icon name="briefcase" />Gói dịch vụ</Link>
         <Link href="/bao-cao-mau"><Icon name="document" />Khám phá báo cáo mẫu</Link>
         <Link href="/"><Icon name="arrow" />Về trang chủ</Link>
       </nav>
-      <div className={styles.sidebarBottom}><Icon name="user" /><div><strong>Organization Owner</strong><span>Vai trò minh họa</span></div></div>
+      <div className="[&_span]:block [&_span]:text-[length:12px] [&_span]:text-[color:var(--muted)] flex gap-2.5 [border-top:1px_solid_var(--line)] items-center text-[length:12px] mt-auto pt-6 pb-0 px-2 [@media_(max-width:_800px)]:hidden"><Icon name="user" /><div><strong>Organization Owner</strong><span>Vai trò minh họa</span></div></div>
     </aside>
-    <div className={styles.body}>
-      <header className={styles.topbar}><span>Doanh nghiệp <span aria-hidden="true">/</span> <strong>Gói dịch vụ</strong></span><span className={styles.demoBadge}>Bản demo</span></header>
-      <main id="subscription-content" className={styles.main}>{children}</main>
-      <footer className={styles.footer}>LawScan · Rõ từng điều khoản, vững mỗi quyết định.<span>Dữ liệu và giá trên trang đều là minh họa.</span></footer>
+    <div className="flex-1 min-w-0">
+      <header className="min-h-[76px] flex justify-between items-center [border-bottom:1px_solid_var(--line)] [background:var(--surface)] text-[color:var(--muted)] gap-3 text-[length:13px] px-11 py-4 [&_strong]:text-[color:var(--ink)] [&_strong]:font-[550] [&>_span_>_span]:text-[color:var(--line)] [&>_span_>_span]:mx-3 [&>_span_>_span]:my-0 [@media_(max-width:_1150px)]:[padding-inline:26px] [@media_(max-width:_800px)]:min-h-[55px] [@media_(max-width:_580px)]:[padding-inline:20px] [@media_(max-width:_580px)]:text-[length:11px]"><span>Doanh nghiệp <span aria-hidden="true">/</span> <strong>Gói dịch vụ</strong></span><span className="[background:var(--soft)] text-[color:var(--blue)] text-[length:11px] font-[650] whitespace-nowrap px-2.5 py-1 rounded-md">Bản demo</span></header>
+      <main id="subscription-content" className="max-w-[1170px] m-auto pt-12 pb-[60px] px-11 [@media_(min-width:_1500px)]:pt-[60px] [@media_(max-width:_1150px)]:[padding-inline:26px] [@media_(max-width:_580px)]:pt-[30px] [@media_(max-width:_580px)]:pb-10 [@media_(max-width:_580px)]:px-5">{children}</main>
+      <footer className="max-w-[1082px] [border-top:1px_solid_var(--line)] flex justify-between gap-3 text-[color:var(--muted)] text-[length:10px] m-auto px-11 py-6 [@media_(max-width:_580px)]:flex-col [@media_(max-width:_580px)]:p-[22px]">LawScan · Rõ từng điều khoản, vững mỗi quyết định.<span>Dữ liệu và giá trên trang đều là minh họa.</span></footer>
     </div>
   </div>;
 }
