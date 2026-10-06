@@ -8,11 +8,12 @@ import { toast } from "sonner";
 import { Brand } from "@/components/ui/brand";
 import { ReviewResults } from "@/components/dashboard/review-results";
 import { Icon } from "@/components/ui/icon";
-import { useReviewContractMutation, useUploadContractMutation } from "@/hooks/use-contracts";
+import { useGetContractReviewMutation, useReviewContractMutation, useUploadContractMutation } from "@/hooks/use-contracts";
 import { authApi } from "@/lib/api/auth";
 import { isApiClientError } from "@/lib/api/client";
 import { dashboardApi } from "@/lib/api/dashboard";
-import type { ContractReviewResult, ContractRiskLevel, ContractStatus, DashboardContract, DashboardData } from "@/types/dashboard";
+import type { ContractReviewResult, ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
+import type { DashboardData } from "@/types/dashboard";
 import styles from "@/styles/dashboard.module.css";
 
 type DashboardTab = "overview" | "upload" | "contracts" | "administration";
@@ -80,6 +81,7 @@ export function UserDashboard({ ownerMode = false }: { ownerMode?: boolean }) {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const uploadContractMutation = useUploadContractMutation();
   const reviewContractMutation = useReviewContractMutation();
+  const getContractReviewMutation = useGetContractReviewMutation();
   const stage: ReviewStage = uploadContractMutation.isPending
     ? "uploading"
     : reviewContractMutation.isPending
@@ -163,11 +165,19 @@ export function UserDashboard({ ownerMode = false }: { ownerMode?: boolean }) {
     }
   }
 
-  async function reviewExisting(contract: DashboardContract) {
+  async function reviewExisting(contract: DashboardContract, rerun = false) {
     const contractId = contract.id ?? contract._id;
-    if (!contractId || !access.review || stage === "reviewing") return;
+    if (!contractId || stage === "reviewing" || getContractReviewMutation.isPending) return;
     selectTab("upload"); setTitle(contract.title); setReviewResult(null); setWorkflowComplete(false);
-    try { await runReview(contractId, ""); }
+    try {
+      if (contract.status === "reviewed" && !rerun) {
+        const result = await getContractReviewMutation.mutateAsync(contractId);
+        setReviewResult(result);
+        setWorkflowComplete(true);
+      } else if (access.review) {
+        await runReview(contractId, "");
+      }
+    }
     catch (requestError) {
       setPendingReviewId(contractId);
       toast.error("Chưa thể rà soát hợp đồng", { description: isApiClientError(requestError) ? requestError.message : "Vui lòng thử lại sau." });
@@ -220,7 +230,7 @@ export function UserDashboard({ ownerMode = false }: { ownerMode?: boolean }) {
         <header className={styles.topbar}><div className={styles.mobileBrand}><Brand markOnly /><strong>LawScan</strong></div><p><span>{data.organization.name}</span><i>/</i><strong>{activeTab === "overview" ? "Tổng quan" : activeTab === "upload" ? "Tải & rà soát" : activeTab === "contracts" ? "Hợp đồng" : "Quản trị"}</strong></p><div className={styles.topbarActions}><span className={styles.roleBadge}><Icon name="shield" />{roleLabel}</span><span className={styles.ownerMark}>{profileInitials}</span><button className={styles.mobileLogout} type="button" onClick={logout} disabled={isLoggingOut} aria-label="Đăng xuất"><Icon name="arrow" /></button></div></header>
         <nav className={styles.mobileDashboardNav} aria-label="Điều hướng dashboard trên điện thoại">{hasOwnerWorkspace && <button type="button" aria-current={activeTab === "overview" ? "page" : undefined} onClick={() => selectTab("overview")}><Icon name="building" />Tổng quan</button>}<button type="button" aria-current={activeTab === "upload" ? "page" : undefined} onClick={() => selectTab("upload")}><Icon name="upload" />Tải & rà soát</button><button type="button" aria-current={activeTab === "contracts" ? "page" : undefined} onClick={() => selectTab("contracts")}><Icon name="document" />Hợp đồng</button>{data.role === "user" && <Link href="/chon-to-chuc"><Icon name="building" />Tạo tổ chức</Link>}</nav>
         <main id="dashboard-content" className={styles.main}>
-          {activeTab === "overview" && hasOwnerWorkspace && <OwnerOverview data={data} onUpload={() => selectTab("upload")} onViewContracts={() => selectTab("contracts")} />}
+          {activeTab === "overview" && hasOwnerWorkspace && <OwnerOverview data={data} onUpload={() => selectTab("upload")} onViewContracts={() => selectTab("contracts")} onReview={reviewExisting} isReviewing={stage === "reviewing" || getContractReviewMutation.isPending} />}
           {activeTab === "upload" && <>
             <section className={styles.welcome}><div><p className={styles.contextLabel}>{data.role === "user" ? "Dashboard của tôi" : "AI Contract Review"}</p><h1>Rà soát hợp đồng mới</h1><p>Tải hợp đồng lên để AI tóm tắt, nhận diện điều khoản rủi ro và đề xuất hướng chỉnh sửa.</p></div><div className={styles.securityNote}><Icon name="shield" /><span><strong>Dữ liệu riêng tư</strong><small>{data.role === "user" ? "Hợp đồng thuộc không gian cá nhân của bạn" : "Chỉ thành viên có quyền mới truy cập được"}</small></span></div></section>
             <section className={styles.workflowGrid}>
@@ -238,10 +248,10 @@ export function UserDashboard({ ownerMode = false }: { ownerMode?: boolean }) {
               </div>
               <aside className={styles.progressPanel}><div className={styles.progressHeading}><span><Icon name="sparkle" /></span><div><h2>Quy trình AI</h2><p>Khoảng 1–3 phút</p></div></div><ol className={styles.progressList}><li className={stage !== "idle" ? styles.stepActive : ""}><span>{stage === "uploading" ? <i /> : <Icon name="check" />}</span><div><strong>Đọc tài liệu</strong><small>Trích xuất nội dung hợp đồng</small></div></li><li className={stage === "reviewing" || stage === "done" ? styles.stepActive : ""}><span>{stage === "reviewing" ? <i /> : <Icon name="sparkle" />}</span><div><strong>Phân tích điều khoản</strong><small>Đối chiếu dữ liệu pháp lý</small></div></li><li className={stage === "done" ? styles.stepActive : ""}><span><Icon name="shield" /></span><div><strong>Tổng hợp rủi ro</strong><small>Giải thích và đề xuất chỉnh sửa</small></div></li></ol><div className={styles.accessCard}><span>Quyền hiện tại</span><strong>{roleLabel}</strong><ul><li className={access.upload ? styles.allowed : ""}>Tải hợp đồng</li><li className={access.review ? styles.allowed : ""}>Chạy AI review</li>{access.administer && <li className={styles.allowed}>Quản trị tổ chức</li>}</ul></div></aside>
             </section>
-            {reviewResult && <div ref={reviewResultRef}><ReviewResults result={reviewResult} /></div>}
-            <RecentContracts contracts={data.contracts.slice(0, 5)} canReview={access.review} onReview={reviewExisting} isReviewing={stage === "reviewing"} onViewAll={() => selectTab("contracts")} />
+            {reviewResult && <div ref={reviewResultRef}><ReviewResults result={reviewResult} canAsk={data.role !== "user"} /></div>}
+            <RecentContracts contracts={data.contracts.slice(0, 5)} canReview={access.review} onReview={reviewExisting} isReviewing={stage === "reviewing" || getContractReviewMutation.isPending} onViewAll={() => selectTab("contracts")} />
           </>}
-          {activeTab === "contracts" && <ContractsView contracts={data.contracts} canReview={access.review} onReview={reviewExisting} isReviewing={stage === "reviewing"} />}
+          {activeTab === "contracts" && <ContractsView contracts={data.contracts} canReview={access.review} onReview={reviewExisting} isReviewing={stage === "reviewing" || getContractReviewMutation.isPending} />}
           {activeTab === "administration" && access.administer && <AdministrationView organization={data.organization} roleLabel={roleLabel} />}
         </main>
       </div>
@@ -249,29 +259,29 @@ export function UserDashboard({ ownerMode = false }: { ownerMode?: boolean }) {
   );
 }
 
-function OwnerOverview({ data, onUpload, onViewContracts }: { data: DashboardData; onUpload: () => void; onViewContracts: () => void }) {
+function OwnerOverview({ data, onUpload, onViewContracts, onReview, isReviewing }: { data: DashboardData; onUpload: () => void; onViewContracts: () => void; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean }) {
   return <>
     <section className={styles.welcome}><div><p className={styles.contextLabel}>Dashboard owner</p><h1>Tổng quan tổ chức</h1><p>Theo dõi hợp đồng, tình trạng rà soát và những rủi ro cần ưu tiên xử lý.</p></div><button className={styles.ownerPrimaryLink} type="button" onClick={onUpload}>Tải hợp đồng mới <Icon name="arrow" /></button></section>
     <section className={styles.ownerMetrics} aria-label="Chỉ số hợp đồng"><article><span>Tổng hợp đồng</span><strong>{data.totalContracts}</strong><small>Trong tổ chức</small></article><article><span>Đang xử lý</span><strong>{data.stats.processing}</strong><small>Cần theo dõi</small></article><article><span>Rủi ro cao</span><strong>{data.stats.highRisk}</strong><small>Cần ưu tiên xem</small></article><article><span>Đã rà soát</span><strong>{data.stats.reviewed}</strong><small>Sẵn sàng quyết định</small></article></section>
     <div className={styles.ownerOverviewGrid}>
-      <section className={styles.contractPanel}><header className={styles.sectionHeading}><div><h2>Hợp đồng gần đây</h2><p>Cập nhật mới nhất của tổ chức.</p></div>{data.contracts.length > 0 && <button type="button" onClick={onViewContracts}>Xem tất cả <Icon name="arrow" /></button>}</header><ContractTable contracts={data.contracts.slice(0, 5)} canReview={false} onReview={() => undefined} isReviewing={false} /></section>
+      <section className={styles.contractPanel}><header className={styles.sectionHeading}><div><h2>Hợp đồng gần đây</h2><p>Cập nhật mới nhất của tổ chức.</p></div>{data.contracts.length > 0 && <button type="button" onClick={onViewContracts}>Xem tất cả <Icon name="arrow" /></button>}</header><ContractTable contracts={data.contracts.slice(0, 5)} canReview onReview={onReview} isReviewing={isReviewing} /></section>
       <aside className={styles.ownerInfo}><section><span><Icon name="building" /></span><h2>{data.organization.name}</h2><p>Thông tin tổ chức</p><dl><div><dt>Mã số thuế</dt><dd>{data.organization.taxCode ?? "Chưa cập nhật"}</dd></div><div><dt>Địa chỉ</dt><dd>{data.organization.address ?? "Chưa cập nhật"}</dd></div><div><dt>Vai trò</dt><dd>{roleLabels[data.role] ?? data.role}</dd></div></dl></section><section><span><Icon name="team" /></span><h2>Quản trị thành viên</h2><p>Quản lý thông tin và quyền truy cập của tổ chức trong cùng không gian làm việc.</p><button type="button" onClick={() => undefined} disabled>Sắp ra mắt</button></section></aside>
     </div>
   </>;
 }
 
 
-function RecentContracts({ contracts, canReview, onReview, isReviewing, onViewAll }: { contracts: DashboardContract[]; canReview: boolean; onReview: (contract: DashboardContract) => void; isReviewing: boolean; onViewAll: () => void }) {
+function RecentContracts({ contracts, canReview, onReview, isReviewing, onViewAll }: { contracts: DashboardContract[]; canReview: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean; onViewAll: () => void }) {
   return <section className={styles.contractPanel}><header className={styles.sectionHeading}><div><h2>Hợp đồng gần đây</h2><p>Tiếp tục công việc đang dở hoặc xem lại kết quả.</p></div><button type="button" onClick={onViewAll}>Xem tất cả <Icon name="arrow" /></button></header><ContractTable contracts={contracts} canReview={canReview} onReview={onReview} isReviewing={isReviewing} /></section>;
 }
 
-function ContractsView({ contracts, canReview, onReview, isReviewing }: { contracts: DashboardContract[]; canReview: boolean; onReview: (contract: DashboardContract) => void; isReviewing: boolean }) {
+function ContractsView({ contracts, canReview, onReview, isReviewing }: { contracts: DashboardContract[]; canReview: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean }) {
   return <><section className={styles.welcome}><div><p className={styles.contextLabel}>Kho tài liệu</p><h1>Hợp đồng gần đây</h1><p>Theo dõi trạng thái xử lý và mức rủi ro của những hợp đồng mới nhất.</p></div></section><section className={`${styles.contractPanel} ${styles.fullContractPanel}`}><header className={styles.sectionHeading}><div><h2>Danh sách hợp đồng</h2><p>{contracts.length} tài liệu gần nhất</p></div></header><ContractTable contracts={contracts} canReview={canReview} onReview={onReview} isReviewing={isReviewing} /></section></>;
 }
 
-function ContractTable({ contracts, canReview, onReview, isReviewing }: { contracts: DashboardContract[]; canReview: boolean; onReview: (contract: DashboardContract) => void; isReviewing: boolean }) {
+function ContractTable({ contracts, canReview, onReview, isReviewing }: { contracts: DashboardContract[]; canReview: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean }) {
   if (!contracts.length) return <div className={styles.emptyState}><span><Icon name="document" /></span><h3>Chưa có hợp đồng</h3><p>Hợp đồng đầu tiên bạn tải lên sẽ xuất hiện tại đây.</p></div>;
-  return <div className={styles.tableWrap}><table><thead><tr><th>Hợp đồng</th><th>Trạng thái</th><th>Rủi ro</th><th>Cập nhật</th><th aria-label="Hành động" /></tr></thead><tbody>{contracts.map((contract) => <tr key={contract.id ?? contract._id ?? contract.title}><td><span className={styles.contractIcon}><Icon name="document" /></span><div><strong>{contract.title}</strong><small>{typeLabels[contract.type]}</small></div></td><td><span className={`${styles.status} ${styles[`status_${contract.status}`]}`}>{statusLabels[contract.status]}</span></td><td><span className={`${styles.risk} ${styles[`risk_${contract.overallRiskLevel}`]}`}>{riskLabels[contract.overallRiskLevel]}</span></td><td><time dateTime={contract.updatedAt}>{formatDate(contract.updatedAt)}</time></td><td>{canReview && <button className={styles.reviewAction} type="button" onClick={() => onReview(contract)} disabled={isReviewing}><Icon name="sparkle" />{contract.status === "reviewed" ? "Rà soát lại" : "AI review"}</button>}</td></tr>)}</tbody></table></div>;
+  return <div className={styles.tableWrap}><table><thead><tr><th>Hợp đồng</th><th>Trạng thái</th><th>Rủi ro</th><th>Cập nhật</th><th aria-label="Hành động" /></tr></thead><tbody>{contracts.map((contract) => <tr key={contract.id ?? contract._id ?? contract.title}><td><span className={styles.contractIcon}><Icon name="document" /></span><div><strong>{contract.title}</strong><small>{typeLabels[contract.type]}</small></div></td><td><span className={`${styles.status} ${styles[`status_${contract.status}`]}`}>{statusLabels[contract.status]}</span></td><td><span className={`${styles.risk} ${styles[`risk_${contract.overallRiskLevel}`]}`}>{riskLabels[contract.overallRiskLevel]}</span></td><td><time dateTime={contract.updatedAt}>{formatDate(contract.updatedAt)}</time></td><td>{canReview && <><button className={styles.reviewAction} type="button" onClick={() => onReview(contract)} disabled={isReviewing}><Icon name={contract.status === "reviewed" ? "document" : "sparkle"} />{contract.status === "reviewed" ? "Xem kết quả" : "AI review"}</button>{contract.status === "reviewed" && <button className={styles.reviewAction} type="button" onClick={() => onReview(contract, true)} disabled={isReviewing}><Icon name="sparkle" />Rà soát lại</button>}</>}</td></tr>)}</tbody></table></div>;
 }
 
 function AdministrationView({ organization, roleLabel }: { organization: { name: string; taxCode: string | null; address: string | null }; roleLabel: string }) {

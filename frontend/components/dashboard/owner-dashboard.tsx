@@ -9,7 +9,7 @@ import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
 import { authApi } from "@/lib/api/auth";
 import { dashboardApi } from "@/lib/api/dashboard";
-import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/dashboard";
+import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
 import styles from "@/styles/dashboard.module.css";
 
 const statusLabels: Record<ContractStatus, string> = {
