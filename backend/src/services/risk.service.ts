@@ -350,16 +350,25 @@ export async function detectRisks(
     await RiskCitationModel.deleteMany({ riskFindingId: { $in: oldFindingIds } });
     await RiskFindingModel.deleteMany({ _id: { $in: oldFindingIds } });
 
-    version.overallRiskLevel = overallRiskLevel;
-    version.overallAssessment = overallAssessment;
-    version.riskDetectionStatus = 'completed';
-    version.riskDetectionError = undefined;
-    await version.save();
+    // Atomic update: summary generation writes to the same version document concurrently.
+    await ContractVersionModel.updateOne(
+      { _id: version._id },
+      {
+        $set: { overallRiskLevel, overallAssessment, riskDetectionStatus: 'completed' },
+        $unset: { riskDetectionError: '' },
+      },
+    );
     await ContractModel.updateOne({ _id: contractId, orgId }, { $set: { status: 'reviewed' } });
   } catch (err) {
-    version.riskDetectionStatus = 'failed';
-    version.riskDetectionError = err instanceof Error ? err.message : 'Risk detection failed';
-    await version.save();
+    await ContractVersionModel.updateOne(
+      { _id: version._id },
+      {
+        $set: {
+          riskDetectionStatus: 'failed',
+          riskDetectionError: err instanceof Error ? err.message : 'Risk detection failed',
+        },
+      },
+    );
     throw err;
   }
 
