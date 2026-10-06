@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { AppError } from '../errors/AppError';
 import { ClauseModel } from '../models/clause.model';
 import { ContractModel } from '../models/contract.model';
+import { ContractVersionModel } from '../models/contractVersion.model';
 import { summarizeContract } from './contractSummarization.service';
 import { getCurrentVersion } from './contractVersion.service';
 
@@ -32,27 +33,37 @@ export async function generateContractSummary(
     throw AppError.badRequest('Contract has no clauses to summarize');
   }
 
-  version.summaryStatus = 'processing';
-  if (analysisFocus) version.analysisFocus = analysisFocus;
-  await version.save();
+  // Summary and risk detection run concurrently on the same version document, so use atomic
+  // updates instead of save() (which would fail with a VersionError on the whole-array writes).
+  await ContractVersionModel.updateOne(
+    { _id: version._id },
+    { $set: { summaryStatus: 'processing', ...(analysisFocus ? { analysisFocus } : {}) } },
+  );
 
   try {
     const summaryPoints = await summarizeContract(
       contract.type,
       clauses.map((c) => ({ category: c.clauseTypeId.code, summary: c.summary })),
-      version.analysisFocus ?? undefined,
+      analysisFocus ?? version.analysisFocus ?? undefined,
     );
 
-    version.summaryPoints = summaryPoints;
-    version.summaryStatus = 'completed';
-    version.summaryError = undefined;
-    await version.save();
+    await ContractVersionModel.updateOne(
+      { _id: version._id },
+      { $set: { summaryPoints, summaryStatus: 'completed' }, $unset: { summaryError: '' } },
+    );
   } catch (err) {
-    version.summaryStatus = 'failed';
-    version.summaryError = err instanceof Error ? err.message : 'Summarization failed';
-    await version.save();
+    await ContractVersionModel.updateOne(
+      { _id: version._id },
+      {
+        $set: {
+          summaryStatus: 'failed',
+          summaryError: err instanceof Error ? err.message : 'Summarization failed',
+        },
+      },
+    );
     throw err;
   }
 
-  return { ...contract.toObject(), currentVersion: version.toObject() };
+  const updatedVersion = await getCurrentVersion(contractId);
+  return { ...contract.toObject(), currentVersion: updatedVersion.toObject() };
 }
