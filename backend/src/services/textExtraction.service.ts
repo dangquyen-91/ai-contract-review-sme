@@ -1,6 +1,6 @@
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
-import { createWorker } from 'tesseract.js';
+import { createWorker, Worker } from 'tesseract.js';
 import { EXTRACTION_STATUSES } from '../models/contractVersion.model';
 
 export type ExtractionStatus = (typeof EXTRACTION_STATUSES)[number];
@@ -53,20 +53,35 @@ async function extractFromDocx(buffer: Buffer): Promise<string> {
   return value.trim();
 }
 
-async function ocrImages(images: Buffer[]): Promise<string> {
-  const worker = await createWorker(OCR_LANGUAGES);
-  try {
-    const texts: string[] = [];
-    for (const image of images) {
-      const {
-        data: { text },
-      } = await worker.recognize(image);
-      texts.push(text.trim());
-    }
-    return texts.filter(Boolean).join('\n\n');
-  } finally {
-    await worker.terminate();
+let ocrWorker: Promise<Worker> | null = null;
+
+function getOcrWorker(): Promise<Worker> {
+  if (!ocrWorker) {
+    ocrWorker = createWorker(OCR_LANGUAGES).catch((err) => {
+      ocrWorker = null;
+      throw err;
+    });
   }
+  return ocrWorker;
+}
+
+export async function terminateOcrWorker(): Promise<void> {
+  if (!ocrWorker) return;
+  const pending = ocrWorker;
+  ocrWorker = null;
+  await (await pending).terminate();
+}
+
+async function ocrImages(images: Buffer[]): Promise<string> {
+  const worker = await getOcrWorker();
+  const texts: string[] = [];
+  for (const image of images) {
+    const {
+      data: { text },
+    } = await worker.recognize(image);
+    texts.push(text.trim());
+  }
+  return texts.filter(Boolean).join('\n\n');
 }
 
 async function extractFromImage(buffer: Buffer): Promise<string> {

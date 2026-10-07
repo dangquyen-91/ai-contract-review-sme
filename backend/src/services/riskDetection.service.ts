@@ -6,10 +6,10 @@ import { AppError } from '../errors/AppError';
 import { generateJson } from './llm.service';
 
 export const CONTRACT_TYPE_LABELS: Record<(typeof CONTRACT_TYPES)[number], string> = {
-  sales: 'hop dong mua ban hang hoa',
-  service: 'hop dong cung ung dich vu',
-  labor: 'hop dong lao dong',
-  saas: 'hop dong thue phan mem/cong nghe (SaaS)',
+  sales: 'hợp đồng mua bán hàng hóa',
+  service: 'hợp đồng cung ứng dịch vụ',
+  labor: 'hợp đồng lao động',
+  saas: 'hợp đồng thuê phần mềm/công nghệ (SaaS)',
 };
 
 export interface ClauseInput {

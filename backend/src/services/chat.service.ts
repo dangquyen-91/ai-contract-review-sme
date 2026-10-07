@@ -10,7 +10,7 @@ import { CONTRACT_TYPE_LABELS } from './riskDetection.service';
 const HISTORY_LIMIT = 10;
 
 const SYSTEM_INSTRUCTION = `You are a legal assistant helping a small business owner understand a Vietnamese contract they uploaded.
-Answer in Vietnamese, in plain language, using ONLY the contract content and analysis provided in the prompt. Refer to clauses by their number (e.g. "Dieu 3" or "clause 3") when relevant.
+Answer in Vietnamese, in plain language, using ONLY the contract content and analysis provided in the prompt. Refer to clauses by their number (e.g. "Điều 3" or "clause 3") when relevant.
 If the answer is not in the contract, say so instead of guessing. You give information, not formal legal advice - recommend consulting a lawyer for important decisions.`;
 
 async function loadContractContext(orgId: string, contractId: string) {

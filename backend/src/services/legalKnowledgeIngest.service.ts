@@ -60,6 +60,8 @@ export interface LegalChunk {
 }
 
 const MAX_CHUNK_LENGTH = 3000;
+const CHUNK_OVERLAP = 300;
+const BREAK_SEPARATORS = ['\n\n', '\n', '. ', '; ', ' '];
 
 export function chunkLegalText(fullText: string): LegalChunk[] {
   const headings = [...fullText.matchAll(ARTICLE_HEADING_RE)];
@@ -87,10 +89,30 @@ function splitLongText(text: string, articleRef: string | undefined): LegalChunk
   }
 
   const parts: LegalChunk[] = [];
-  for (let offset = 0; offset < text.length; offset += MAX_CHUNK_LENGTH) {
-    parts.push({ articleRef, chunkText: text.slice(offset, offset + MAX_CHUNK_LENGTH) });
+  let start = 0;
+  while (start < text.length) {
+    const limit = Math.min(start + MAX_CHUNK_LENGTH, text.length);
+    const end = limit === text.length ? limit : findChunkBreak(text, start, limit);
+    parts.push({ articleRef, chunkText: text.slice(start, end).trim() });
+    if (end >= text.length) break;
+    start = nextChunkStart(text, start, end);
   }
-  return parts;
+  return parts.filter((p) => p.chunkText);
+}
+
+function findChunkBreak(text: string, start: number, limit: number): number {
+  const window = text.slice(start, limit);
+  for (const separator of BREAK_SEPARATORS) {
+    const idx = window.lastIndexOf(separator);
+    if (idx > window.length / 2) return start + idx + separator.length;
+  }
+  return limit;
+}
+
+function nextChunkStart(text: string, start: number, end: number): number {
+  let next = Math.max(end - CHUNK_OVERLAP, start + 1);
+  while (next < end && !/\s/.test(text[next - 1])) next++;
+  return next;
 }
 
 export interface IngestLegalSourceParams {

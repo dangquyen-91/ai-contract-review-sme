@@ -8,7 +8,8 @@ import { RiskFindingModel } from '../models/riskFinding.model';
 import { RiskCitationModel } from '../models/riskCitation.model';
 import { ChatMessageModel } from '../models/chatMessage.model';
 import { CreateContractInput, ListContractsQuery } from '../validations/contract.validation';
-import { deleteContractFile } from './storage.service';
+import { logger } from '../config/logger';
+import { deleteContractFile, uploadContractFile } from './storage.service';
 import { extractContractText } from './textExtraction.service';
 import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
 
@@ -17,9 +18,6 @@ interface CreateContractParams {
   uploadedBy: string;
   input: CreateContractInput;
   file?: {
-    key: string;
-    url: string;
-    resourceType: string;
     name: string;
     mimeType: string;
     buffer: Buffer;
@@ -28,29 +26,45 @@ interface CreateContractParams {
 
 export async function createContract({ orgId, uploadedBy, input, file }: CreateContractParams) {
   const extraction = file ? await extractContractText(file.buffer, file.mimeType) : undefined;
+  const stored = file ? await uploadContractFile(file.buffer, orgId, file.name) : undefined;
 
-  const contract = await ContractModel.create({
-    orgId,
-    uploadedBy,
-    title: input.title,
-    type: input.type,
-  });
+  let contractId: Types.ObjectId | undefined;
+  try {
+    const contract = await ContractModel.create({
+      orgId,
+      uploadedBy,
+      title: input.title,
+      type: input.type,
+    });
+    contractId = contract._id;
 
-  const currentVersion = await ContractVersionModel.create({
-    contractId: contract._id,
-    versionNumber: 1,
-    createdBy: uploadedBy,
-    fileKey: file?.key,
-    fileUrl: file?.url,
-    fileResourceType: file?.resourceType,
-    fileName: file?.name,
-    mimeType: file?.mimeType,
-    extractedText: extraction?.text,
-    extractionStatus: extraction?.status ?? 'pending',
-    extractionError: extraction?.error,
-  });
+    const currentVersion = await ContractVersionModel.create({
+      contractId: contract._id,
+      versionNumber: 1,
+      createdBy: uploadedBy,
+      fileKey: stored?.key,
+      fileUrl: stored?.url,
+      fileResourceType: stored?.resourceType,
+      fileName: file?.name,
+      mimeType: file?.mimeType,
+      extractedText: extraction?.text,
+      extractionStatus: extraction?.status ?? 'pending',
+      extractionError: extraction?.error,
+    });
 
-  return { ...contract.toObject(), currentVersion: currentVersion.toObject() };
+    return { ...contract.toObject(), currentVersion: currentVersion.toObject() };
+  } catch (err) {
+    if (contractId) await ContractModel.deleteOne({ _id: contractId });
+    if (stored) {
+      await deleteContractFile(stored.key, stored.resourceType).catch((cleanupErr) =>
+        logger.warn('Failed to remove uploaded contract file after a failed create', {
+          fileKey: stored.key,
+          error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        }),
+      );
+    }
+    throw err;
+  }
 }
 
 export async function listContracts(
