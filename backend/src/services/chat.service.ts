@@ -40,15 +40,14 @@ async function buildContractContext(
     .map((c) => `[clause ${c.index + 1}]${c.title ? ` ${c.title}` : ''}\n${c.text}`)
     .join('\n\n');
 
+  const findingLines = findings.flatMap((f) => {
+    if (!f.clauseId) return [`- (${f.severity}, missing clause) ${f.title}: ${f.problem.join(' ')}`];
+    const clauseIndex = clauseIndexById.get(f.clauseId.toString());
+    if (clauseIndex === undefined) return [];
+    return [`- (${f.severity}, clause ${clauseIndex + 1}) ${f.title}: ${f.problem.join(' ')}`];
+  });
   const findingBlock =
-    findings.length > 0
-      ? findings
-          .map((f) => {
-            const where = f.clauseId ? `clause ${(clauseIndexById.get(f.clauseId.toString()) ?? 0) + 1}` : 'missing clause';
-            return `- (${f.severity}, ${where}) ${f.title}: ${f.problem.join(' ')}`;
-          })
-          .join('\n')
-      : '(no risk findings recorded)';
+    findingLines.length > 0 ? findingLines.join('\n') : '(no risk findings recorded)';
 
   return [
     `Contract type: ${CONTRACT_TYPE_LABELS[contract.type]}`,

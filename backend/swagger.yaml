@@ -192,6 +192,10 @@ components:
         segmentationError:
           type: string
           description: Error message when segmentationStatus is "failed"
+        segmentationStartedAt:
+          type: string
+          format: date-time
+          description: When the last segmentation run started; a "processing" run older than 10 minutes is treated as crashed and can be re-run
         riskDetectionStatus:
           type: string
           enum: [pending, processing, completed, failed]
@@ -199,6 +203,10 @@ components:
         riskDetectionError:
           type: string
           description: Error message when riskDetectionStatus is "failed"
+        riskDetectionStartedAt:
+          type: string
+          format: date-time
+          description: When the last risk detection run started (same 10-minute stale rule as segmentation)
         overallAssessment:
           type: array
           items:
@@ -222,6 +230,10 @@ components:
         summaryError:
           type: string
           description: Error message when summaryStatus is "failed"
+        summaryStartedAt:
+          type: string
+          format: date-time
+          description: When the last summary run started (same 10-minute stale rule as segmentation)
         createdAt:
           type: string
           format: date-time
@@ -862,7 +874,7 @@ paths:
     post:
       tags: [Contracts]
       summary: Run clause segmentation/classification/summarization for a contract via LLM (Gemini)
-      description: Requires the contract's text to already be extracted (extractionStatus = completed). Replaces any previously segmented clauses. Each clause is also given a short plain-language Vietnamese summary. Rate-limited (AI cost control).
+      description: Requires the contract's text to already be extracted (extractionStatus = completed). Replaces any previously segmented clauses and, on success, discards the previous analysis - risk findings/citations are deleted, summaryPoints/overallAssessment are cleared, summaryStatus/riskDetectionStatus go back to "pending" and overallRiskLevel to "none". If the LLM call fails, the previous clauses and analysis are kept. Each clause is also given a short plain-language Vietnamese summary. Rate-limited (AI cost control).
       responses:
         '200':
           description: OK
@@ -874,6 +886,12 @@ paths:
                   $ref: '#/components/schemas/Clause'
         '400':
           description: Contract text not extracted yet, or LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Segmentation, summary or risk detection is already running for this contract
           content:
             application/json:
               schema:
@@ -918,6 +936,12 @@ paths:
                 $ref: '#/components/schemas/Contract'
         '400':
           description: Clauses not segmented yet, or LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Summary is already running, or clauses are being re-segmented
           content:
             application/json:
               schema:
@@ -996,7 +1020,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: Risk detection is already running for this contract
+          description: Risk detection is already running, or clauses are being re-segmented
           content:
             application/json:
               schema:

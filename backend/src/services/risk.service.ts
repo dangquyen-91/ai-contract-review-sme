@@ -14,7 +14,12 @@ import {
   LlmProposedRevision,
 } from './riskDetection.service';
 import { searchLegalChunks, LegalChunkMatch } from './legalRetrieval.service';
-import { getCurrentVersion } from './contractVersion.service';
+import {
+  claimStage,
+  getCurrentVersion,
+  setContractStatus,
+  settledStatus,
+} from './contractVersion.service';
 import { getMandatoryTaxonomyForContractType } from './clauseTypeTaxonomy.service';
 
 const SEVERITY_RANK: Record<(typeof RISK_LEVELS)[number], number> = {
@@ -137,9 +142,6 @@ async function attachCitations<T extends { _id: unknown; toObject: () => Record<
 
 export type RiskDetectionStage = 'retrieving_legal_sources' | 'analyzing_clauses' | 'saving_findings';
 
-// A version stuck in "processing" longer than this is assumed crashed and may be re-run.
-const PROCESSING_STALE_MS = 10 * 60 * 1000;
-
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim();
 
 // The LLM must quote the sentence to replace verbatim; if it did not (or omitted it), fall back
@@ -186,35 +188,24 @@ export async function detectRisks(
     throw AppError.badRequest('Contract clauses have not been segmented yet');
   }
 
-  const clauses = await ClauseModel.find({ contractVersionId: currentVersion._id })
-    .sort({ index: 1 })
-    .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
-  if (clauses.length === 0) {
-    throw AppError.badRequest('Contract has no clauses to analyze');
-  }
-
   // Atomically claim the run so two concurrent requests cannot both rewrite the findings.
-  const version = await ContractVersionModel.findOneAndUpdate(
-    {
-      _id: currentVersion._id,
-      $or: [
-        { riskDetectionStatus: { $ne: 'processing' } },
-        { updatedAt: { $lt: new Date(Date.now() - PROCESSING_STALE_MS) } },
-      ],
-    },
-    {
-      $set: {
-        riskDetectionStatus: 'processing',
-        ...(analysisFocus ? { analysisFocus } : {}),
-      },
-    },
-    { new: true },
-  );
+  const version = await claimStage(currentVersion._id, 'riskDetection', {
+    requireSegmented: true,
+    set: analysisFocus ? { analysisFocus } : {},
+  });
   if (!version) {
-    throw AppError.conflict('Risk detection is already running for this contract');
+    throw AppError.conflict('Risk detection is already running or clauses are being re-segmented');
   }
+  await setContractStatus(contractId, orgId, 'processing');
 
   try {
+    const clauses = await ClauseModel.find({ contractVersionId: version._id })
+      .sort({ index: 1 })
+      .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
+    if (clauses.length === 0) {
+      throw AppError.badRequest('Contract has no clauses to analyze');
+    }
+
     const presentTaxonomyIds = new Set(clauses.map((c) => c.clauseTypeId._id.toString()));
     const mandatoryTaxonomy = await getMandatoryTaxonomyForContractType(contract.type);
     const missingTaxonomy = mandatoryTaxonomy.filter(
@@ -358,7 +349,7 @@ export async function detectRisks(
         $unset: { riskDetectionError: '' },
       },
     );
-    await ContractModel.updateOne({ _id: contractId, orgId }, { $set: { status: 'reviewed' } });
+    await setContractStatus(contractId, orgId, 'reviewed');
   } catch (err) {
     await ContractVersionModel.updateOne(
       { _id: version._id },
@@ -369,6 +360,7 @@ export async function detectRisks(
         },
       },
     );
+    await setContractStatus(contractId, orgId, settledStatus(contract.status));
     throw err;
   }
 

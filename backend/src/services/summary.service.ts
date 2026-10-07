@@ -4,7 +4,7 @@ import { ClauseModel } from '../models/clause.model';
 import { ContractModel } from '../models/contract.model';
 import { ContractVersionModel } from '../models/contractVersion.model';
 import { summarizeContract } from './contractSummarization.service';
-import { getCurrentVersion } from './contractVersion.service';
+import { claimStage, getCurrentVersion } from './contractVersion.service';
 
 interface PopulatedClauseType {
   _id: Types.ObjectId;
@@ -26,23 +26,26 @@ export async function generateContractSummary(
     throw AppError.badRequest('Contract clauses have not been segmented yet');
   }
 
-  const clauses = await ClauseModel.find({ contractVersionId: version._id })
-    .sort({ index: 1 })
-    .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
-  if (clauses.length === 0) {
-    throw AppError.badRequest('Contract has no clauses to summarize');
+  const claimed = await claimStage(version._id, 'summary', {
+    requireSegmented: true,
+    set: analysisFocus ? { analysisFocus } : {},
+  });
+  if (!claimed) {
+    throw AppError.conflict('Summary is already running or clauses are being re-segmented');
   }
 
-  await ContractVersionModel.updateOne(
-    { _id: version._id },
-    { $set: { summaryStatus: 'processing', ...(analysisFocus ? { analysisFocus } : {}) } },
-  );
-
   try {
+    const clauses = await ClauseModel.find({ contractVersionId: version._id })
+      .sort({ index: 1 })
+      .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
+    if (clauses.length === 0) {
+      throw AppError.badRequest('Contract has no clauses to summarize');
+    }
+
     const summaryPoints = await summarizeContract(
       contract.type,
       clauses.map((c) => ({ category: c.clauseTypeId.code, summary: c.summary })),
-      analysisFocus ?? version.analysisFocus ?? undefined,
+      claimed.analysisFocus ?? undefined,
     );
 
     await ContractVersionModel.updateOne(
