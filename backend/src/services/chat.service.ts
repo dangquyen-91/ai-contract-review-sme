@@ -68,7 +68,7 @@ async function buildContractContext(
 
 async function buildHistoryBlock(contractVersionId: unknown): Promise<string> {
   const recent = await ChatMessageModel.find({ contractVersionId })
-    .sort({ createdAt: -1 })
+    .sort({ createdAt: -1, _id: -1 })
     .limit(HISTORY_LIMIT);
   if (recent.length === 0) return '';
   const lines = recent
@@ -113,8 +113,6 @@ export async function askAboutContract(
   return { reply };
 }
 
-// Streams the answer chunk by chunk through onToken; the exchange is saved only once the
-// full reply has been generated, so an aborted/failed stream leaves no half-finished message.
 export async function streamAboutContract(
   orgId: string,
   userId: string,
@@ -143,5 +141,5 @@ export async function listChatMessages(orgId: string, contractId: string) {
     throw AppError.notFound('Contract not found');
   }
   const version = await getCurrentVersion(contractId);
-  return ChatMessageModel.find({ contractVersionId: version._id }).sort({ createdAt: 1 });
+  return ChatMessageModel.find({ contractVersionId: version._id }).sort({ createdAt: 1, _id: 1 });
 }

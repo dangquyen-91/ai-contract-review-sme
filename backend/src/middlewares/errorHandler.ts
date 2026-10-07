@@ -11,7 +11,6 @@ export function notFoundHandler(req: Request, res: Response) {
   });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function errorHandler(err: unknown, req: Request, res: Response, next: NextFunction) {
   if (err instanceof ZodError) {
     return res.status(400).json({
@@ -27,6 +26,13 @@ export function errorHandler(err: unknown, req: Request, res: Response, next: Ne
     return res.status(err.statusCode).json({
       success: false,
       error: { message: err.message },
+    });
+  }
+
+  if ((err as { code?: number })?.code === 11000) {
+    return res.status(409).json({
+      success: false,
+      error: { message: 'Resource already exists' },
     });
   }
 

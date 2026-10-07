@@ -33,8 +33,6 @@ export async function generateContractSummary(
     throw AppError.badRequest('Contract has no clauses to summarize');
   }
 
-  // Summary and risk detection run concurrently on the same version document, so use atomic
-  // updates instead of save() (which would fail with a VersionError on the whole-array writes).
   await ContractVersionModel.updateOne(
     { _id: version._id },
     { $set: { summaryStatus: 'processing', ...(analysisFocus ? { analysisFocus } : {}) } },

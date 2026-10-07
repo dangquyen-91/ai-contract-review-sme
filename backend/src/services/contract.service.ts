@@ -85,13 +85,32 @@ export async function listContracts(
     pipeline.push({ $match: { 'currentVersion.overallRiskLevel': query.riskLevel } });
   }
 
-  const sortField =
-    pagination.sortBy === 'overallRiskLevel' ? 'currentVersion.overallRiskLevel' : pagination.sortBy;
+  const sortByRisk = pagination.sortBy === 'overallRiskLevel';
+  const sortStages: PipelineStage[] = sortByRisk
+    ? [
+        {
+          $addFields: {
+            _riskRank: {
+              $switch: {
+                branches: [
+                  { case: { $eq: ['$currentVersion.overallRiskLevel', 'high'] }, then: 3 },
+                  { case: { $eq: ['$currentVersion.overallRiskLevel', 'medium'] }, then: 2 },
+                  { case: { $eq: ['$currentVersion.overallRiskLevel', 'low'] }, then: 1 },
+                ],
+                default: 0,
+              },
+            },
+          },
+        },
+        { $sort: { _riskRank: pagination.sortOrder, _id: pagination.sortOrder } },
+        { $project: { _riskRank: 0 } },
+      ]
+    : [{ $sort: { [pagination.sortBy]: pagination.sortOrder, _id: pagination.sortOrder } }];
 
   const [items, totalResult] = await Promise.all([
     ContractModel.aggregate([
       ...pipeline,
-      { $sort: { [sortField]: pagination.sortOrder } },
+      ...sortStages,
       { $skip: pagination.skip },
       { $limit: pagination.limit },
     ]),
