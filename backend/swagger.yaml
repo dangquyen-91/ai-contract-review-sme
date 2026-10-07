@@ -1307,7 +1307,7 @@ paths:
     post:
       tags: [LegalKB]
       summary: Upload a legal document (pdf/docx/txt), chunk it by "Dieu N" headings, and embed each chunk (Gemini)
-      description: Admin only. Rate-limited (AI cost control). Each chunk is embedded individually, so a large document (e.g. a full law) can take a while.
+      description: Admin only. Rate-limited (AI cost control). Chunks are embedded in batches of up to 100 (task type RETRIEVAL_DOCUMENT). All chunks are embedded before anything is saved, and a failed save removes the partial source, so a failed upload never leaves a half-ingested source behind.
       requestBody:
         required: true
         content:

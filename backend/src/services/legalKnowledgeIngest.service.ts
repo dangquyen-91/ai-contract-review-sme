@@ -8,7 +8,7 @@ import {
 } from '../models/legalKnowledgeChunk.model';
 import { AppError } from '../errors/AppError';
 import { logger } from '../config/logger';
-import { embedText } from './llm.service';
+import { embedTexts } from './llm.service';
 
 export const LEGAL_CHUNK_VECTOR_INDEX_NAME = 'legal_chunk_vector_index';
 
@@ -110,6 +110,12 @@ export async function ingestLegalSource({
   effectiveDate,
   fullText,
 }: IngestLegalSourceParams): Promise<{ legalSourceId: string; chunkCount: number }> {
+  const chunks = chunkLegalText(fullText);
+  const embeddings = await embedTexts(
+    chunks.map((c) => c.chunkText),
+    { taskType: 'RETRIEVAL_DOCUMENT', outputDimensionality: EMBEDDING_DIMENSIONS },
+  );
+
   const legalSource = await LegalSourceModel.create({
     title,
     sourceType,
@@ -118,19 +124,20 @@ export async function ingestLegalSource({
     effectiveDate,
   });
 
-  const chunks = chunkLegalText(fullText);
-
-  let inserted = 0;
-  for (const chunk of chunks) {
-    const embedding = await embedText(chunk.chunkText, EMBEDDING_DIMENSIONS);
-    await LegalKnowledgeChunkModel.create({
-      legalSourceId: legalSource._id,
-      chunkText: chunk.chunkText,
-      articleRef: chunk.articleRef,
-      embedding,
-    });
-    inserted++;
+  try {
+    await LegalKnowledgeChunkModel.insertMany(
+      chunks.map((chunk, i) => ({
+        legalSourceId: legalSource._id,
+        chunkText: chunk.chunkText,
+        articleRef: chunk.articleRef,
+        embedding: embeddings[i],
+      })),
+    );
+  } catch (err) {
+    await LegalKnowledgeChunkModel.deleteMany({ legalSourceId: legalSource._id });
+    await LegalSourceModel.deleteOne({ _id: legalSource._id });
+    throw err;
   }
 
-  return { legalSourceId: legalSource._id.toString(), chunkCount: inserted };
+  return { legalSourceId: legalSource._id.toString(), chunkCount: chunks.length };
 }

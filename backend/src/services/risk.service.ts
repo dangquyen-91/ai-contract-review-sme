@@ -33,6 +33,8 @@ const MISSING_CLAUSE_SEVERITY: (typeof RISK_LEVELS)[number] = 'medium';
 
 const LEGAL_EXCERPTS_PER_CLAUSE = 3;
 
+const MAX_LEGAL_EXCERPTS = 15;
+
 interface LegalExcerptMeta {
   chunkId: string;
   score: number;
@@ -47,19 +49,22 @@ interface PopulatedClauseType {
 
 async function buildLegalExcerpts(
   clauses: { text: string }[],
+  signal?: AbortSignal,
 ): Promise<{ excerpts: LegalExcerptInput[]; metaByNumber: Map<number, LegalExcerptMeta> }> {
-  const perClauseMatches = await Promise.all(
-    clauses.map((c) => searchLegalChunks(c.text, LEGAL_EXCERPTS_PER_CLAUSE)),
+  const perClauseMatches = await searchLegalChunks(
+    clauses.map((c) => c.text),
+    LEGAL_EXCERPTS_PER_CLAUSE,
+    signal,
   );
 
+  const candidates = perClauseMatches
+    .flatMap((matches) => matches.map((match, rank) => ({ match, rank })))
+    .sort((a, b) => a.rank - b.rank || b.match.score - a.match.score);
+
   const matchByChunkId = new Map<string, LegalChunkMatch>();
-  for (const matches of perClauseMatches) {
-    for (const match of matches) {
-      const existing = matchByChunkId.get(match.chunkId);
-      if (!existing || match.score > existing.score) {
-        matchByChunkId.set(match.chunkId, match);
-      }
-    }
+  for (const { match } of candidates) {
+    if (matchByChunkId.size >= MAX_LEGAL_EXCERPTS) break;
+    if (!matchByChunkId.has(match.chunkId)) matchByChunkId.set(match.chunkId, match);
   }
 
   const excerpts: LegalExcerptInput[] = [];
@@ -217,7 +222,7 @@ export async function detectRisks(
     );
 
     onProgress?.('retrieving_legal_sources');
-    const { excerpts, metaByNumber } = await buildLegalExcerpts(clauses);
+    const { excerpts, metaByNumber } = await buildLegalExcerpts(clauses, signal);
 
     signal?.throwIfAborted();
     onProgress?.('analyzing_clauses');
