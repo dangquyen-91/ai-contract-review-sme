@@ -13,7 +13,6 @@ import {
   settledStatus,
 } from './contractVersion.service';
 import { getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
-import { locateClauseOffsets } from '../utils/clauseOffsets';
 
 export async function segmentClauses(orgId: string, contractId: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
@@ -41,24 +40,19 @@ export async function segmentClauses(orgId: string, contractId: string) {
     const taxonomyIdByCode = await getTaxonomyIdByCode();
 
     const oldClauseIds = await ClauseModel.find({ contractVersionId: versionId }).distinct('_id');
-    if (clauses.length > 0) {
-      const offsets = locateClauseOffsets(
-        extractedText,
-        clauses.map((c) => c.text),
-      );
-      await ClauseModel.insertMany(
-        clauses.map((clause, i) => ({
-          ...offsets[i],
-          contractVersionId: versionId,
-          orgId,
-          index: clause.index,
-          title: clause.title,
-          text: clause.text,
-          clauseTypeId: taxonomyIdByCode.get(clause.category),
-          summary: clause.summary,
-        })),
-      );
-    }
+    await ClauseModel.insertMany(
+      clauses.map((clause) => ({
+        contractVersionId: versionId,
+        orgId,
+        index: clause.index,
+        title: clause.title,
+        text: clause.text,
+        startOffset: clause.startOffset,
+        endOffset: clause.endOffset,
+        clauseTypeId: taxonomyIdByCode.get(clause.category),
+        summary: clause.summary,
+      })),
+    );
 
     const oldFindingIds = await RiskFindingModel.find({ contractVersionId: versionId }).distinct(
       '_id',

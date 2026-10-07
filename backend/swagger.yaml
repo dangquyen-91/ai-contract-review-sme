@@ -874,7 +874,7 @@ paths:
     post:
       tags: [Contracts]
       summary: Run clause segmentation/classification/summarization for a contract via LLM (Gemini)
-      description: Requires the contract's text to already be extracted (extractionStatus = completed). Replaces any previously segmented clauses and, on success, discards the previous analysis - risk findings/citations are deleted, summaryPoints/overallAssessment are cleared, summaryStatus/riskDetectionStatus go back to "pending" and overallRiskLevel to "none". If the LLM call fails, the previous clauses and analysis are kept. Each clause is also given a short plain-language Vietnamese summary. Rate-limited (AI cost control).
+      description: Requires the contract's text to already be extracted (extractionStatus = completed). Replaces any previously segmented clauses and, on success, discards the previous analysis - risk findings/citations are deleted, summaryPoints/overallAssessment are cleared, summaryStatus/riskDetectionStatus go back to "pending" and overallRiskLevel to "none". If the LLM call fails, the previous clauses and analysis are kept. Splitting - when the text has at least 3 sequentially numbered "Điều N" headings at line starts, the server splits on them (any text before "Điều 1" becomes the first clause) and the LLM only classifies and summarizes each part; otherwise the LLM returns the first words of each clause and the server cuts the text at those points. Either way each clause's text is an exact slice of the extracted text and startOffset/endOffset always match it. Each clause is also given a short plain-language Vietnamese summary. Rate-limited (AI cost control).
       responses:
         '200':
           description: OK
