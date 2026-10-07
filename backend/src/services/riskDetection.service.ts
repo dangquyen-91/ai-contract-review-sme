@@ -201,10 +201,12 @@ export async function detectContractRisks(
   legalExcerpts: LegalExcerptInput[] = [],
   missingClauses: MissingClauseInput[] = [],
   analysisFocus?: string,
+  signal?: AbortSignal,
 ): Promise<RiskDetectionResult> {
   const raw = await generateJson(
     buildPrompt(contractType, clauses, legalExcerpts, missingClauses, analysisFocus),
     responseSchema,
+    signal,
   );
 
   const parsed = findingResultSchema.safeParse(raw);

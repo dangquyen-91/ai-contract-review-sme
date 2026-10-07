@@ -6,7 +6,11 @@ export const isLlmConfigured = Boolean(env.GEMINI_API_KEY);
 
 const client = env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: env.GEMINI_API_KEY }) : null;
 
-export async function generateJson(prompt: string, responseSchema?: Schema): Promise<unknown> {
+export async function generateJson(
+  prompt: string,
+  responseSchema?: Schema,
+  signal?: AbortSignal,
+): Promise<unknown> {
   if (!client) {
     throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
   }
@@ -17,6 +21,7 @@ export async function generateJson(prompt: string, responseSchema?: Schema): Pro
     config: {
       responseMimeType: 'application/json',
       ...(responseSchema ? { responseSchema } : {}),
+      abortSignal: signal,
       httpOptions: {
         retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 5 },
       },
@@ -61,6 +66,7 @@ export async function generateText(prompt: string, systemInstruction?: string): 
 export async function* generateTextStream(
   prompt: string,
   systemInstruction?: string,
+  signal?: AbortSignal,
 ): AsyncGenerator<string> {
   if (!client) {
     throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
@@ -71,6 +77,7 @@ export async function* generateTextStream(
     contents: prompt,
     config: {
       ...(systemInstruction ? { systemInstruction } : {}),
+      abortSignal: signal,
       httpOptions: {
         retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 5 },
       },

@@ -1167,6 +1167,7 @@ paths:
         - `finding` - one RiskFinding object per event, sent after the analysis completes (the LLM returns findings as one JSON block, so they are not generated incrementally)
         - `done` `{ "total": number }`
         - `error` `{ "status": number, "message": string }` - the HTTP status is already 200 once streaming starts, so failures (including 404/400 such as "clauses not segmented yet") arrive as this event
+        A `: ping` comment line is sent every 15s to keep proxies from closing an idle connection - SSE clients must ignore lines starting with `:`. Closing the connection before the analysis finishes cancels the LLM call and marks riskDetectionStatus as "failed"; once the LLM has answered, the findings are saved even if the client is gone.
         Rate-limited (AI cost control).
       requestBody:
         required: false
@@ -1268,6 +1269,7 @@ paths:
         - `token` `{ "text": string }` - next chunk of the answer
         - `done` `{}` - the full exchange has been saved (nothing is saved if the stream fails or is aborted)
         - `error` `{ "status": number, "message": string }`
+        A `: ping` comment line is sent every 15s to keep proxies from closing an idle connection - SSE clients must ignore lines starting with `:`. Closing the connection cancels the LLM call; if the answer had already finished generating, it is still saved.
         Rate-limited (AI cost control).
       requestBody:
         required: true

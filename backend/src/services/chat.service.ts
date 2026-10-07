@@ -118,11 +118,12 @@ export async function streamAboutContract(
   contractId: string,
   message: string,
   onToken: (token: string) => void,
+  signal?: AbortSignal,
 ) {
   const { versionId, prompt } = await prepareChat(orgId, contractId, message);
 
   let reply = '';
-  for await (const token of generateTextStream(prompt, SYSTEM_INSTRUCTION)) {
+  for await (const token of generateTextStream(prompt, SYSTEM_INSTRUCTION, signal)) {
     reply += token;
     onToken(token);
   }

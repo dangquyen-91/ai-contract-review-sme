@@ -177,6 +177,7 @@ export async function detectRisks(
   contractId: string,
   analysisFocus?: string,
   onProgress?: (stage: RiskDetectionStage) => void,
+  signal?: AbortSignal,
 ) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
@@ -218,6 +219,7 @@ export async function detectRisks(
     onProgress?.('retrieving_legal_sources');
     const { excerpts, metaByNumber } = await buildLegalExcerpts(clauses);
 
+    signal?.throwIfAborted();
     onProgress?.('analyzing_clauses');
     const { overallAssessment, findings: llmFindings } = await detectContractRisks(
       contract.type,
@@ -225,6 +227,7 @@ export async function detectRisks(
       excerpts,
       missingTaxonomy.map((t) => ({ code: t.code, name: t.name, description: t.description })),
       version.analysisFocus ?? undefined,
+      signal,
     );
 
     const clauseByIndex = new Map(clauses.map((c) => [c.index, c]));
