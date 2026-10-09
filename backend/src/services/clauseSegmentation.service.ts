@@ -1,12 +1,10 @@
 import { Type } from '@google/genai';
 import { z } from 'zod';
-import { CLAUSE_CATEGORIES } from '../models/clauseTypeTaxonomy.model';
+import { ClauseCategory } from '../models/clauseTypeTaxonomy.model';
 import { AppError } from '../errors/AppError';
 import { logger } from '../config/logger';
 import { ArticleSpan, splitByArticleHeadings, splitByStartMarkers } from '../utils/clauseOffsets';
 import { generateJson } from './llm.service';
-
-type ClauseCategory = (typeof CLAUSE_CATEGORIES)[number];
 
 export interface SegmentedClause {
   index: number;
@@ -18,49 +16,84 @@ export interface SegmentedClause {
   summary: string;
 }
 
-const CATEGORY_RULE = `"category" must be exactly one of: ${CLAUSE_CATEGORIES.join(', ')}. Use "other" if nothing fits (including the contract title, preamble and party details).`;
+export interface CategoryOption {
+  code: ClauseCategory;
+  name: string;
+  description: string;
+}
+
+export interface SegmentationOptions {
+  contractLabel: string;
+  categories: CategoryOption[];
+}
+
+interface ClassificationSpec {
+  contractLabel: string;
+  categoryRule: string;
+  categoryCodes: [ClauseCategory, ...ClauseCategory[]];
+}
+
 const SUMMARY_RULE = `"summary" must be a short (1-3 sentences) plain-language explanation written in Vietnamese with full diacritics, understandable to someone with no legal background.`;
 
-const sectionResultSchema = z.object({
-  sections: z.array(
-    z.object({
-      sectionId: z.number().int(),
-      category: z.enum(CLAUSE_CATEGORIES),
-      summary: z.string().min(1),
-    }),
-  ),
-});
+function buildSpec({ contractLabel, categories }: SegmentationOptions): ClassificationSpec {
+  if (!categories.some((c) => c.code === 'other')) {
+    throw AppError.internal('Clause categories must include "other".');
+  }
+  const categoryList = categories.map((c) => `  - ${c.code}: ${c.name} (${c.description})`).join('\n');
+  return {
+    contractLabel,
+    categoryRule: `"category" must be exactly one of the codes below. Use "other" if nothing fits (including the contract title, preamble and party details).\n${categoryList}`,
+    categoryCodes: categories.map((c) => c.code) as [ClauseCategory, ...ClauseCategory[]],
+  };
+}
 
-const sectionResponseSchema = {
-  type: Type.OBJECT,
-  properties: {
-    sections: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          sectionId: { type: Type.INTEGER },
-          category: { type: Type.STRING, enum: [...CLAUSE_CATEGORIES] },
-          summary: { type: Type.STRING },
+function sectionSchemas(spec: ClassificationSpec) {
+  return {
+    result: z.object({
+      sections: z.array(
+        z.object({
+          sectionId: z.number().int(),
+          category: z.enum(spec.categoryCodes),
+          summary: z.string().min(1),
+        }),
+      ),
+    }),
+    response: {
+      type: Type.OBJECT,
+      properties: {
+        sections: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              sectionId: { type: Type.INTEGER },
+              category: { type: Type.STRING, enum: [...spec.categoryCodes] },
+              summary: { type: Type.STRING },
+            },
+            required: ['sectionId', 'category', 'summary'],
+          },
         },
-        required: ['sectionId', 'category', 'summary'],
       },
+      required: ['sections'],
     },
-  },
-  required: ['sections'],
-};
+  };
+}
 
 const SECTIONS_PER_CALL = 20;
 const MAX_PARALLEL_CALLS = 4;
 
-type SectionResult = z.infer<typeof sectionResultSchema>['sections'][number];
+interface SectionResult {
+  sectionId: number;
+  category: ClauseCategory;
+  summary: string;
+}
 
-function buildSectionPrompt(sections: { id: number; text: string }[]): string {
+function buildSectionPrompt(spec: ClassificationSpec, sections: { id: number; text: string }[]): string {
   const sectionBlock = sections.map(({ id, text }) => `[section ${id}]\n${text}`).join('\n\n');
-  return `You are a legal contract analyst reviewing a Vietnamese contract that has already been split into numbered sections.
+  return `You are a legal contract analyst reviewing a Vietnamese ${spec.contractLabel} that has already been split into numbered sections.
 
 For EVERY section below return one item with its "sectionId", a "category" and a "summary".
-- ${CATEGORY_RULE}
+- ${spec.categoryRule}
 - ${SUMMARY_RULE}
 
 Sections:
@@ -69,9 +102,13 @@ ${sectionBlock}
 """`;
 }
 
-async function classifyBatch(sections: { id: number; text: string }[]): Promise<SectionResult[]> {
-  const raw = await generateJson(buildSectionPrompt(sections), sectionResponseSchema);
-  const parsed = sectionResultSchema.safeParse(raw);
+async function classifyBatch(
+  spec: ClassificationSpec,
+  sections: { id: number; text: string }[],
+): Promise<SectionResult[]> {
+  const schemas = sectionSchemas(spec);
+  const raw = await generateJson(buildSectionPrompt(spec, sections), schemas.response);
+  const parsed = schemas.result.safeParse(raw);
   if (!parsed.success) {
     throw AppError.internal('LLM returned an unexpected clause classification format.');
   }
@@ -79,30 +116,33 @@ async function classifyBatch(sections: { id: number; text: string }[]): Promise<
   return parsed.data.sections.filter((s) => ids.has(s.sectionId));
 }
 
-async function classifySections(sections: { id: number; text: string }[]) {
+async function classifySections(spec: ClassificationSpec, sections: { id: number; text: string }[]) {
   const byId = new Map<number, SectionResult>();
   const batches: { id: number; text: string }[][] = [];
   for (let i = 0; i < sections.length; i += SECTIONS_PER_CALL) {
     batches.push(sections.slice(i, i + SECTIONS_PER_CALL));
   }
   for (let i = 0; i < batches.length; i += MAX_PARALLEL_CALLS) {
-    const results = await Promise.all(batches.slice(i, i + MAX_PARALLEL_CALLS).map(classifyBatch));
+    const results = await Promise.all(
+      batches.slice(i, i + MAX_PARALLEL_CALLS).map((batch) => classifyBatch(spec, batch)),
+    );
     for (const result of results.flat()) byId.set(result.sectionId, result);
   }
   return byId;
 }
 
 async function classifyArticles(
+  spec: ClassificationSpec,
   contractText: string,
   articles: ArticleSpan[],
 ): Promise<SegmentedClause[]> {
   const texts = articles.map((a) => contractText.slice(a.startOffset, a.endOffset));
   const sections = texts.map((text, id) => ({ id, text }));
 
-  const byId = await classifySections(sections);
+  const byId = await classifySections(spec, sections);
   const skipped = sections.filter((s) => !byId.has(s.id));
   if (skipped.length > 0) {
-    for (const [id, result] of await classifySections(skipped)) byId.set(id, result);
+    for (const [id, result] of await classifySections(spec, skipped)) byId.set(id, result);
   }
 
   const missing = sections.filter((s) => !byId.has(s.id)).length;
@@ -127,46 +167,49 @@ async function classifyArticles(
   });
 }
 
-const markerResultSchema = z.object({
-  clauses: z.array(
-    z.object({
-      title: z.string().nullable().optional(),
-      startMarker: z.string().min(1),
-      category: z.enum(CLAUSE_CATEGORIES),
-      summary: z.string().min(1),
+function markerSchemas(spec: ClassificationSpec) {
+  return {
+    result: z.object({
+      clauses: z.array(
+        z.object({
+          title: z.string().nullable().optional(),
+          startMarker: z.string().min(1),
+          category: z.enum(spec.categoryCodes),
+          summary: z.string().min(1),
+        }),
+      ),
     }),
-  ),
-});
-
-const markerResponseSchema = {
-  type: Type.OBJECT,
-  properties: {
-    clauses: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          title: { type: Type.STRING, nullable: true },
-          startMarker: { type: Type.STRING },
-          category: { type: Type.STRING, enum: [...CLAUSE_CATEGORIES] },
-          summary: { type: Type.STRING },
+    response: {
+      type: Type.OBJECT,
+      properties: {
+        clauses: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING, nullable: true },
+              startMarker: { type: Type.STRING },
+              category: { type: Type.STRING, enum: [...spec.categoryCodes] },
+              summary: { type: Type.STRING },
+            },
+            required: ['startMarker', 'category', 'summary'],
+          },
         },
-        required: ['startMarker', 'category', 'summary'],
       },
+      required: ['clauses'],
     },
-  },
-  required: ['clauses'],
-};
+  };
+}
 
-function buildMarkerPrompt(contractText: string): string {
-  return `You are a legal contract analyst reviewing a Vietnamese contract.
+function buildMarkerPrompt(spec: ClassificationSpec, contractText: string): string {
+  return `You are a legal contract analyst reviewing a Vietnamese ${spec.contractLabel}.
 
 Split the contract text below into individual clauses and classify each one. Do NOT copy the clause text. Instead, mark where each clause begins:
 - "startMarker" is the first 8-15 words of the clause (including its heading if it has one), copied EXACTLY character-for-character from the contract text below. Do not paraphrase, translate, fix typos, change punctuation or add/remove diacritics. It must be long enough to be unique in the contract.
 - A clause runs from its startMarker up to the next clause's startMarker, so together the clauses must cover the whole contract, in the order they appear, without skipping any part.
 - The first clause starts at the very beginning of the contract.
 - "title" is the clause heading if the contract has one, otherwise omit it.
-- ${CATEGORY_RULE}
+- ${spec.categoryRule}
 - ${SUMMARY_RULE}
 - If the text has no clear clause structure, use your best judgement to split it into logically distinct provisions.
 
@@ -176,10 +219,11 @@ ${contractText}
 """`;
 }
 
-async function segmentByMarkers(contractText: string): Promise<SegmentedClause[]> {
-  const raw = await generateJson(buildMarkerPrompt(contractText), markerResponseSchema);
+async function segmentByMarkers(spec: ClassificationSpec, contractText: string): Promise<SegmentedClause[]> {
+  const schemas = markerSchemas(spec);
+  const raw = await generateJson(buildMarkerPrompt(spec, contractText), schemas.response);
 
-  const parsed = markerResultSchema.safeParse(raw);
+  const parsed = schemas.result.safeParse(raw);
   if (!parsed.success) {
     throw AppError.internal('LLM returned an unexpected clause segmentation format.');
   }
@@ -213,7 +257,13 @@ async function segmentByMarkers(contractText: string): Promise<SegmentedClause[]
   });
 }
 
-export async function segmentContractClauses(contractText: string): Promise<SegmentedClause[]> {
+export async function segmentContractClauses(
+  contractText: string,
+  options: SegmentationOptions,
+): Promise<SegmentedClause[]> {
+  const spec = buildSpec(options);
   const articles = splitByArticleHeadings(contractText);
-  return articles ? classifyArticles(contractText, articles) : segmentByMarkers(contractText);
+  return articles
+    ? classifyArticles(spec, contractText, articles)
+    : segmentByMarkers(spec, contractText);
 }

@@ -20,7 +20,8 @@ import {
   setContractStatus,
   settledStatus,
 } from './contractVersion.service';
-import { getMandatoryTaxonomyForContractType } from './clauseTypeTaxonomy.service';
+import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
+import { buildReviewContext } from './contractProfile.service';
 
 const SEVERITY_RANK: Record<(typeof RISK_LEVELS)[number], number> = {
   high: 3,
@@ -193,6 +194,7 @@ export async function detectRisks(
   if (currentVersion.segmentationStatus !== 'completed') {
     throw AppError.badRequest('Contract clauses have not been segmented yet');
   }
+  const reviewContext = await buildReviewContext(contract);
 
   // Atomically claim the run so two concurrent requests cannot both rewrite the findings.
   const version = await claimStage(currentVersion._id, 'riskDetection', {
@@ -213,7 +215,7 @@ export async function detectRisks(
     }
 
     const presentTaxonomyIds = new Set(clauses.map((c) => c.clauseTypeId._id.toString()));
-    const mandatoryTaxonomy = await getMandatoryTaxonomyForContractType(contract.type);
+    const mandatoryTaxonomy = await getTaxonomyByCodes(reviewContext.mandatoryClauses);
     const missingTaxonomy = mandatoryTaxonomy.filter(
       (t) => !presentTaxonomyIds.has(t._id.toString()),
     );
@@ -227,7 +229,7 @@ export async function detectRisks(
     signal?.throwIfAborted();
     onProgress?.('analyzing_clauses');
     const { overallAssessment, findings: llmFindings } = await detectContractRisks(
-      contract.type,
+      reviewContext,
       clauses.map((c) => ({ index: c.index, category: c.clauseTypeId.code, text: c.text })),
       excerpts,
       missingTaxonomy.map((t) => ({ code: t.code, name: t.name, description: t.description })),

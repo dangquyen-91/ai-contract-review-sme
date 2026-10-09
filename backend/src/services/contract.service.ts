@@ -18,6 +18,7 @@ import {
 } from './storage.service';
 import { extractContractText } from './textExtraction.service';
 import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
+import { resolveContractProfile, validateContractContext } from './contractProfile.service';
 
 interface VersionFileFields {
   fileKey?: string | null;
@@ -48,6 +49,9 @@ interface CreateContractParams {
 }
 
 export async function createContract({ orgId, uploadedBy, input, file }: CreateContractParams) {
+  const profile = await resolveContractProfile(input.type);
+  await validateContractContext(profile, input);
+
   const extraction = file ? await extractContractText(file.buffer, file.mimeType) : undefined;
   const stored = file ? await uploadContractFile(file.buffer, orgId, file.name) : undefined;
 
@@ -57,7 +61,9 @@ export async function createContract({ orgId, uploadedBy, input, file }: CreateC
       orgId,
       uploadedBy,
       title: input.title,
-      type: input.type,
+      type: profile.code,
+      ourParty: input.ourParty,
+      industry: input.industry,
     });
     contractId = contract._id;
 
@@ -97,7 +103,8 @@ export async function listContracts(
   pagination: PaginationParams,
 ) {
   const match: Record<string, unknown> = { orgId: new Types.ObjectId(orgId) };
-  if (query.type) match.type = query.type;
+  if (query.type) match.type = (await resolveContractProfile(query.type)).code;
+  if (query.industry) match.industry = query.industry;
   if (query.status) match.status = query.status;
   if (query.search) match.$text = { $search: query.search };
 

@@ -12,7 +12,8 @@ import {
   setContractStatus,
   settledStatus,
 } from './contractVersion.service';
-import { getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
+import { getTaxonomyByCodes, getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
+import { buildReviewContext } from './contractProfile.service';
 
 export async function segmentClauses(orgId: string, contractId: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
@@ -26,6 +27,9 @@ export async function segmentClauses(orgId: string, contractId: string) {
     throw AppError.badRequest('Contract text has not been extracted yet');
   }
 
+  const reviewContext = await buildReviewContext(contract);
+  const categories = await getTaxonomyByCodes(reviewContext.clauseCategories);
+
   const versionId = versionWithText._id;
   const claimed = await claimStage(versionId, 'segmentation', {
     blockedBy: ['summary', 'riskDetection'],
@@ -36,7 +40,10 @@ export async function segmentClauses(orgId: string, contractId: string) {
   await setContractStatus(contractId, orgId, 'processing');
 
   try {
-    const clauses = await segmentContractClauses(extractedText);
+    const clauses = await segmentContractClauses(extractedText, {
+      contractLabel: reviewContext.contractLabel,
+      categories: categories.map(({ code, name, description }) => ({ code, name, description })),
+    });
     const taxonomyIdByCode = await getTaxonomyIdByCode();
 
     const oldClauseIds = await ClauseModel.find({ contractVersionId: versionId }).distinct('_id');

@@ -1,9 +1,8 @@
 import { Type } from '@google/genai';
 import { z } from 'zod';
-import { CONTRACT_TYPES } from '../models/contract.model';
 import { AppError } from '../errors/AppError';
 import { generateJson } from './llm.service';
-import { CONTRACT_TYPE_LABELS } from './riskDetection.service';
+import { describeReviewContext, ReviewContext } from './contractProfile.service';
 
 export interface ClauseSummaryInput {
   category: string;
@@ -23,7 +22,7 @@ const responseSchema = {
 };
 
 function buildPrompt(
-  contractType: (typeof CONTRACT_TYPES)[number],
+  context: ReviewContext,
   clauses: ClauseSummaryInput[],
   analysisFocus?: string,
 ): string {
@@ -33,11 +32,13 @@ function buildPrompt(
 
   const clauseList = clauses.map((c) => `- (${c.category}) ${c.summary}`).join('\n');
 
-  return `You are a legal analyst writing a plain-language overview of a Vietnamese contract of type "${CONTRACT_TYPE_LABELS[contractType]}" for a small business owner with no legal background.
+  return `You are a legal analyst writing a plain-language overview of a Vietnamese contract for a reader with no legal background.
+
+${describeReviewContext(context)}
 
 Below is a list of short summaries of each clause already extracted from the contract, in order.
 
-Write the overview as 3-5 Vietnamese bullet points ("points"), each one short sentence or two, covering: the purpose of the contract and the parties, the contract value and payment terms, the duration, and the termination/renewal terms if present. Do not just concatenate the clause summaries - synthesize them. Do not analyze risk here (that is done separately).${focusBlock}
+Write the overview as 3-5 Vietnamese bullet points ("points"), each one short sentence or two, covering: the purpose of the contract and the parties, the money involved (value, price, premium, deposit and payment schedule), the duration and key dates, and how the contract ends or renews if stated. Do not just concatenate the clause summaries - synthesize them. Do not analyze risk here (that is done separately).${focusBlock}
 
 Clause summaries:
 """
@@ -46,11 +47,11 @@ ${clauseList}
 }
 
 export async function summarizeContract(
-  contractType: (typeof CONTRACT_TYPES)[number],
+  context: ReviewContext,
   clauses: ClauseSummaryInput[],
   analysisFocus?: string,
 ): Promise<string[]> {
-  const raw = await generateJson(buildPrompt(contractType, clauses, analysisFocus), responseSchema);
+  const raw = await generateJson(buildPrompt(context, clauses, analysisFocus), responseSchema);
 
   const parsed = summaryResultSchema.safeParse(raw);
   if (!parsed.success) {

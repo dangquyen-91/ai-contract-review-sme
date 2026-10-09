@@ -5,11 +5,11 @@ import { ContractModel } from '../models/contract.model';
 import { RiskFindingModel } from '../models/riskFinding.model';
 import { getCurrentVersion } from './contractVersion.service';
 import { generateText, generateTextStream } from './llm.service';
-import { CONTRACT_TYPE_LABELS } from './riskDetection.service';
+import { buildReviewContext, describeReviewContext } from './contractProfile.service';
 
 const HISTORY_LIMIT = 10;
 
-const SYSTEM_INSTRUCTION = `You are a legal assistant helping a small business owner understand a Vietnamese contract they uploaded.
+const SYSTEM_INSTRUCTION = `You are a legal assistant helping a user with no legal background understand a Vietnamese contract they uploaded.
 Answer in Vietnamese, in plain language, using ONLY the contract content and analysis provided in the prompt. Refer to clauses by their number (e.g. "Điều 3" or "clause 3") when relevant.
 If the answer is not in the contract, say so instead of guessing. You give information, not formal legal advice - recommend consulting a lawyer for important decisions.`;
 
@@ -26,9 +26,10 @@ async function loadContractContext(orgId: string, contractId: string) {
 }
 
 async function buildContractContext(
-  contract: { type: keyof typeof CONTRACT_TYPE_LABELS },
+  contract: { type: string; ourParty?: string | null; industry?: string | null },
   version: { _id: unknown; summaryPoints?: string[]; overallAssessment?: string[]; analysisFocus?: string | null },
 ): Promise<string> {
+  const reviewContext = await buildReviewContext(contract);
   const clauses = await ClauseModel.find({ contractVersionId: version._id }).sort({ index: 1 });
   const findings = await RiskFindingModel.find({ contractVersionId: version._id }).populate<{
     expectedClauseTypeId: { name: string } | null;
@@ -50,7 +51,7 @@ async function buildContractContext(
     findingLines.length > 0 ? findingLines.join('\n') : '(no risk findings recorded)';
 
   return [
-    `Contract type: ${CONTRACT_TYPE_LABELS[contract.type]}`,
+    describeReviewContext(reviewContext),
     version.analysisFocus ? `Analysis focus requested by user: ${version.analysisFocus}` : '',
     version.summaryPoints?.length
       ? `Summary:\n${version.summaryPoints.map((p) => `- ${p}`).join('\n')}`

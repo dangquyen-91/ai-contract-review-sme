@@ -1,10 +1,14 @@
 import { z } from 'zod';
-import { CONTRACT_STATUSES, CONTRACT_TYPES } from '../models/contract.model';
+import { CONTRACT_STATUSES } from '../models/contract.model';
 import { RISK_LEVELS } from '../models/contractVersion.model';
+
+const codeSchema = z.string().trim().min(1).max(50);
 
 export const createContractSchema = z.object({
   title: z.string().min(2).max(300),
-  type: z.enum(CONTRACT_TYPES),
+  type: codeSchema,
+  ourParty: codeSchema.optional(),
+  industry: codeSchema.optional(),
 });
 
 export const CONTRACT_SORT_FIELDS = [
@@ -21,7 +25,8 @@ export const listContractsQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional(),
   sortBy: z.enum(CONTRACT_SORT_FIELDS).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
-  type: z.enum(CONTRACT_TYPES).optional(),
+  type: codeSchema.optional(),
+  industry: codeSchema.optional(),
   status: z.enum(CONTRACT_STATUSES).optional(),
   riskLevel: z.enum(RISK_LEVELS).optional(),
   search: z.string().optional(),

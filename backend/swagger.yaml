@@ -11,6 +11,7 @@ tags:
   - name: Auth
   - name: Organizations
   - name: Contracts
+  - name: ContractProfiles
   - name: LegalKB
 
 components:
@@ -148,8 +149,13 @@ components:
           type: string
         type:
           type: string
-          enum: [sales, service, labor, saas]
-          description: "Contract type: sales (mua bán hàng hóa), service (cung ứng dịch vụ), labor (lao động), saas (thuê phần mềm/công nghệ)"
+          description: Contract profile code (see GET /contract-profiles), e.g. sales, service, office_lease, labor, housing_purchase, life_insurance
+        ourParty:
+          type: string
+          description: Party code the user represents in this contract (one of the profile's parties); absent if not specified
+        industry:
+          type: string
+          description: Industry code of the user's business (see GET /contract-profiles); absent if not specified
         status:
           type: string
         currentVersion:
@@ -241,7 +247,7 @@ components:
 
     ClauseTypeTaxonomy:
       type: object
-      description: A clause category in the shared taxonomy, seeded on server boot
+      description: A clause category in the shared taxonomy, seeded on server boot. Which categories a contract is classified into, and which are mandatory, is decided by its contract profile.
       properties:
         id:
           type: string
@@ -249,31 +255,110 @@ components:
           type: string
           enum:
             [
+              subject_scope,
               payment,
+              deposit,
+              term,
+              delivery_handover,
+              service_level,
+              warranty,
+              property_legal_status,
+              ownership_transfer,
+              maintenance_repair,
+              sublease_transfer,
+              probation,
+              wages,
+              working_time,
+              social_insurance,
+              insurance_benefits,
+              insurance_exclusions,
+              claims,
+              surrender_value,
               confidentiality,
-              termination,
+              data_protection,
+              intellectual_property,
               penalty,
               indemnity,
-              intellectual_property,
-              dispute_resolution,
               liability,
-              force_majeure,
               renewal,
-              warranty,
+              termination,
+              force_majeure,
+              dispute_resolution,
               other,
             ]
         name:
           type: string
         description:
           type: string
-        applicableContractTypes:
+
+    ContractProfile:
+      type: object
+      description: A contract type with its Vietnamese legal context. Decides how contracts of this type are classified and which clauses are mandatory.
+      properties:
+        code:
+          type: string
+          example: office_lease
+        aliases:
           type: array
           items:
             type: string
-            enum: [sales, service, labor, saas]
-        isMandatory:
-          type: boolean
-          description: If true and applicable to a contract's type, a missing clause of this type is flagged as a rule-based "missing_clause" finding
+          description: Older codes still accepted as this profile (e.g. saas for service)
+        name:
+          type: string
+          example: Thuê văn phòng, mặt bằng
+        segment:
+          type: string
+          enum: [business, individual, both]
+        parties:
+          type: array
+          description: Valid values for Contract.ourParty
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                example: lessee
+              name:
+                type: string
+                example: Bên thuê
+        governingLaws:
+          type: array
+          items:
+            type: string
+          example: [Bộ luật Dân sự 2015, Luật Kinh doanh bất động sản 2023]
+        mandatoryClauses:
+          type: array
+          description: Clause categories flagged as a "missing_clause" finding when absent
+          items:
+            $ref: '#/components/schemas/ClauseCategoryRef'
+        industries:
+          type: array
+          description: Every industry, with the extra checks and mandatory clauses this profile adds for it (empty when the profile has no rule for that industry)
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                example: fnb
+              name:
+                type: string
+                example: Ăn uống (F&B)
+              checks:
+                type: array
+                items:
+                  type: string
+              extraMandatoryClauses:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClauseCategoryRef'
+
+    ClauseCategoryRef:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
 
     Clause:
       type: object
@@ -450,7 +535,16 @@ components:
           maxLength: 300
         type:
           type: string
-          enum: [sales, service, labor, saas]
+          description: Contract profile code or alias (see GET /contract-profiles). Unknown codes return 400.
+          example: sales
+        ourParty:
+          type: string
+          description: Optional. One of the profile's party codes; risks are then judged from this party's point of view
+          example: buyer
+        industry:
+          type: string
+          description: Optional. Industry code; adds the profile's industry-specific checks and mandatory clauses
+          example: fnb
         file:
           type: string
           format: binary
@@ -747,7 +841,11 @@ paths:
           schema: { type: string, enum: [asc, desc] }
         - in: query
           name: type
-          schema: { type: string, enum: [sales, service, labor, saas] }
+          schema: { type: string }
+          description: Contract profile code or alias (see GET /contract-profiles). Unknown codes return 400.
+        - in: query
+          name: industry
+          schema: { type: string }
         - in: query
           name: status
           schema: { type: string }
@@ -996,7 +1094,7 @@ paths:
     post:
       tags: [Contracts]
       summary: Run hybrid (rule-based + LLM) risk detection for a contract, grounded with RAG citations
-      description: Requires clauses to already be segmented (segmentationStatus = completed). Produces two kinds of findings - "clause_risk" (detectedBy=llm, Gemini reviews each clause, retrieving relevant legal excerpts per clause via vector search and citing the ones it relied on) and "missing_clause" (a rule determines which mandatory clause types - per ClauseTypeTaxonomy.isMandatory/applicableContractTypes - are absent, then Gemini explains each and drafts a clause to add; detectedBy=hybrid, or rule if Gemini skipped it). Each finding has problem / consequences / legalBasis / recommendations / proposedRevision. Also sets the version overallAssessment and overallRiskLevel. The new findings replace the previous ones only once saved successfully. Returns 409 if a run is already in progress for the contract (a run stuck over 10 minutes is considered stale). Rate-limited (AI cost control).
+      description: Requires clauses to already be segmented (segmentationStatus = completed). Produces two kinds of findings - "clause_risk" (detectedBy=llm, Gemini reviews each clause, retrieving relevant legal excerpts per clause via vector search and citing the ones it relied on) and "missing_clause" (a rule determines which mandatory clause types - per the contract profile's mandatoryClauses plus the extra mandatory clauses of the contract's industry - are absent, then Gemini explains each and drafts a clause to add; detectedBy=hybrid, or rule if Gemini skipped it). Each finding has problem / consequences / legalBasis / recommendations / proposedRevision. Also sets the version overallAssessment and overallRiskLevel. The new findings replace the previous ones only once saved successfully. Returns 409 if a run is already in progress for the contract (a run stuck over 10 minutes is considered stale). Rate-limited (AI cost control).
       requestBody:
         required: false
         content:
@@ -1330,6 +1428,21 @@ paths:
             text/event-stream:
               schema:
                 type: string
+
+  /contract-profiles:
+    get:
+      tags: [ContractProfiles]
+      summary: List the supported contract types with their parties, governing law, mandatory clauses and industry rules
+      description: Use a profile's code as Contract.type, one of its parties' codes as ourParty, and one of its industries' codes as industry when uploading a contract.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContractProfile'
 
   /kb/legal-sources:
     get:

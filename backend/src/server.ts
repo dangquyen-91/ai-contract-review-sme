@@ -5,12 +5,14 @@ import { logger } from './config/logger';
 import { seedDefaultRoles } from './services/role.service';
 import { ensureLegalVectorIndex } from './services/legalKnowledgeIngest.service';
 import { seedDefaultClauseTaxonomy } from './services/clauseTypeTaxonomy.service';
+import { seedDefaultContractProfiles } from './services/contractProfile.service';
 import { terminateOcrWorker } from './services/textExtraction.service';
 
 async function bootstrap() {
   await connectDB();
   await seedDefaultRoles();
   await seedDefaultClauseTaxonomy();
+  await seedDefaultContractProfiles();
   await ensureLegalVectorIndex();
 
   const app = createApp();

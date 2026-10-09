@@ -1,16 +1,9 @@
 import { Type } from '@google/genai';
 import { z } from 'zod';
-import { CONTRACT_TYPES } from '../models/contract.model';
 import { RISK_SEVERITIES } from '../models/riskFinding.model';
 import { AppError } from '../errors/AppError';
 import { generateJson } from './llm.service';
-
-export const CONTRACT_TYPE_LABELS: Record<(typeof CONTRACT_TYPES)[number], string> = {
-  sales: 'hợp đồng mua bán hàng hóa',
-  service: 'hợp đồng cung ứng dịch vụ',
-  labor: 'hợp đồng lao động',
-  saas: 'hợp đồng thuê phần mềm/công nghệ (SaaS)',
-};
+import { describeReviewContext, ReviewContext } from './contractProfile.service';
 
 export interface ClauseInput {
   index: number;
@@ -142,7 +135,7 @@ const responseSchema = {
 };
 
 function buildPrompt(
-  contractType: (typeof CONTRACT_TYPES)[number],
+  context: ReviewContext,
   clauses: ClauseInput[],
   legalExcerpts: LegalExcerptInput[],
   missingClauses: MissingClauseInput[],
@@ -172,7 +165,16 @@ function buildPrompt(
           )}\nFor EACH of them, add one finding with "missingClauseCode" set to its code and "clauseIndex" omitted. Its "proposedRevision.originalText" must be omitted and "proposedRevision.revisedText" must be a full ready-to-insert clause drafted in Vietnamese.`
       : '';
 
-  return `You are a legal risk analyst reviewing a Vietnamese contract of type "${CONTRACT_TYPE_LABELS[contractType]}".
+  const industryBlock =
+    context.industryChecks.length > 0
+      ? `\n\nFor the "${context.industryName}" industry, also check these points:\n${context.industryChecks
+          .map((check) => `- ${check}`)
+          .join('\n')}\nIf a clause handles one of these points unfavorably, report it on that clause. If the contract does not address a point at all, mention it in "overallAssessment".`
+      : '';
+
+  return `You are a legal risk analyst reviewing a Vietnamese contract.
+
+${describeReviewContext(context)}
 
 Below is the list of clauses already segmented and classified from this contract. Review each clause for risk. For findings about an existing clause, set "clauseIndex" to that clause's index. Look for things like: vague scope, penalty terms, auto-renewal, unilateral termination rights, liability limitation/exclusion, unfavorable payment terms, one-sided obligations.
 
@@ -187,7 +189,7 @@ Rules:
 - "recommendations": 1-3 Vietnamese bullet strings on how to fix the clause.
 - "proposedRevision": for an existing clause, "originalText" MUST be copied verbatim from the clause text (the sentence(s) to replace), "revisedText" is the replacement text in the same language as the contract, "reason" is one short Vietnamese sentence on why the change helps.
 - "overallAssessment": 2-5 Vietnamese bullet strings giving an overall evaluation of the contract (completeness, which party it favors, the most serious risks).
-- If there are no risks and nothing is missing, return an empty "findings" array.${focusBlock}${legalContextBlock}${missingBlock}
+- If there are no risks and nothing is missing, return an empty "findings" array.${focusBlock}${industryBlock}${legalContextBlock}${missingBlock}
 
 Clauses:
 """
@@ -196,7 +198,7 @@ ${clauseList}
 }
 
 export async function detectContractRisks(
-  contractType: (typeof CONTRACT_TYPES)[number],
+  context: ReviewContext,
   clauses: ClauseInput[],
   legalExcerpts: LegalExcerptInput[] = [],
   missingClauses: MissingClauseInput[] = [],
@@ -204,7 +206,7 @@ export async function detectContractRisks(
   signal?: AbortSignal,
 ): Promise<RiskDetectionResult> {
   const raw = await generateJson(
-    buildPrompt(contractType, clauses, legalExcerpts, missingClauses, analysisFocus),
+    buildPrompt(context, clauses, legalExcerpts, missingClauses, analysisFocus),
     responseSchema,
     signal,
   );

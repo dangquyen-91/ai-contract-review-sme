@@ -5,6 +5,7 @@ import { ContractModel } from '../models/contract.model';
 import { ContractVersionModel } from '../models/contractVersion.model';
 import { summarizeContract } from './contractSummarization.service';
 import { claimStage, getCurrentVersion } from './contractVersion.service';
+import { buildReviewContext } from './contractProfile.service';
 
 interface PopulatedClauseType {
   _id: Types.ObjectId;
@@ -25,6 +26,7 @@ export async function generateContractSummary(
   if (version.segmentationStatus !== 'completed') {
     throw AppError.badRequest('Contract clauses have not been segmented yet');
   }
+  const reviewContext = await buildReviewContext(contract);
 
   const claimed = await claimStage(version._id, 'summary', {
     requireSegmented: true,
@@ -43,7 +45,7 @@ export async function generateContractSummary(
     }
 
     const summaryPoints = await summarizeContract(
-      contract.type,
+      reviewContext,
       clauses.map((c) => ({ category: c.clauseTypeId.code, summary: c.summary })),
       claimed.analysisFocus ?? undefined,
     );
