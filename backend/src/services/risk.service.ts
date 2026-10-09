@@ -14,7 +14,12 @@ import {
   LlmProposedRevision,
 } from './riskDetection.service';
 import { searchLegalChunks, LegalChunkMatch } from './legalRetrieval.service';
-import { getCurrentVersion } from './contractVersion.service';
+import {
+  claimStage,
+  getCurrentVersion,
+  setContractStatus,
+  settledStatus,
+} from './contractVersion.service';
 import { getMandatoryTaxonomyForContractType } from './clauseTypeTaxonomy.service';
 
 const SEVERITY_RANK: Record<(typeof RISK_LEVELS)[number], number> = {
@@ -27,6 +32,8 @@ const SEVERITY_RANK: Record<(typeof RISK_LEVELS)[number], number> = {
 const MISSING_CLAUSE_SEVERITY: (typeof RISK_LEVELS)[number] = 'medium';
 
 const LEGAL_EXCERPTS_PER_CLAUSE = 3;
+
+const MAX_LEGAL_EXCERPTS = 15;
 
 interface LegalExcerptMeta {
   chunkId: string;
@@ -42,19 +49,22 @@ interface PopulatedClauseType {
 
 async function buildLegalExcerpts(
   clauses: { text: string }[],
+  signal?: AbortSignal,
 ): Promise<{ excerpts: LegalExcerptInput[]; metaByNumber: Map<number, LegalExcerptMeta> }> {
-  const perClauseMatches = await Promise.all(
-    clauses.map((c) => searchLegalChunks(c.text, LEGAL_EXCERPTS_PER_CLAUSE)),
+  const perClauseMatches = await searchLegalChunks(
+    clauses.map((c) => c.text),
+    LEGAL_EXCERPTS_PER_CLAUSE,
+    signal,
   );
 
+  const candidates = perClauseMatches
+    .flatMap((matches) => matches.map((match, rank) => ({ match, rank })))
+    .sort((a, b) => a.rank - b.rank || b.match.score - a.match.score);
+
   const matchByChunkId = new Map<string, LegalChunkMatch>();
-  for (const matches of perClauseMatches) {
-    for (const match of matches) {
-      const existing = matchByChunkId.get(match.chunkId);
-      if (!existing || match.score > existing.score) {
-        matchByChunkId.set(match.chunkId, match);
-      }
-    }
+  for (const { match } of candidates) {
+    if (matchByChunkId.size >= MAX_LEGAL_EXCERPTS) break;
+    if (!matchByChunkId.has(match.chunkId)) matchByChunkId.set(match.chunkId, match);
   }
 
   const excerpts: LegalExcerptInput[] = [];
@@ -137,9 +147,6 @@ async function attachCitations<T extends { _id: unknown; toObject: () => Record<
 
 export type RiskDetectionStage = 'retrieving_legal_sources' | 'analyzing_clauses' | 'saving_findings';
 
-// A version stuck in "processing" longer than this is assumed crashed and may be re-run.
-const PROCESSING_STALE_MS = 10 * 60 * 1000;
-
 const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim();
 
 // The LLM must quote the sentence to replace verbatim; if it did not (or omitted it), fall back
@@ -175,6 +182,7 @@ export async function detectRisks(
   contractId: string,
   analysisFocus?: string,
   onProgress?: (stage: RiskDetectionStage) => void,
+  signal?: AbortSignal,
 ) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
@@ -186,35 +194,24 @@ export async function detectRisks(
     throw AppError.badRequest('Contract clauses have not been segmented yet');
   }
 
-  const clauses = await ClauseModel.find({ contractVersionId: currentVersion._id })
-    .sort({ index: 1 })
-    .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
-  if (clauses.length === 0) {
-    throw AppError.badRequest('Contract has no clauses to analyze');
-  }
-
   // Atomically claim the run so two concurrent requests cannot both rewrite the findings.
-  const version = await ContractVersionModel.findOneAndUpdate(
-    {
-      _id: currentVersion._id,
-      $or: [
-        { riskDetectionStatus: { $ne: 'processing' } },
-        { updatedAt: { $lt: new Date(Date.now() - PROCESSING_STALE_MS) } },
-      ],
-    },
-    {
-      $set: {
-        riskDetectionStatus: 'processing',
-        ...(analysisFocus ? { analysisFocus } : {}),
-      },
-    },
-    { new: true },
-  );
+  const version = await claimStage(currentVersion._id, 'riskDetection', {
+    requireSegmented: true,
+    set: analysisFocus ? { analysisFocus } : {},
+  });
   if (!version) {
-    throw AppError.conflict('Risk detection is already running for this contract');
+    throw AppError.conflict('Risk detection is already running or clauses are being re-segmented');
   }
+  await setContractStatus(contractId, orgId, 'processing');
 
   try {
+    const clauses = await ClauseModel.find({ contractVersionId: version._id })
+      .sort({ index: 1 })
+      .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
+    if (clauses.length === 0) {
+      throw AppError.badRequest('Contract has no clauses to analyze');
+    }
+
     const presentTaxonomyIds = new Set(clauses.map((c) => c.clauseTypeId._id.toString()));
     const mandatoryTaxonomy = await getMandatoryTaxonomyForContractType(contract.type);
     const missingTaxonomy = mandatoryTaxonomy.filter(
@@ -225,8 +222,9 @@ export async function detectRisks(
     );
 
     onProgress?.('retrieving_legal_sources');
-    const { excerpts, metaByNumber } = await buildLegalExcerpts(clauses);
+    const { excerpts, metaByNumber } = await buildLegalExcerpts(clauses, signal);
 
+    signal?.throwIfAborted();
     onProgress?.('analyzing_clauses');
     const { overallAssessment, findings: llmFindings } = await detectContractRisks(
       contract.type,
@@ -234,6 +232,7 @@ export async function detectRisks(
       excerpts,
       missingTaxonomy.map((t) => ({ code: t.code, name: t.name, description: t.description })),
       version.analysisFocus ?? undefined,
+      signal,
     );
 
     const clauseByIndex = new Map(clauses.map((c) => [c.index, c]));
@@ -358,7 +357,7 @@ export async function detectRisks(
         $unset: { riskDetectionError: '' },
       },
     );
-    await ContractModel.updateOne({ _id: contractId, orgId }, { $set: { status: 'reviewed' } });
+    await setContractStatus(contractId, orgId, 'reviewed');
   } catch (err) {
     await ContractVersionModel.updateOne(
       { _id: version._id },
@@ -369,6 +368,7 @@ export async function detectRisks(
         },
       },
     );
+    await setContractStatus(contractId, orgId, settledStatus(contract.status));
     throw err;
   }
 

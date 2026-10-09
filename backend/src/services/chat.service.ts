@@ -10,7 +10,7 @@ import { CONTRACT_TYPE_LABELS } from './riskDetection.service';
 const HISTORY_LIMIT = 10;
 
 const SYSTEM_INSTRUCTION = `You are a legal assistant helping a small business owner understand a Vietnamese contract they uploaded.
-Answer in Vietnamese, in plain language, using ONLY the contract content and analysis provided in the prompt. Refer to clauses by their number (e.g. "Dieu 3" or "clause 3") when relevant.
+Answer in Vietnamese, in plain language, using ONLY the contract content and analysis provided in the prompt. Refer to clauses by their number (e.g. "Điều 3" or "clause 3") when relevant.
 If the answer is not in the contract, say so instead of guessing. You give information, not formal legal advice - recommend consulting a lawyer for important decisions.`;
 
 async function loadContractContext(orgId: string, contractId: string) {
@@ -40,15 +40,14 @@ async function buildContractContext(
     .map((c) => `[clause ${c.index + 1}]${c.title ? ` ${c.title}` : ''}\n${c.text}`)
     .join('\n\n');
 
+  const findingLines = findings.flatMap((f) => {
+    if (!f.clauseId) return [`- (${f.severity}, missing clause) ${f.title}: ${f.problem.join(' ')}`];
+    const clauseIndex = clauseIndexById.get(f.clauseId.toString());
+    if (clauseIndex === undefined) return [];
+    return [`- (${f.severity}, clause ${clauseIndex + 1}) ${f.title}: ${f.problem.join(' ')}`];
+  });
   const findingBlock =
-    findings.length > 0
-      ? findings
-          .map((f) => {
-            const where = f.clauseId ? `clause ${(clauseIndexById.get(f.clauseId.toString()) ?? 0) + 1}` : 'missing clause';
-            return `- (${f.severity}, ${where}) ${f.title}: ${f.problem.join(' ')}`;
-          })
-          .join('\n')
-      : '(no risk findings recorded)';
+    findingLines.length > 0 ? findingLines.join('\n') : '(no risk findings recorded)';
 
   return [
     `Contract type: ${CONTRACT_TYPE_LABELS[contract.type]}`,
@@ -68,7 +67,7 @@ async function buildContractContext(
 
 async function buildHistoryBlock(contractVersionId: unknown): Promise<string> {
   const recent = await ChatMessageModel.find({ contractVersionId })
-    .sort({ createdAt: -1 })
+    .sort({ createdAt: -1, _id: -1 })
     .limit(HISTORY_LIMIT);
   if (recent.length === 0) return '';
   const lines = recent
@@ -113,19 +112,18 @@ export async function askAboutContract(
   return { reply };
 }
 
-// Streams the answer chunk by chunk through onToken; the exchange is saved only once the
-// full reply has been generated, so an aborted/failed stream leaves no half-finished message.
 export async function streamAboutContract(
   orgId: string,
   userId: string,
   contractId: string,
   message: string,
   onToken: (token: string) => void,
+  signal?: AbortSignal,
 ) {
   const { versionId, prompt } = await prepareChat(orgId, contractId, message);
 
   let reply = '';
-  for await (const token of generateTextStream(prompt, SYSTEM_INSTRUCTION)) {
+  for await (const token of generateTextStream(prompt, SYSTEM_INSTRUCTION, signal)) {
     reply += token;
     onToken(token);
   }
@@ -143,5 +141,5 @@ export async function listChatMessages(orgId: string, contractId: string) {
     throw AppError.notFound('Contract not found');
   }
   const version = await getCurrentVersion(contractId);
-  return ChatMessageModel.find({ contractVersionId: version._id }).sort({ createdAt: 1 });
+  return ChatMessageModel.find({ contractVersionId: version._id }).sort({ createdAt: 1, _id: 1 });
 }

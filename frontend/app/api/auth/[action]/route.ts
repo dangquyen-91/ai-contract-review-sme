@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
+import { rememberedCookieAge, tokenMaxAge } from "@/lib/token-expiry";
 import type { AuthUser } from "@/types/auth";
 
 const allowedActions = new Set(["login", "register", "refresh", "logout"]);
-const accessTokenMaxAge = 15 * 60;
-const refreshTokenMaxAge = 7 * 24 * 60 * 60;
 
 function cookieOptions(secure: boolean) {
   return { httpOnly: true, sameSite: "lax" as const, secure, path: "/" };
@@ -50,9 +49,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
       return response;
     }
 
-    const { remember: _remember, ...credentials } = requestBody;
-    void _remember;
-    const upstreamBody = isRefresh ? { refreshToken } : credentials;
+    const upstreamBody = isRefresh ? { refreshToken } : requestBody;
     const upstream = await fetch(`${apiBaseUrl}/api/v1/auth/${action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -76,19 +73,19 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
       data: isRefresh ? { refreshed: true } : { user },
     });
     const options = cookieOptions(secure);
-    response.cookies.set("lawscan_access", accessToken, { ...options, maxAge: accessTokenMaxAge });
+    response.cookies.set("lawscan_access", accessToken, { ...options, maxAge: tokenMaxAge(accessToken) });
     response.cookies.set("lawscan_refresh", nextRefreshToken, {
       ...options,
-      ...(remember ? { maxAge: refreshTokenMaxAge } : {}),
+      ...rememberedCookieAge(remember, nextRefreshToken),
     });
     response.cookies.set("lawscan_remember", remember ? "1" : "0", {
       ...options,
-      ...(remember ? { maxAge: refreshTokenMaxAge } : {}),
+      ...rememberedCookieAge(remember, nextRefreshToken),
     });
     if (user) {
       response.cookies.set(userSessionCookie, encodeSessionUser(user), {
         ...options,
-        ...(remember ? { maxAge: refreshTokenMaxAge } : {}),
+        ...rememberedCookieAge(remember, nextRefreshToken),
       });
     }
     return response;

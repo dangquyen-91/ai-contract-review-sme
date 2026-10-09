@@ -5,6 +5,7 @@ import { logger } from './config/logger';
 import { seedDefaultRoles } from './services/role.service';
 import { ensureLegalVectorIndex } from './services/legalKnowledgeIngest.service';
 import { seedDefaultClauseTaxonomy } from './services/clauseTypeTaxonomy.service';
+import { terminateOcrWorker } from './services/textExtraction.service';
 
 async function bootstrap() {
   await connectDB();
@@ -21,6 +22,7 @@ async function bootstrap() {
   const shutdown = async (signal: string) => {
     logger.info(`${signal} received, shutting down gracefully`);
     server.close(async () => {
+      await terminateOcrWorker().catch(() => undefined);
       await disconnectDB();
       process.exit(0);
     });
