@@ -9,9 +9,59 @@ import { RiskCitationModel } from '../models/riskCitation.model';
 import { ChatMessageModel } from '../models/chatMessage.model';
 import { CreateContractInput, ListContractsQuery } from '../validations/contract.validation';
 import { logger } from '../config/logger';
-import { deleteContractFile, uploadContractFile } from './storage.service';
+import { isCloudinaryConfigured } from '../config/cloudinary';
+import {
+  createFileDownloadLink,
+  deleteContractFile,
+  LEGACY_PUBLIC_DELIVERY_TYPE,
+  makeFilePrivate,
+  PRIVATE_DELIVERY_TYPE,
+  StoredFile,
+  uploadContractFile,
+} from './storage.service';
 import { extractContractText } from './textExtraction.service';
 import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
+
+interface VersionFileFields {
+  fileKey?: string | null;
+  fileResourceType?: string | null;
+  fileDeliveryType?: string | null;
+  fileFormat?: string | null;
+}
+
+function storedFileOf(version: VersionFileFields): StoredFile | undefined {
+  if (!version.fileKey || !version.fileResourceType) return undefined;
+  return {
+    key: version.fileKey,
+    resourceType: version.fileResourceType,
+    deliveryType: version.fileDeliveryType ?? LEGACY_PUBLIC_DELIVERY_TYPE,
+    format: version.fileFormat ?? undefined,
+  };
+}
+
+async function ensurePrivateFile(versionId: Types.ObjectId, file: StoredFile): Promise<StoredFile> {
+  if (file.deliveryType === PRIVATE_DELIVERY_TYPE) return file;
+
+  let migrated: StoredFile;
+  try {
+    migrated = await makeFilePrivate(file.key, file.resourceType);
+  } catch (err) {
+    const fresh = await ContractVersionModel.findById(versionId);
+    const freshFile = fresh ? storedFileOf(fresh) : undefined;
+    if (freshFile?.deliveryType === PRIVATE_DELIVERY_TYPE) return freshFile;
+    throw err;
+  }
+
+  await ContractVersionModel.updateOne(
+    { _id: versionId },
+    {
+      $set: { fileDeliveryType: migrated.deliveryType, fileFormat: migrated.format },
+      $unset: { fileUrl: '' },
+    },
+    { strict: false },
+  );
+  return migrated;
+}
 
 interface CreateContractParams {
   orgId: string;
@@ -43,8 +93,9 @@ export async function createContract({ orgId, uploadedBy, input, file }: CreateC
       versionNumber: 1,
       createdBy: uploadedBy,
       fileKey: stored?.key,
-      fileUrl: stored?.url,
       fileResourceType: stored?.resourceType,
+      fileDeliveryType: stored?.deliveryType,
+      fileFormat: stored?.format,
       fileName: file?.name,
       mimeType: file?.mimeType,
       extractedText: extraction?.text,
@@ -56,7 +107,7 @@ export async function createContract({ orgId, uploadedBy, input, file }: CreateC
   } catch (err) {
     if (contractId) await ContractModel.deleteOne({ _id: contractId });
     if (stored) {
-      await deleteContractFile(stored.key, stored.resourceType).catch((cleanupErr) =>
+      await deleteContractFile(stored).catch((cleanupErr) =>
         logger.warn('Failed to remove uploaded contract file after a failed create', {
           fileKey: stored.key,
           error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
@@ -163,11 +214,12 @@ export async function deleteContract(orgId: string, id: string) {
   await ContractModel.deleteOne({ _id: id, orgId });
 
   await Promise.all(
-    versions.map(async ({ fileKey, fileResourceType }) => {
-      if (!fileKey || !fileResourceType) return;
-      await deleteContractFile(fileKey, fileResourceType).catch((cleanupErr) =>
+    versions.map(async (version) => {
+      const file = storedFileOf(version);
+      if (!file) return;
+      await deleteContractFile(file).catch((cleanupErr) =>
         logger.warn('Failed to remove contract file after deleting the contract', {
-          fileKey,
+          fileKey: file.key,
           error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
         }),
       );
@@ -184,8 +236,52 @@ export async function getContractText(orgId: string, id: string) {
   return {
     text: version.extractedText ?? '',
     extractionStatus: version.extractionStatus,
-    fileUrl: version.fileUrl,
     fileName: version.fileName,
     mimeType: version.mimeType,
   };
+}
+
+export async function getContractFileLink(orgId: string, id: string) {
+  const contract = await ContractModel.findOne({ _id: id, orgId });
+  if (!contract) {
+    throw AppError.notFound('Contract not found');
+  }
+  const version = await getCurrentVersion(id);
+  const file = storedFileOf(version);
+  if (!file) {
+    throw AppError.notFound('This contract has no uploaded file');
+  }
+
+  const privateFile = await ensurePrivateFile(version._id, file);
+  return {
+    ...createFileDownloadLink(privateFile),
+    fileName: version.fileName,
+    mimeType: version.mimeType,
+  };
+}
+
+export async function migrateLegacyContractFiles(): Promise<void> {
+  if (!isCloudinaryConfigured) return;
+
+  const legacyVersions = await ContractVersionModel.find({
+    fileKey: { $exists: true, $ne: null },
+    fileDeliveryType: { $exists: false },
+  });
+  if (legacyVersions.length === 0) return;
+
+  let migrated = 0;
+  for (const version of legacyVersions) {
+    const file = storedFileOf(version);
+    if (!file) continue;
+    try {
+      await ensurePrivateFile(version._id, file);
+      migrated++;
+    } catch (err) {
+      logger.warn('Failed to move a legacy contract file to private storage', {
+        fileKey: file.key,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  logger.info(`Moved ${migrated}/${legacyVersions.length} legacy contract files to private storage`);
 }

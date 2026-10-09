@@ -7,6 +7,7 @@ import { contractFileUpload } from '../middlewares/upload.middleware';
 import {
   createContractHandler,
   deleteContractHandler,
+  getContractFileHandler,
   getContractHandler,
   getContractTextHandler,
   listContractsHandler,
@@ -52,6 +53,8 @@ router.post(
 router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandler);
 
 router.get('/:id/text', validate({ params: contractIdParamSchema }), getContractTextHandler);
+
+router.get('/:id/file', validate({ params: contractIdParamSchema }), getContractFileHandler);
 
 router.get(
   '/:id/clauses',

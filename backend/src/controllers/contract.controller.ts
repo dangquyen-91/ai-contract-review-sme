@@ -48,3 +48,9 @@ export const getContractTextHandler = asyncHandler(async (req: Request, res: Res
   const text = await contractService.getContractText(user.orgId, req.params.id);
   ok(res, text);
 });
+
+export const getContractFileHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getOrganizationUser(req);
+  const link = await contractService.getContractFileLink(user.orgId, req.params.id);
+  ok(res, link);
+});

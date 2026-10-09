@@ -27,7 +27,6 @@ export type DashboardContract = {
 export type ContractTextResult = {
   text: string;
   extractionStatus: NonNullable<DashboardContract["currentVersion"]>["extractionStatus"];
-  fileUrl?: string;
   fileName?: string;
   mimeType?: string;
 };

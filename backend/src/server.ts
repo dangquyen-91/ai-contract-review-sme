@@ -6,6 +6,7 @@ import { seedDefaultRoles } from './services/role.service';
 import { ensureLegalVectorIndex } from './services/legalKnowledgeIngest.service';
 import { seedDefaultClauseTaxonomy } from './services/clauseTypeTaxonomy.service';
 import { terminateOcrWorker } from './services/textExtraction.service';
+import { migrateLegacyContractFiles } from './services/contract.service';
 
 async function bootstrap() {
   await connectDB();
@@ -17,6 +18,11 @@ async function bootstrap() {
   const server = app.listen(env.PORT, () => {
     logger.info(`Server listening on port ${env.PORT} [${env.NODE_ENV}]`);
     logger.info(`Swagger UI available at http://localhost:${env.PORT}/api-docs`);
+    migrateLegacyContractFiles().catch((err) =>
+      logger.warn('Legacy contract file migration failed', {
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
   });
 
   const shutdown = async (signal: string) => {

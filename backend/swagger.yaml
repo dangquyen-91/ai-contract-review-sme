@@ -171,11 +171,9 @@ components:
           type: string
         versionNumber:
           type: integer
-        fileUrl:
-          type: string
-          description: Cloudinary secure URL of the uploaded contract file
         fileName:
           type: string
+          description: Original file name. The file itself is stored privately - get a short-lived download link from GET /contracts/{id}/file
         mimeType:
           type: string
         extractionStatus:
@@ -1143,14 +1141,49 @@ paths:
                   extractionStatus:
                     type: string
                     enum: [pending, processing, completed, failed, unsupported]
-                  fileUrl:
-                    type: string
                   fileName:
                     type: string
                   mimeType:
                     type: string
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/file:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: Get a short-lived download link for the original contract file
+      description: Contract files are stored as private Cloudinary assets and cannot be opened without a signed link. Each call returns a new signed link that expires after 5 minutes - request a fresh one each time the file is opened instead of storing it. Files uploaded before private storage existed are moved to private storage on first access (and in the background at server start).
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    description: Signed Cloudinary download URL
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  fileName:
+                    type: string
+                  mimeType:
+                    type: string
+        '404':
+          description: Contract not found, or the contract has no uploaded file
           content:
             application/json:
               schema:
