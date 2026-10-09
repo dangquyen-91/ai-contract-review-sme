@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { LegalSourceForm } from "./legal-source-form";
 import { EmptyState, PageHeading } from "./admin-panels";
 import { Icon } from "@/components/ui/icon";
+import { AvailableOverview } from "./available-overview";
 
 type LegalSource = {
   _id: string;
@@ -90,6 +91,7 @@ export function LegalSources() {
           </button>
         </div>
       </div>
+      <AvailableOverview showLink={false} />
       {showForm && (
         <LegalSourceForm
           onCancel={() => setShowForm(false)}

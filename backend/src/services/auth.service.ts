@@ -39,11 +39,12 @@ async function ensurePersonalWorkspace(user: HydratedDocument<User>): Promise<Hy
 
 const ACCESS_TOKEN_TTL = env.JWT_ACCESS_EXPIRES_IN as SignOptions['expiresIn'];
 const REFRESH_TOKEN_TTL = env.JWT_REFRESH_EXPIRES_IN as SignOptions['expiresIn'];
+const REMEMBER_REFRESH_TOKEN_TTL = env.JWT_REFRESH_REMEMBER_EXPIRES_IN as SignOptions['expiresIn'];
 
-function signTokens(payload: AccessTokenPayload) {
+function signTokens(payload: AccessTokenPayload, remember = false) {
   const accessToken = jwt.sign(payload, env.JWT_ACCESS_SECRET, { expiresIn: ACCESS_TOKEN_TTL });
-  const refreshToken = jwt.sign({ sub: payload.sub }, env.JWT_REFRESH_SECRET, {
-    expiresIn: REFRESH_TOKEN_TTL,
+  const refreshToken = jwt.sign({ sub: payload.sub, remember }, env.JWT_REFRESH_SECRET, {
+    expiresIn: remember ? REMEMBER_REFRESH_TOKEN_TTL : REFRESH_TOKEN_TTL,
   });
   return { accessToken, refreshToken };
 }
@@ -90,14 +91,14 @@ export async function login(input: LoginInput) {
     sub: user.id,
     role: roleCodeOf(user),
     orgId: user.orgId?.toString(),
-  });
+  }, input.remember === true);
   return { user, ...tokens };
 }
 
 export async function refresh(refreshToken: string) {
-  let payload: { sub: string };
+  let payload: { sub: string; remember?: boolean };
   try {
-    payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as { sub: string };
+    payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as { sub: string; remember?: boolean };
   } catch {
     throw AppError.unauthorized('Invalid or expired refresh token');
   }
@@ -111,11 +112,12 @@ export async function refresh(refreshToken: string) {
     user = await ensurePersonalWorkspace(user) as typeof user;
   }
 
-  return signTokens({
+  const tokens = signTokens({
     sub: user.id,
     role: roleCodeOf(user),
     orgId: user.orgId?.toString(),
-  });
+  }, payload.remember === true);
+  return { user, ...tokens };
 }
 
 export async function completeOnboarding(userId: string) {

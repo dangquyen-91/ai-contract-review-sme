@@ -27,11 +27,23 @@ const headers = (role = "administrator", displayRole = role) => ({
 let sourceRequests = 0;
 let uploadedBody = "";
 let deleted = false;
+let healthAvailable = true;
+let healthRequests = 0;
 let child;
 let log = "";
 
 const backend = http.createServer(async (req, res) => {
   res.setHeader("Content-Type", "application/json");
+  if (req.url === "/api/v1/health") {
+    healthRequests++;
+    res.writeHead(healthAvailable ? 200 : 503);
+    return res.end(
+      JSON.stringify({
+        success: healthAvailable,
+        data: { status: healthAvailable ? "ok" : "unavailable" },
+      }),
+    );
+  }
   if (req.url === "/api/v1/auth/refresh") {
     let body = "";
     for await (const chunk of req) body += chunk;
@@ -114,6 +126,25 @@ async function main() {
     fetch(`${base}${route}`, { redirect: "manual", ...options });
 
   const anonymous = await get("/dashboard/admin");
+  assert.equal((await get("/api/admin/health")).status, 401);
+  assert.equal(
+    (
+      await get("/api/admin/health", {
+        headers: headers("owner", "administrator"),
+      })
+    ).status,
+    403,
+  );
+  assert.equal(healthRequests, 0);
+  const health = await get("/api/admin/health", { headers: headers() });
+  assert.equal(health.status, 200);
+  assert.equal((await health.json()).data.status, "ok");
+  healthAvailable = false;
+  assert.equal(
+    (await get("/api/admin/health", { headers: headers() })).status,
+    503,
+  );
+  healthAvailable = true;
   assert.equal(anonymous.status, 307);
   assert.equal(anonymous.headers.get("location"), "/dang-nhap");
   for (const route of [
@@ -123,6 +154,7 @@ async function main() {
     "/dashboard/admin/ai-jobs",
     "/dashboard/admin/audit-log",
     "/dashboard/admin/legal-sources",
+    "/dashboard/admin/reports",
   ]) {
     const response = await get(route, { headers: headers() });
     const html = await response.text();
@@ -210,7 +242,7 @@ async function main() {
   assert.equal(await removed.text(), "");
   assert.equal(deleted, true);
   console.log(
-    "PASS: 6 admin pages, 5 redirects, anonymous/expired sessions, forged-role denial and legal-source proxy.",
+    "PASS: admin pages, redirects, session/role denial, health and legal-source proxies.",
   );
 }
 
