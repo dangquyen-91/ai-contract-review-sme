@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { decodeSessionUser, encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
-
-const refreshTokenMaxAge = 7 * 24 * 60 * 60;
+import { rememberedCookieAge } from "@/lib/token-expiry";
 
 export async function POST(request: NextRequest) {
   const accessToken = request.cookies.get("lawscan_access")?.value;
@@ -41,7 +40,7 @@ export async function POST(request: NextRequest) {
           sameSite: "lax",
           secure: process.env.NODE_ENV === "production",
           path: "/",
-          ...(remember ? { maxAge: refreshTokenMaxAge } : {}),
+          ...rememberedCookieAge(remember, request.cookies.get("lawscan_refresh")?.value),
         });
       }
     }

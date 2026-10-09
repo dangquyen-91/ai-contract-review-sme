@@ -105,6 +105,9 @@ components:
           format: email
         password:
           type: string
+        remember:
+          type: boolean
+          description: Keep the session across browser restarts with a longer refresh token lifetime.
 
     RefreshRequest:
       type: object
