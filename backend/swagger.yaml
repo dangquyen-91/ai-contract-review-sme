@@ -277,6 +277,7 @@ components:
 
     Clause:
       type: object
+      required: [index, text, startOffset, endOffset]
       properties:
         id:
           type: string
@@ -293,7 +294,7 @@ components:
           description: Verbatim clause text extracted from the contract
         startOffset:
           type: integer
-          description: Start position (inclusive) of this clause in the extracted text returned by GET /contracts/{id}/text. Absent if the clause could not be located (or was segmented before this field existed - re-run segmentation).
+          description: Start position (inclusive) of this clause in the extracted text returned by GET /contracts/{id}/text. Clause text is always the exact slice text[startOffset, endOffset).
         endOffset:
           type: integer
           description: End position (exclusive) of this clause in the extracted text
@@ -347,7 +348,7 @@ components:
               type: string
             startOffset:
               type: integer
-              description: Offset into the text from GET /contracts/{id}/text; absent if the clause could not be located
+              description: Offset into the text from GET /contracts/{id}/text
             endOffset:
               type: integer
         expectedClauseTypeId:
@@ -1163,7 +1164,7 @@ paths:
     get:
       tags: [Contracts]
       summary: Get a short-lived download link for the original contract file
-      description: Contract files are stored as private Cloudinary assets and cannot be opened without a signed link. Each call returns a new signed link that expires after 5 minutes - request a fresh one each time the file is opened instead of storing it. Files uploaded before private storage existed are moved to private storage on first access (and in the background at server start).
+      description: Contract files are stored as private Cloudinary assets and cannot be opened without a signed link. Each call returns a new signed link that expires after 5 minutes - request a fresh one each time the file is opened instead of storing it.
       responses:
         '200':
           description: OK

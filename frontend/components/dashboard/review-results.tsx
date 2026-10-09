@@ -20,22 +20,8 @@ function locateClauses(clauses: ContractClause[], text: string): LocatedClause[]
   const located: LocatedClause[] = [];
 
   for (const clause of [...clauses].sort((a, b) => a.index - b.index)) {
-    const source = clause.text.trim();
-    const savedStart = clause.startOffset;
-    const savedEnd = clause.endOffset;
-    let start = -1;
-    let end = -1;
-
-    if (typeof savedStart === "number" && typeof savedEnd === "number" &&
-      savedStart >= cursor && savedEnd > savedStart && savedEnd <= text.length) {
-      start = savedStart;
-      end = savedEnd;
-    } else if (source) {
-      start = text.indexOf(source, cursor);
-      if (start !== -1) end = start + source.length;
-    }
-
-    if (start !== -1 && end > start) {
+    const { startOffset: start, endOffset: end } = clause;
+    if (start >= cursor && end > start && end <= text.length) {
       located.push({ ...clause, start, end });
       cursor = end;
     }

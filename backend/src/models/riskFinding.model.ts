@@ -1,4 +1,5 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
+import { decryptOnSerialize, encryptedString } from '../utils/fieldEncryption';
 
 export const RISK_FINDING_TYPES = ['clause_risk', 'missing_clause'] as const;
 
@@ -18,12 +19,12 @@ const legalBasisSchema = new Schema(
 
 const proposedRevisionSchema = new Schema(
   {
-    originalText: { type: String },
-    revisedText: { type: String, required: true },
+    originalText: { type: String, ...encryptedString },
+    revisedText: { type: String, required: true, ...encryptedString },
     reason: { type: String },
     isEdited: { type: Boolean, default: false },
   },
-  { _id: false },
+  { _id: false, ...decryptOnSerialize },
 );
 
 const riskFindingSchema = new Schema(
@@ -48,7 +49,7 @@ const riskFindingSchema = new Schema(
     status: { type: String, enum: RISK_FINDING_STATUSES, default: 'open', index: true },
     detectedBy: { type: String, enum: RISK_DETECTED_BY, required: true },
   },
-  { timestamps: true },
+  { timestamps: true, ...decryptOnSerialize },
 );
 
 riskFindingSchema.index({ contractVersionId: 1, status: 1 });

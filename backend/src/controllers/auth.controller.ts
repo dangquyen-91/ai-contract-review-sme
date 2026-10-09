@@ -14,7 +14,7 @@ function toPublicUser(user: HydratedDocument<User>) {
     email: user.email,
     role: (user.roleId as unknown as Role).code,
     orgId: user.orgId?.toString() ?? null,
-    hasCompletedOnboarding: user.hasCompletedOnboarding || Boolean(user.orgId),
+    hasCompletedOnboarding: user.hasCompletedOnboarding,
   };
 }
 

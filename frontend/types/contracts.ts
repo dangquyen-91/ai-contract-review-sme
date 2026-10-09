@@ -38,8 +38,8 @@ export type ContractClause = {
   title?: string;
   text: string;
   summary?: string;
-  startOffset?: number;
-  endOffset?: number;
+  startOffset: number;
+  endOffset: number;
 };
 
 export type RiskFinding = {
@@ -68,8 +68,8 @@ export type RiskFinding = {
   clause?: {
     index: number;
     title?: string;
-    startOffset?: number;
-    endOffset?: number;
+    startOffset: number;
+    endOffset: number;
   } | null;
 };
 

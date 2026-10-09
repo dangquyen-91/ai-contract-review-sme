@@ -3,7 +3,6 @@ import { cloudinary, isCloudinaryConfigured } from '../config/cloudinary';
 import { AppError } from '../errors/AppError';
 
 export const PRIVATE_DELIVERY_TYPE = 'private';
-export const LEGACY_PUBLIC_DELIVERY_TYPE = 'upload';
 
 const DOWNLOAD_LINK_TTL_SECONDS = 5 * 60;
 
@@ -61,16 +60,6 @@ export async function uploadContractFile(
     stream.end(buffer);
   });
 
-  return toStoredFile(result);
-}
-
-export async function makeFilePrivate(publicId: string, resourceType: string): Promise<StoredFile> {
-  assertStorageConfigured();
-  const result: UploadApiResponse = await cloudinary.uploader.rename(publicId, publicId, {
-    resource_type: resourceType,
-    type: LEGACY_PUBLIC_DELIVERY_TYPE,
-    to_type: PRIVATE_DELIVERY_TYPE,
-  });
   return toStoredFile(result);
 }
 

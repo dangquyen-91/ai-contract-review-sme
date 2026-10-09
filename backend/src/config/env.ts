@@ -13,6 +13,13 @@ const envSchema = z.object({
   JWT_REFRESH_EXPIRES_IN: z.string().default('7d'),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
 
+  DATA_ENCRYPTION_KEY: z
+    .string()
+    .refine(
+      (value) => Buffer.from(value, 'base64').length === 32,
+      'DATA_ENCRYPTION_KEY must be a base64-encoded 32-byte key',
+    ),
+
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),

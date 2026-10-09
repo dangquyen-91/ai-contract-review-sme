@@ -9,12 +9,9 @@ import { RiskCitationModel } from '../models/riskCitation.model';
 import { ChatMessageModel } from '../models/chatMessage.model';
 import { CreateContractInput, ListContractsQuery } from '../validations/contract.validation';
 import { logger } from '../config/logger';
-import { isCloudinaryConfigured } from '../config/cloudinary';
 import {
   createFileDownloadLink,
   deleteContractFile,
-  LEGACY_PUBLIC_DELIVERY_TYPE,
-  makeFilePrivate,
   PRIVATE_DELIVERY_TYPE,
   StoredFile,
   uploadContractFile,
@@ -34,33 +31,9 @@ function storedFileOf(version: VersionFileFields): StoredFile | undefined {
   return {
     key: version.fileKey,
     resourceType: version.fileResourceType,
-    deliveryType: version.fileDeliveryType ?? LEGACY_PUBLIC_DELIVERY_TYPE,
+    deliveryType: version.fileDeliveryType ?? PRIVATE_DELIVERY_TYPE,
     format: version.fileFormat ?? undefined,
   };
-}
-
-async function ensurePrivateFile(versionId: Types.ObjectId, file: StoredFile): Promise<StoredFile> {
-  if (file.deliveryType === PRIVATE_DELIVERY_TYPE) return file;
-
-  let migrated: StoredFile;
-  try {
-    migrated = await makeFilePrivate(file.key, file.resourceType);
-  } catch (err) {
-    const fresh = await ContractVersionModel.findById(versionId);
-    const freshFile = fresh ? storedFileOf(fresh) : undefined;
-    if (freshFile?.deliveryType === PRIVATE_DELIVERY_TYPE) return freshFile;
-    throw err;
-  }
-
-  await ContractVersionModel.updateOne(
-    { _id: versionId },
-    {
-      $set: { fileDeliveryType: migrated.deliveryType, fileFormat: migrated.format },
-      $unset: { fileUrl: '' },
-    },
-    { strict: false },
-  );
-  return migrated;
 }
 
 interface CreateContractParams {
@@ -252,36 +225,9 @@ export async function getContractFileLink(orgId: string, id: string) {
     throw AppError.notFound('This contract has no uploaded file');
   }
 
-  const privateFile = await ensurePrivateFile(version._id, file);
   return {
-    ...createFileDownloadLink(privateFile),
+    ...createFileDownloadLink(file),
     fileName: version.fileName,
     mimeType: version.mimeType,
   };
-}
-
-export async function migrateLegacyContractFiles(): Promise<void> {
-  if (!isCloudinaryConfigured) return;
-
-  const legacyVersions = await ContractVersionModel.find({
-    fileKey: { $exists: true, $ne: null },
-    fileDeliveryType: { $exists: false },
-  });
-  if (legacyVersions.length === 0) return;
-
-  let migrated = 0;
-  for (const version of legacyVersions) {
-    const file = storedFileOf(version);
-    if (!file) continue;
-    try {
-      await ensurePrivateFile(version._id, file);
-      migrated++;
-    } catch (err) {
-      logger.warn('Failed to move a legacy contract file to private storage', {
-        fileKey: file.key,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  }
-  logger.info(`Moved ${migrated}/${legacyVersions.length} legacy contract files to private storage`);
 }
