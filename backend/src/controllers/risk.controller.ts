@@ -3,7 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
 import * as riskService from '../services/risk.service';
-import { initSse, sendError, sendEvent } from '../utils/sse';
+import { openSseStream } from '../utils/sse';
 
 export const detectRisksHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
@@ -24,22 +24,23 @@ export const listRiskFindingsHandler = asyncHandler(async (req: Request, res: Re
 export const detectRisksStreamHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
 
-  initSse(res);
+  const stream = openSseStream(res);
   try {
     const findings = await riskService.detectRisks(
       user.orgId,
       req.params.id,
       req.body?.analysisFocus,
-      (stage) => sendEvent(res, 'progress', { stage }),
+      (stage) => stream.send('progress', { stage }),
+      stream.signal,
     );
     for (const finding of findings) {
-      sendEvent(res, 'finding', finding);
+      stream.send('finding', finding);
     }
-    sendEvent(res, 'done', { total: findings.length });
+    stream.send('done', { total: findings.length });
   } catch (err) {
-    sendError(res, err);
+    stream.fail(err);
   } finally {
-    res.end();
+    stream.end();
   }
 });
 

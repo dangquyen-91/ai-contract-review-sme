@@ -4,26 +4,18 @@ import { ok, paginated } from '../utils/ApiResponse';
 import { parsePagination } from '../utils/pagination';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
 import * as contractService from '../services/contract.service';
-import { uploadContractFile } from '../services/storage.service';
 import { ListContractsQuery } from '../validations/contract.validation';
 
 export const createContractHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
 
-  const file = req.file
-    ? {
-        ...(await uploadContractFile(req.file.buffer, user.orgId, req.file.originalname)),
-        name: req.file.originalname,
-        mimeType: req.file.mimetype,
-        buffer: req.file.buffer,
-      }
-    : undefined;
-
   const contract = await contractService.createContract({
     orgId: user.orgId,
     uploadedBy: user.sub,
     input: req.body,
-    file,
+    file: req.file
+      ? { name: req.file.originalname, mimeType: req.file.mimetype, buffer: req.file.buffer }
+      : undefined,
   });
 
   ok(res, contract, 201);

@@ -11,6 +11,7 @@ ENV NODE_ENV=production PORT=4000
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev
+RUN node -e "require('tesseract.js').createWorker('vie+eng').then((w) => w.terminate())"
 COPY --from=build /app/dist ./dist
 COPY swagger.yaml ./
 EXPOSE 4000

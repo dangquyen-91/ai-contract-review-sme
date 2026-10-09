@@ -3,7 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
 import * as chatService from '../services/chat.service';
-import { initSse, sendError, sendEvent } from '../utils/sse';
+import { openSseStream } from '../utils/sse';
 
 export const askAboutContractHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
@@ -25,19 +25,20 @@ export const listChatMessagesHandler = asyncHandler(async (req: Request, res: Re
 export const streamAboutContractHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
 
-  initSse(res);
+  const stream = openSseStream(res);
   try {
     await chatService.streamAboutContract(
       user.orgId,
       user.sub,
       req.params.id,
       req.body.message,
-      (token) => sendEvent(res, 'token', { text: token }),
+      (token) => stream.send('token', { text: token }),
+      stream.signal,
     );
-    sendEvent(res, 'done', {});
+    stream.send('done', {});
   } catch (err) {
-    sendError(res, err);
+    stream.fail(err);
   } finally {
-    res.end();
+    stream.end();
   }
 });

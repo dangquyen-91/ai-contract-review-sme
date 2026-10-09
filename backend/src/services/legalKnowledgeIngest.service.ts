@@ -8,7 +8,7 @@ import {
 } from '../models/legalKnowledgeChunk.model';
 import { AppError } from '../errors/AppError';
 import { logger } from '../config/logger';
-import { embedText } from './llm.service';
+import { embedTexts } from './llm.service';
 
 export const LEGAL_CHUNK_VECTOR_INDEX_NAME = 'legal_chunk_vector_index';
 
@@ -60,6 +60,8 @@ export interface LegalChunk {
 }
 
 const MAX_CHUNK_LENGTH = 3000;
+const CHUNK_OVERLAP = 300;
+const BREAK_SEPARATORS = ['\n\n', '\n', '. ', '; ', ' '];
 
 export function chunkLegalText(fullText: string): LegalChunk[] {
   const headings = [...fullText.matchAll(ARTICLE_HEADING_RE)];
@@ -87,10 +89,30 @@ function splitLongText(text: string, articleRef: string | undefined): LegalChunk
   }
 
   const parts: LegalChunk[] = [];
-  for (let offset = 0; offset < text.length; offset += MAX_CHUNK_LENGTH) {
-    parts.push({ articleRef, chunkText: text.slice(offset, offset + MAX_CHUNK_LENGTH) });
+  let start = 0;
+  while (start < text.length) {
+    const limit = Math.min(start + MAX_CHUNK_LENGTH, text.length);
+    const end = limit === text.length ? limit : findChunkBreak(text, start, limit);
+    parts.push({ articleRef, chunkText: text.slice(start, end).trim() });
+    if (end >= text.length) break;
+    start = nextChunkStart(text, start, end);
   }
-  return parts;
+  return parts.filter((p) => p.chunkText);
+}
+
+function findChunkBreak(text: string, start: number, limit: number): number {
+  const window = text.slice(start, limit);
+  for (const separator of BREAK_SEPARATORS) {
+    const idx = window.lastIndexOf(separator);
+    if (idx > window.length / 2) return start + idx + separator.length;
+  }
+  return limit;
+}
+
+function nextChunkStart(text: string, start: number, end: number): number {
+  let next = Math.max(end - CHUNK_OVERLAP, start + 1);
+  while (next < end && !/\s/.test(text[next - 1])) next++;
+  return next;
 }
 
 export interface IngestLegalSourceParams {
@@ -110,6 +132,12 @@ export async function ingestLegalSource({
   effectiveDate,
   fullText,
 }: IngestLegalSourceParams): Promise<{ legalSourceId: string; chunkCount: number }> {
+  const chunks = chunkLegalText(fullText);
+  const embeddings = await embedTexts(
+    chunks.map((c) => c.chunkText),
+    { taskType: 'RETRIEVAL_DOCUMENT', outputDimensionality: EMBEDDING_DIMENSIONS },
+  );
+
   const legalSource = await LegalSourceModel.create({
     title,
     sourceType,
@@ -118,19 +146,20 @@ export async function ingestLegalSource({
     effectiveDate,
   });
 
-  const chunks = chunkLegalText(fullText);
-
-  let inserted = 0;
-  for (const chunk of chunks) {
-    const embedding = await embedText(chunk.chunkText, EMBEDDING_DIMENSIONS);
-    await LegalKnowledgeChunkModel.create({
-      legalSourceId: legalSource._id,
-      chunkText: chunk.chunkText,
-      articleRef: chunk.articleRef,
-      embedding,
-    });
-    inserted++;
+  try {
+    await LegalKnowledgeChunkModel.insertMany(
+      chunks.map((chunk, i) => ({
+        legalSourceId: legalSource._id,
+        chunkText: chunk.chunkText,
+        articleRef: chunk.articleRef,
+        embedding: embeddings[i],
+      })),
+    );
+  } catch (err) {
+    await LegalKnowledgeChunkModel.deleteMany({ legalSourceId: legalSource._id });
+    await LegalSourceModel.deleteOne({ _id: legalSource._id });
+    throw err;
   }
 
-  return { legalSourceId: legalSource._id.toString(), chunkCount: inserted };
+  return { legalSourceId: legalSource._id.toString(), chunkCount: chunks.length };
 }

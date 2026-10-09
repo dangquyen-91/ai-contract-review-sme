@@ -7,10 +7,19 @@ export const createContractSchema = z.object({
   type: z.enum(CONTRACT_TYPES),
 });
 
+export const CONTRACT_SORT_FIELDS = [
+  'createdAt',
+  'updatedAt',
+  'title',
+  'type',
+  'status',
+  'overallRiskLevel',
+] as const;
+
 export const listContractsQuerySchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
-  sortBy: z.string().optional(),
+  sortBy: z.enum(CONTRACT_SORT_FIELDS).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
   type: z.enum(CONTRACT_TYPES).optional(),
   status: z.enum(CONTRACT_STATUSES).optional(),
