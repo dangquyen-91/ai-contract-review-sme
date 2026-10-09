@@ -17,7 +17,12 @@ import {
 const router = Router();
 
 router.use(requireAuth);
-router.post('/', validate({ body: createOrganizationSchema }), createOrganizationHandler);
+router.post(
+  '/',
+  requireRole('owner', 'manager', 'staff', 'reviewer', 'user'),
+  validate({ body: createOrganizationSchema }),
+  createOrganizationHandler,
+);
 router.get('/:id', validate({ params: organizationIdParamSchema }), getOrganizationHandler);
 router.patch(
   '/:id',
