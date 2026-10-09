@@ -29,8 +29,8 @@ export const loginHandler = asyncHandler(async (req: Request, res: Response) => 
 });
 
 export const refreshHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tokens = await authService.refresh(req.body.refreshToken);
-  ok(res, tokens);
+  const { user, ...tokens } = await authService.refresh(req.body.refreshToken);
+  ok(res, { user: toPublicUser(user), ...tokens });
 });
 
 export const completeOnboardingHandler = asyncHandler(async (req: Request, res: Response) => {
