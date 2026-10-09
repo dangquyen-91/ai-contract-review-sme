@@ -107,7 +107,7 @@ router.get('/:id/chat', validate({ params: contractIdParamSchema }), listChatMes
 
 router.post(
   '/:id/chat',
-  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
   askAboutContractHandler,
@@ -115,7 +115,7 @@ router.post(
 
 router.post(
   '/:id/risks/detect/stream',
-  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
   detectRisksStreamHandler,
@@ -123,7 +123,7 @@ router.post(
 
 router.post(
   '/:id/chat/stream',
-  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
   streamAboutContractHandler,

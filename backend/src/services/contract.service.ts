@@ -162,11 +162,17 @@ export async function deleteContract(orgId: string, id: string) {
   await ContractVersionModel.deleteMany({ contractId: id });
   await ContractModel.deleteOne({ _id: id, orgId });
 
-  for (const version of versions) {
-    if (version.fileKey && version.fileResourceType) {
-      await deleteContractFile(version.fileKey, version.fileResourceType);
-    }
-  }
+  await Promise.all(
+    versions.map(async ({ fileKey, fileResourceType }) => {
+      if (!fileKey || !fileResourceType) return;
+      await deleteContractFile(fileKey, fileResourceType).catch((cleanupErr) =>
+        logger.warn('Failed to remove contract file after deleting the contract', {
+          fileKey,
+          error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        }),
+      );
+    }),
+  );
 }
 
 export async function getContractText(orgId: string, id: string) {

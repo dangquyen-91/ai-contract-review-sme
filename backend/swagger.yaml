@@ -793,7 +793,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/Contract'
         '400':
-          description: Validation error
+          description: Validation error or unsupported file type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File exceeds the 20MB limit
           content:
             application/json:
               schema:
@@ -1323,6 +1329,12 @@ paths:
                 $ref: '#/components/schemas/LegalSource'
         '400':
           description: Validation error, unsupported file type, or LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File exceeds the 20MB limit
           content:
             application/json:
               schema:
