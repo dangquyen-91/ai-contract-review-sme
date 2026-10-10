@@ -6,6 +6,7 @@ import { RiskFindingModel } from '../models/riskFinding.model';
 import { getCurrentVersion } from './contractVersion.service';
 import { generateText, generateTextStream } from './llm.service';
 import { CONTRACT_TYPE_LABELS } from './riskDetection.service';
+import { withUsage } from './usage.service';
 
 const HISTORY_LIMIT = 10;
 
@@ -27,7 +28,12 @@ async function loadContractContext(orgId: string, contractId: string) {
 
 async function buildContractContext(
   contract: { type: keyof typeof CONTRACT_TYPE_LABELS },
-  version: { _id: unknown; summaryPoints?: string[]; overallAssessment?: string[]; analysisFocus?: string | null },
+  version: {
+    _id: unknown;
+    summaryPoints?: string[];
+    overallAssessment?: string[];
+    analysisFocus?: string | null;
+  },
 ): Promise<string> {
   const clauses = await ClauseModel.find({ contractVersionId: version._id }).sort({ index: 1 });
   const findings = await RiskFindingModel.find({ contractVersionId: version._id }).populate<{
@@ -41,7 +47,8 @@ async function buildContractContext(
     .join('\n\n');
 
   const findingLines = findings.flatMap((f) => {
-    if (!f.clauseId) return [`- (${f.severity}, missing clause) ${f.title}: ${f.problem.join(' ')}`];
+    if (!f.clauseId)
+      return [`- (${f.severity}, missing clause) ${f.title}: ${f.problem.join(' ')}`];
     const clauseIndex = clauseIndexById.get(f.clauseId.toString());
     if (clauseIndex === undefined) return [];
     return [`- (${f.severity}, clause ${clauseIndex + 1}) ${f.title}: ${f.problem.join(' ')}`];
@@ -105,11 +112,28 @@ export async function askAboutContract(
   userId: string,
   contractId: string,
   message: string,
+  idempotencyKey: string,
+  signal?: AbortSignal,
 ) {
   const { versionId, prompt } = await prepareChat(orgId, contractId, message);
-  const reply = await generateText(prompt, SYSTEM_INSTRUCTION);
-  await saveExchange(versionId, orgId, userId, message, reply);
-  return { reply };
+  const usage = await withUsage(
+    {
+      orgId,
+      userId,
+      contractId,
+      kind: 'chat',
+      idempotencyKey,
+      payload: { versionId: versionId.toString(), message },
+    },
+    async (runSignal) => {
+      const reply = await generateText(prompt, SYSTEM_INSTRUCTION, runSignal);
+      runSignal.throwIfAborted();
+      await saveExchange(versionId, orgId, userId, message, reply);
+      return { reply };
+    },
+    signal,
+  );
+  return { ...usage.result, runId: usage.runId, replayed: usage.replayed };
 }
 
 export async function streamAboutContract(
@@ -118,21 +142,35 @@ export async function streamAboutContract(
   contractId: string,
   message: string,
   onToken: (token: string) => void,
+  idempotencyKey: string,
   signal?: AbortSignal,
 ) {
   const { versionId, prompt } = await prepareChat(orgId, contractId, message);
 
-  let reply = '';
-  for await (const token of generateTextStream(prompt, SYSTEM_INSTRUCTION, signal)) {
-    reply += token;
-    onToken(token);
-  }
-  if (!reply) {
-    throw AppError.internal('LLM returned an empty response.');
-  }
-
-  await saveExchange(versionId, orgId, userId, message, reply);
-  return { reply };
+  const usage = await withUsage(
+    {
+      orgId,
+      userId,
+      contractId,
+      kind: 'chat',
+      idempotencyKey,
+      payload: { versionId: versionId.toString(), message },
+    },
+    async (runSignal) => {
+      let reply = '';
+      for await (const token of generateTextStream(prompt, SYSTEM_INSTRUCTION, runSignal)) {
+        reply += token;
+        onToken(token);
+      }
+      runSignal.throwIfAborted();
+      if (!reply) throw AppError.internal('LLM returned an empty response.');
+      await saveExchange(versionId, orgId, userId, message, reply);
+      return { reply };
+    },
+    signal,
+  );
+  if (usage.replayed) onToken(usage.result.reply);
+  return { ...usage.result, runId: usage.runId, replayed: usage.replayed };
 }
 
 export async function listChatMessages(orgId: string, contractId: string) {

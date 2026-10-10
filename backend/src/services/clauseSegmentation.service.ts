@@ -69,8 +69,11 @@ ${sectionBlock}
 """`;
 }
 
-async function classifyBatch(sections: { id: number; text: string }[]): Promise<SectionResult[]> {
-  const raw = await generateJson(buildSectionPrompt(sections), sectionResponseSchema);
+async function classifyBatch(
+  sections: { id: number; text: string }[],
+  signal?: AbortSignal,
+): Promise<SectionResult[]> {
+  const raw = await generateJson(buildSectionPrompt(sections), sectionResponseSchema, signal);
   const parsed = sectionResultSchema.safeParse(raw);
   if (!parsed.success) {
     throw AppError.internal('LLM returned an unexpected clause classification format.');
@@ -79,14 +82,19 @@ async function classifyBatch(sections: { id: number; text: string }[]): Promise<
   return parsed.data.sections.filter((s) => ids.has(s.sectionId));
 }
 
-async function classifySections(sections: { id: number; text: string }[]) {
+async function classifySections(sections: { id: number; text: string }[], signal?: AbortSignal) {
   const byId = new Map<number, SectionResult>();
   const batches: { id: number; text: string }[][] = [];
   for (let i = 0; i < sections.length; i += SECTIONS_PER_CALL) {
     batches.push(sections.slice(i, i + SECTIONS_PER_CALL));
   }
   for (let i = 0; i < batches.length; i += MAX_PARALLEL_CALLS) {
-    const results = await Promise.all(batches.slice(i, i + MAX_PARALLEL_CALLS).map(classifyBatch));
+    const settled = await Promise.allSettled(
+      batches.slice(i, i + MAX_PARALLEL_CALLS).map((batch) => classifyBatch(batch, signal)),
+    );
+    const failure = settled.find((item) => item.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+    const results = settled.flatMap((item) => (item.status === 'fulfilled' ? [item.value] : []));
     for (const result of results.flat()) byId.set(result.sectionId, result);
   }
   return byId;
@@ -95,14 +103,15 @@ async function classifySections(sections: { id: number; text: string }[]) {
 async function classifyArticles(
   contractText: string,
   articles: ArticleSpan[],
+  signal?: AbortSignal,
 ): Promise<SegmentedClause[]> {
   const texts = articles.map((a) => contractText.slice(a.startOffset, a.endOffset));
   const sections = texts.map((text, id) => ({ id, text }));
 
-  const byId = await classifySections(sections);
+  const byId = await classifySections(sections, signal);
   const skipped = sections.filter((s) => !byId.has(s.id));
   if (skipped.length > 0) {
-    for (const [id, result] of await classifySections(skipped)) byId.set(id, result);
+    for (const [id, result] of await classifySections(skipped, signal)) byId.set(id, result);
   }
 
   const missing = sections.filter((s) => !byId.has(s.id)).length;
@@ -176,8 +185,11 @@ ${contractText}
 """`;
 }
 
-async function segmentByMarkers(contractText: string): Promise<SegmentedClause[]> {
-  const raw = await generateJson(buildMarkerPrompt(contractText), markerResponseSchema);
+async function segmentByMarkers(
+  contractText: string,
+  signal?: AbortSignal,
+): Promise<SegmentedClause[]> {
+  const raw = await generateJson(buildMarkerPrompt(contractText), markerResponseSchema, signal);
 
   const parsed = markerResultSchema.safeParse(raw);
   if (!parsed.success) {
@@ -193,10 +205,13 @@ async function segmentByMarkers(contractText: string): Promise<SegmentedClause[]
     throw AppError.internal('Could not locate any clause boundaries in the contract text.');
   }
   if (spans.length < llmClauses.length) {
-    logger.warn('Some clause start markers were not found and were merged into the previous clause', {
-      returned: llmClauses.length,
-      located: spans.length,
-    });
+    logger.warn(
+      'Some clause start markers were not found and were merged into the previous clause',
+      {
+        returned: llmClauses.length,
+        located: spans.length,
+      },
+    );
   }
 
   return spans.map((span, index) => {
@@ -213,7 +228,12 @@ async function segmentByMarkers(contractText: string): Promise<SegmentedClause[]
   });
 }
 
-export async function segmentContractClauses(contractText: string): Promise<SegmentedClause[]> {
+export async function segmentContractClauses(
+  contractText: string,
+  signal?: AbortSignal,
+): Promise<SegmentedClause[]> {
   const articles = splitByArticleHeadings(contractText);
-  return articles ? classifyArticles(contractText, articles) : segmentByMarkers(contractText);
+  return articles
+    ? classifyArticles(contractText, articles, signal)
+    : segmentByMarkers(contractText, signal);
 }

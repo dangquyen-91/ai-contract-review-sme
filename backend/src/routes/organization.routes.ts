@@ -1,5 +1,11 @@
 import { Router } from 'express';
 import {
+  getSubscriptionHandler,
+  scheduleDowngradeHandler,
+  cancelDowngradeHandler,
+} from '../controllers/subscription.controller';
+import { downgradeSchema } from '../validations/subscription.validation';
+import {
   createOrganizationHandler,
   deleteOrganizationHandler,
   getOrganizationHandler,
@@ -29,6 +35,22 @@ import {
 const router = Router();
 
 router.use(requireAuth);
+router.get(
+  '/:id/subscription',
+  validate({ params: organizationIdParamSchema }),
+  getSubscriptionHandler,
+);
+router.get('/:id/usage', validate({ params: organizationIdParamSchema }), getSubscriptionHandler);
+router.post(
+  '/:id/subscription/downgrade',
+  validate({ params: organizationIdParamSchema, body: downgradeSchema }),
+  scheduleDowngradeHandler,
+);
+router.delete(
+  '/:id/subscription/downgrade',
+  validate({ params: organizationIdParamSchema }),
+  cancelDowngradeHandler,
+);
 router.post(
   '/:id/invitations',
   requireRole('owner'),

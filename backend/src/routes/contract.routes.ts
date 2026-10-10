@@ -11,15 +11,17 @@ import {
   getContractTextHandler,
   listContractsHandler,
 } from '../controllers/contract.controller';
-import { listClausesHandler, segmentClausesHandler } from '../controllers/clause.controller';
+import { listClausesHandler } from '../controllers/clause.controller';
 import {
-  detectRisksHandler,
-  detectRisksStreamHandler,
+  analyzeContractHandler,
+  analyzeContractStreamHandler,
+  retiredAnalysisStageHandler,
+} from '../controllers/analysis.controller';
+import {
   removeProposedRevisionHandler,
   updateProposedRevisionHandler,
   listRiskFindingsHandler,
 } from '../controllers/risk.controller';
-import { generateContractSummaryHandler } from '../controllers/summary.controller';
 import {
   askAboutContractHandler,
   listChatMessagesHandler,
@@ -38,6 +40,20 @@ import {
 const router = Router();
 
 router.use(requireAuth);
+router.post(
+  '/:id/analysis',
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
+  aiLimiter,
+  validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
+  analyzeContractHandler,
+);
+router.post(
+  '/:id/analysis/stream',
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
+  aiLimiter,
+  validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
+  analyzeContractStreamHandler,
+);
 
 router.get('/', validate({ query: listContractsQuerySchema }), listContractsHandler);
 
@@ -53,18 +69,14 @@ router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandl
 
 router.get('/:id/text', validate({ params: contractIdParamSchema }), getContractTextHandler);
 
-router.get(
-  '/:id/clauses',
-  validate({ params: contractIdParamSchema }),
-  listClausesHandler,
-);
+router.get('/:id/clauses', validate({ params: contractIdParamSchema }), listClausesHandler);
 
 router.post(
   '/:id/clauses/segment',
   requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   aiLimiter,
   validate({ params: contractIdParamSchema }),
-  segmentClausesHandler,
+  retiredAnalysisStageHandler,
 );
 
 router.post(
@@ -72,21 +84,17 @@ router.post(
   requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
-  generateContractSummaryHandler,
+  retiredAnalysisStageHandler,
 );
 
-router.get(
-  '/:id/risks',
-  validate({ params: contractIdParamSchema }),
-  listRiskFindingsHandler,
-);
+router.get('/:id/risks', validate({ params: contractIdParamSchema }), listRiskFindingsHandler);
 
 router.post(
   '/:id/risks/detect',
   requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
-  detectRisksHandler,
+  retiredAnalysisStageHandler,
 );
 
 router.patch(
@@ -107,7 +115,7 @@ router.get('/:id/chat', validate({ params: contractIdParamSchema }), listChatMes
 
 router.post(
   '/:id/chat',
-  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
   askAboutContractHandler,
@@ -118,12 +126,12 @@ router.post(
   requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
-  detectRisksStreamHandler,
+  retiredAnalysisStageHandler,
 );
 
 router.post(
   '/:id/chat/stream',
-  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer'),
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
   streamAboutContractHandler,

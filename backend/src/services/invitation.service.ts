@@ -8,6 +8,7 @@ import { Role } from '../models/role.model';
 import { getRoleByCode } from './role.service';
 import { ensureInvitationEmailConfigured, sendInvitationEmail } from './invitationEmail.service';
 import { CreateInvitationInput } from '../validations/invitation.validation';
+import { assertMemberCapacity, lockSubscriptionOrganization } from './subscription.service';
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
@@ -56,6 +57,10 @@ export async function createInvitation(
 ) {
   const organization = await requireOwner(userId, orgId);
   ensureInvitationEmailConfigured();
+  await mongoose.connection.transaction(async (session) => {
+    await lockSubscriptionOrganization(orgId, session);
+    await assertMemberCapacity(orgId, session);
+  });
   const existing = await UserModel.findOne({ email: input.email });
   if (existing?.orgId) {
     throw AppError.conflict(
@@ -193,6 +198,7 @@ export async function acceptInvitation(userId: string, token: string) {
       { session, new: true },
     );
     if (!organization) throw AppError.conflict('Organization no longer exists');
+    await assertMemberCapacity(invitation.orgId.toString(), session);
     const consumed = await OrganizationInvitationModel.updateOne(
       {
         _id: invitation._id,
