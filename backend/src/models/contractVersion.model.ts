@@ -35,6 +35,14 @@ const extractionProgressSchema = new Schema(
   { _id: false },
 );
 
+const redactionSummarySchema = new Schema(
+  {
+    total: { type: Number, required: true },
+    counts: { type: Schema.Types.Mixed, default: {} },
+  },
+  { _id: false },
+);
+
 export const RISK_DETECTION_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
 
 export const SUMMARY_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
@@ -56,6 +64,7 @@ const contractVersionSchema = new Schema(
     extractionStartedAt: { type: Date },
     extractionProgress: { type: extractionProgressSchema, default: undefined },
     extractionQuality: { type: extractionQualitySchema, default: undefined },
+    redactionSummary: { type: redactionSummarySchema, default: undefined },
     segmentationStatus: {
       type: String,
       enum: SEGMENTATION_STATUSES,

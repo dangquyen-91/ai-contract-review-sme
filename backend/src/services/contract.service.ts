@@ -19,6 +19,7 @@ import {
 import { enqueueExtraction, waitForExtraction } from './extractionWorker.service';
 import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
 import { resolveContractProfile, validateContractContext } from './contractProfile.service';
+import { createRedactor, SensitiveDataType } from './redaction.service';
 
 interface CreateContractParams {
   orgId: string;
@@ -203,14 +204,21 @@ export async function deleteContract(orgId: string, id: string) {
   );
 }
 
-export async function getContractText(orgId: string, id: string) {
+export async function getContractText(orgId: string, id: string, redacted = false) {
   const contract = await ContractModel.findOne({ _id: id, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
   const version = await getCurrentVersionWithText(id);
+  const text = version.extractedText ?? '';
+  let shownText = text;
+  if (redacted && text) {
+    const profile = await resolveContractProfile(contract.type);
+    shownText = createRedactor(text, profile.redactionPolicy as SensitiveDataType[]).mask(text);
+  }
   return {
-    text: version.extractedText ?? '',
+    text: shownText,
+    redacted,
     extractionStatus: version.extractionStatus,
     fileName: version.fileName,
     mimeType: version.mimeType,

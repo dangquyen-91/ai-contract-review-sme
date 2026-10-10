@@ -4,6 +4,7 @@ import { ClauseCategory } from '../models/clauseTypeTaxonomy.model';
 import { ContractProfile, ContractProfileModel, PROFILE_SEGMENTS } from '../models/contractProfile.model';
 import { IndustryModel } from '../models/industry.model';
 import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
+import { SensitiveDataType } from './redaction.service';
 
 const DEFAULT_INDUSTRIES = [
   { code: 'fnb', name: 'Ăn uống (F&B)' },
@@ -30,7 +31,19 @@ interface DefaultProfile {
   clauseCategories: ClauseCategory[];
   mandatoryClauses: ClauseCategory[];
   industryRules?: DefaultIndustryRule[];
+  redactionPolicy: SensitiveDataType[];
 }
+
+const PERSONAL_DATA: SensitiveDataType[] = [
+  'person_name',
+  'national_id',
+  'passport',
+  'date_of_birth',
+  'phone',
+  'email',
+  'bank_account',
+  'personal_address',
+];
 
 const DEFAULT_PROFILES: DefaultProfile[] = [
   {
@@ -38,6 +51,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
     name: 'Mua bán hàng hoá',
     promptLabel: 'hợp đồng mua bán hàng hóa',
     segment: 'business',
+    redactionPolicy: PERSONAL_DATA,
     parties: [
       { code: 'buyer', name: 'Bên mua' },
       { code: 'seller', name: 'Bên bán' },
@@ -80,6 +94,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
     name: 'Cung ứng dịch vụ',
     promptLabel: 'hợp đồng cung ứng dịch vụ',
     segment: 'business',
+    redactionPolicy: PERSONAL_DATA,
     parties: [
       { code: 'client', name: 'Bên thuê dịch vụ' },
       { code: 'provider', name: 'Bên cung ứng dịch vụ' },
@@ -123,6 +138,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
     name: 'Thuê văn phòng, mặt bằng',
     promptLabel: 'hợp đồng thuê văn phòng / mặt bằng kinh doanh',
     segment: 'business',
+    redactionPolicy: [...PERSONAL_DATA, 'land_certificate'],
     parties: [
       { code: 'lessee', name: 'Bên thuê' },
       { code: 'lessor', name: 'Bên cho thuê' },
@@ -168,6 +184,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
     name: 'Hợp đồng lao động',
     promptLabel: 'hợp đồng lao động',
     segment: 'both',
+    redactionPolicy: [...PERSONAL_DATA, 'tax_code'],
     parties: [
       { code: 'employee', name: 'Người lao động' },
       { code: 'employer', name: 'Người sử dụng lao động' },
@@ -209,6 +226,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
     name: 'Đặt cọc, mua bán nhà ở',
     promptLabel: 'hợp đồng đặt cọc / mua bán nhà ở',
     segment: 'individual',
+    redactionPolicy: [...PERSONAL_DATA, 'tax_code', 'land_certificate'],
     parties: [
       { code: 'buyer', name: 'Bên mua' },
       { code: 'seller', name: 'Bên bán' },
@@ -233,6 +251,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
     name: 'Bảo hiểm nhân thọ',
     promptLabel: 'hợp đồng bảo hiểm nhân thọ',
     segment: 'individual',
+    redactionPolicy: [...PERSONAL_DATA, 'tax_code'],
     parties: [
       { code: 'policyholder', name: 'Bên mua bảo hiểm' },
       { code: 'insurer', name: 'Doanh nghiệp bảo hiểm' },
@@ -324,6 +343,7 @@ export interface ReviewContext {
   industryChecks: string[];
   clauseCategories: ClauseCategory[];
   mandatoryClauses: ClauseCategory[];
+  redactionPolicy: SensitiveDataType[];
 }
 
 export async function buildReviewContext(contract: {
@@ -350,6 +370,7 @@ export async function buildReviewContext(contract: {
     mandatoryClauses: [
       ...new Set([...profile.mandatoryClauses, ...(rule?.extraMandatoryClauses ?? [])]),
     ] as ClauseCategory[],
+    redactionPolicy: profile.redactionPolicy as SensitiveDataType[],
   };
 }
 
@@ -394,6 +415,7 @@ export async function listContractProfiles() {
     parties: profile.parties.map(({ code, name }) => ({ code, name })),
     governingLaws: profile.governingLaws,
     mandatoryClauses: profile.mandatoryClauses.map(clauseName),
+    redactionPolicy: profile.redactionPolicy,
     industries: industries.map((industry) => {
       const rule = profile.industryRules.find((r) => r.industry === industry.code);
       return {

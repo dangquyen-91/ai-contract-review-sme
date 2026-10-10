@@ -31,6 +31,7 @@ import {
   analysisFocusBodySchema,
   chatMessageBodySchema,
   contractIdParamSchema,
+  contractTextQuerySchema,
   createContractSchema,
   findingParamSchema,
   listContractsQuerySchema,
@@ -53,7 +54,11 @@ router.post(
 
 router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandler);
 
-router.get('/:id/text', validate({ params: contractIdParamSchema }), getContractTextHandler);
+router.get(
+  '/:id/text',
+  validate({ params: contractIdParamSchema, query: contractTextQuerySchema }),
+  getContractTextHandler,
+);
 
 router.get('/:id/file', validate({ params: contractIdParamSchema }), getContractFileHandler);
 

@@ -36,6 +36,10 @@ export const contractIdParamSchema = z.object({
   id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
 });
 
+export const contractTextQuerySchema = z.object({
+  redacted: z.enum(['true', 'false']).optional(),
+});
+
 export const analysisFocusBodySchema = z.object({
   analysisFocus: z.string().trim().min(1).max(1000).optional(),
 });

@@ -1,9 +1,12 @@
 import { Job, Queue, QueueEvents } from 'bullmq';
 import { addJobWithTimeout, createQueue, createQueueEvents, createWorker } from '../config/queue';
 import { logger } from '../config/logger';
+import { ContractModel } from '../models/contract.model';
 import { ContractVersionModel } from '../models/contractVersion.model';
 import { downloadContractFile, storedFileOf } from './storage.service';
 import { extractContractText, ExtractionProgress, recycleOcrIfNeeded } from './textExtraction.service';
+import { resolveContractProfile } from './contractProfile.service';
+import { detectSensitiveData, SensitiveDataType, summarizeSensitiveData } from './redaction.service';
 
 const EXTRACTION_QUEUE = 'contract-extraction';
 const MAX_ATTEMPTS = 3;
@@ -94,9 +97,19 @@ async function processExtraction(job: Job<ExtractionJobData>): Promise<Extractio
     extractionError: result.error,
     extractionQuality: result.quality,
     extractionProgress: undefined,
+    redactionSummary: await summarizeSensitiveText(fresh.contractId.toString(), result.text),
   });
   await fresh.save();
   return { status: result.status };
+}
+
+async function summarizeSensitiveText(contractId: string, text: string | undefined) {
+  if (!text) return undefined;
+  const contract = await ContractModel.findById(contractId).select('type');
+  if (!contract) return undefined;
+  const profile = await resolveContractProfile(contract.type);
+  const policy = new Set(profile.redactionPolicy as SensitiveDataType[]);
+  return summarizeSensitiveData(detectSensitiveData(text, policy));
 }
 
 export function startExtractionWorker() {

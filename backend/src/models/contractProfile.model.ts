@@ -3,6 +3,19 @@ import { CLAUSE_CATEGORIES } from './clauseTypeTaxonomy.model';
 
 export const PROFILE_SEGMENTS = ['business', 'individual', 'both'] as const;
 
+export const SENSITIVE_DATA_TYPES = [
+  'person_name',
+  'national_id',
+  'passport',
+  'date_of_birth',
+  'phone',
+  'email',
+  'bank_account',
+  'personal_address',
+  'tax_code',
+  'land_certificate',
+] as const;
+
 const partySchema = new Schema(
   {
     code: { type: String, required: true },
@@ -32,6 +45,7 @@ const contractProfileSchema = new Schema(
     clauseCategories: { type: [String], enum: CLAUSE_CATEGORIES, default: [] },
     mandatoryClauses: { type: [String], enum: CLAUSE_CATEGORIES, default: [] },
     industryRules: { type: [industryRuleSchema], default: [] },
+    redactionPolicy: { type: [String], enum: SENSITIVE_DATA_TYPES, default: [] },
   },
   { timestamps: true },
 );

@@ -201,6 +201,17 @@ components:
               type: integer
             totalPages:
               type: integer
+        redactionSummary:
+          type: object
+          description: Personal data found in the extracted text under the contract profile's redactionPolicy; these values are replaced by placeholders before any AI call
+          properties:
+            total:
+              type: integer
+            counts:
+              type: object
+              additionalProperties:
+                type: integer
+              example: { person_name: 2, national_id: 1, phone: 2, bank_account: 1 }
         extractionQuality:
           type: object
           description: How the text was extracted and how reliable it is. PDFs are read page by page - pages with a text layer use it, scanned pages are OCRed (Vietnamese + English).
@@ -458,6 +469,11 @@ components:
           items:
             type: string
           example: [Bộ luật Dân sự 2015, Luật Kinh doanh bất động sản 2023]
+        redactionPolicy:
+          type: array
+          description: Kinds of personal data replaced by placeholders before any contract text is sent to the AI provider
+          items:
+            $ref: '#/components/schemas/SensitiveDataType'
         mandatoryClauses:
           type: array
           description: Clause categories flagged as a "missing_clause" finding when absent
@@ -483,6 +499,22 @@ components:
                 type: array
                 items:
                   $ref: '#/components/schemas/ClauseCategoryRef'
+
+    SensitiveDataType:
+      type: string
+      enum:
+        [
+          person_name,
+          national_id,
+          passport,
+          date_of_birth,
+          phone,
+          email,
+          bank_account,
+          personal_address,
+          tax_code,
+          land_certificate,
+        ]
 
     ClauseCategoryRef:
       type: object
@@ -1394,7 +1426,17 @@ paths:
     get:
       tags: [Contracts]
       summary: Get the extracted text of the contract (for the document view next to the analysis)
-      description: Clause.startOffset/endOffset and RiskFinding.clause.startOffset/endOffset index into this text, so the UI can highlight the clause a finding refers to.
+      description: |
+        Clause.startOffset/endOffset and RiskFinding.clause.startOffset/endOffset index into the original text (redacted=false), so the UI can highlight the clause a finding refers to.
+        With `redacted=true` the personal data covered by the contract profile's redactionPolicy (names, ID numbers, phones, bank accounts...) is replaced by placeholders such as `[PERSON_1]` or `[PHONE_2]` - the same text the AI receives. Offsets do not apply to the redacted text.
+      parameters:
+        - in: query
+          name: redacted
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+            default: 'false'
       responses:
         '200':
           description: OK
@@ -1405,6 +1447,8 @@ paths:
                 properties:
                   text:
                     type: string
+                  redacted:
+                    type: boolean
                   extractionStatus:
                     type: string
                     enum: [pending, processing, completed, failed, unsupported]

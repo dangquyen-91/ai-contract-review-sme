@@ -48,7 +48,11 @@ export const deleteContractHandler = asyncHandler(async (req: Request, res: Resp
 
 export const getContractTextHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
-  const text = await contractService.getContractText(user.orgId, req.params.id);
+  const text = await contractService.getContractText(
+    user.orgId,
+    req.params.id,
+    req.query.redacted === 'true',
+  );
   ok(res, text);
 });
 
