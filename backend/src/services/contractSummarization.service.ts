@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AppError } from '../errors/AppError';
 import { generateJson } from './llm.service';
 import { describeReviewContext, ReviewContext } from './contractProfile.service';
+import { placeholderInstruction, Redactor } from './redaction.service';
 
 export interface ClauseSummaryInput {
   category: string;
@@ -24,7 +25,8 @@ const responseSchema = {
 function buildPrompt(
   context: ReviewContext,
   clauses: ClauseSummaryInput[],
-  analysisFocus?: string,
+  analysisFocus: string | undefined,
+  redactionNote: string,
 ): string {
   const focusBlock = analysisFocus
     ? `\n\nThe user asked for this specific analysis direction, so emphasize the parts of the contract relevant to it: "${analysisFocus}"`
@@ -38,7 +40,7 @@ ${describeReviewContext(context)}
 
 Below is a list of short summaries of each clause already extracted from the contract, in order.
 
-Write the overview as 3-5 Vietnamese bullet points ("points"), each one short sentence or two, covering: the purpose of the contract and the parties, the money involved (value, price, premium, deposit and payment schedule), the duration and key dates, and how the contract ends or renews if stated. Do not just concatenate the clause summaries - synthesize them. Do not analyze risk here (that is done separately).${focusBlock}
+Write the overview as 3-5 Vietnamese bullet points ("points"), each one short sentence or two, covering: the purpose of the contract and the parties, the money involved (value, price, premium, deposit and payment schedule), the duration and key dates, and how the contract ends or renews if stated. Do not just concatenate the clause summaries - synthesize them. Do not analyze risk here (that is done separately).${focusBlock}${redactionNote}
 
 Clause summaries:
 """
@@ -49,14 +51,23 @@ ${clauseList}
 export async function summarizeContract(
   context: ReviewContext,
   clauses: ClauseSummaryInput[],
-  analysisFocus?: string,
+  analysisFocus: string | undefined,
+  redactor: Redactor,
 ): Promise<string[]> {
-  const raw = await generateJson(buildPrompt(context, clauses, analysisFocus), responseSchema);
+  const raw = await generateJson(
+    buildPrompt(
+      context,
+      clauses.map((c) => ({ ...c, summary: redactor.mask(c.summary) })),
+      analysisFocus ? redactor.mask(analysisFocus) : undefined,
+      placeholderInstruction(redactor),
+    ),
+    responseSchema,
+  );
 
   const parsed = summaryResultSchema.safeParse(raw);
   if (!parsed.success) {
     throw AppError.internal('LLM returned an unexpected contract summary format.');
   }
 
-  return parsed.data.points;
+  return parsed.data.points.map((point) => redactor.unmask(point));
 }

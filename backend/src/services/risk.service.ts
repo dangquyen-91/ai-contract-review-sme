@@ -17,11 +17,13 @@ import { searchLegalChunks, LegalChunkMatch } from './legalRetrieval.service';
 import {
   claimStage,
   getCurrentVersion,
+  getCurrentVersionWithText,
   setContractStatus,
   settledStatus,
 } from './contractVersion.service';
 import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from './contractProfile.service';
+import { createRedactor, Redactor } from './redaction.service';
 
 const SEVERITY_RANK: Record<(typeof RISK_LEVELS)[number], number> = {
   high: 3,
@@ -50,10 +52,11 @@ interface PopulatedClauseType {
 
 async function buildLegalExcerpts(
   clauses: { text: string }[],
+  redactor: Redactor,
   signal?: AbortSignal,
 ): Promise<{ excerpts: LegalExcerptInput[]; metaByNumber: Map<number, LegalExcerptMeta> }> {
   const perClauseMatches = await searchLegalChunks(
-    clauses.map((c) => c.text),
+    clauses.map((c) => redactor.mask(c.text)),
     LEGAL_EXCERPTS_PER_CLAUSE,
     signal,
   );
@@ -190,11 +193,12 @@ export async function detectRisks(
     throw AppError.notFound('Contract not found');
   }
 
-  const currentVersion = await getCurrentVersion(contractId);
+  const currentVersion = await getCurrentVersionWithText(contractId);
   if (currentVersion.segmentationStatus !== 'completed') {
     throw AppError.badRequest('Contract clauses have not been segmented yet');
   }
   const reviewContext = await buildReviewContext(contract);
+  const redactor = createRedactor(currentVersion.extractedText ?? '', reviewContext.redactionPolicy);
 
   // Atomically claim the run so two concurrent requests cannot both rewrite the findings.
   const version = await claimStage(currentVersion._id, 'riskDetection', {
@@ -224,7 +228,7 @@ export async function detectRisks(
     );
 
     onProgress?.('retrieving_legal_sources');
-    const { excerpts, metaByNumber } = await buildLegalExcerpts(clauses, signal);
+    const { excerpts, metaByNumber } = await buildLegalExcerpts(clauses, redactor, signal);
 
     signal?.throwIfAborted();
     onProgress?.('analyzing_clauses');
@@ -234,6 +238,7 @@ export async function detectRisks(
       excerpts,
       missingTaxonomy.map((t) => ({ code: t.code, name: t.name, description: t.description })),
       version.analysisFocus ?? undefined,
+      redactor,
       signal,
     );
 

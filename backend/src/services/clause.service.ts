@@ -14,6 +14,7 @@ import {
 } from './contractVersion.service';
 import { getTaxonomyByCodes, getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from './contractProfile.service';
+import { createRedactor } from './redaction.service';
 
 export async function segmentClauses(orgId: string, contractId: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
@@ -43,6 +44,7 @@ export async function segmentClauses(orgId: string, contractId: string) {
     const clauses = await segmentContractClauses(extractedText, {
       contractLabel: reviewContext.contractLabel,
       categories: categories.map(({ code, name, description }) => ({ code, name, description })),
+      redactor: createRedactor(extractedText, reviewContext.redactionPolicy),
     });
     const taxonomyIdByCode = await getTaxonomyIdByCode();
 

@@ -4,7 +4,7 @@ import { ClauseCategory } from '../models/clauseTypeTaxonomy.model';
 import { ContractProfile, ContractProfileModel, PROFILE_SEGMENTS } from '../models/contractProfile.model';
 import { IndustryModel } from '../models/industry.model';
 import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
-import { SensitiveDataType } from './redaction.service';
+import type { SensitiveDataType } from './redaction.service';
 
 const DEFAULT_INDUSTRIES = [
   { code: 'fnb', name: 'Ăn uống (F&B)' },

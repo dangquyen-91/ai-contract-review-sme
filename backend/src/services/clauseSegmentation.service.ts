@@ -5,6 +5,7 @@ import { AppError } from '../errors/AppError';
 import { logger } from '../config/logger';
 import { ArticleSpan, splitByArticleHeadings, splitByStartMarkers } from '../utils/clauseOffsets';
 import { generateJson } from './llm.service';
+import { placeholderInstruction, Redactor } from './redaction.service';
 
 export interface SegmentedClause {
   index: number;
@@ -25,17 +26,19 @@ export interface CategoryOption {
 export interface SegmentationOptions {
   contractLabel: string;
   categories: CategoryOption[];
+  redactor: Redactor;
 }
 
 interface ClassificationSpec {
   contractLabel: string;
   categoryRule: string;
   categoryCodes: [ClauseCategory, ...ClauseCategory[]];
+  redactor: Redactor;
 }
 
 const SUMMARY_RULE = `"summary" must be a short (1-3 sentences) plain-language explanation written in Vietnamese with full diacritics, understandable to someone with no legal background.`;
 
-function buildSpec({ contractLabel, categories }: SegmentationOptions): ClassificationSpec {
+function buildSpec({ contractLabel, categories, redactor }: SegmentationOptions): ClassificationSpec {
   if (!categories.some((c) => c.code === 'other')) {
     throw AppError.internal('Clause categories must include "other".');
   }
@@ -44,6 +47,7 @@ function buildSpec({ contractLabel, categories }: SegmentationOptions): Classifi
     contractLabel,
     categoryRule: `"category" must be exactly one of the codes below. Use "other" if nothing fits (including the contract title, preamble and party details).\n${categoryList}`,
     categoryCodes: categories.map((c) => c.code) as [ClauseCategory, ...ClauseCategory[]],
+    redactor,
   };
 }
 
@@ -94,7 +98,7 @@ function buildSectionPrompt(spec: ClassificationSpec, sections: { id: number; te
 
 For EVERY section below return one item with its "sectionId", a "category" and a "summary".
 - ${spec.categoryRule}
-- ${SUMMARY_RULE}
+- ${SUMMARY_RULE}${placeholderInstruction(spec.redactor)}
 
 Sections:
 """
@@ -137,7 +141,7 @@ async function classifyArticles(
   articles: ArticleSpan[],
 ): Promise<SegmentedClause[]> {
   const texts = articles.map((a) => contractText.slice(a.startOffset, a.endOffset));
-  const sections = texts.map((text, id) => ({ id, text }));
+  const sections = texts.map((text, id) => ({ id, text: spec.redactor.mask(text) }));
 
   const byId = await classifySections(spec, sections);
   const skipped = sections.filter((s) => !byId.has(s.id));
@@ -162,7 +166,9 @@ async function classifyArticles(
       startOffset: article.startOffset,
       endOffset: article.endOffset,
       category: result?.category ?? 'other',
-      summary: result?.summary ?? 'Chưa thể tóm tắt tự động phần này của hợp đồng.',
+      summary: result
+        ? spec.redactor.unmask(result.summary)
+        : 'Chưa thể tóm tắt tự động phần này của hợp đồng.',
     };
   });
 }
@@ -211,7 +217,7 @@ Split the contract text below into individual clauses and classify each one. Do 
 - "title" is the clause heading if the contract has one, otherwise omit it.
 - ${spec.categoryRule}
 - ${SUMMARY_RULE}
-- If the text has no clear clause structure, use your best judgement to split it into logically distinct provisions.
+- If the text has no clear clause structure, use your best judgement to split it into logically distinct provisions.${placeholderInstruction(spec.redactor)}
 
 Contract text:
 """
@@ -220,8 +226,9 @@ ${contractText}
 }
 
 async function segmentByMarkers(spec: ClassificationSpec, contractText: string): Promise<SegmentedClause[]> {
+  const { masked, toOriginalOffset } = spec.redactor.maskWithOffsets(contractText);
   const schemas = markerSchemas(spec);
-  const raw = await generateJson(buildMarkerPrompt(spec, contractText), schemas.response);
+  const raw = await generateJson(buildMarkerPrompt(spec, masked), schemas.response);
 
   const parsed = schemas.result.safeParse(raw);
   if (!parsed.success) {
@@ -230,9 +237,13 @@ async function segmentByMarkers(spec: ClassificationSpec, contractText: string):
 
   const llmClauses = parsed.data.clauses;
   const spans = splitByStartMarkers(
-    contractText,
+    masked,
     llmClauses.map((c) => c.startMarker),
-  );
+  ).map((span) => ({
+    ...span,
+    startOffset: toOriginalOffset(span.startOffset),
+    endOffset: toOriginalOffset(span.endOffset),
+  }));
   if (spans.length === 0) {
     throw AppError.internal('Could not locate any clause boundaries in the contract text.');
   }
@@ -247,12 +258,12 @@ async function segmentByMarkers(spec: ClassificationSpec, contractText: string):
     const clause = llmClauses[span.markerIndex];
     return {
       index,
-      title: clause.title ?? undefined,
+      title: clause.title ? spec.redactor.unmask(clause.title) : undefined,
       text: contractText.slice(span.startOffset, span.endOffset),
       startOffset: span.startOffset,
       endOffset: span.endOffset,
       category: clause.category,
-      summary: clause.summary,
+      summary: spec.redactor.unmask(clause.summary),
     };
   });
 }

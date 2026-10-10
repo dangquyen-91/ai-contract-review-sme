@@ -4,8 +4,9 @@ import { ClauseModel } from '../models/clause.model';
 import { ContractModel } from '../models/contract.model';
 import { ContractVersionModel } from '../models/contractVersion.model';
 import { summarizeContract } from './contractSummarization.service';
-import { claimStage, getCurrentVersion } from './contractVersion.service';
+import { claimStage, getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
 import { buildReviewContext } from './contractProfile.service';
+import { createRedactor } from './redaction.service';
 
 interface PopulatedClauseType {
   _id: Types.ObjectId;
@@ -22,11 +23,12 @@ export async function generateContractSummary(
     throw AppError.notFound('Contract not found');
   }
 
-  const version = await getCurrentVersion(contractId);
+  const version = await getCurrentVersionWithText(contractId);
   if (version.segmentationStatus !== 'completed') {
     throw AppError.badRequest('Contract clauses have not been segmented yet');
   }
   const reviewContext = await buildReviewContext(contract);
+  const redactor = createRedactor(version.extractedText ?? '', reviewContext.redactionPolicy);
 
   const claimed = await claimStage(version._id, 'summary', {
     requireSegmented: true,
@@ -48,6 +50,7 @@ export async function generateContractSummary(
       reviewContext,
       clauses.map((c) => ({ category: c.clauseTypeId.code, summary: c.summary })),
       claimed.analysisFocus ?? undefined,
+      redactor,
     );
 
     await ContractVersionModel.updateOne(

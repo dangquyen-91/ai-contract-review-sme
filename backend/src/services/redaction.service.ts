@@ -244,3 +244,10 @@ export function createRedactor(sourceText: string, types: Iterable<SensitiveData
     },
   };
 }
+
+export const PLACEHOLDER_INSTRUCTION =
+  'Personal data in the contract has been replaced by placeholders such as [PERSON_1], [ID_NUMBER_1], [PHONE_1] or [BANK_ACCOUNT_1]. Treat each placeholder as the real value it stands for, copy placeholders exactly as written whenever you refer to them, and never guess or invent the real values.';
+
+export function placeholderInstruction(redactor: Redactor): string {
+  return redactor.size > 0 ? `\n\n${PLACEHOLDER_INSTRUCTION}` : '';
+}

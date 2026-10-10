@@ -3,9 +3,10 @@ import { ChatMessageModel } from '../models/chatMessage.model';
 import { ClauseModel } from '../models/clause.model';
 import { ContractModel } from '../models/contract.model';
 import { RiskFindingModel } from '../models/riskFinding.model';
-import { getCurrentVersion } from './contractVersion.service';
+import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
 import { generateText, generateTextStream } from './llm.service';
-import { buildReviewContext, describeReviewContext } from './contractProfile.service';
+import { buildReviewContext, describeReviewContext, ReviewContext } from './contractProfile.service';
+import { createRedactor, placeholderInstruction } from './redaction.service';
 
 const HISTORY_LIMIT = 10;
 
@@ -18,7 +19,7 @@ async function loadContractContext(orgId: string, contractId: string) {
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await getCurrentVersion(contractId);
+  const version = await getCurrentVersionWithText(contractId);
   if (version.segmentationStatus !== 'completed') {
     throw AppError.badRequest('Contract clauses have not been segmented yet');
   }
@@ -26,10 +27,9 @@ async function loadContractContext(orgId: string, contractId: string) {
 }
 
 async function buildContractContext(
-  contract: { type: string; ourParty?: string | null; industry?: string | null },
+  reviewContext: ReviewContext,
   version: { _id: unknown; summaryPoints?: string[]; overallAssessment?: string[]; analysisFocus?: string | null },
 ): Promise<string> {
-  const reviewContext = await buildReviewContext(contract);
   const clauses = await ClauseModel.find({ contractVersionId: version._id }).sort({ index: 1 });
   const findings = await RiskFindingModel.find({ contractVersionId: version._id }).populate<{
     expectedClauseTypeId: { name: string } | null;
@@ -81,11 +81,18 @@ async function buildHistoryBlock(contractVersionId: unknown): Promise<string> {
 async function prepareChat(orgId: string, contractId: string, message: string) {
   const { contract, version } = await loadContractContext(orgId, contractId);
 
-  const contextBlock = await buildContractContext(contract, version);
+  const reviewContext = await buildReviewContext(contract);
+  const redactor = createRedactor(version.extractedText ?? '', reviewContext.redactionPolicy);
+  const contextBlock = await buildContractContext(reviewContext, version);
   const historyBlock = await buildHistoryBlock(version._id);
-  const prompt = `${contextBlock}\n\n${historyBlock}User question: ${message}`;
+  const prompt = redactor.mask(`${contextBlock}\n\n${historyBlock}User question: ${message}`);
 
-  return { versionId: version._id, prompt };
+  return {
+    versionId: version._id,
+    prompt,
+    redactor,
+    systemInstruction: SYSTEM_INSTRUCTION + placeholderInstruction(redactor),
+  };
 }
 
 async function saveExchange(
@@ -107,8 +114,8 @@ export async function askAboutContract(
   contractId: string,
   message: string,
 ) {
-  const { versionId, prompt } = await prepareChat(orgId, contractId, message);
-  const reply = await generateText(prompt, SYSTEM_INSTRUCTION);
+  const { versionId, prompt, redactor, systemInstruction } = await prepareChat(orgId, contractId, message);
+  const reply = redactor.unmask(await generateText(prompt, systemInstruction));
   await saveExchange(versionId, orgId, userId, message, reply);
   return { reply };
 }
@@ -121,13 +128,19 @@ export async function streamAboutContract(
   onToken: (token: string) => void,
   signal?: AbortSignal,
 ) {
-  const { versionId, prompt } = await prepareChat(orgId, contractId, message);
+  const { versionId, prompt, redactor, systemInstruction } = await prepareChat(orgId, contractId, message);
+  const unmasker = redactor.createStreamUnmasker();
 
   let reply = '';
-  for await (const token of generateTextStream(prompt, SYSTEM_INSTRUCTION, signal)) {
-    reply += token;
-    onToken(token);
+  const emit = (text: string) => {
+    if (!text) return;
+    reply += text;
+    onToken(text);
+  };
+  for await (const token of generateTextStream(prompt, systemInstruction, signal)) {
+    emit(unmasker.push(token));
   }
+  emit(unmasker.flush());
   if (!reply) {
     throw AppError.internal('LLM returned an empty response.');
   }

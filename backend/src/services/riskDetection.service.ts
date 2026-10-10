@@ -4,6 +4,7 @@ import { RISK_SEVERITIES } from '../models/riskFinding.model';
 import { AppError } from '../errors/AppError';
 import { generateJson } from './llm.service';
 import { describeReviewContext, ReviewContext } from './contractProfile.service';
+import { placeholderInstruction, Redactor } from './redaction.service';
 
 export interface ClauseInput {
   index: number;
@@ -139,7 +140,8 @@ function buildPrompt(
   clauses: ClauseInput[],
   legalExcerpts: LegalExcerptInput[],
   missingClauses: MissingClauseInput[],
-  analysisFocus?: string,
+  analysisFocus: string | undefined,
+  redactionNote: string,
 ): string {
   const focusBlock = analysisFocus
     ? `\n\nThe user asked for this specific analysis direction (follow it when judging risk, e.g. which party's interests to protect): "${analysisFocus}"`
@@ -189,7 +191,7 @@ Rules:
 - "recommendations": 1-3 Vietnamese bullet strings on how to fix the clause.
 - "proposedRevision": for an existing clause, "originalText" MUST be copied verbatim from the clause text (the sentence(s) to replace), "revisedText" is the replacement text in the same language as the contract, "reason" is one short Vietnamese sentence on why the change helps.
 - "overallAssessment": 2-5 Vietnamese bullet strings giving an overall evaluation of the contract (completeness, which party it favors, the most serious risks).
-- If there are no risks and nothing is missing, return an empty "findings" array.${focusBlock}${industryBlock}${legalContextBlock}${missingBlock}
+- If there are no risks and nothing is missing, return an empty "findings" array.${focusBlock}${industryBlock}${legalContextBlock}${missingBlock}${redactionNote}
 
 Clauses:
 """
@@ -201,15 +203,24 @@ export async function detectContractRisks(
   context: ReviewContext,
   clauses: ClauseInput[],
   legalExcerpts: LegalExcerptInput[] = [],
-  missingClauses: MissingClauseInput[] = [],
-  analysisFocus?: string,
+  missingClauses: MissingClauseInput[],
+  analysisFocus: string | undefined,
+  redactor: Redactor,
   signal?: AbortSignal,
 ): Promise<RiskDetectionResult> {
   const raw = await generateJson(
-    buildPrompt(context, clauses, legalExcerpts, missingClauses, analysisFocus),
+    buildPrompt(
+      context,
+      clauses.map((c) => ({ ...c, text: redactor.mask(c.text) })),
+      legalExcerpts,
+      missingClauses,
+      analysisFocus ? redactor.mask(analysisFocus) : undefined,
+      placeholderInstruction(redactor),
+    ),
     responseSchema,
     signal,
   );
+  const unmask = (value: string) => redactor.unmask(value);
 
   const parsed = findingResultSchema.safeParse(raw);
   if (!parsed.success) {
@@ -229,23 +240,26 @@ export async function detectContractRisks(
       clauseIndex: missingClauseCode ? undefined : (f.clauseIndex ?? undefined),
       missingClauseCode,
       severity: f.severity,
-      title: f.title,
-      problem: f.problem ?? [],
-      consequences: f.consequences ?? [],
+      title: unmask(f.title),
+      problem: (f.problem ?? []).map(unmask),
+      consequences: (f.consequences ?? []).map(unmask),
       legalBasis: (f.legalBasis ?? []).map((b) => ({
-        text: b.text,
+        text: unmask(b.text),
         citedExcerptNumbers: (b.citedExcerptNumbers ?? []).filter((n) => validExcerptNumbers.has(n)),
       })),
-      recommendations: f.recommendations ?? [],
+      recommendations: (f.recommendations ?? []).map(unmask),
       proposedRevision: f.proposedRevision
         ? {
-            originalText: missingClauseCode ? undefined : (f.proposedRevision.originalText ?? undefined),
-            revisedText: f.proposedRevision.revisedText,
-            reason: f.proposedRevision.reason ?? undefined,
+            originalText:
+              missingClauseCode || !f.proposedRevision.originalText
+                ? undefined
+                : unmask(f.proposedRevision.originalText),
+            revisedText: unmask(f.proposedRevision.revisedText),
+            reason: f.proposedRevision.reason ? unmask(f.proposedRevision.reason) : undefined,
           }
         : undefined,
     });
   }
 
-  return { overallAssessment: parsed.data.overallAssessment ?? [], findings };
+  return { overallAssessment: (parsed.data.overallAssessment ?? []).map(unmask), findings };
 }
