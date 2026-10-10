@@ -54,7 +54,12 @@ router.get(
   validate({ params: organizationIdParamSchema, query: invitationPaginationSchema }),
   listMembersHandler,
 );
-router.post('/', validate({ body: createOrganizationSchema }), createOrganizationHandler);
+router.post(
+  '/',
+  requireRole('owner', 'manager', 'staff', 'reviewer', 'user'),
+  validate({ body: createOrganizationSchema }),
+  createOrganizationHandler,
+);
 router.get('/:id', validate({ params: organizationIdParamSchema }), getOrganizationHandler);
 router.patch(
   '/:id',

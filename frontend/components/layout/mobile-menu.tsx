@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { workspacePath } from "@/lib/workspace-path";
 import { getUserInitials } from "@/lib/user-display";
 import type { AuthUser } from "@/types/auth";
 
@@ -16,7 +17,7 @@ const navigationItems = [
 export function MobileMenu({ user }: { user: AuthUser | null }) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
-  const accountHref = !user?.hasCompletedOnboarding ? "/chon-to-chuc" : ["owner", "administrator", "manager"].includes(user.role) ? "/dashboard/owner" : "/dashboard/user";
+  const accountHref = workspacePath(user);
 
   return (
     <div className="lg:hidden" onKeyDown={(event) => { if (event.key === "Escape") { setOpen(false); trigger.current?.focus(); } }}>
