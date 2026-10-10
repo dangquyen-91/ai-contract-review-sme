@@ -14,7 +14,7 @@ import {
 } from './contractVersion.service';
 import { getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
 
-export async function segmentClauses(orgId: string, contractId: string) {
+export async function segmentClauses(orgId: string, contractId: string, signal?: AbortSignal) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
@@ -36,7 +36,8 @@ export async function segmentClauses(orgId: string, contractId: string) {
   await setContractStatus(contractId, orgId, 'processing');
 
   try {
-    const clauses = await segmentContractClauses(extractedText);
+    const clauses = await segmentContractClauses(extractedText, signal);
+    signal?.throwIfAborted();
     const taxonomyIdByCode = await getTaxonomyIdByCode();
 
     const oldClauseIds = await ClauseModel.find({ contractVersionId: versionId }).distinct('_id');

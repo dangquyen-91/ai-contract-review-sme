@@ -28,11 +28,25 @@ const {
 const { seedDefaultRoles, getRoleByCode } = require('../dist/services/role.service');
 const { tokensForUser } = require('../dist/services/auth.service');
 const { sendInvitationEmail } = require('../dist/services/invitationEmail.service');
+const { seedPlans, activatePaidSubscription } = require('../dist/services/subscription.service');
+const {
+  initializeSubscriptionModels,
+  SubscriptionPeriodModel,
+} = require('../dist/models/subscription.model');
 
 let repl, app, org, owner, ownerToken;
 let sequence = 0;
 async function makeUser(role = 'user', orgId, email = `user${++sequence}@example.com`) {
   const roleDoc = await getRoleByCode(role);
+  if (role === 'owner' && orgId && !(await SubscriptionPeriodModel.exists({ orgId }))) {
+    await activatePaidSubscription({
+      orgId: orgId.toString(),
+      planCode: 'business_pro',
+      amount: 999000,
+      paymentReference: `test-invitations-${orgId}`,
+      action: 'purchase',
+    });
+  }
   return (
     await UserModel.create({
       name: 'Test user',
@@ -63,6 +77,8 @@ beforeAll(async () => {
   repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(repl.getUri());
   await seedDefaultRoles();
+  await initializeSubscriptionModels();
+  await seedPlans();
   await Promise.all([UserModel.init(), Invitations.init(), OrganizationModel.init()]);
   org = await OrganizationModel.create({ name: 'Test company' });
   owner = await makeUser('owner', org._id);
@@ -85,14 +101,12 @@ test('owner sends normalized email; registration, preview, acceptance and member
     .send({ token: invitation.token });
   expect(preview.status).toBe(200);
   expect(preview.body.data.organizationName).toBe(org.name);
-  const signup = await request(app)
-    .post('/api/v1/auth/register')
-    .send({
-      name: 'New member',
-      email: invitation.email,
-      password: 'password123',
-      invitationToken: invitation.token,
-    });
+  const signup = await request(app).post('/api/v1/auth/register').send({
+    name: 'New member',
+    email: invitation.email,
+    password: 'password123',
+    invitationToken: invitation.token,
+  });
   expect(signup.status).toBe(201);
   expect(signup.body.data.user.orgId).toBeNull();
   const result = await request(app)
@@ -224,7 +238,12 @@ test('invitation login and refresh skip automatic personal workspace creation', 
   );
   const login = await request(app)
     .post('/api/v1/auth/login')
-    .send({ email: invitation.email, password: 'password123', invitationToken: invitation.token, remember: true });
+    .send({
+      email: invitation.email,
+      password: 'password123',
+      invitationToken: invitation.token,
+      remember: true,
+    });
   expect(login.status).toBe(200);
   expect(login.body.data.user.orgId).toBeNull();
   const refresh = await request(app).post('/api/v1/auth/refresh').send({
@@ -233,7 +252,9 @@ test('invitation login and refresh skip automatic personal workspace creation', 
   });
   expect(refresh.status).toBe(200);
   expect(refresh.body.data.user.email).toBe(invitation.email);
-  expect(jwt.verify(refresh.body.data.refreshToken, process.env.JWT_REFRESH_SECRET).remember).toBe(true);
+  expect(jwt.verify(refresh.body.data.refreshToken, process.env.JWT_REFRESH_SECRET).remember).toBe(
+    true,
+  );
   expect((await UserModel.findById(registration.body.data.user.id)).orgId).toBeUndefined();
 });
 

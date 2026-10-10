@@ -7,10 +7,14 @@ import { ensureLegalVectorIndex } from './services/legalKnowledgeIngest.service'
 import { seedDefaultClauseTaxonomy } from './services/clauseTypeTaxonomy.service';
 import { terminateOcrWorker } from './services/textExtraction.service';
 import { OrganizationInvitationModel } from './models/organizationInvitation.model';
+import { initializeSubscriptionModels } from './models/subscription.model';
+import { seedPlans } from './services/subscription.service';
 
 async function bootstrap() {
   await connectDB();
   await OrganizationInvitationModel.init();
+  await initializeSubscriptionModels();
+  await seedPlans();
   await seedDefaultRoles();
   await seedDefaultClauseTaxonomy();
   await ensureLegalVectorIndex();

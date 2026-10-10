@@ -40,7 +40,11 @@ export async function generateJson(
   }
 }
 
-export async function generateText(prompt: string, systemInstruction?: string): Promise<string> {
+export async function generateText(
+  prompt: string,
+  systemInstruction?: string,
+  signal?: AbortSignal,
+): Promise<string> {
   if (!client) {
     throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
   }
@@ -50,6 +54,7 @@ export async function generateText(prompt: string, systemInstruction?: string): 
     contents: prompt,
     config: {
       ...(systemInstruction ? { systemInstruction } : {}),
+      abortSignal: signal,
       httpOptions: {
         retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 5 },
       },

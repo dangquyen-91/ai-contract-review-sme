@@ -49,8 +49,13 @@ export async function summarizeContract(
   contractType: (typeof CONTRACT_TYPES)[number],
   clauses: ClauseSummaryInput[],
   analysisFocus?: string,
+  signal?: AbortSignal,
 ): Promise<string[]> {
-  const raw = await generateJson(buildPrompt(contractType, clauses, analysisFocus), responseSchema);
+  const raw = await generateJson(
+    buildPrompt(contractType, clauses, analysisFocus),
+    responseSchema,
+    signal,
+  );
 
   const parsed = summaryResultSchema.safeParse(raw);
   if (!parsed.success) {

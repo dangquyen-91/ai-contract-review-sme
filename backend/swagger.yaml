@@ -11,10 +11,19 @@ tags:
   - name: Auth
   - name: Organizations
   - name: Invitations
+  - name: Subscriptions
   - name: Contracts
   - name: LegalKB
 
 components:
+  parameters:
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      description: Reuse for retries of the same request; use a new key for a new analysis or chat message.
+      schema: { type: string, minLength: 8, maxLength: 128, pattern: '^[a-zA-Z0-9_-]+$' }
+      example: review-request-0001
   securitySchemes:
     bearerAuth:
       type: http
@@ -22,6 +31,55 @@ components:
       bearerFormat: JWT
 
   schemas:
+    SubscriptionPlan:
+      type: object
+      properties:
+        code: { type: string, enum: [personal_free, personal_pro, business_starter, business_pro] }
+        name: { type: string }
+        audience: { type: string, enum: [personal, business] }
+        price: { type: integer, description: Full monthly price in VND }
+        currency: { type: string, enum: [VND] }
+        analysisLimit: { type: integer }
+        chatLimit: { type: integer }
+        memberLimit: { type: integer, description: Includes Owner }
+    UsageCounter:
+      type: object
+      properties:
+        used: { type: integer }
+        reserved: { type: integer }
+        limit: { type: integer }
+        available: { type: integer }
+    SubscriptionState:
+      type: object
+      properties:
+        orgId: { type: string }
+        status: { type: string, enum: [active, expired, unsubscribed] }
+        plan:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/SubscriptionPlan'
+        periodId: { type: string, nullable: true }
+        startsAt: { type: string, format: date-time, nullable: true }
+        endsAt: { type: string, format: date-time, nullable: true }
+        scheduledDowngrade:
+          type: object
+          nullable: true
+          properties:
+            planCode: { type: string }
+            effectiveAt: { type: string, format: date-time }
+        futurePeriods:
+          type: array
+          items: { type: object }
+        members:
+          type: object
+          properties:
+            count: { type: integer }
+            limit: { type: integer }
+            available: { type: integer }
+        analysis:
+          $ref: '#/components/schemas/UsageCounter'
+        chat:
+          $ref: '#/components/schemas/UsageCounter'
     Error:
       type: object
       properties:
@@ -528,6 +586,154 @@ components:
           description: Legal document to chunk and embed (pdf, docx, or txt)
 
 paths:
+  /plans:
+    get:
+      tags: [Subscriptions]
+      security: []
+      summary: List the four monthly plans and separate AI quotas
+      responses:
+        '200':
+          description: Catalog seeded by the server; does not activate any subscription
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SubscriptionPlan'
+
+  /organizations/{id}/subscription:
+    get:
+      tags: [Subscriptions]
+      summary: Get current subscription, scheduled downgrade, future paid periods and quotas
+      description: Organization members only. Personal Free resets at midnight on the first day of the month in Vietnam. Business without an active plan cannot use AI or add members. Payment integration is not implemented yet.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      responses:
+        '200':
+          description: Current entitlements; unfinished expired reservations are recovered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    $ref: '#/components/schemas/SubscriptionState'
+        '403': { description: User does not belong to this organization }
+
+  /organizations/{id}/usage:
+    get:
+      tags: [Subscriptions]
+      summary: Get current plan and separate analysis/chat counters (same response as subscription)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      responses:
+        '200':
+          description: Current subscription including used, reserved, available and limit
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    $ref: '#/components/schemas/SubscriptionState'
+        '403': { description: User does not belong to this organization }
+
+  /organizations/{id}/subscription/downgrade:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, pattern: '^[a-f\d]{24}$' }
+    post:
+      tags: [Subscriptions]
+      summary: Schedule a lower plan for the next unpaid period
+      description: Owner only (or the personal account in its personal workspace). Members must fit the target plan. Invitations immediately respect the lower member limit. A paid target still requires payment; scheduling alone does not activate it. No payOS integration yet.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planCode]
+              properties:
+                planCode: { type: string, enum: [personal_free, business_starter] }
+      responses:
+        '200': { description: Scheduled planCode and effectiveAt in data }
+        '400': { description: Not a lower plan in the same family or no active paid plan }
+        '403': { description: Not the subscription owner }
+        '409': { description: Too many members or scheduled downgrade already paid }
+    delete:
+      tags: [Subscriptions]
+      summary: Cancel an unpaid scheduled downgrade
+      responses:
+        '204': { description: Cancelled }
+        '403': { description: Not the subscription owner }
+        '404': { description: No scheduled downgrade }
+        '409': { description: Scheduled downgrade has already been paid }
+
+  /contracts/{id}/analysis:
+    post:
+      tags: [Contracts, Subscriptions]
+      summary: Run a complete analysis and charge one analysis credit on success
+      description: Replaces the separate segmentation, summary and risk-detection POST endpoints. Requires extracted contract text, active plan and available quota. Reserves a credit atomically; failures release it. Repeating the same idempotency key replays the saved response without AI calls or another charge.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                analysisFocus: { type: string, maxLength: 1000 }
+      responses:
+        '200': { description: 'data contains runId, replayed and result with contract and findings' }
+        '400': { description: Invalid key, body or contract text not extracted }
+        '403': { description: Inactive plan or analysis quota exhausted }
+        '404': { description: Contract not in the user organization }
+        '409': { description: Analysis already running or conflicting idempotency key }
+
+  /contracts/{id}/analysis/stream:
+    post:
+      tags: [Contracts, Subscriptions]
+      summary: Complete analysis with SSE progress and the same one-credit accounting
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                analysisFocus: { type: string, maxLength: 1000 }
+      responses:
+        '200':
+          description: 'SSE progress {stage}, done {runId, replayed, result}, or error {status, message}. done is sent after quota is finalized.'
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '400': { description: Invalid Idempotency-Key header or input }
   /organizations/{id}/invitations:
     parameters:
       - in: path
@@ -537,7 +743,7 @@ paths:
     post:
       tags: [Invitations]
       summary: Owner sends an invitation email
-      description: One organization per user. Expires in 7 days. SMTP must be configured. Maximum 20 requests per owner per hour. Token is only sent by email.
+      description: One organization per user. Expires in 7 days. Active Business plan and an available seat (including the scheduled downgrade limit) are required. SMTP must be configured. Maximum 20 requests per owner per hour. Token is only sent by email.
       requestBody:
         required: true
         content:
@@ -1003,90 +1209,26 @@ paths:
       - in: path
         name: id
         required: true
-        schema:
-          type: string
-          pattern: '^[a-f\d]{24}$'
+        schema: { type: string }
     post:
       tags: [Contracts]
-      summary: Run clause segmentation/classification/summarization for a contract via LLM (Gemini)
-      description: Requires the contract's text to already be extracted (extractionStatus = completed). Replaces any previously segmented clauses and, on success, discards the previous analysis - risk findings/citations are deleted, summaryPoints/overallAssessment are cleared, summaryStatus/riskDetectionStatus go back to "pending" and overallRiskLevel to "none". If the LLM call fails, the previous clauses and analysis are kept. Splitting - when the text has at least 3 sequentially numbered "Điều N" headings at line starts, the server splits on them (any text before "Điều 1" becomes the first clause) and the LLM only classifies and summarizes each part; otherwise the LLM returns the first words of each clause and the server cuts the text at those points. Either way each clause's text is an exact slice of the extracted text and startOffset/endOffset always match it. Each clause is also given a short plain-language Vietnamese summary. Rate-limited (AI cost control).
+      deprecated: true
+      summary: Retired - use POST /contracts/{id}/analysis or /analysis/stream
       responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Clause'
-        '400':
-          description: Contract text not extracted yet, or LLM not configured
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '409':
-          description: Segmentation, summary or risk detection is already running for this contract
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+        '410': { description: Individual stages are retired to enforce one credit per complete analysis }
 
   /contracts/{id}/summary:
     parameters:
       - in: path
         name: id
         required: true
-        schema:
-          type: string
-          pattern: '^[a-f\d]{24}$'
+        schema: { type: string }
     post:
       tags: [Contracts]
-      summary: Generate a plain-language Vietnamese summary of the whole contract via LLM (Gemini)
-      description: Requires clauses to already be segmented (segmentationStatus = completed). Synthesizes per-clause summaries into one overview and stores it on the contract. Rate-limited (AI cost control).
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                analysisFocus:
-                  type: string
-                  minLength: 1
-                  maxLength: 1000
-                  description: Optional analysis direction; the summary emphasizes the parts relevant to it. Stored on the contract version.
+      deprecated: true
+      summary: Retired - use POST /contracts/{id}/analysis or /analysis/stream
       responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Contract'
-        '400':
-          description: Clauses not segmented yet, or LLM not configured
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '409':
-          description: Summary is already running, or clauses are being re-segmented
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+        '410': { description: Individual stages are retired to enforce one credit per complete analysis }
 
   /contracts/{id}/risks:
     parameters:
@@ -1120,52 +1262,13 @@ paths:
       - in: path
         name: id
         required: true
-        schema:
-          type: string
-          pattern: '^[a-f\d]{24}$'
+        schema: { type: string }
     post:
       tags: [Contracts]
-      summary: Run hybrid (rule-based + LLM) risk detection for a contract, grounded with RAG citations
-      description: Requires clauses to already be segmented (segmentationStatus = completed). Produces two kinds of findings - "clause_risk" (detectedBy=llm, Gemini reviews each clause, retrieving relevant legal excerpts per clause via vector search and citing the ones it relied on) and "missing_clause" (a rule determines which mandatory clause types - per ClauseTypeTaxonomy.isMandatory/applicableContractTypes - are absent, then Gemini explains each and drafts a clause to add; detectedBy=hybrid, or rule if Gemini skipped it). Each finding has problem / consequences / legalBasis / recommendations / proposedRevision. Also sets the version overallAssessment and overallRiskLevel. The new findings replace the previous ones only once saved successfully. Returns 409 if a run is already in progress for the contract (a run stuck over 10 minutes is considered stale). Rate-limited (AI cost control).
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                analysisFocus:
-                  type: string
-                  minLength: 1
-                  maxLength: 1000
-                  description: Optional analysis direction (e.g. "phân tích theo hướng có lợi cho bên A"); the LLM judges risk accordingly. Stored on the contract version and reused when not re-sent.
+      deprecated: true
+      summary: Retired - use POST /contracts/{id}/analysis or /analysis/stream
       responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/RiskFinding'
-        '400':
-          description: Clauses not segmented yet, or LLM not configured
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '409':
-          description: Risk detection is already running, or clauses are being re-segmented
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
-        '404':
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+        '410': { description: Individual stages are retired to enforce one credit per complete analysis }
 
   /contracts/{id}/risks/{findingId}:
     parameters:
@@ -1290,38 +1393,13 @@ paths:
       - in: path
         name: id
         required: true
-        schema:
-          type: string
-          pattern: '^[a-f\d]{24}$'
+        schema: { type: string }
     post:
       tags: [Contracts]
-      summary: Same as /risks/detect, but streamed as Server-Sent Events
-      description: |
-        Same behavior and body as POST /contracts/{id}/risks/detect, delivered as `text/event-stream`. Use `fetch` (not `EventSource`, which cannot POST or send an Authorization header). Events:
-        - `progress` `{ "stage": "retrieving_legal_sources" | "analyzing_clauses" | "saving_findings" }`
-        - `finding` - one RiskFinding object per event, sent after the analysis completes (the LLM returns findings as one JSON block, so they are not generated incrementally)
-        - `done` `{ "total": number }`
-        - `error` `{ "status": number, "message": string }` - the HTTP status is already 200 once streaming starts, so failures (including 404/400 such as "clauses not segmented yet") arrive as this event
-        A `: ping` comment line is sent every 15s to keep proxies from closing an idle connection - SSE clients must ignore lines starting with `:`. Closing the connection before the analysis finishes cancels the LLM call and marks riskDetectionStatus as "failed"; once the LLM has answered, the findings are saved even if the client is gone.
-        Rate-limited (AI cost control).
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                analysisFocus:
-                  type: string
-                  minLength: 1
-                  maxLength: 1000
+      deprecated: true
+      summary: Retired - use POST /contracts/{id}/analysis or /analysis/stream
       responses:
-        '200':
-          description: Event stream
-          content:
-            text/event-stream:
-              schema:
-                type: string
+        '410': { description: Individual stages are retired to enforce one credit per complete analysis }
 
   /contracts/{id}/chat:
     parameters:
@@ -1352,6 +1430,8 @@ paths:
     post:
       tags: [Contracts]
       summary: Ask a follow-up question about the contract
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       description: Requires clauses to be segmented. The answer is grounded in the contract's clauses, summary, risk findings and analysisFocus, plus the last 10 chat messages. Both the question and the answer are saved. Rate-limited (AI cost control).
       requestBody:
         required: true
@@ -1399,10 +1479,12 @@ paths:
     post:
       tags: [Contracts]
       summary: Same as POST /chat, but the answer is streamed token by token as Server-Sent Events
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       description: |
         Use `fetch` (not `EventSource`). Events:
         - `token` `{ "text": string }` - next chunk of the answer
-        - `done` `{}` - the full exchange has been saved (nothing is saved if the stream fails or is aborted)
+        - `done` `{ reply, runId, replayed }` - the exchange is saved and chat quota finalized
         - `error` `{ "status": number, "message": string }`
         A `: ping` comment line is sent every 15s to keep proxies from closing an idle connection - SSE clients must ignore lines starting with `:`. Closing the connection cancels the LLM call; if the answer had already finished generating, it is still saved.
         Rate-limited (AI cost control).

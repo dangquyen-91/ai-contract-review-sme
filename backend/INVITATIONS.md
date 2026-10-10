@@ -1,5 +1,9 @@
 # Mời thành viên vào tổ chức
 
+> Subscription: tổ chức phải có gói Business còn hiệu lực và còn chỗ để gửi/nhận
+> lời mời. Owner được tính vào số thành viên. Nếu có lịch hạ cấp, áp dụng giới hạn
+> gói đích ngay cho lời mời. Xem `SUBSCRIPTIONS.md` để biết API và quy tắc mới.
+
 Backend giữ mô hình **một tài khoản chỉ thuộc một tổ chức** (`User.orgId`, `User.roleId`).
 Chỉ owner của tổ chức được gửi/thu hồi/xem lời mời và xem thành viên. Vai trò được mời:
 `manager`, `staff`, `reviewer`. Không thêm chức năng xóa thành viên trong thay đổi này.
