@@ -5,6 +5,10 @@ jest.mock('../src/config/env', () => ({
   env: { JWT_ACCESS_SECRET: 'organization-access-test-only' },
 }));
 
+jest.mock('../src/models/user.model', () => ({
+  UserModel: { findOne: jest.fn() },
+}));
+
 jest.mock('../src/controllers/organization.controller', () => ({
   createOrganizationHandler: jest.fn((_req, res) => res.status(201).json({ success: true })),
   getOrganizationHandler: jest.fn(),
@@ -14,6 +18,7 @@ jest.mock('../src/controllers/organization.controller', () => ({
 
 const router = require('../src/routes/organization.routes').default;
 const { createOrganizationHandler } = require('../src/controllers/organization.controller');
+const { UserModel } = require('../src/models/user.model');
 let server;
 let baseUrl;
 
@@ -39,7 +44,11 @@ beforeEach(() => jest.clearAllMocks());
 async function createOrganization(role, orgId) {
   const headers = { 'Content-Type': 'application/json' };
   if (role) {
-    const token = jwt.sign({ sub: 'test-user', role, orgId }, 'organization-access-test-only', { expiresIn: '1m' });
+    const userId = '507f1f77bcf86cd799439011';
+    UserModel.findOne.mockReturnValue({
+      populate: jest.fn().mockResolvedValue({ id: userId, roleId: { code: role }, orgId }),
+    });
+    const token = jwt.sign({ sub: userId, role, orgId }, 'organization-access-test-only', { expiresIn: '1m' });
     headers.Authorization = `Bearer ${token}`;
   }
   const response = await fetch(`${baseUrl}/organizations`, {

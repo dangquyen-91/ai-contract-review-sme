@@ -10,6 +10,7 @@ security:
 tags:
   - name: Auth
   - name: Organizations
+  - name: Invitations
   - name: Contracts
   - name: LegalKB
 
@@ -85,6 +86,10 @@ components:
       type: object
       required: [name, email, password]
       properties:
+        invitationToken:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Optional token from invitation email. Register, then explicitly accept before onboarding.
         name:
           type: string
           minLength: 2
@@ -100,6 +105,10 @@ components:
       type: object
       required: [email, password]
       properties:
+        invitationToken:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Validates the invitation email and skips automatic personal workspace creation.
         email:
           type: string
           format: email
@@ -113,6 +122,10 @@ components:
       type: object
       required: [refreshToken]
       properties:
+        invitationToken:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Preserve invitation flow and skip automatic personal workspace creation.
         refreshToken:
           type: string
 
@@ -515,6 +528,125 @@ components:
           description: Legal document to chunk and embed (pdf, docx, or txt)
 
 paths:
+  /organizations/{id}/invitations:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, pattern: '^[a-f\d]{24}$' }
+    post:
+      tags: [Invitations]
+      summary: Owner sends an invitation email
+      description: One organization per user. Expires in 7 days. SMTP must be configured. Maximum 20 requests per owner per hour. Token is only sent by email.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                role: { type: string, enum: [manager, staff, reviewer] }
+      responses:
+        '201': { description: Invitation metadata after SMTP acceptance; no token or tokenHash }
+        '400': { description: Invalid email or role }
+        '401': { description: Missing, expired or stale bearer token }
+        '403': { description: Not the owner of this organization }
+        '409': { description: Pending invitation exists or recipient already belongs to an organization }
+        '429': { description: Invitation request limit exceeded }
+        '502': { description: SMTP delivery request failed; invitation marked delivery_failed }
+        '503': { description: SMTP is not configured }
+    get:
+      tags: [Invitations]
+      summary: Owner lists organization invitations
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: Paginated invitations; token hashes excluded }
+        '403': { description: Not the owner of this organization }
+
+  /organizations/{id}/invitations/{invitationId}:
+    delete:
+      tags: [Invitations]
+      summary: Owner revokes a pending invitation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+        - in: path
+          name: invitationId
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      responses:
+        '200': { description: Revoked invitation }
+        '403': { description: Not the owner of this organization }
+        '409': { description: Pending invitation not found }
+
+  /organizations/{id}/members:
+    get:
+      tags: [Organizations]
+      summary: Owner lists organization members
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: Paginated members with id, name, email, role and isActive }
+        '403': { description: Not the owner of this organization }
+
+  /invitations/preview:
+    post:
+      tags: [Invitations]
+      security: []
+      summary: Preview a valid invitation before authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, pattern: '^[a-f0-9]{64}$' }
+      responses:
+        '200': { description: Organization name, invited email, role and expiresAt }
+        '400': { description: Invalid, expired, revoked or consumed invitation }
+
+  /invitations/accept:
+    post:
+      tags: [Invitations]
+      summary: Accept an invitation and receive a new authenticated session
+      description: Requires active user with matching email and no organization. Atomically updates user and consumes invitation using a MongoDB transaction. Call before onboarding completion. Store the returned tokens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, pattern: '^[a-f0-9]{64}$' }
+      responses:
+        '200': { description: 'Session with user, accessToken and refreshToken; user includes new orgId and role' }
+        '400': { description: Invalid, expired, revoked or consumed invitation }
+        '401': { description: Missing, expired or stale bearer token }
+        '403': { description: Signed-in email does not match invitation }
+        '409': { description: User already belongs to an organization }
+
   /auth/register:
     post:
       tags: [Auth]
