@@ -12,30 +12,12 @@ import { logger } from '../config/logger';
 import {
   createFileDownloadLink,
   deleteContractFile,
-  PRIVATE_DELIVERY_TYPE,
-  StoredFile,
+  storedFileOf,
   uploadContractFile,
 } from './storage.service';
-import { extractContractText } from './textExtraction.service';
+import { enqueueExtraction, waitForExtraction } from './extractionWorker.service';
 import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
 import { resolveContractProfile, validateContractContext } from './contractProfile.service';
-
-interface VersionFileFields {
-  fileKey?: string | null;
-  fileResourceType?: string | null;
-  fileDeliveryType?: string | null;
-  fileFormat?: string | null;
-}
-
-function storedFileOf(version: VersionFileFields): StoredFile | undefined {
-  if (!version.fileKey || !version.fileResourceType) return undefined;
-  return {
-    key: version.fileKey,
-    resourceType: version.fileResourceType,
-    deliveryType: version.fileDeliveryType ?? PRIVATE_DELIVERY_TYPE,
-    format: version.fileFormat ?? undefined,
-  };
-}
 
 interface CreateContractParams {
   orgId: string;
@@ -46,16 +28,24 @@ interface CreateContractParams {
     mimeType: string;
     buffer: Buffer;
   };
+  waitForExtraction: boolean;
 }
 
-export async function createContract({ orgId, uploadedBy, input, file }: CreateContractParams) {
+export async function createContract({
+  orgId,
+  uploadedBy,
+  input,
+  file,
+  waitForExtraction: shouldWait,
+}: CreateContractParams) {
   const profile = await resolveContractProfile(input.type);
   await validateContractContext(profile, input);
 
-  const extraction = file ? await extractContractText(file.buffer, file.mimeType) : undefined;
   const stored = file ? await uploadContractFile(file.buffer, orgId, file.name) : undefined;
 
   let contractId: Types.ObjectId | undefined;
+  let versionId: Types.ObjectId | undefined;
+  let job: Awaited<ReturnType<typeof enqueueExtraction>> | undefined;
   try {
     const contract = await ContractModel.create({
       orgId,
@@ -77,14 +67,14 @@ export async function createContract({ orgId, uploadedBy, input, file }: CreateC
       fileFormat: stored?.format,
       fileName: file?.name,
       mimeType: file?.mimeType,
-      extractedText: extraction?.text,
-      extractionStatus: extraction?.status ?? 'pending',
-      extractionError: extraction?.error,
-      extractionQuality: extraction?.quality,
+      extractionStatus: stored ? 'processing' : 'pending',
+      extractionStartedAt: stored ? new Date() : undefined,
     });
+    versionId = currentVersion._id;
 
-    return { ...contract.toObject(), currentVersion: currentVersion.toObject() };
+    if (stored) job = await enqueueExtraction(currentVersion.id);
   } catch (err) {
+    if (versionId) await ContractVersionModel.deleteOne({ _id: versionId });
     if (contractId) await ContractModel.deleteOne({ _id: contractId });
     if (stored) {
       await deleteContractFile(stored).catch((cleanupErr) =>
@@ -96,6 +86,9 @@ export async function createContract({ orgId, uploadedBy, input, file }: CreateC
     }
     throw err;
   }
+
+  if (job && shouldWait) await waitForExtraction(job);
+  return getContractById(orgId, contractId.toString());
 }
 
 export async function listContracts(

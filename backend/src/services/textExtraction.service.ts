@@ -22,6 +22,13 @@ export interface ExtractionResult {
   quality?: ExtractionQuality;
 }
 
+export interface ExtractionProgress {
+  processedPages: number;
+  totalPages: number;
+}
+
+type ProgressCallback = (progress: ExtractionProgress) => void;
+
 const OCR_LANGUAGES = 'vie+eng';
 
 const PDF_MIME_TYPE = 'application/pdf';
@@ -33,6 +40,7 @@ const MAX_PDF_PAGES = 100;
 const OCR_RENDER_SCALE = 2.5;
 const LOW_OCR_CONFIDENCE = 70;
 const MAX_PENDING_OCR_PAGES_PER_WORKER = 2;
+const OCR_RECYCLE_AFTER_PAGES = 100;
 
 export function normalizeExtractedText(text: string): string {
   return text
@@ -71,11 +79,20 @@ function getOcrScheduler(): Promise<Scheduler> {
   return ocrScheduler;
 }
 
+let ocrPagesSinceStart = 0;
+let activeOcrPages = 0;
+
 export async function terminateOcr(): Promise<void> {
   if (!ocrScheduler) return;
   const pending = ocrScheduler;
   ocrScheduler = null;
+  ocrPagesSinceStart = 0;
   await (await pending).terminate();
+}
+
+export async function recycleOcrIfNeeded(): Promise<void> {
+  if (ocrPagesSinceStart < OCR_RECYCLE_AFTER_PAGES || activeOcrPages > 0) return;
+  await terminateOcr();
 }
 
 interface OcrPage {
@@ -84,9 +101,15 @@ interface OcrPage {
 }
 
 async function ocrImage(image: Buffer): Promise<OcrPage> {
-  const scheduler = await getOcrScheduler();
-  const { data } = await scheduler.addJob('recognize', image);
-  return { text: normalizeExtractedText(data.text), confidence: data.confidence };
+  activeOcrPages++;
+  try {
+    const scheduler = await getOcrScheduler();
+    const { data } = await scheduler.addJob('recognize', image);
+    ocrPagesSinceStart++;
+    return { text: normalizeExtractedText(data.text), confidence: data.confidence };
+  } finally {
+    activeOcrPages--;
+  }
 }
 
 function summarizeOcr(pages: OcrPage[]) {
@@ -104,7 +127,10 @@ function summarizeOcr(pages: OcrPage[]) {
 
 const yieldToEventLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
 
-async function extractFromPdf(buffer: Buffer): Promise<{ text: string; quality: ExtractionQuality }> {
+async function extractFromPdf(
+  buffer: Buffer,
+  onProgress?: ProgressCallback,
+): Promise<{ text: string; quality: ExtractionQuality }> {
   const mupdf = await import('mupdf');
   const doc = mupdf.Document.openDocument(buffer, PDF_MIME_TYPE);
   try {
@@ -114,6 +140,11 @@ async function extractFromPdf(buffer: Buffer): Promise<{ text: string; quality: 
     const ocrPages: OcrPage[] = [];
     const inFlight = new Set<Promise<void>>();
     const maxInFlight = env.OCR_WORKERS * MAX_PENDING_OCR_PAGES_PER_WORKER;
+    let finishedPages = 0;
+    const pageFinished = () => {
+      finishedPages++;
+      onProgress?.({ processedPages: finishedPages, totalPages: processedPages });
+    };
 
     for (let i = 0; i < processedPages; i++) {
       const page = doc.loadPage(i);
@@ -121,6 +152,7 @@ async function extractFromPdf(buffer: Buffer): Promise<{ text: string; quality: 
         const layerText = normalizeExtractedText(page.toStructuredText('preserve-whitespace').asText());
         if (layerText.length >= MIN_TEXT_LAYER_CHARS_PER_PAGE) {
           pageTexts[i] = layerText;
+          pageFinished();
         } else {
           const pixmap = page.toPixmap(
             mupdf.Matrix.scale(OCR_RENDER_SCALE, OCR_RENDER_SCALE),
@@ -133,6 +165,7 @@ async function extractFromPdf(buffer: Buffer): Promise<{ text: string; quality: 
           const job = ocrImage(png).then((result) => {
             pageTexts[i] = result.text;
             ocrPages.push(result);
+            pageFinished();
           });
           const tracked = job.finally(() => inFlight.delete(tracked));
           inFlight.add(tracked);
@@ -170,8 +203,12 @@ async function extractFromDocx(buffer: Buffer): Promise<{ text: string; quality:
   };
 }
 
-async function extractFromImage(buffer: Buffer): Promise<{ text: string; quality: ExtractionQuality }> {
+async function extractFromImage(
+  buffer: Buffer,
+  onProgress?: ProgressCallback,
+): Promise<{ text: string; quality: ExtractionQuality }> {
   const page = await ocrImage(buffer);
+  onProgress?.({ processedPages: 1, totalPages: 1 });
   return {
     text: page.text,
     quality: { method: 'ocr', pageCount: 1, ...summarizeOcr([page]) },
@@ -181,15 +218,16 @@ async function extractFromImage(buffer: Buffer): Promise<{ text: string; quality
 export async function extractContractText(
   buffer: Buffer,
   mimeType: string,
+  onProgress?: ProgressCallback,
 ): Promise<ExtractionResult> {
   try {
     let extracted: { text: string; quality: ExtractionQuality };
     if (mimeType === PDF_MIME_TYPE) {
-      extracted = await extractFromPdf(buffer);
+      extracted = await extractFromPdf(buffer, onProgress);
     } else if (mimeType === DOCX_MIME_TYPE) {
       extracted = await extractFromDocx(buffer);
     } else if (OCR_IMAGE_MIME_TYPES.has(mimeType)) {
-      extracted = await extractFromImage(buffer);
+      extracted = await extractFromImage(buffer, onProgress);
     } else {
       return { status: 'unsupported', error: `No text extraction available for ${mimeType}` };
     }

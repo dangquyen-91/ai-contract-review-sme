@@ -8,6 +8,7 @@ import { ListContractsQuery } from '../validations/contract.validation';
 
 export const createContractHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
+  const respondAsync = /\brespond-async\b/i.test(req.get('Prefer') ?? '');
 
   const contract = await contractService.createContract({
     orgId: user.orgId,
@@ -16,9 +17,11 @@ export const createContractHandler = asyncHandler(async (req: Request, res: Resp
     file: req.file
       ? { name: req.file.originalname, mimeType: req.file.mimetype, buffer: req.file.buffer }
       : undefined,
+    waitForExtraction: !respondAsync,
   });
 
-  ok(res, contract, 201);
+  if (respondAsync) res.set('Preference-Applied', 'respond-async');
+  ok(res, contract, respondAsync ? 202 : 201);
 });
 
 export const listContractsHandler = asyncHandler(async (req: Request, res: Response) => {

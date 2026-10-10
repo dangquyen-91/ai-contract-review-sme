@@ -185,10 +185,21 @@ components:
         extractionStatus:
           type: string
           enum: [pending, processing, completed, failed, unsupported]
-          description: Status of text extraction (OCR/parsing) from the uploaded file
+          description: Status of text extraction (OCR/parsing) from the uploaded file. Extraction runs in a background worker; "processing" means the job is queued or running.
         extractionError:
           type: string
           description: Error message when extractionStatus is "failed"
+        extractionStartedAt:
+          type: string
+          format: date-time
+        extractionProgress:
+          type: object
+          description: Present only while extraction is running
+          properties:
+            processedPages:
+              type: integer
+            totalPages:
+              type: integer
         extractionQuality:
           type: object
           description: How the text was extracted and how reliable it is. PDFs are read page by page - pages with a text layer use it, scanned pages are OCRed (Vietnamese + English).
@@ -900,6 +911,18 @@ paths:
     post:
       tags: [Contracts]
       summary: Upload a new contract
+      description: |
+        The file is stored and text extraction is queued for a background worker (OCR of a large scanned PDF can take minutes).
+        - Without a `Prefer` header the request waits for extraction to finish and returns 201, as before.
+        - With `Prefer: respond-async` it returns 202 immediately with `currentVersion.extractionStatus = "processing"`; poll GET /contracts/{id} and read `extractionProgress` until the status is completed, failed or unsupported.
+      parameters:
+        - in: header
+          name: Prefer
+          required: false
+          schema:
+            type: string
+            enum: [respond-async]
+          description: RFC 7240 preference. Send respond-async to get 202 without waiting for extraction.
       requestBody:
         required: true
         content:
@@ -908,7 +931,18 @@ paths:
               $ref: '#/components/schemas/CreateContractRequest'
       responses:
         '201':
-          description: Created
+          description: Created; extraction has finished (completed, failed or unsupported)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '202':
+          description: Accepted with Prefer respond-async; extraction is still running in the background
+          headers:
+            Preference-Applied:
+              schema:
+                type: string
+                example: respond-async
           content:
             application/json:
               schema:
@@ -921,6 +955,12 @@ paths:
                 $ref: '#/components/schemas/Error'
         '413':
           description: File exceeds the 20MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background job queue (Redis) is unavailable; nothing was saved
           content:
             application/json:
               schema:
@@ -953,9 +993,16 @@ paths:
     delete:
       tags: [Contracts]
       summary: Delete a contract
+      description: Deletes the contract, all its versions, clauses, findings, chat messages and stored files. Roles - administrator, owner, manager, and user (the owner of a personal workspace).
       responses:
         '204':
           description: No Content
+        '403':
+          description: Role not allowed to delete contracts (staff, reviewer)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
           content:

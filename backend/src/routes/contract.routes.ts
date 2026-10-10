@@ -134,7 +134,7 @@ router.post(
 
 router.delete(
   '/:id',
-  requireRole('administrator', 'owner', 'manager'),
+  requireRole('administrator', 'owner', 'manager', 'user'),
   validate({ params: contractIdParamSchema }),
   deleteContractHandler,
 );

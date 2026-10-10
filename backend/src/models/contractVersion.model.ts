@@ -27,6 +27,14 @@ const extractionQualitySchema = new Schema(
   { _id: false },
 );
 
+const extractionProgressSchema = new Schema(
+  {
+    processedPages: { type: Number, required: true },
+    totalPages: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
 export const RISK_DETECTION_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
 
 export const SUMMARY_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
@@ -45,6 +53,8 @@ const contractVersionSchema = new Schema(
     extractedText: { type: String, select: false, ...encryptedString },
     extractionStatus: { type: String, enum: EXTRACTION_STATUSES, default: 'pending', index: true },
     extractionError: { type: String },
+    extractionStartedAt: { type: Date },
+    extractionProgress: { type: extractionProgressSchema, default: undefined },
     extractionQuality: { type: extractionQualitySchema, default: undefined },
     segmentationStatus: {
       type: String,

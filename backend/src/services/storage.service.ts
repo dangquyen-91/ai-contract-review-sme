@@ -18,6 +18,23 @@ export interface FileDownloadLink {
   expiresAt: Date;
 }
 
+export interface VersionFileFields {
+  fileKey?: string | null;
+  fileResourceType?: string | null;
+  fileDeliveryType?: string | null;
+  fileFormat?: string | null;
+}
+
+export function storedFileOf(version: VersionFileFields): StoredFile | undefined {
+  if (!version.fileKey || !version.fileResourceType) return undefined;
+  return {
+    key: version.fileKey,
+    resourceType: version.fileResourceType,
+    deliveryType: version.fileDeliveryType ?? PRIVATE_DELIVERY_TYPE,
+    format: version.fileFormat ?? undefined,
+  };
+}
+
 function assertStorageConfigured() {
   if (!isCloudinaryConfigured) {
     throw AppError.internal(
@@ -46,7 +63,7 @@ export async function uploadContractFile(
     const stream = cloudinary.uploader.upload_stream(
       {
         folder: `contracts/${orgId}`,
-        resource_type: 'auto',
+        resource_type: 'raw',
         type: PRIVATE_DELIVERY_TYPE,
         filename_override: originalName,
         use_filename: true,
@@ -72,6 +89,14 @@ export function createFileDownloadLink(file: StoredFile): FileDownloadLink {
     expires_at: expiresAtSeconds,
   });
   return { url, expiresAt: new Date(expiresAtSeconds * 1000) };
+}
+
+export async function downloadContractFile(file: StoredFile): Promise<Buffer> {
+  const response = await fetch(createFileDownloadLink(file).url);
+  if (!response.ok) {
+    throw new Error(`Could not download contract file "${file.key}" (HTTP ${response.status})`);
+  }
+  return Buffer.from(await response.arrayBuffer());
 }
 
 export async function deleteContractFile(file: StoredFile): Promise<void> {

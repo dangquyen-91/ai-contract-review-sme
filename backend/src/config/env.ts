@@ -29,6 +29,12 @@ const envSchema = z.object({
   GEMINI_EMBEDDING_MODEL: z.string().default('gemini-embedding-001'),
 
   OCR_WORKERS: z.coerce.number().int().min(1).max(8).default(2),
+
+  REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
+  START_WORKERS: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
 });
 
 const parsed = envSchema.safeParse(process.env);
