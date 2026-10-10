@@ -1,5 +1,14 @@
 import rateLimit from 'express-rate-limit';
 
+export const invitationEmailLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  keyGenerator: (req) => req.user!.sub,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: { message: 'Too many invitations. Please try again later.' } },
+});
+
 // General API traffic
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

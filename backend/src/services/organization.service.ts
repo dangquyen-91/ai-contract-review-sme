@@ -1,4 +1,6 @@
 import { AppError } from '../errors/AppError';
+import mongoose from 'mongoose';
+import { OrganizationInvitationModel } from '../models/organizationInvitation.model';
 import { ContractModel } from '../models/contract.model';
 import { OrganizationModel } from '../models/organization.model';
 import { UserModel } from '../models/user.model';
@@ -26,7 +28,10 @@ export async function createOrganization(userId: string, input: CreateOrganizati
       { new: true, runValidators: true },
     );
     if (!organization) throw AppError.conflict('Organization has already been configured');
-    await UserModel.updateOne({ _id: userId, orgId: personal._id }, { $set: { roleId: ownerRole._id } });
+    await UserModel.updateOne(
+      { _id: userId, orgId: personal._id },
+      { $set: { roleId: ownerRole._id } },
+    );
     return organization;
   }
 
@@ -80,25 +85,29 @@ export async function deleteOrganization(
 ) {
   ensureOrganizationAccess(organizationId, userOrganizationId);
 
-  const [organization, hasContracts, memberCount] = await Promise.all([
-    OrganizationModel.exists({ _id: organizationId }),
-    ContractModel.exists({ orgId: organizationId }),
-    UserModel.countDocuments({ orgId: organizationId }),
-  ]);
-
-  if (!organization) throw AppError.notFound('Organization not found');
-  if (hasContracts) throw AppError.conflict('Organization still has contracts');
-  if (memberCount > 1) throw AppError.conflict('Organization still has other members');
-
-  const detachedUser = await UserModel.findOneAndUpdate(
-    { _id: userId, orgId: organizationId },
-    { $unset: { orgId: 1 } },
-  );
-  if (!detachedUser) throw AppError.forbidden();
-
-  const deleted = await OrganizationModel.findByIdAndDelete(organizationId);
-  if (!deleted) {
-    await UserModel.updateOne({ _id: userId, orgId: null }, { $set: { orgId: organizationId } });
-    throw AppError.notFound('Organization not found');
-  }
+  await mongoose.connection.transaction(async (session) => {
+    // Lock the organization before counting members; invitation acceptance writes it too.
+    const organization = await OrganizationModel.findOneAndUpdate(
+      { _id: organizationId },
+      { $inc: { __v: 1 } },
+      { session, new: true },
+    );
+    if (!organization) throw AppError.notFound('Organization not found');
+    const hasContracts = await ContractModel.exists({ orgId: organizationId }).session(session);
+    const memberCount = await UserModel.countDocuments({ orgId: organizationId }).session(session);
+    if (hasContracts) throw AppError.conflict('Organization still has contracts');
+    if (memberCount > 1) throw AppError.conflict('Organization still has other members');
+    const detachedUser = await UserModel.findOneAndUpdate(
+      { _id: userId, orgId: organizationId },
+      { $unset: { orgId: 1 } },
+      { session },
+    );
+    if (!detachedUser) throw AppError.forbidden();
+    await OrganizationInvitationModel.updateMany(
+      { orgId: organizationId, status: 'pending' },
+      { $set: { status: 'revoked' } },
+      { session },
+    );
+    await OrganizationModel.deleteOne({ _id: organizationId }, { session });
+  });
 }

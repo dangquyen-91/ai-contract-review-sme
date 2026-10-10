@@ -6,9 +6,11 @@ import { seedDefaultRoles } from './services/role.service';
 import { ensureLegalVectorIndex } from './services/legalKnowledgeIngest.service';
 import { seedDefaultClauseTaxonomy } from './services/clauseTypeTaxonomy.service';
 import { terminateOcrWorker } from './services/textExtraction.service';
+import { OrganizationInvitationModel } from './models/organizationInvitation.model';
 
 async function bootstrap() {
   await connectDB();
+  await OrganizationInvitationModel.init();
   await seedDefaultRoles();
   await seedDefaultClauseTaxonomy();
   await ensureLegalVectorIndex();
