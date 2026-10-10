@@ -189,6 +189,30 @@ components:
         extractionError:
           type: string
           description: Error message when extractionStatus is "failed"
+        extractionQuality:
+          type: object
+          description: How the text was extracted and how reliable it is. PDFs are read page by page - pages with a text layer use it, scanned pages are OCRed (Vietnamese + English).
+          properties:
+            method:
+              type: string
+              enum: [text_layer, ocr, mixed, docx]
+              description: mixed = some PDF pages had a text layer and the rest were OCRed
+            pageCount:
+              type: integer
+              description: Total pages in the file (absent for DOCX)
+            ocrPageCount:
+              type: integer
+            ocrConfidence:
+              type: integer
+              minimum: 0
+              maximum: 100
+              description: Average Tesseract confidence over OCRed pages, weighted by text length; absent when nothing was OCRed
+            lowConfidence:
+              type: boolean
+              description: True when OCR confidence is below 70 - the scan is likely blurry and the analysis may contain reading errors
+            truncatedAtPage:
+              type: integer
+              description: Set when the PDF has more than 100 pages; only the first 100 pages were extracted
         segmentationStatus:
           type: string
           enum: [pending, processing, completed, failed]

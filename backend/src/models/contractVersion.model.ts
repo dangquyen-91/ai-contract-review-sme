@@ -11,7 +11,21 @@ export const EXTRACTION_STATUSES = [
   'unsupported',
 ] as const;
 
+export const EXTRACTION_METHODS = ['text_layer', 'ocr', 'mixed', 'docx'] as const;
+
 export const SEGMENTATION_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
+
+const extractionQualitySchema = new Schema(
+  {
+    method: { type: String, enum: EXTRACTION_METHODS, required: true },
+    pageCount: { type: Number },
+    ocrPageCount: { type: Number, required: true },
+    ocrConfidence: { type: Number },
+    lowConfidence: { type: Boolean, required: true },
+    truncatedAtPage: { type: Number },
+  },
+  { _id: false },
+);
 
 export const RISK_DETECTION_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
 
@@ -31,6 +45,7 @@ const contractVersionSchema = new Schema(
     extractedText: { type: String, select: false, ...encryptedString },
     extractionStatus: { type: String, enum: EXTRACTION_STATUSES, default: 'pending', index: true },
     extractionError: { type: String },
+    extractionQuality: { type: extractionQualitySchema, default: undefined },
     segmentationStatus: {
       type: String,
       enum: SEGMENTATION_STATUSES,

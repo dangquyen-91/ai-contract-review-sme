@@ -9,6 +9,7 @@ import {
 import { AppError } from '../errors/AppError';
 import { logger } from '../config/logger';
 import { embedTexts } from './llm.service';
+import { normalizeExtractedText } from './textExtraction.service';
 
 export const LEGAL_CHUNK_VECTOR_INDEX_NAME = 'legal_chunk_vector_index';
 
@@ -45,11 +46,15 @@ const PDF_MIME_TYPE = 'application/pdf';
 const DOCX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const TXT_MIME_TYPE = 'text/plain';
 
-export async function extractLegalText(buffer: Buffer, mimeType: string): Promise<string> {
+async function readLegalText(buffer: Buffer, mimeType: string): Promise<string> {
   if (mimeType === PDF_MIME_TYPE) return (await pdfParse(buffer)).text;
   if (mimeType === DOCX_MIME_TYPE) return (await mammoth.extractRawText({ buffer })).value;
   if (mimeType === TXT_MIME_TYPE) return buffer.toString('utf-8');
   throw AppError.badRequest(`Unsupported file type: ${mimeType}`);
+}
+
+export async function extractLegalText(buffer: Buffer, mimeType: string): Promise<string> {
+  return normalizeExtractedText(await readLegalText(buffer, mimeType));
 }
 
 const ARTICLE_HEADING_RE = /^\s*(Đi[eề]u\s+\d+[a-z]?)\s*[.:]?/gim;

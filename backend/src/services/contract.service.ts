@@ -80,6 +80,7 @@ export async function createContract({ orgId, uploadedBy, input, file }: CreateC
       extractedText: extraction?.text,
       extractionStatus: extraction?.status ?? 'pending',
       extractionError: extraction?.error,
+      extractionQuality: extraction?.quality,
     });
 
     return { ...contract.toObject(), currentVersion: currentVersion.toObject() };
