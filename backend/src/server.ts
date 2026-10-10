@@ -9,6 +9,7 @@ import { seedDefaultClauseTaxonomy } from './services/clauseTypeTaxonomy.service
 import { seedDefaultContractProfiles } from './services/contractProfile.service';
 import { terminateOcr } from './services/textExtraction.service';
 import { startExtractionWorker } from './services/extractionWorker.service';
+import { startReviewWorker } from './services/reviewWorker.service';
 
 async function bootstrap() {
   await connectDB();
@@ -20,6 +21,7 @@ async function bootstrap() {
 
   if (env.START_WORKERS) {
     startExtractionWorker();
+    startReviewWorker();
     logger.info('Background workers started in the API process');
   }
 

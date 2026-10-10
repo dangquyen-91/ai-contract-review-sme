@@ -1,9 +1,32 @@
-import { ConnectionOptions, Processor, Queue, QueueEvents, Worker, WorkerOptions } from 'bullmq';
+import { ConnectionOptions, Job, JobsOptions, Processor, Queue, QueueEvents, Worker, WorkerOptions } from 'bullmq';
 import Redis from 'ioredis';
 import { env } from './env';
 import { logger } from './logger';
+import { AppError } from '../errors/AppError';
 
 const connection: ConnectionOptions = { url: env.REDIS_URL, maxRetriesPerRequest: null };
+
+const ENQUEUE_TIMEOUT_MS = 5000;
+
+export async function addJobWithTimeout<DataType>(
+  queue: Queue<DataType>,
+  name: string,
+  data: DataType,
+  options: JobsOptions,
+): Promise<Job<DataType>> {
+  let timer: NodeJS.Timeout | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new AppError('Background processing is unavailable, please try again later', 503)),
+      ENQUEUE_TIMEOUT_MS,
+    );
+  });
+  try {
+    return (await Promise.race([queue.add(name as never, data as never, options), timeout])) as Job<DataType>;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 const openResources: { close: () => Promise<void> }[] = [];
 

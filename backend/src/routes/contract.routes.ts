@@ -26,6 +26,7 @@ import {
   listChatMessagesHandler,
   streamAboutContractHandler,
 } from '../controllers/chat.controller';
+import { listReviewsHandler, startReviewHandler } from '../controllers/review.controller';
 import {
   analysisFocusBodySchema,
   chatMessageBodySchema,
@@ -55,6 +56,16 @@ router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandl
 router.get('/:id/text', validate({ params: contractIdParamSchema }), getContractTextHandler);
 
 router.get('/:id/file', validate({ params: contractIdParamSchema }), getContractFileHandler);
+
+router.post(
+  '/:id/reviews',
+  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
+  aiLimiter,
+  validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
+  startReviewHandler,
+);
+
+router.get('/:id/reviews', validate({ params: contractIdParamSchema }), listReviewsHandler);
 
 router.get(
   '/:id/clauses',

@@ -1,14 +1,12 @@
 import { Job, Queue, QueueEvents } from 'bullmq';
-import { createQueue, createQueueEvents, createWorker } from '../config/queue';
+import { addJobWithTimeout, createQueue, createQueueEvents, createWorker } from '../config/queue';
 import { logger } from '../config/logger';
-import { AppError } from '../errors/AppError';
 import { ContractVersionModel } from '../models/contractVersion.model';
 import { downloadContractFile, storedFileOf } from './storage.service';
 import { extractContractText, ExtractionProgress, recycleOcrIfNeeded } from './textExtraction.service';
 
 const EXTRACTION_QUEUE = 'contract-extraction';
 const MAX_ATTEMPTS = 3;
-const ENQUEUE_TIMEOUT_MS = 5000;
 const SYNC_WAIT_TIMEOUT_MS = 10 * 60 * 1000;
 
 interface ExtractionJobData {
@@ -26,30 +24,12 @@ const getQueue = () => (queue ??= createQueue<ExtractionJobData>(EXTRACTION_QUEU
 const getQueueEvents = () => (queueEvents ??= createQueueEvents(EXTRACTION_QUEUE));
 
 export async function enqueueExtraction(versionId: string): Promise<Job<ExtractionJobData>> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new AppError('Background processing is unavailable, please try again later', 503)),
-      ENQUEUE_TIMEOUT_MS,
-    );
+  return addJobWithTimeout(getQueue(), 'extract', { versionId }, {
+    attempts: MAX_ATTEMPTS,
+    backoff: { type: 'exponential', delay: 5000 },
+    removeOnComplete: { age: 24 * 3600 },
+    removeOnFail: { age: 7 * 24 * 3600 },
   });
-  try {
-    return await Promise.race([
-      getQueue().add(
-        'extract',
-        { versionId },
-        {
-          attempts: MAX_ATTEMPTS,
-          backoff: { type: 'exponential', delay: 5000 },
-          removeOnComplete: { age: 24 * 3600 },
-          removeOnFail: { age: 7 * 24 * 3600 },
-        },
-      ),
-      timeout,
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 export async function waitForExtraction(job: Job<ExtractionJobData>): Promise<void> {

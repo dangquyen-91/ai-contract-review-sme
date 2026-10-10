@@ -4,6 +4,7 @@ import contractRoutes from './contract.routes';
 import contractProfileRoutes from './contractProfile.routes';
 import legalSourceRoutes from './legalSource.routes';
 import organizationRoutes from './organization.routes';
+import reviewRoutes from './review.routes';
 
 const router = Router();
 
@@ -13,6 +14,7 @@ router.use('/auth', authRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/contracts', contractRoutes);
 router.use('/contract-profiles', contractProfileRoutes);
+router.use('/reviews', reviewRoutes);
 router.use('/kb/legal-sources', legalSourceRoutes);
 
 export default router;

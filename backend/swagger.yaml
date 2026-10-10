@@ -12,6 +12,7 @@ tags:
   - name: Organizations
   - name: Contracts
   - name: ContractProfiles
+  - name: Reviews
   - name: LegalKB
 
 components:
@@ -273,6 +274,102 @@ components:
           type: string
           format: date-time
           description: When the last summary run started (same 10-minute stale rule as segmentation)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Review:
+      type: object
+      description: One review run of a contract (clause segmentation, then summary and risk detection in parallel), executed by a background worker. Results are written to the contract like the step-by-step endpoints do, and a snapshot is kept on the review so earlier runs stay visible.
+      properties:
+        _id:
+          type: string
+        contractId:
+          type: string
+        versionId:
+          type: string
+        requestedBy:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        currentStage:
+          type: string
+          enum: [waiting_for_extraction, segmentation, summary, risk_detection]
+          description: Present while running. waiting_for_extraction means the upload is still being OCRed.
+        stageDetail:
+          type: string
+          description: Extra progress text, e.g. "7/12 pages" while waiting for extraction, or retrieving_legal_sources / analyzing_clauses / saving_findings during risk detection
+        stages:
+          type: object
+          description: A retry re-runs only the stages that are not completed
+          properties:
+            segmentation:
+              type: string
+              enum: [pending, running, completed, failed]
+            summary:
+              type: string
+              enum: [pending, running, completed, failed]
+            riskDetection:
+              type: string
+              enum: [pending, running, completed, failed]
+        analysisFocus:
+          type: string
+        error:
+          type: string
+          description: Last error; set while a retry is pending or when the review failed
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        result:
+          type: object
+          description: Snapshot of the outcome, present when status is completed
+          properties:
+            overallRiskLevel:
+              type: string
+              enum: [high, medium, low, none]
+            overallAssessment:
+              type: array
+              items:
+                type: string
+            summaryPoints:
+              type: array
+              items:
+                type: string
+            clauseCount:
+              type: integer
+            findingCounts:
+              type: object
+              properties:
+                high:
+                  type: integer
+                medium:
+                  type: integer
+                low:
+                  type: integer
+            findings:
+              type: array
+              items:
+                type: object
+                properties:
+                  findingType:
+                    type: string
+                    enum: [clause_risk, missing_clause]
+                  severity:
+                    type: string
+                    enum: [high, medium, low]
+                  title:
+                    type: string
+                  clauseIndex:
+                    type: integer
+                  clauseTitle:
+                    type: string
         createdAt:
           type: string
           format: date-time
@@ -1499,6 +1596,139 @@ paths:
             text/event-stream:
               schema:
                 type: string
+
+  /contracts/{id}/reviews:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Start a full review in the background
+      description: Queues segmentation, summary and risk detection as one review run and returns 202 immediately. Follow it with GET /reviews/{reviewId}/events (SSE) or by polling GET /reviews/{reviewId}. If the upload is still being extracted, the review waits for it. Only one review can run per contract at a time. Rate-limited (AI cost control).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                analysisFocus:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '202':
+          description: Review queued
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /api/v1/reviews/665f1c2e8b3a4d0012a1b2c3
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '400':
+          description: The contract has no file, or its text could not be extracted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Contract not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A review is already running for this contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background job queue (Redis) is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags: [Reviews]
+      summary: List the review runs of a contract, newest first
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+        '404':
+          description: Contract not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Reviews]
+      summary: Get one review run
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/events:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Reviews]
+      summary: Follow a review's progress as Server-Sent Events
+      description: |
+        `text/event-stream`. Works with `EventSource` when the access token is sent by a proxy, or with `fetch`. Events:
+        - `review` - the full Review object, sent on connect and whenever it changes
+        - `done` `{ "status": "completed" | "failed" }` - sent once the review finishes, then the stream closes
+        - `error` `{ "status": number, "message": string }`
+        A `: ping` comment is sent every 15s. Reconnecting is safe - the current state is sent again on connect.
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /contract-profiles:
     get:
