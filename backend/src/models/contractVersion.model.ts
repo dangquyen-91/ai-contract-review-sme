@@ -47,6 +47,17 @@ export const RISK_DETECTION_STATUSES = ['pending', 'processing', 'completed', 'f
 
 export const SUMMARY_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
 
+const keyTermSchema = new Schema(
+  {
+    key: { type: String, required: true },
+    numberValue: { type: Number },
+    booleanValue: { type: Boolean },
+    clauseId: { type: Types.ObjectId, ref: 'Clause' },
+    quote: { type: String, ...encryptedString },
+  },
+  { _id: false, ...decryptOnSerialize },
+);
+
 const contractVersionSchema = new Schema(
   {
     contractId: { type: Types.ObjectId, ref: 'Contract', required: true, index: true },
@@ -82,6 +93,8 @@ const contractVersionSchema = new Schema(
     riskDetectionError: { type: String },
     riskDetectionStartedAt: { type: Date },
     overallAssessment: { type: [String], default: [] },
+    keyTerms: { type: [keyTermSchema], default: undefined },
+    keyTermsExtractedAt: { type: Date },
     overallRiskLevel: { type: String, enum: RISK_LEVELS, default: 'none', index: true },
     analysisFocus: { type: String },
     summaryPoints: { type: [String], default: [] },

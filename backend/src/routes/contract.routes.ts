@@ -17,6 +17,7 @@ import {
   removeProposedRevisionHandler,
   updateProposedRevisionHandler,
   listRiskFindingsHandler,
+  listKeyTermsHandler,
 } from '../controllers/risk.controller';
 import {
   askAboutContractHandler,
@@ -72,6 +73,8 @@ router.get('/:id/reviews', validate({ params: contractIdParamSchema }), listRevi
 router.get('/:id/clauses', validate({ params: contractIdParamSchema }), listClausesHandler);
 
 router.get('/:id/risks', validate({ params: contractIdParamSchema }), listRiskFindingsHandler);
+
+router.get('/:id/key-terms', validate({ params: contractIdParamSchema }), listKeyTermsHandler);
 
 router.patch(
   '/:id/risks/:findingId',

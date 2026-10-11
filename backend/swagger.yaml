@@ -458,6 +458,11 @@ components:
                     type: integer
                   clauseTitle:
                     type: string
+                  detectedBy:
+                    type: string
+                    enum: [rule, llm, hybrid]
+                  ruleCode:
+                    type: string
         createdAt:
           type: string
           format: date-time
@@ -756,9 +761,17 @@ components:
         detectedBy:
           type: string
           enum: [rule, llm, hybrid]
+          description: rule = a fixed legal rule (ruleCode is set) or a missing mandatory clause the LLM did not describe; llm = found by the LLM; hybrid = a missing clause found by the taxonomy check and described by the LLM
+        ruleCode:
+          type: string
+          description: Set when detectedBy is rule and a legal rule fired, e.g. LTM_PENALTY_CAP, BLLD_PROBATION_WAGE
+          example: LTM_PENALTY_CAP
+        ruleVersion:
+          type: integer
+          description: Version of the rule that produced the finding
         citations:
           type: array
-          description: Legal sources the LLM actually relied on for this finding (RAG), populated by GET/POST risk endpoints
+          description: Legal sources behind this finding. For a rule finding these are the exact articles the rule cites (relevanceScore 1), attached only when that law is in the knowledge base and the article text contains the rule's expected wording. For an LLM finding these are the retrieved excerpts it relied on.
           items:
             $ref: '#/components/schemas/RiskCitation'
         createdAt:
@@ -1686,6 +1699,71 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/RiskFinding'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/key-terms:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: List the key terms extracted from the current version during the last review
+      description: |
+        During risk detection the LLM extracts the terms that legal rules check for this contract type (e.g. penalty rate, deposit share, probation length, working hours). A term is kept only when its quote appears verbatim in the cited clause. A few yes/no terms have a legal default when the contract is silent (e.g. no notarization, penalty without damages); those are returned with inferredFromSilence true and no clause.
+        Life insurance has no rule checks yet, so its list is empty.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  extractedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: null until a review has run on this version
+                  terms:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          example: penalty_percent
+                        label:
+                          type: string
+                          example: Mức phạt vi phạm (%)
+                        value:
+                          oneOf:
+                            - type: number
+                            - type: boolean
+                          example: 15
+                        inferredFromSilence:
+                          type: boolean
+                        clause:
+                          type: object
+                          nullable: true
+                          properties:
+                            index:
+                              type: integer
+                            title:
+                              type: string
+                              nullable: true
+                        quote:
+                          type: string
+                          nullable: true
+                          example: phạt vi phạm bằng 15% giá trị phần nghĩa vụ hợp đồng bị vi phạm
         '404':
           description: Not found
           content:

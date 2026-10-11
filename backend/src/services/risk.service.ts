@@ -24,6 +24,10 @@ import {
 import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from './contractProfile.service';
 import { createRedactor, Redactor } from './redaction.service';
+import { ExtractedKeyTerm, extractKeyTerms } from './keyTermExtraction.service';
+import { evaluateLegalRules, resolveRuleCitations } from './legalRules.service';
+import { ReviewContext } from './contractProfile.service';
+import { logger } from '../config/logger';
 
 const SEVERITY_RANK: Record<(typeof RISK_LEVELS)[number], number> = {
   high: 3,
@@ -87,6 +91,24 @@ async function buildLegalExcerpts(
   }
 
   return { excerpts, metaByNumber };
+}
+
+async function extractKeyTermsSafely(
+  context: ReviewContext,
+  clauses: { index: number; text: string }[],
+  redactor: Redactor,
+  signal?: AbortSignal,
+): Promise<ExtractedKeyTerm[]> {
+  try {
+    return await extractKeyTerms(context, clauses, redactor, signal);
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    logger.warn('Key term extraction failed, continuing without legal rule checks', {
+      profile: context.profileCode,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
 }
 
 async function attachCitations<T extends { _id: unknown; toObject: () => Record<string, unknown> }>(
@@ -229,20 +251,26 @@ export async function detectRisks(
     );
 
     onProgress?.('retrieving_legal_sources');
-    const { excerpts, metaByNumber } = await buildLegalExcerpts(
-      clauses,
-      redactor,
-      reviewContext.legalSourceCodes,
-      signal,
-    );
+    const [{ excerpts, metaByNumber }, keyTerms] = await Promise.all([
+      buildLegalExcerpts(clauses, redactor, reviewContext.legalSourceCodes, signal),
+      extractKeyTermsSafely(
+        reviewContext,
+        clauses.map((c) => ({ index: c.index, text: c.text })),
+        redactor,
+        signal,
+      ),
+    ]);
+    const ruleFindings = evaluateLegalRules(reviewContext, keyTerms);
+    const ruleChunkIds = await resolveRuleCitations(ruleFindings);
 
     signal?.throwIfAborted();
     onProgress?.('analyzing_clauses');
-    const { overallAssessment, findings: llmFindings } = await detectContractRisks(
+    const { overallAssessment, findings: llmFindings, ruleRevisions } = await detectContractRisks(
       reviewContext,
       clauses.map((c) => ({ index: c.index, category: c.clauseTypeId.code, text: c.text })),
       excerpts,
       missingTaxonomy.map((t) => ({ code: t.code, name: t.name, description: t.description })),
+      ruleFindings.map((r) => ({ ruleCode: r.rule.code, clauseIndex: r.clauseIndex, title: r.title, problem: r.problem })),
       version.analysisFocus ?? undefined,
       redactor,
       signal,
@@ -264,6 +292,31 @@ export async function detectRisks(
 
     const pending: { doc: Record<string, unknown>; chunkIds: string[] }[] = [];
     const coveredMissingCodes = new Set<string>();
+
+    const revisionByRule = new Map(ruleRevisions.map((r) => [r.ruleCode, r]));
+    for (const finding of ruleFindings) {
+      const clause = finding.clauseIndex === undefined ? undefined : clauseByIndex.get(finding.clauseIndex);
+      const chunkIds = ruleChunkIds.get(finding.rule.code) ?? [];
+      pending.push({
+        doc: {
+          contractVersionId: version._id,
+          orgId,
+          clauseId: clause?._id ?? null,
+          findingType: 'clause_risk' as const,
+          severity: finding.severity,
+          title: finding.title,
+          problem: finding.problem,
+          consequences: finding.consequences,
+          recommendations: finding.recommendations,
+          legalBasis: [{ text: finding.rule.legalBasis, legalKnowledgeChunkIds: chunkIds }],
+          proposedRevision: resolveProposedRevision(revisionByRule.get(finding.rule.code), clause?.text),
+          detectedBy: 'rule' as const,
+          ruleCode: finding.rule.code,
+          ruleVersion: finding.rule.version,
+        },
+        chunkIds,
+      });
+    }
 
     for (const finding of llmFindings) {
       const base = {
@@ -347,6 +400,7 @@ export async function detectRisks(
 
     const scoreByChunkId = new Map<string, number>();
     for (const meta of metaByNumber.values()) scoreByChunkId.set(meta.chunkId, meta.score);
+    for (const ids of ruleChunkIds.values()) for (const id of ids) scoreByChunkId.set(id, 1);
 
     const citationDocs = inserted.flatMap((finding, i) =>
       pending[i].chunkIds.map((chunkId) => ({
@@ -366,7 +420,19 @@ export async function detectRisks(
     await ContractVersionModel.updateOne(
       { _id: version._id },
       {
-        $set: { overallRiskLevel, overallAssessment, riskDetectionStatus: 'completed' },
+        $set: {
+          overallRiskLevel,
+          overallAssessment,
+          riskDetectionStatus: 'completed',
+          keyTerms: keyTerms.map((t) => ({
+            key: t.key,
+            numberValue: t.numberValue,
+            booleanValue: t.booleanValue,
+            clauseId: t.clauseIndex === undefined ? undefined : clauseByIndex.get(t.clauseIndex)?._id,
+            quote: t.quote,
+          })),
+          keyTermsExtractedAt: new Date(),
+        },
         $unset: { riskDetectionError: '' },
       },
     );

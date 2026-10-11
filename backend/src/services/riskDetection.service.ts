@@ -25,6 +25,20 @@ export interface MissingClauseInput {
   description: string;
 }
 
+export interface RuleFindingInput {
+  ruleCode: string;
+  clauseIndex?: number;
+  title: string;
+  problem: string[];
+}
+
+export interface LlmRuleRevision {
+  ruleCode: string;
+  originalText?: string;
+  revisedText: string;
+  reason?: string;
+}
+
 export interface LlmLegalBasis {
   text: string;
   citedExcerptNumbers: number[];
@@ -52,12 +66,24 @@ export interface LlmFinding {
 export interface RiskDetectionResult {
   overallAssessment: string[];
   findings: LlmFinding[];
+  ruleRevisions: LlmRuleRevision[];
 }
 
 const stringList = z.array(z.string()).nullable().optional();
 
 const findingResultSchema = z.object({
   overallAssessment: stringList,
+  ruleRevisions: z
+    .array(
+      z.object({
+        ruleCode: z.string(),
+        originalText: z.string().nullable().optional(),
+        revisedText: z.string().min(1),
+        reason: z.string().nullable().optional(),
+      }),
+    )
+    .nullable()
+    .optional(),
   findings: z.array(
     z.object({
       clauseIndex: z.number().int().nullable().optional(),
@@ -94,6 +120,19 @@ const responseSchema = {
   type: Type.OBJECT,
   properties: {
     overallAssessment: stringArraySchema,
+    ruleRevisions: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          ruleCode: { type: Type.STRING },
+          originalText: { type: Type.STRING, nullable: true },
+          revisedText: { type: Type.STRING },
+          reason: { type: Type.STRING },
+        },
+        required: ['ruleCode', 'revisedText'],
+      },
+    },
     findings: {
       type: Type.ARRAY,
       items: {
@@ -140,9 +179,20 @@ function buildPrompt(
   clauses: ClauseInput[],
   legalExcerpts: LegalExcerptInput[],
   missingClauses: MissingClauseInput[],
+  ruleFindings: RuleFindingInput[],
   analysisFocus: string | undefined,
   redactionNote: string,
 ): string {
+  const ruleBlock =
+    ruleFindings.length > 0
+      ? `\n\nThese problems were already found by fixed checks against Vietnamese law:\n${ruleFindings
+          .map(
+            (r) =>
+              `- ruleCode="${r.ruleCode}" (${r.clauseIndex === undefined ? 'whole contract' : `clause index=${r.clauseIndex}`}): ${r.title}. ${r.problem.join(' ')}`,
+          )
+          .join('\n')}\nDo NOT report them again in "findings" (you may still report other, different problems in the same clauses), but take them into account in "overallAssessment". For EACH of them add one "ruleRevisions" item with its "ruleCode", a "revisedText" that fixes the problem and a short Vietnamese "reason". When it names a clause index, "originalText" MUST be copied verbatim from that clause; for the whole contract omit "originalText" and make "revisedText" a ready-to-insert clause in Vietnamese.`
+      : '';
+
   const focusBlock = analysisFocus
     ? `\n\nThe user asked for this specific analysis direction (follow it when judging risk, e.g. which party's interests to protect): "${analysisFocus}"`
     : '';
@@ -191,7 +241,7 @@ Rules:
 - "recommendations": 1-3 Vietnamese bullet strings on how to fix the clause.
 - "proposedRevision": for an existing clause, "originalText" MUST be copied verbatim from the clause text (the sentence(s) to replace), "revisedText" is the replacement text in the same language as the contract, "reason" is one short Vietnamese sentence on why the change helps.
 - "overallAssessment": 2-5 Vietnamese bullet strings giving an overall evaluation of the contract (completeness, which party it favors, the most serious risks).
-- If there are no risks and nothing is missing, return an empty "findings" array.${focusBlock}${industryBlock}${legalContextBlock}${missingBlock}${redactionNote}
+- If there are no risks and nothing is missing, return an empty "findings" array.${focusBlock}${industryBlock}${legalContextBlock}${missingBlock}${ruleBlock}${redactionNote}
 
 Clauses:
 """
@@ -204,6 +254,7 @@ export async function detectContractRisks(
   clauses: ClauseInput[],
   legalExcerpts: LegalExcerptInput[] = [],
   missingClauses: MissingClauseInput[],
+  ruleFindings: RuleFindingInput[],
   analysisFocus: string | undefined,
   redactor: Redactor,
   signal?: AbortSignal,
@@ -214,6 +265,7 @@ export async function detectContractRisks(
       clauses.map((c) => ({ ...c, text: redactor.mask(c.text) })),
       legalExcerpts,
       missingClauses,
+      ruleFindings,
       analysisFocus ? redactor.mask(analysisFocus) : undefined,
       placeholderInstruction(redactor),
     ),
@@ -261,5 +313,19 @@ export async function detectContractRisks(
     });
   }
 
-  return { overallAssessment: (parsed.data.overallAssessment ?? []).map(unmask), findings };
+  const validRuleCodes = new Set(ruleFindings.map((r) => r.ruleCode));
+  const seenRuleCodes = new Set<string>();
+  const ruleRevisions: LlmRuleRevision[] = [];
+  for (const r of parsed.data.ruleRevisions ?? []) {
+    if (!validRuleCodes.has(r.ruleCode) || seenRuleCodes.has(r.ruleCode)) continue;
+    seenRuleCodes.add(r.ruleCode);
+    ruleRevisions.push({
+      ruleCode: r.ruleCode,
+      originalText: r.originalText ? unmask(r.originalText) : undefined,
+      revisedText: unmask(r.revisedText),
+      reason: r.reason ? unmask(r.reason) : undefined,
+    });
+  }
+
+  return { overallAssessment: (parsed.data.overallAssessment ?? []).map(unmask), findings, ruleRevisions };
 }

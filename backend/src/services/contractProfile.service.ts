@@ -356,6 +356,7 @@ export interface ReviewContext {
   contractLabel: string;
   governingLaws: string[];
   legalSourceCodes: string[];
+  partyCode?: string;
   partyName?: string;
   industryName?: string;
   industryChecks: string[];
@@ -382,6 +383,7 @@ export async function buildReviewContext(contract: {
     contractLabel: profile.promptLabel,
     governingLaws: profile.governingLaws,
     legalSourceCodes: profile.legalSourceCodes,
+    partyCode: contract.ourParty ?? undefined,
     partyName: profile.parties.find((p) => p.code === contract.ourParty)?.name,
     industryName: industry?.name,
     industryChecks: rule?.checks ?? [],

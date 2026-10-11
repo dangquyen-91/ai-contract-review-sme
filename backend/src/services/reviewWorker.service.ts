@@ -135,7 +135,7 @@ async function buildReviewResult(versionId: string) {
   const [version, clauses, findings] = await Promise.all([
     ContractVersionModel.findById(versionId),
     ClauseModel.find({ contractVersionId: versionId }).select('index title'),
-    RiskFindingModel.find({ contractVersionId: versionId }).select('findingType severity title clauseId'),
+    RiskFindingModel.find({ contractVersionId: versionId }).select('findingType severity title clauseId detectedBy ruleCode'),
   ]);
   const clauseById = new Map(clauses.map((c) => [c._id.toString(), c]));
   const counts = { high: 0, medium: 0, low: 0 };
@@ -156,6 +156,8 @@ async function buildReviewResult(versionId: string) {
           title: f.title,
           clauseIndex: clause?.index,
           clauseTitle: clause?.title ?? undefined,
+          detectedBy: f.detectedBy,
+          ruleCode: f.ruleCode ?? undefined,
         };
       })
       .sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]),

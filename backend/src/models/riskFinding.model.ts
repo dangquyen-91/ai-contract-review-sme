@@ -48,6 +48,8 @@ const riskFindingSchema = new Schema(
     proposedRevision: { type: proposedRevisionSchema, default: undefined },
     status: { type: String, enum: RISK_FINDING_STATUSES, default: 'open', index: true },
     detectedBy: { type: String, enum: RISK_DETECTED_BY, required: true },
+    ruleCode: { type: String },
+    ruleVersion: { type: Number },
   },
   { timestamps: true, ...decryptOnSerialize },
 );

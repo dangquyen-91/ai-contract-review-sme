@@ -1,6 +1,6 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
 import { RISK_LEVELS } from './contractVersion.model';
-import { RISK_FINDING_TYPES, RISK_SEVERITIES } from './riskFinding.model';
+import { RISK_DETECTED_BY, RISK_FINDING_TYPES, RISK_SEVERITIES } from './riskFinding.model';
 
 export const REVIEW_STATUSES = ['queued', 'running', 'completed', 'failed'] as const;
 
@@ -22,6 +22,8 @@ const findingSnapshotSchema = new Schema(
     title: { type: String, required: true },
     clauseIndex: { type: Number },
     clauseTitle: { type: String },
+    detectedBy: { type: String, enum: RISK_DETECTED_BY },
+    ruleCode: { type: String },
   },
   { _id: false },
 );
