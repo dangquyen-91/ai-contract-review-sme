@@ -2,17 +2,16 @@ import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 import WordExtractor from 'word-extractor';
 import mongoose from 'mongoose';
-import { LegalSourceModel, LEGAL_SOURCE_STATUSES, LEGAL_SOURCE_TYPES } from '../models/legalSource.model';
 import {
   LegalKnowledgeChunkModel,
   EMBEDDING_DIMENSIONS,
 } from '../models/legalKnowledgeChunk.model';
 import { AppError } from '../errors/AppError';
 import { logger } from '../config/logger';
-import { embedTexts } from './llm.service';
 import { normalizeExtractedText } from './textExtraction.service';
 import {
   buildLegalCoverage,
+  LegalArticleKey,
   LegalChunkDraft,
   LegalCoverageReport,
   parseLegalDocument,
@@ -73,6 +72,8 @@ export async function extractLegalText(buffer: Buffer, mimeType: string): Promis
 
 export interface AnalyzedLegalText {
   documentNumber?: string;
+  articles: LegalArticleKey[];
+  headingCount: number;
   chunks: LegalChunkDraft[];
   coverage: LegalCoverageReport;
 }
@@ -81,6 +82,8 @@ export function analyzeLegalText(fullText: string, expectedArticleCount?: number
   const parsed = parseLegalDocument(fullText);
   return {
     documentNumber: parsed.documentNumber,
+    articles: parsed.articles,
+    headingCount: parsed.headingCount,
     chunks: parsed.chunks,
     coverage: buildLegalCoverage({
       articles: parsed.articles,
@@ -91,54 +94,15 @@ export function analyzeLegalText(fullText: string, expectedArticleCount?: number
   };
 }
 
-export function embeddingInputOf(citationLabel: string, chunk: LegalChunkDraft): string {
+interface EmbeddableChunk {
+  chunkText: string;
+  hierarchy?: { title?: string | null }[] | null;
+}
+
+export function embeddingInputOf(citationLabel: string, chunk: EmbeddableChunk): string {
   const context = (chunk.hierarchy ?? [])
     .map((h) => h.title)
     .filter(Boolean)
     .join(' > ');
   return [citationLabel, context, chunk.chunkText].filter(Boolean).join('\n');
-}
-
-export interface IngestLegalSourceParams {
-  code: string;
-  title: string;
-  documentNumber?: string;
-  sourceType: (typeof LEGAL_SOURCE_TYPES)[number];
-  status?: (typeof LEGAL_SOURCE_STATUSES)[number];
-  citationLabel: string;
-  issuingBody?: string;
-  issuedDate?: Date;
-  effectiveDate?: Date;
-  expiryDate?: Date;
-  analyzed: AnalyzedLegalText;
-}
-
-export async function ingestLegalSource({
-  analyzed,
-  documentNumber,
-  ...metadata
-}: IngestLegalSourceParams): Promise<{ legalSourceId: string; chunkCount: number }> {
-  const { chunks, coverage } = analyzed;
-  const embeddings = await embedTexts(
-    chunks.map((c) => embeddingInputOf(metadata.citationLabel, c)),
-    { taskType: 'RETRIEVAL_DOCUMENT', outputDimensionality: EMBEDDING_DIMENSIONS },
-  );
-
-  const legalSource = await LegalSourceModel.create({
-    ...metadata,
-    documentNumber: documentNumber ?? analyzed.documentNumber,
-    coverage,
-  });
-
-  try {
-    await LegalKnowledgeChunkModel.insertMany(
-      chunks.map((chunk, i) => ({ ...chunk, legalSourceId: legalSource._id, embedding: embeddings[i] })),
-    );
-  } catch (err) {
-    await LegalKnowledgeChunkModel.deleteMany({ legalSourceId: legalSource._id });
-    await LegalSourceModel.deleteOne({ _id: legalSource._id });
-    throw err;
-  }
-
-  return { legalSourceId: legalSource._id.toString(), chunkCount: chunks.length };
 }

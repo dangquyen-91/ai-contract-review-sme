@@ -24,6 +24,35 @@ const legalCoverageSchema = new Schema(
   { _id: false },
 );
 
+export const LEGAL_INGESTION_STATUSES = ['queued', 'running', 'paused', 'completed', 'failed'] as const;
+
+const legalIngestionSchema = new Schema(
+  {
+    status: { type: String, enum: LEGAL_INGESTION_STATUSES, required: true },
+    jobId: { type: String },
+    totalChunks: { type: Number, required: true },
+    embeddedChunks: { type: Number, required: true, default: 0 },
+    error: { type: String },
+    resumeAt: { type: Date },
+    queuedAt: { type: Date },
+    startedAt: { type: Date },
+    finishedAt: { type: Date },
+  },
+  { _id: false },
+);
+
+const legalSourcePartSchema = new Schema(
+  {
+    fileName: { type: String },
+    articleFrom: { type: Number },
+    articleTo: { type: Number },
+    chunkCount: { type: Number, required: true },
+    skippedArticles: { type: [String], default: [] },
+    uploadedAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 const legalSourceSchema = new Schema(
   {
     code: { type: String, required: true, unique: true, trim: true, lowercase: true },
@@ -37,6 +66,8 @@ const legalSourceSchema = new Schema(
     effectiveDate: { type: Date },
     expiryDate: { type: Date },
     coverage: { type: legalCoverageSchema },
+    ingestion: { type: legalIngestionSchema },
+    parts: { type: [legalSourcePartSchema], default: [] },
   },
   { timestamps: true },
 );

@@ -7,7 +7,12 @@ import { CreateLegalSourceInput, PreviewLegalSourceInput } from '../validations/
 
 function uploadedFile(req: Request) {
   if (!req.file) throw AppError.badRequest('A file is required');
-  return { buffer: req.file.buffer, mimeType: req.file.mimetype };
+  return { buffer: req.file.buffer, mimeType: req.file.mimetype, name: req.file.originalname };
+}
+
+function accepted(res: Response, source: { _id: unknown }) {
+  res.set('Location', `/api/v1/kb/legal-sources/${String(source._id)}`);
+  ok(res, source, 202);
 }
 
 export const previewLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -21,8 +26,17 @@ export const createLegalSourceHandler = asyncHandler(async (req: Request, res: R
     input: req.body as CreateLegalSourceInput,
     file: uploadedFile(req),
   });
+  accepted(res, source);
+});
 
-  ok(res, source, 201);
+export const appendLegalSourcePartHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { expectedArticleCount } = req.body as PreviewLegalSourceInput;
+  const source = await legalSourceService.appendLegalSourcePart(req.params.id, uploadedFile(req), expectedArticleCount);
+  accepted(res, source);
+});
+
+export const resumeLegalIngestionHandler = asyncHandler(async (req: Request, res: Response) => {
+  accepted(res, await legalSourceService.resumeLegalIngestion(req.params.id));
 });
 
 export const listLegalSourcesHandler = asyncHandler(async (_req: Request, res: Response) => {

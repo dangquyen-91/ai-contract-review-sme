@@ -38,6 +38,8 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite'),
   GEMINI_EMBEDDING_MODEL: z.string().default('gemini-embedding-001'),
+  LEGAL_EMBED_TOKENS_PER_MINUTE: z.coerce.number().int().min(1000).default(30000),
+  LEGAL_EMBED_REQUESTS_PER_MINUTE: z.coerce.number().int().min(1).default(100),
 
   OCR_WORKERS: z.coerce.number().int().min(1).max(8).default(2),
 

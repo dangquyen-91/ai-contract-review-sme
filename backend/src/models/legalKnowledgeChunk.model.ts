@@ -25,7 +25,7 @@ const legalKnowledgeChunkSchema = new Schema(
     clauseFrom: { type: Number },
     clauseTo: { type: Number },
     hierarchy: { type: [legalHeadingSchema], default: undefined },
-    embedding: { type: [Number], required: true, select: false },
+    embedding: { type: [Number], default: undefined, select: false },
   },
   { timestamps: true },
 );

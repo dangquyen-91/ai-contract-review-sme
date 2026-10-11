@@ -10,6 +10,7 @@ import { seedDefaultContractProfiles } from './services/contractProfile.service'
 import { terminateOcr } from './services/textExtraction.service';
 import { startExtractionWorker } from './services/extractionWorker.service';
 import { startReviewWorker } from './services/reviewWorker.service';
+import { startLegalIngestionWorker } from './services/legalIngestionWorker.service';
 import { OrganizationInvitationModel } from './models/organizationInvitation.model';
 import { initializeSubscriptionModels } from './models/subscription.model';
 import { seedPlans } from './services/subscription.service';
@@ -28,6 +29,7 @@ async function bootstrap() {
   if (env.START_WORKERS) {
     startExtractionWorker();
     startReviewWorker();
+    startLegalIngestionWorker();
     logger.info('Background workers started in the API process');
   }
 

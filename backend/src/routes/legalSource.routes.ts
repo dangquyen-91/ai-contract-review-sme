@@ -5,11 +5,13 @@ import { aiLimiter } from '../middlewares/rateLimit.middleware';
 import { validate } from '../middlewares/validate.middleware';
 import { legalDocUpload } from '../middlewares/upload.middleware';
 import {
+  appendLegalSourcePartHandler,
   createLegalSourceHandler,
   deleteLegalSourceHandler,
   getLegalSourceHandler,
   listLegalSourcesHandler,
   previewLegalSourceHandler,
+  resumeLegalIngestionHandler,
 } from '../controllers/legalSource.controller';
 import {
   createLegalSourceSchema,
@@ -41,6 +43,22 @@ router.post(
 );
 
 router.get('/:id', validate({ params: legalSourceIdParamSchema }), getLegalSourceHandler);
+
+router.post(
+  '/:id/parts',
+  requireRole('administrator'),
+  aiLimiter,
+  legalDocUpload.single('file'),
+  validate({ params: legalSourceIdParamSchema, body: previewLegalSourceSchema }),
+  appendLegalSourcePartHandler,
+);
+
+router.post(
+  '/:id/resume',
+  requireRole('administrator'),
+  validate({ params: legalSourceIdParamSchema }),
+  resumeLegalIngestionHandler,
+);
 
 router.delete(
   '/:id',

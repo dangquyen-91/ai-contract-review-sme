@@ -4,12 +4,14 @@ import { assertRedisReachable, closeQueues } from './config/queue';
 import { terminateOcr } from './services/textExtraction.service';
 import { startExtractionWorker } from './services/extractionWorker.service';
 import { startReviewWorker } from './services/reviewWorker.service';
+import { startLegalIngestionWorker } from './services/legalIngestionWorker.service';
 
 async function bootstrap() {
   await connectDB();
   await assertRedisReachable();
   startExtractionWorker();
   startReviewWorker();
+  startLegalIngestionWorker();
   logger.info('Background workers started');
 
   const shutdown = async (signal: string) => {

@@ -1,4 +1,4 @@
-import { GoogleGenAI, Schema } from '@google/genai';
+import { ApiError, GoogleGenAI, Schema } from '@google/genai';
 import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
 
@@ -102,11 +102,41 @@ interface EmbedOptions {
   taskType: EmbeddingTaskType;
   outputDimensionality?: number;
   signal?: AbortSignal;
+  retryAttempts?: number;
+}
+
+export interface RateLimitInfo {
+  retryAfterMs?: number;
+  dailyQuota: boolean;
+}
+
+function parseDurationMs(value: unknown): number | undefined {
+  const match = typeof value === 'string' ? value.match(/^(\d+(?:\.\d+)?)s$/) : null;
+  return match ? Math.ceil(Number(match[1]) * 1000) : undefined;
+}
+
+export function rateLimitInfoOf(err: unknown): RateLimitInfo | null {
+  const isApiError = err instanceof ApiError || (err instanceof Error && err.name === 'ApiError');
+  if (!isApiError || (err as ApiError).status !== 429) return null;
+  let details: Record<string, unknown>[] = [];
+  try {
+    details = (JSON.parse(err.message)?.error?.details ?? []) as Record<string, unknown>[];
+  } catch {
+    details = [];
+  }
+  const retryInfo = details.find((d) => String(d['@type']).endsWith('RetryInfo'));
+  const violations = details
+    .filter((d) => String(d['@type']).endsWith('QuotaFailure'))
+    .flatMap((d) => (d.violations ?? []) as Record<string, unknown>[]);
+  return {
+    retryAfterMs: parseDurationMs(retryInfo?.retryDelay),
+    dailyQuota: violations.some((v) => /PerDay/i.test(String(v.quotaId ?? ''))),
+  };
 }
 
 export async function embedTexts(
   texts: string[],
-  { taskType, outputDimensionality, signal }: EmbedOptions,
+  { taskType, outputDimensionality, signal, retryAttempts = 3 }: EmbedOptions,
 ): Promise<number[][]> {
   if (!client) {
     throw AppError.internal('LLM is not configured. Set GEMINI_API_KEY.');
@@ -123,7 +153,7 @@ export async function embedTexts(
         ...(outputDimensionality ? { outputDimensionality } : {}),
         abortSignal: signal,
         httpOptions: {
-          retryOptions: { attempts: 3, initialDelay: 1, maxDelay: 5 },
+          retryOptions: { attempts: retryAttempts, initialDelay: 1, maxDelay: 5 },
         },
       },
     });
