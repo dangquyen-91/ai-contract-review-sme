@@ -27,6 +27,7 @@ export interface SegmentationOptions {
   contractLabel: string;
   categories: CategoryOption[];
   redactor: Redactor;
+  signal?: AbortSignal;
 }
 
 interface ClassificationSpec {
@@ -34,11 +35,12 @@ interface ClassificationSpec {
   categoryRule: string;
   categoryCodes: [ClauseCategory, ...ClauseCategory[]];
   redactor: Redactor;
+  signal?: AbortSignal;
 }
 
 const SUMMARY_RULE = `"summary" must be a short (1-3 sentences) plain-language explanation written in Vietnamese with full diacritics, understandable to someone with no legal background.`;
 
-function buildSpec({ contractLabel, categories, redactor }: SegmentationOptions): ClassificationSpec {
+function buildSpec({ contractLabel, categories, redactor, signal }: SegmentationOptions): ClassificationSpec {
   if (!categories.some((c) => c.code === 'other')) {
     throw AppError.internal('Clause categories must include "other".');
   }
@@ -48,6 +50,7 @@ function buildSpec({ contractLabel, categories, redactor }: SegmentationOptions)
     categoryRule: `"category" must be exactly one of the codes below. Use "other" if nothing fits (including the contract title, preamble and party details).\n${categoryList}`,
     categoryCodes: categories.map((c) => c.code) as [ClauseCategory, ...ClauseCategory[]],
     redactor,
+    signal,
   };
 }
 
@@ -111,7 +114,7 @@ async function classifyBatch(
   sections: { id: number; text: string }[],
 ): Promise<SectionResult[]> {
   const schemas = sectionSchemas(spec);
-  const raw = await generateJson(buildSectionPrompt(spec, sections), schemas.response);
+  const raw = await generateJson(buildSectionPrompt(spec, sections), schemas.response, spec.signal);
   const parsed = schemas.result.safeParse(raw);
   if (!parsed.success) {
     throw AppError.internal('LLM returned an unexpected clause classification format.');
@@ -127,9 +130,12 @@ async function classifySections(spec: ClassificationSpec, sections: { id: number
     batches.push(sections.slice(i, i + SECTIONS_PER_CALL));
   }
   for (let i = 0; i < batches.length; i += MAX_PARALLEL_CALLS) {
-    const results = await Promise.all(
+    const settled = await Promise.allSettled(
       batches.slice(i, i + MAX_PARALLEL_CALLS).map((batch) => classifyBatch(spec, batch)),
     );
+    const failure = settled.find((item) => item.status === 'rejected');
+    if (failure?.status === 'rejected') throw failure.reason;
+    const results = settled.flatMap((item) => (item.status === 'fulfilled' ? [item.value] : []));
     for (const result of results.flat()) byId.set(result.sectionId, result);
   }
   return byId;
@@ -228,7 +234,7 @@ ${contractText}
 async function segmentByMarkers(spec: ClassificationSpec, contractText: string): Promise<SegmentedClause[]> {
   const { masked, toOriginalOffset } = spec.redactor.maskWithOffsets(contractText);
   const schemas = markerSchemas(spec);
-  const raw = await generateJson(buildMarkerPrompt(spec, masked), schemas.response);
+  const raw = await generateJson(buildMarkerPrompt(spec, masked), schemas.response, spec.signal);
 
   const parsed = schemas.result.safeParse(raw);
   if (!parsed.success) {
@@ -248,10 +254,13 @@ async function segmentByMarkers(spec: ClassificationSpec, contractText: string):
     throw AppError.internal('Could not locate any clause boundaries in the contract text.');
   }
   if (spans.length < llmClauses.length) {
-    logger.warn('Some clause start markers were not found and were merged into the previous clause', {
-      returned: llmClauses.length,
-      located: spans.length,
-    });
+    logger.warn(
+      'Some clause start markers were not found and were merged into the previous clause',
+      {
+        returned: llmClauses.length,
+        located: spans.length,
+      },
+    );
   }
 
   return spans.map((span, index) => {

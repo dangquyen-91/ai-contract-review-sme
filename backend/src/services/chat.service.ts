@@ -7,6 +7,7 @@ import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.
 import { generateText, generateTextStream } from './llm.service';
 import { buildReviewContext, describeReviewContext, ReviewContext } from './contractProfile.service';
 import { createRedactor, placeholderInstruction } from './redaction.service';
+import { withUsage } from './usage.service';
 
 const HISTORY_LIMIT = 10;
 
@@ -28,7 +29,12 @@ async function loadContractContext(orgId: string, contractId: string) {
 
 async function buildContractContext(
   reviewContext: ReviewContext,
-  version: { _id: unknown; summaryPoints?: string[]; overallAssessment?: string[]; analysisFocus?: string | null },
+  version: {
+    _id: unknown;
+    summaryPoints?: string[];
+    overallAssessment?: string[];
+    analysisFocus?: string | null;
+  },
 ): Promise<string> {
   const clauses = await ClauseModel.find({ contractVersionId: version._id }).sort({ index: 1 });
   const findings = await RiskFindingModel.find({ contractVersionId: version._id }).populate<{
@@ -42,7 +48,8 @@ async function buildContractContext(
     .join('\n\n');
 
   const findingLines = findings.flatMap((f) => {
-    if (!f.clauseId) return [`- (${f.severity}, missing clause) ${f.title}: ${f.problem.join(' ')}`];
+    if (!f.clauseId)
+      return [`- (${f.severity}, missing clause) ${f.title}: ${f.problem.join(' ')}`];
     const clauseIndex = clauseIndexById.get(f.clauseId.toString());
     if (clauseIndex === undefined) return [];
     return [`- (${f.severity}, clause ${clauseIndex + 1}) ${f.title}: ${f.problem.join(' ')}`];
@@ -113,11 +120,28 @@ export async function askAboutContract(
   userId: string,
   contractId: string,
   message: string,
+  idempotencyKey: string,
+  signal?: AbortSignal,
 ) {
   const { versionId, prompt, redactor, systemInstruction } = await prepareChat(orgId, contractId, message);
-  const reply = redactor.unmask(await generateText(prompt, systemInstruction));
-  await saveExchange(versionId, orgId, userId, message, reply);
-  return { reply };
+  const usage = await withUsage(
+    {
+      orgId,
+      userId,
+      contractId,
+      kind: 'chat',
+      idempotencyKey,
+      payload: { versionId: versionId.toString(), message },
+    },
+    async (runSignal) => {
+      const reply = redactor.unmask(await generateText(prompt, systemInstruction, runSignal));
+      runSignal.throwIfAborted();
+      await saveExchange(versionId, orgId, userId, message, reply);
+      return { reply };
+    },
+    signal,
+  );
+  return { ...usage.result, runId: usage.runId, replayed: usage.replayed };
 }
 
 export async function streamAboutContract(
@@ -126,27 +150,41 @@ export async function streamAboutContract(
   contractId: string,
   message: string,
   onToken: (token: string) => void,
+  idempotencyKey: string,
   signal?: AbortSignal,
 ) {
   const { versionId, prompt, redactor, systemInstruction } = await prepareChat(orgId, contractId, message);
-  const unmasker = redactor.createStreamUnmasker();
 
-  let reply = '';
-  const emit = (text: string) => {
-    if (!text) return;
-    reply += text;
-    onToken(text);
-  };
-  for await (const token of generateTextStream(prompt, systemInstruction, signal)) {
-    emit(unmasker.push(token));
-  }
-  emit(unmasker.flush());
-  if (!reply) {
-    throw AppError.internal('LLM returned an empty response.');
-  }
-
-  await saveExchange(versionId, orgId, userId, message, reply);
-  return { reply };
+  const usage = await withUsage(
+    {
+      orgId,
+      userId,
+      contractId,
+      kind: 'chat',
+      idempotencyKey,
+      payload: { versionId: versionId.toString(), message },
+    },
+    async (runSignal) => {
+      const unmasker = redactor.createStreamUnmasker();
+      let reply = '';
+      const emit = (text: string) => {
+        if (!text) return;
+        reply += text;
+        onToken(text);
+      };
+      for await (const token of generateTextStream(prompt, systemInstruction, runSignal)) {
+        emit(unmasker.push(token));
+      }
+      emit(unmasker.flush());
+      runSignal.throwIfAborted();
+      if (!reply) throw AppError.internal('LLM returned an empty response.');
+      await saveExchange(versionId, orgId, userId, message, reply);
+      return { reply };
+    },
+    signal,
+  );
+  if (usage.replayed) onToken(usage.result.reply);
+  return { ...usage.result, runId: usage.runId, replayed: usage.replayed };
 }
 
 export async function listChatMessages(orgId: string, contractId: string) {

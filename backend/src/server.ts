@@ -10,10 +10,16 @@ import { seedDefaultContractProfiles } from './services/contractProfile.service'
 import { terminateOcr } from './services/textExtraction.service';
 import { startExtractionWorker } from './services/extractionWorker.service';
 import { startReviewWorker } from './services/reviewWorker.service';
+import { OrganizationInvitationModel } from './models/organizationInvitation.model';
+import { initializeSubscriptionModels } from './models/subscription.model';
+import { seedPlans } from './services/subscription.service';
 
 async function bootstrap() {
   await connectDB();
   await assertRedisReachable();
+  await OrganizationInvitationModel.init();
+  await initializeSubscriptionModels();
+  await seedPlans();
   await seedDefaultRoles();
   await seedDefaultClauseTaxonomy();
   await seedDefaultContractProfiles();

@@ -10,7 +10,8 @@ export default async function OwnerPage() {
   const cookieStore = await cookies();
   const user = decodeSessionUser(cookieStore.get(userSessionCookie)?.value);
   if (!user) redirect("/dang-nhap");
+  if (user.role === "administrator") redirect("/dashboard/admin");
   if (!user.hasCompletedOnboarding) redirect("/chon-to-chuc");
-  if (!["owner", "administrator", "manager"].includes(user.role)) redirect("/dashboard/user");
+  if (!["owner", "manager"].includes(user.role)) redirect("/dashboard/user");
   return <UserDashboard ownerMode />;
 }

@@ -9,6 +9,7 @@ import { Role } from '../models/role.model';
 import { getRoleByCode } from './role.service';
 import { AccessTokenPayload } from '../middlewares/auth.middleware';
 import { LoginInput, RegisterInput } from '../validations/auth.validation';
+import { getPendingInvitation } from './invitation.service';
 
 function roleCodeOf(user: { roleId: unknown }) {
   const role = user.roleId as Role | null | undefined;
@@ -18,10 +19,15 @@ function roleCodeOf(user: { roleId: unknown }) {
   return role.code as AccessTokenPayload['role'];
 }
 
-async function ensurePersonalWorkspace(user: HydratedDocument<User>): Promise<HydratedDocument<User>> {
+async function ensurePersonalWorkspace(
+  user: HydratedDocument<User>,
+): Promise<HydratedDocument<User>> {
   if (user.orgId || !user.hasCompletedOnboarding) return user;
 
-  const organization = await OrganizationModel.create({ name: `Không gian cá nhân của ${user.name}`, isPersonal: true });
+  const organization = await OrganizationModel.create({
+    name: `Không gian cá nhân của ${user.name}`,
+    isPersonal: true,
+  });
   const updated = await UserModel.findOneAndUpdate(
     { _id: user._id, orgId: null },
     { $set: { orgId: organization._id } },
@@ -39,16 +45,22 @@ async function ensurePersonalWorkspace(user: HydratedDocument<User>): Promise<Hy
 
 const ACCESS_TOKEN_TTL = env.JWT_ACCESS_EXPIRES_IN as SignOptions['expiresIn'];
 const REFRESH_TOKEN_TTL = env.JWT_REFRESH_EXPIRES_IN as SignOptions['expiresIn'];
+const REMEMBER_REFRESH_TOKEN_TTL = env.JWT_REFRESH_REMEMBER_EXPIRES_IN as SignOptions['expiresIn'];
 
-function signTokens(payload: AccessTokenPayload) {
+function signTokens(payload: AccessTokenPayload, remember = false) {
   const accessToken = jwt.sign(payload, env.JWT_ACCESS_SECRET, { expiresIn: ACCESS_TOKEN_TTL });
-  const refreshToken = jwt.sign({ sub: payload.sub }, env.JWT_REFRESH_SECRET, {
-    expiresIn: REFRESH_TOKEN_TTL,
+  const refreshToken = jwt.sign({ sub: payload.sub, remember }, env.JWT_REFRESH_SECRET, {
+    expiresIn: remember ? REMEMBER_REFRESH_TOKEN_TTL : REFRESH_TOKEN_TTL,
   });
   return { accessToken, refreshToken };
 }
 
+export function tokensForUser(user: HydratedDocument<User>) {
+  return signTokens({ sub: user.id, role: roleCodeOf(user), orgId: user.orgId?.toString() });
+}
+
 export async function register(input: RegisterInput) {
+  if (input.invitationToken) await getPendingInvitation(input.invitationToken, input.email);
   const existing = await UserModel.findOne({ email: input.email });
   if (existing) {
     throw AppError.conflict('Email already registered');
@@ -82,22 +94,28 @@ export async function login(input: LoginInput) {
     throw AppError.unauthorized('Invalid credentials');
   }
 
-  if (roleCodeOf(user) === 'user' && user.hasCompletedOnboarding && !user.orgId) {
-    user = await ensurePersonalWorkspace(user) as typeof user;
+  if (input.invitationToken) await getPendingInvitation(input.invitationToken, user.email);
+  if (
+    !input.invitationToken &&
+    roleCodeOf(user) === 'user' &&
+    user.hasCompletedOnboarding &&
+    !user.orgId
+  ) {
+    user = (await ensurePersonalWorkspace(user)) as typeof user;
   }
 
   const tokens = signTokens({
     sub: user.id,
     role: roleCodeOf(user),
     orgId: user.orgId?.toString(),
-  });
+  }, input.remember === true);
   return { user, ...tokens };
 }
 
-export async function refresh(refreshToken: string) {
-  let payload: { sub: string };
+export async function refresh(refreshToken: string, invitationToken?: string) {
+  let payload: { sub: string; remember?: boolean };
   try {
-    payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as { sub: string };
+    payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as { sub: string; remember?: boolean };
   } catch {
     throw AppError.unauthorized('Invalid or expired refresh token');
   }
@@ -107,15 +125,22 @@ export async function refresh(refreshToken: string) {
     throw AppError.unauthorized('Invalid refresh token');
   }
 
-  if (roleCodeOf(user) === 'user' && user.hasCompletedOnboarding && !user.orgId) {
-    user = await ensurePersonalWorkspace(user) as typeof user;
+  if (invitationToken) await getPendingInvitation(invitationToken, user.email);
+  if (
+    !invitationToken &&
+    roleCodeOf(user) === 'user' &&
+    user.hasCompletedOnboarding &&
+    !user.orgId
+  ) {
+    user = (await ensurePersonalWorkspace(user)) as typeof user;
   }
 
-  return signTokens({
+  const tokens = signTokens({
     sub: user.id,
     role: roleCodeOf(user),
     orgId: user.orgId?.toString(),
-  });
+  }, payload.remember === true);
+  return { user, ...tokens };
 }
 
 export async function completeOnboarding(userId: string) {

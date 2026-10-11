@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { workspacePath } from "@/lib/workspace-path";
 import { cookies } from "next/headers";
 import { Brand } from "@/components/ui/brand";
 import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
@@ -9,7 +10,7 @@ export async function Header() {
   const cookieStore = await cookies();
   const hasSession = cookieStore.has("lawscan_access") || cookieStore.has("lawscan_refresh");
   const user = hasSession ? decodeSessionUser(cookieStore.get(userSessionCookie)?.value) : null;
-  const accountHref = !user?.hasCompletedOnboarding ? "/chon-to-chuc" : ["owner", "administrator", "manager"].includes(user.role) ? "/dashboard/owner" : "/dashboard/user";
+  const accountHref = workspacePath(user);
 
   return (
     <header className="print:hidden min-h-[104px] relative z-10 [&_nav]:text-[length:17px] [&>_div]:text-[length:17px] [@media_(max-width:_600px)]:min-h-20 w-[min(1380px,calc(100%_-_112px))] [margin-inline:auto] [@media_(max-width:_1199px)]:w-[calc(100%_-_64px)] [@media_(max-width:_600px)]:w-[calc(100%_-_40px)] flex items-center justify-between gap-6">

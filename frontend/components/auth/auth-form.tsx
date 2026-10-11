@@ -1,5 +1,7 @@
 "use client";
 
+import { workspacePath } from "@/lib/workspace-path";
+
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -83,13 +85,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           ? "Tài khoản của bạn đã được tạo."
           : "Chào mừng bạn quay lại LawScan.",
       });
-      router.push(
-        !session.user.hasCompletedOnboarding
-          ? "/chon-to-chuc"
-          : ["owner", "administrator", "manager"].includes(session.user.role)
-            ? "/dashboard/owner"
-            : "/dashboard/user",
-      );
+      router.push(workspacePath(session.user));
       router.refresh();
     } catch (error) {
       if (!isApiClientError(error)) {

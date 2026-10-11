@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { CompanyChoice } from "@/components/onboarding/company-choice";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
@@ -9,7 +12,12 @@ export const metadata: Metadata = {
   description: "Chọn cách thiết lập không gian làm việc LawScan của bạn.",
 };
 
-export default function ChooseOrganizationPage() {
+export default async function ChooseOrganizationPage() {
+  const cookieStore = await cookies();
+  const user = decodeSessionUser(cookieStore.get(userSessionCookie)?.value);
+
+  if (user?.role === "administrator") redirect("/dashboard/admin");
+
   return (
     <main className="[--onboarding-accent:#0b67e3] [--onboarding-accent-deep:#0758c9] [--onboarding-ink:#0c1730] [--onboarding-muted:#65748b] [--onboarding-line:#dce4ef] min-h-dvh grid grid-cols-[minmax(360px,0.82fr)_minmax(520px,1.18fr)] text-[color:var(--onboarding-ink)] [background:#f8fafc] [@media_(max-width:_900px)]:block [@media_(max-width:_900px)]:[background:#f5f8fc]">
       <aside className="min-h-dvh flex flex-col text-[#edf5ff] [background:radial-gradient(circle_at_12%_82%,rgb(32_111_218_/_0.22),transparent_35%),#0b1b35] pt-9 pb-[42px] px-[clamp(34px,5vw,74px)] [@media_(max-width:_900px)]:hidden">

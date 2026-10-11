@@ -14,10 +14,17 @@ export type DashboardContract = {
     summaryPoints?: string[];
     extractionStatus?: "pending" | "processing" | "completed" | "failed" | "unsupported";
     segmentationStatus?: "pending" | "processing" | "completed" | "failed";
+    segmentationError?: string;
+    segmentationStartedAt?: string;
     summaryStatus?: "pending" | "processing" | "completed" | "failed";
+    summaryError?: string;
+    summaryStartedAt?: string;
     riskDetectionStatus?: "pending" | "processing" | "completed" | "failed";
+    riskDetectionError?: string;
+    riskDetectionStartedAt?: string;
     analysisFocus?: string;
     fileName?: string;
+    mimeType?: string;
   };
   fileName?: string;
   updatedAt: string;

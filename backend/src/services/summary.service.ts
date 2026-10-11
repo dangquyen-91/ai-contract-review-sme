@@ -17,6 +17,7 @@ export async function generateContractSummary(
   orgId: string,
   contractId: string,
   analysisFocus?: string,
+  signal?: AbortSignal,
 ) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
@@ -51,7 +52,9 @@ export async function generateContractSummary(
       clauses.map((c) => ({ category: c.clauseTypeId.code, summary: c.summary })),
       claimed.analysisFocus ?? undefined,
       redactor,
+      signal,
     );
+    signal?.throwIfAborted();
 
     await ContractVersionModel.updateOne(
       { _id: version._id },

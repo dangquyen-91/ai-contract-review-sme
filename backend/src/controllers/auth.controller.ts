@@ -7,7 +7,7 @@ import { Role } from '../models/role.model';
 import { HydratedDocument } from 'mongoose';
 import { AppError } from '../errors/AppError';
 
-function toPublicUser(user: HydratedDocument<User>) {
+export function toPublicUser(user: HydratedDocument<User>) {
   return {
     id: user._id.toString(),
     name: user.name,
@@ -29,8 +29,8 @@ export const loginHandler = asyncHandler(async (req: Request, res: Response) => 
 });
 
 export const refreshHandler = asyncHandler(async (req: Request, res: Response) => {
-  const tokens = await authService.refresh(req.body.refreshToken);
-  ok(res, tokens);
+  const { user, ...tokens } = await authService.refresh(req.body.refreshToken, req.body.invitationToken);
+  ok(res, { user: toPublicUser(user), ...tokens });
 });
 
 export const completeOnboardingHandler = asyncHandler(async (req: Request, res: Response) => {

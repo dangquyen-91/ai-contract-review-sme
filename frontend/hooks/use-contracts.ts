@@ -53,6 +53,9 @@ export function useSegmentClausesMutation() {
     onSuccess: (_clauses, contractId) => {
       queryClient.invalidateQueries({ queryKey: contractMutationKeys.clauses(contractId) });
       queryClient.invalidateQueries({ queryKey: contractMutationKeys.detail(contractId) });
+      queryClient.invalidateQueries({ queryKey: contractMutationKeys.findings(contractId) });
+      queryClient.invalidateQueries({ queryKey: contractMutationKeys.getReview });
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 }
@@ -128,7 +131,14 @@ export function useReviewContractMutation() {
   return useMutation<ContractReviewResult, ApiClientError, ReviewContractVariables>({
     mutationKey: contractMutationKeys.review,
     mutationFn: ({ contractId, analysisFocus }) => contractsApi.review(contractId, analysisFocus),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    // Segmentation may have succeeded even when summary or risk detection failed.
+    onSettled: (_result, _error, { contractId }) => {
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: contractMutationKeys.detail(contractId) });
+      queryClient.invalidateQueries({ queryKey: contractMutationKeys.clauses(contractId) });
+      queryClient.invalidateQueries({ queryKey: contractMutationKeys.findings(contractId) });
+      queryClient.invalidateQueries({ queryKey: contractMutationKeys.getReview });
+    },
   });
 }
 

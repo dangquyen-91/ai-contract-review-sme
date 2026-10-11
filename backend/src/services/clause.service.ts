@@ -16,7 +16,7 @@ import { getTaxonomyByCodes, getTaxonomyIdByCode } from './clauseTypeTaxonomy.se
 import { buildReviewContext } from './contractProfile.service';
 import { createRedactor } from './redaction.service';
 
-export async function segmentClauses(orgId: string, contractId: string) {
+export async function segmentClauses(orgId: string, contractId: string, signal?: AbortSignal) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
@@ -45,7 +45,9 @@ export async function segmentClauses(orgId: string, contractId: string) {
       contractLabel: reviewContext.contractLabel,
       categories: categories.map(({ code, name, description }) => ({ code, name, description })),
       redactor: createRedactor(extractedText, reviewContext.redactionPolicy),
+      signal,
     });
+    signal?.throwIfAborted();
     const taxonomyIdByCode = await getTaxonomyIdByCode();
 
     const oldClauseIds = await ClauseModel.find({ contractVersionId: versionId }).distinct('_id');

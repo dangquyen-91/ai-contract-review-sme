@@ -53,6 +53,7 @@ export async function summarizeContract(
   clauses: ClauseSummaryInput[],
   analysisFocus: string | undefined,
   redactor: Redactor,
+  signal?: AbortSignal,
 ): Promise<string[]> {
   const raw = await generateJson(
     buildPrompt(
@@ -62,6 +63,7 @@ export async function summarizeContract(
       placeholderInstruction(redactor),
     ),
     responseSchema,
+    signal,
   );
 
   const parsed = summaryResultSchema.safeParse(raw);

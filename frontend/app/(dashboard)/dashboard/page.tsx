@@ -13,6 +13,7 @@ export default async function DashboardPage() {
   const cookieStore = await cookies();
   const user = decodeSessionUser(cookieStore.get(userSessionCookie)?.value);
   if (!user) redirect("/dang-nhap");
+  if (user.role === "administrator") redirect("/dashboard/admin");
   if (!user.hasCompletedOnboarding) redirect("/chon-to-chuc");
-  redirect(["owner", "administrator", "manager"].includes(user.role) ? "/dashboard/owner" : "/dashboard/user");
+  redirect(["owner", "manager"].includes(user.role) ? "/dashboard/owner" : "/dashboard/user");
 }
