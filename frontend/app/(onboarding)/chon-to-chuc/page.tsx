@@ -6,6 +6,7 @@ import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { CompanyChoice } from "@/components/onboarding/company-choice";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
+import { workspacePath } from "@/lib/workspace-path";
 
 export const metadata: Metadata = {
   title: "Thiết lập tổ chức | LawScan",
@@ -17,6 +18,10 @@ export default async function ChooseOrganizationPage() {
   const user = decodeSessionUser(cookieStore.get(userSessionCookie)?.value);
 
   if (user?.role === "administrator") redirect("/dashboard/admin");
+  if (user?.role === "staff") redirect("/dashboard/staff");
+  if (user?.orgId && ["owner", "manager", "staff", "reviewer"].includes(user.role)) {
+    redirect(workspacePath(user));
+  }
 
   return (
     <main className="[--onboarding-accent:#0b67e3] [--onboarding-accent-deep:#0758c9] [--onboarding-ink:#0c1730] [--onboarding-muted:#65748b] [--onboarding-line:#dce4ef] min-h-dvh grid grid-cols-[minmax(360px,0.82fr)_minmax(520px,1.18fr)] text-[color:var(--onboarding-ink)] [background:#f8fafc] [@media_(max-width:_900px)]:block [@media_(max-width:_900px)]:[background:#f5f8fc]">

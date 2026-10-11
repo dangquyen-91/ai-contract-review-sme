@@ -10,6 +10,7 @@ export default async function OwnerReviewPage() {
   const user = decodeSessionUser(cookieStore.get(userSessionCookie)?.value);
   if (!user) redirect("/dang-nhap");
   if (user.role === "administrator") redirect("/dashboard/admin");
+  if (user.role === "staff") redirect("/dashboard/staff?view=upload");
   if (!["owner", "manager"].includes(user.role)) redirect("/dashboard/user");
   redirect("/dashboard/owner?view=upload");
 }
