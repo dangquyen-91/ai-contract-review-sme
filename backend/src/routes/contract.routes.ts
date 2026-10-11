@@ -1,6 +1,11 @@
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware';
-import { requireRole } from '../middlewares/rbac.middleware';
+import {
+  CONTRACT_DELETE_ROLES,
+  CONTRACT_REVIEW_ROLES,
+  CONTRACT_UPLOAD_ROLES,
+  requireRole,
+} from '../middlewares/rbac.middleware';
 import { aiLimiter } from '../middlewares/rateLimit.middleware';
 import { validate } from '../middlewares/validate.middleware';
 import { contractFileUpload } from '../middlewares/upload.middleware';
@@ -44,7 +49,7 @@ router.get('/', validate({ query: listContractsQuerySchema }), listContractsHand
 
 router.post(
   '/',
-  requireRole('administrator', 'owner', 'manager', 'staff', 'user'),
+  requireRole(...CONTRACT_UPLOAD_ROLES),
   contractFileUpload.single('file'),
   validate({ body: createContractSchema }),
   createContractHandler,
@@ -62,7 +67,7 @@ router.get('/:id/file', validate({ params: contractIdParamSchema }), getContract
 
 router.post(
   '/:id/reviews',
-  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
+  requireRole(...CONTRACT_REVIEW_ROLES),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: analysisFocusBodySchema }),
   startReviewHandler,
@@ -78,14 +83,14 @@ router.get('/:id/key-terms', validate({ params: contractIdParamSchema }), listKe
 
 router.patch(
   '/:id/risks/:findingId',
-  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
+  requireRole(...CONTRACT_REVIEW_ROLES),
   validate({ params: findingParamSchema, body: updateProposedRevisionBodySchema }),
   updateProposedRevisionHandler,
 );
 
 router.delete(
   '/:id/risks/:findingId/revision',
-  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
+  requireRole(...CONTRACT_REVIEW_ROLES),
   validate({ params: findingParamSchema }),
   removeProposedRevisionHandler,
 );
@@ -94,7 +99,7 @@ router.get('/:id/chat', validate({ params: contractIdParamSchema }), listChatMes
 
 router.post(
   '/:id/chat',
-  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
+  requireRole(...CONTRACT_REVIEW_ROLES),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
   askAboutContractHandler,
@@ -102,7 +107,7 @@ router.post(
 
 router.post(
   '/:id/chat/stream',
-  requireRole('administrator', 'owner', 'manager', 'staff', 'reviewer', 'user'),
+  requireRole(...CONTRACT_REVIEW_ROLES),
   aiLimiter,
   validate({ params: contractIdParamSchema, body: chatMessageBodySchema }),
   streamAboutContractHandler,
@@ -110,7 +115,7 @@ router.post(
 
 router.delete(
   '/:id',
-  requireRole('administrator', 'owner', 'manager', 'user'),
+  requireRole(...CONTRACT_DELETE_ROLES),
   validate({ params: contractIdParamSchema }),
   deleteContractHandler,
 );

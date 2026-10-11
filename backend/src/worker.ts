@@ -1,23 +1,17 @@
 import { connectDB, disconnectDB } from './config/db';
 import { logger } from './config/logger';
-import { assertRedisReachable, closeQueues } from './config/queue';
-import { terminateOcr } from './services/textExtraction.service';
-import { startExtractionWorker } from './services/extractionWorker.service';
-import { startReviewWorker } from './services/reviewWorker.service';
-import { startLegalIngestionWorker } from './services/legalIngestionWorker.service';
+import { assertRedisReachable } from './config/queue';
+import { startBackgroundWorkers, stopBackgroundWork } from './services/workers.service';
 
 async function bootstrap() {
   await connectDB();
   await assertRedisReachable();
-  startExtractionWorker();
-  startReviewWorker();
-  startLegalIngestionWorker();
+  startBackgroundWorkers();
   logger.info('Background workers started');
 
   const shutdown = async (signal: string) => {
     logger.info(`${signal} received, stopping background workers`);
-    await closeQueues();
-    await terminateOcr().catch(() => undefined);
+    await stopBackgroundWork();
     await disconnectDB();
     process.exit(0);
   };

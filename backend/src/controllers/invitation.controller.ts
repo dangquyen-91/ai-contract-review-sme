@@ -1,8 +1,8 @@
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok, paginated } from '../utils/ApiResponse';
 import { AppError } from '../errors/AppError';
-import * as service from '../services/invitation.service';
-import { tokensForUser } from '../services/auth.service';
+import * as service from '../services/organization/invitation.service';
+import { tokensForUser } from '../services/identity/auth.service';
 import { toPublicUser } from './auth.controller';
 import { invitationPaginationSchema } from '../validations/invitation.validation';
 

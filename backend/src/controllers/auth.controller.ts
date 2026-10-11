@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
-import * as authService from '../services/auth.service';
+import * as authService from '../services/identity/auth.service';
 import { User } from '../models/user.model';
 import { Role } from '../models/role.model';
 import { HydratedDocument } from 'mongoose';

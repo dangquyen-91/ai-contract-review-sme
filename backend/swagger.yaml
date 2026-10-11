@@ -368,7 +368,7 @@ components:
 
     Review:
       type: object
-      description: One review run of a contract (clause segmentation, then summary and risk detection in parallel), executed by a background worker. Results are written to the contract like the step-by-step endpoints do, and a snapshot is kept on the review so earlier runs stay visible.
+      description: One review run of a contract (clause segmentation, then summary and risk detection in parallel), executed by a background worker. Results are written to the contract, and a snapshot is kept on the review so earlier runs stay visible.
       properties:
         _id:
           type: string

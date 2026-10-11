@@ -6,7 +6,7 @@ import {
   deleteOrganization,
   getOrganization,
   updateOrganization,
-} from '../services/organization.service';
+} from '../services/organization/organization.service';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 

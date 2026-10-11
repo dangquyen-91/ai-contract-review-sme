@@ -2,18 +2,15 @@ import { createApp } from './app';
 import { connectDB, disconnectDB } from './config/db';
 import { env } from './config/env';
 import { logger } from './config/logger';
-import { assertRedisReachable, closeQueues } from './config/queue';
-import { seedDefaultRoles } from './services/role.service';
-import { ensureLegalTextIndex, ensureLegalVectorIndex } from './services/legalKnowledgeIngest.service';
-import { seedDefaultClauseTaxonomy } from './services/clauseTypeTaxonomy.service';
-import { seedDefaultContractProfiles } from './services/contractProfile.service';
-import { terminateOcr } from './services/textExtraction.service';
-import { startExtractionWorker } from './services/extractionWorker.service';
-import { startReviewWorker } from './services/reviewWorker.service';
-import { startLegalIngestionWorker } from './services/legalIngestionWorker.service';
+import { assertRedisReachable } from './config/queue';
+import { seedDefaultRoles } from './services/identity/role.service';
+import { ensureLegalTextIndex, ensureLegalVectorIndex } from './services/legal/legalKnowledgeIngest.service';
+import { seedDefaultClauseTaxonomy } from './services/analysis/clauseTypeTaxonomy.service';
+import { seedDefaultContractProfiles } from './services/contract/contractProfile.service';
+import { startBackgroundWorkers, stopBackgroundWork } from './services/workers.service';
 import { OrganizationInvitationModel } from './models/organizationInvitation.model';
 import { initializeSubscriptionModels } from './models/subscription.model';
-import { seedPlans } from './services/subscription.service';
+import { seedPlans } from './services/billing/subscription.service';
 
 async function bootstrap() {
   await connectDB();
@@ -28,9 +25,7 @@ async function bootstrap() {
   await ensureLegalTextIndex();
 
   if (env.START_WORKERS) {
-    startExtractionWorker();
-    startReviewWorker();
-    startLegalIngestionWorker();
+    startBackgroundWorkers();
     logger.info('Background workers started in the API process');
   }
 
@@ -43,8 +38,7 @@ async function bootstrap() {
   const shutdown = async (signal: string) => {
     logger.info(`${signal} received, shutting down gracefully`);
     server.close(async () => {
-      await closeQueues();
-      await terminateOcr().catch(() => undefined);
+      await stopBackgroundWork();
       await disconnectDB();
       process.exit(0);
     });

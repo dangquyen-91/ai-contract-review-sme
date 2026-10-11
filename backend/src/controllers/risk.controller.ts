@@ -2,19 +2,8 @@ import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
-import * as riskService from '../services/risk.service';
-import { listKeyTerms } from '../services/keyTermExtraction.service';
-import { openSseStream } from '../utils/sse';
-
-export const detectRisksHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
-  const findings = await riskService.detectRisks(
-    user.orgId,
-    req.params.id,
-    req.body?.analysisFocus,
-  );
-  ok(res, findings);
-});
+import * as riskService from '../services/analysis/risk.service';
+import { listKeyTerms } from '../services/analysis/keyTermExtraction.service';
 
 export const listRiskFindingsHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
@@ -25,29 +14,6 @@ export const listRiskFindingsHandler = asyncHandler(async (req: Request, res: Re
 export const listKeyTermsHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
   ok(res, await listKeyTerms(user.orgId, req.params.id));
-});
-
-export const detectRisksStreamHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
-
-  const stream = openSseStream(res);
-  try {
-    const findings = await riskService.detectRisks(
-      user.orgId,
-      req.params.id,
-      req.body?.analysisFocus,
-      (stage) => stream.send('progress', { stage }),
-      stream.signal,
-    );
-    for (const finding of findings) {
-      stream.send('finding', finding);
-    }
-    stream.send('done', { total: findings.length });
-  } catch (err) {
-    stream.fail(err);
-  } finally {
-    stream.end();
-  }
 });
 
 export const updateProposedRevisionHandler = asyncHandler(async (req: Request, res: Response) => {

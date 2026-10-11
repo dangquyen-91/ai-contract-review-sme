@@ -1,6 +1,6 @@
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
-import * as service from '../services/subscription.service';
+import * as service from '../services/billing/subscription.service';
 
 export const listPlansHandler = asyncHandler(async (_req, res) => {
   ok(res, await service.listPlans());

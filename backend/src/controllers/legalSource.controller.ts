@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import { AppError } from '../errors/AppError';
-import * as legalSourceService from '../services/legalSource.service';
+import * as legalSourceService from '../services/legal/legalSource.service';
 import { CreateLegalSourceInput, PreviewLegalSourceInput } from '../validations/legalSource.validation';
 
 function uploadedFile(req: Request) {
