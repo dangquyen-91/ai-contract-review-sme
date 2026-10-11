@@ -48,6 +48,8 @@ const reviewSchema = new Schema(
     versionId: { type: Types.ObjectId, ref: 'ContractVersion', required: true },
     orgId: { type: Types.ObjectId, ref: 'Organization', required: true, index: true },
     requestedBy: { type: Types.ObjectId, ref: 'User', required: true },
+    idempotencyKey: { type: String, required: true },
+    usageRunId: { type: Types.ObjectId, ref: 'UsageRun', required: true },
     status: { type: String, enum: REVIEW_STATUSES, default: 'queued', index: true },
     activeLock: { type: Boolean },
     currentStage: { type: String, enum: REVIEW_STAGES },
@@ -67,6 +69,7 @@ const reviewSchema = new Schema(
 );
 
 reviewSchema.index({ contractId: 1, createdAt: -1 });
+reviewSchema.index({ orgId: 1, idempotencyKey: 1 }, { unique: true });
 reviewSchema.index(
   { contractId: 1 },
   { unique: true, partialFilterExpression: { activeLock: true }, name: 'one_active_review_per_contract' },

@@ -10,12 +10,14 @@ import { REVIEW_STAGES, ReviewModel } from '../models/review.model';
 import { segmentClauses } from './clause.service';
 import { generateContractSummary } from './summary.service';
 import { detectRisks } from './risk.service';
+import { extendUsageLease, finishUsage } from './usage.service';
 
 const REVIEW_QUEUE = 'contract-review';
 const MAX_ATTEMPTS = 2;
 const WORKER_CONCURRENCY = 2;
 const EXTRACTION_POLL_MS = 2000;
 const EXTRACTION_WAIT_MS = 15 * 60 * 1000;
+const CREDIT_HEARTBEAT_MS = 60_000;
 const ACTIVE_JOB_STATES = new Set(['waiting', 'active', 'delayed', 'prioritized', 'waiting-children']);
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 } as const;
 
@@ -24,14 +26,16 @@ type StageKey = 'segmentation' | 'summary' | 'riskDetection';
 
 interface ReviewJobData {
   reviewId: string;
+  orgId: string;
+  usageRunId: string;
 }
 
 let queue: Queue<ReviewJobData> | undefined;
 const getQueue = () => (queue ??= createQueue<ReviewJobData>(REVIEW_QUEUE));
 
-export async function enqueueReview(reviewId: string) {
-  return addJobWithTimeout(getQueue(), 'review', { reviewId }, {
-    jobId: reviewId,
+export async function enqueueReview(data: ReviewJobData) {
+  return addJobWithTimeout(getQueue(), 'review', data, {
+    jobId: data.reviewId,
     attempts: MAX_ATTEMPTS,
     backoff: { type: 'exponential', delay: 15000 },
     removeOnComplete: { age: 7 * 24 * 3600 },
@@ -101,10 +105,11 @@ async function runStage(
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function waitForExtraction(job: Job<ReviewJobData>, versionId: string) {
+async function waitForExtraction(job: Job<ReviewJobData>, versionId: string, signal: AbortSignal) {
   const deadline = Date.now() + EXTRACTION_WAIT_MS;
   let lastDetail: string | undefined;
   for (;;) {
+    signal.throwIfAborted();
     const version = await ContractVersionModel.findById(versionId).select('extractionStatus extractionProgress');
     if (!version) throw new UnrecoverableError('The contract was deleted');
     if (version.extractionStatus === 'completed') return;
@@ -166,16 +171,29 @@ async function recordFailure(job: Job<ReviewJobData>, err: unknown) {
     finalAttempt,
     error: message,
   });
-  const update = finalAttempt
-    ? {
-        $set: { status: 'failed', error: message, finishedAt: new Date() },
-        $unset: { activeLock: '', currentStage: '', stageDetail: '' },
-      }
-    : { $set: { error: message, stageDetail: 'retrying after an error' } };
-  await ReviewModel.updateOne({ _id: job.data.reviewId }, update).catch(() => undefined);
+  if (!finalAttempt) {
+    await ReviewModel.updateOne(
+      { _id: job.data.reviewId },
+      { $set: { error: message, stageDetail: 'retrying after an error' } },
+    ).catch(() => undefined);
+    return;
+  }
+  await ReviewModel.updateOne(
+    { _id: job.data.reviewId },
+    {
+      $set: { status: 'failed', error: message, finishedAt: new Date() },
+      $unset: { activeLock: '', currentStage: '', stageDetail: '' },
+    },
+  ).catch(() => undefined);
+  await finishUsage(job.data.orgId, job.data.usageRunId, false).catch((releaseErr) =>
+    logger.warn('Failed to release the analysis credit of a failed review', {
+      reviewId: job.data.reviewId,
+      error: releaseErr instanceof Error ? releaseErr.message : String(releaseErr),
+    }),
+  );
 }
 
-async function processReview(job: Job<ReviewJobData>): Promise<void> {
+export async function processReview(job: Job<ReviewJobData>): Promise<void> {
   try {
     await runReview(job);
   } catch (err) {
@@ -184,37 +202,96 @@ async function processReview(job: Job<ReviewJobData>): Promise<void> {
   }
 }
 
+function keepCreditReserved(usageRunId: string) {
+  const controller = new AbortController();
+  const lost = () => controller.abort(new UnrecoverableError('The analysis credit reservation expired; start a new review'));
+  const heartbeat = setInterval(() => {
+    extendUsageLease(usageRunId)
+      .then((alive) => {
+        if (!alive) lost();
+      })
+      .catch(lost);
+  }, CREDIT_HEARTBEAT_MS);
+  heartbeat.unref();
+  return { signal: controller.signal, stop: () => clearInterval(heartbeat) };
+}
+
 async function runReview(job: Job<ReviewJobData>): Promise<void> {
   const review = await ReviewModel.findById(job.data.reviewId);
   if (!review || review.status === 'completed' || review.status === 'failed') return;
 
   const orgId = review.orgId.toString();
   const contractId = review.contractId.toString();
+  const { usageRunId } = job.data;
   const analysisFocus = review.analysisFocus ?? undefined;
 
-  await updateReview(job, { status: 'running', startedAt: review.startedAt ?? new Date() }, ['error']);
-  const versionId = review.versionId.toString();
-  await waitForExtraction(job, versionId);
+  if (!(await extendUsageLease(usageRunId))) {
+    throw new UnrecoverableError('The analysis credit reservation expired before the review started; start a new review');
+  }
+  const credit = keepCreditReserved(usageRunId);
+  try {
+    await updateReview(job, { status: 'running', startedAt: review.startedAt ?? new Date() }, ['error']);
+    await runStages(job, review.stages, { orgId, contractId, analysisFocus, versionId: review.versionId.toString() }, credit.signal);
+    credit.signal.throwIfAborted();
+    await finishUsage(orgId, usageRunId, true, { reviewId: job.data.reviewId }).catch((err) =>
+      logger.warn('Review finished but its analysis credit could not be finalized', {
+        reviewId: job.data.reviewId,
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    );
+  } catch (err) {
+    throw credit.signal.aborted ? credit.signal.reason : err;
+  } finally {
+    credit.stop();
+  }
 
-  if (review.stages?.segmentation !== 'completed') {
-    await runStage(job, 'segmentation', 'segmentation', () => segmentClauses(orgId, contractId));
+  await updateReview(
+    job,
+    { status: 'completed', finishedAt: new Date(), result: await buildReviewResult(review.versionId.toString()) },
+    ['activeLock', 'currentStage', 'stageDetail', 'error'],
+  );
+}
+
+interface StageInput {
+  orgId: string;
+  contractId: string;
+  versionId: string;
+  analysisFocus?: string;
+}
+
+async function runStages(
+  job: Job<ReviewJobData>,
+  stages: { segmentation?: string | null; summary?: string | null; riskDetection?: string | null } | null | undefined,
+  { orgId, contractId, versionId, analysisFocus }: StageInput,
+  signal: AbortSignal,
+) {
+  await waitForExtraction(job, versionId, signal);
+
+  if (stages?.segmentation !== 'completed') {
+    await runStage(job, 'segmentation', 'segmentation', () => segmentClauses(orgId, contractId, signal));
   }
 
   const parallel: Promise<void>[] = [];
-  const riskPending = review.stages?.riskDetection !== 'completed';
-  if (review.stages?.summary !== 'completed') {
+  const riskPending = stages?.riskDetection !== 'completed';
+  if (stages?.summary !== 'completed') {
     parallel.push(
       runStage(job, 'summary', riskPending ? null : 'summary', () =>
-        generateContractSummary(orgId, contractId, analysisFocus),
+        generateContractSummary(orgId, contractId, analysisFocus, signal),
       ),
     );
   }
   if (riskPending) {
     parallel.push(
       runStage(job, 'riskDetection', 'risk_detection', () =>
-        detectRisks(orgId, contractId, analysisFocus, (detail) => {
-          updateReview(job, { stageDetail: detail }).catch(() => undefined);
-        }),
+        detectRisks(
+          orgId,
+          contractId,
+          analysisFocus,
+          (detail) => {
+            updateReview(job, { stageDetail: detail }).catch(() => undefined);
+          },
+          signal,
+        ),
       ),
     );
   }
@@ -222,12 +299,6 @@ async function runReview(job: Job<ReviewJobData>): Promise<void> {
     (r): r is PromiseRejectedResult => r.status === 'rejected',
   );
   if (failure) throw failure.reason;
-
-  await updateReview(
-    job,
-    { status: 'completed', finishedAt: new Date(), result: await buildReviewResult(versionId) },
-    ['activeLock', 'currentStage', 'stageDetail', 'error'],
-  );
 }
 
 export function startReviewWorker() {

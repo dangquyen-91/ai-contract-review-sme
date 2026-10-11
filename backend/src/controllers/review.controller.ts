@@ -5,19 +5,21 @@ import { getOrganizationUser } from '../middlewares/auth.middleware';
 import { openSseStream } from '../utils/sse';
 import * as reviewService from '../services/review.service';
 import { subscribeToReview } from '../services/reviewWorker.service';
+import { getIdempotencyKey } from '../validations/subscription.validation';
 
 const STREAM_POLL_MS = 5000;
 
 export const startReviewHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
-  const review = await reviewService.startReview({
+  const { review, replayed } = await reviewService.startReview({
     orgId: user.orgId,
     userId: user.sub,
     contractId: req.params.id,
+    idempotencyKey: getIdempotencyKey(req),
     analysisFocus: req.body?.analysisFocus,
   });
   res.set('Location', `/api/v1/reviews/${review._id}`);
-  ok(res, review, 202);
+  ok(res, { ...review, replayed }, replayed ? 200 : 202);
 });
 
 export const listReviewsHandler = asyncHandler(async (req: Request, res: Response) => {
