@@ -1,4 +1,6 @@
-import type { DashboardContract } from "@/types/contracts";
+import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
+
+export type DashboardContractFilter = { status?: ContractStatus; riskLevel?: ContractRiskLevel };
 
 export type DashboardOrganization = {
   id: string;
@@ -11,6 +13,10 @@ export type DashboardData = {
   organization: DashboardOrganization;
   contracts: DashboardContract[];
   totalContracts: number;
+  distribution?: {
+    statuses: Record<ContractStatus, number>;
+    risks: Record<ContractRiskLevel, number>;
+  };
   stats: {
     processing: number;
     reviewed: number;

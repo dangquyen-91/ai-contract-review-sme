@@ -13,6 +13,8 @@ export default async function UserPage() {
   if (!user) redirect("/dang-nhap");
   if (user.role === "administrator") redirect("/dashboard/admin");
   if (user.role === "staff") redirect("/dashboard/staff");
+  if (user.role === "reviewer") redirect("/dashboard/reviewer");
+  if (user.role === "manager") redirect("/dashboard/manager");
   if (needsOnboarding(user)) redirect("/chon-to-chuc");
   if (["owner", "manager"].includes(user.role)) redirect("/dashboard/owner");
   return <UserDashboard />;

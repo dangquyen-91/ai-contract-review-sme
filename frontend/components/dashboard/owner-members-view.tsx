@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Icon } from "@/components/ui/icon";
+import { MemberCapacityDialog } from "@/components/dashboard/member-capacity-dialog";
 import { invitationsApi } from "@/lib/api/invitations";
 import { isApiClientError } from "@/lib/api/client";
 import type { InvitationRole, InvitationStatus } from "@/types/invitations";
@@ -28,6 +29,7 @@ export function OwnerMembersView({ orgId, organizationName }: { orgId: string; o
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [showInvite, setShowInvite] = useState(false);
+  const [showCapacity, setShowCapacity] = useState(false);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<InvitationRole>("staff");
   const [submitting, setSubmitting] = useState(false);
@@ -43,6 +45,9 @@ export function OwnerMembersView({ orgId, organizationName }: { orgId: string; o
     return text.toLocaleLowerCase("vi-VN").includes(search.toLocaleLowerCase("vi-VN"));
   });
   const quota = subscription.data?.members;
+  const usedSeats = quota ? quota.count + (quota.pending ?? 0) : 0;
+  const isFull = Boolean(quota && quota.available <= 0);
+  const planName = subscription.data?.plan?.name ?? subscription.data?.plan?.code ?? "Gói miễn phí";
 
   useEffect(() => {
     if (!showInvite) return;
@@ -60,6 +65,11 @@ export function OwnerMembersView({ orgId, organizationName }: { orgId: string; o
   async function sendInvitation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submitting) return;
+    if (isFull) {
+      setShowInvite(false);
+      setShowCapacity(true);
+      return;
+    }
     setSubmitting(true);
     try {
       await invitationsApi.create(orgId, { email: email.trim().toLowerCase(), role });
@@ -72,7 +82,13 @@ export function OwnerMembersView({ orgId, organizationName }: { orgId: string; o
       setPage(1);
       setTab("invitations");
       toast.success("Đã gửi lời mời", { description: "Người nhận sẽ thấy liên kết trong email của họ." });
-    } catch (error) { toast.error(errorMessage(error)); }
+    } catch (error) {
+      if (isApiClientError(error) && error.status === 403 && /^Member limit reached\b/i.test(error.message)) {
+        setShowInvite(false);
+        setShowCapacity(true);
+        await queryClient.invalidateQueries({ queryKey: ["org-subscription", orgId] });
+      } else toast.error(errorMessage(error));
+    }
     finally { setSubmitting(false); }
   }
 
@@ -81,7 +97,10 @@ export function OwnerMembersView({ orgId, organizationName }: { orgId: string; o
     setRevoking(id);
     try {
       await invitationsApi.revoke(orgId, id);
-      await queryClient.invalidateQueries({ queryKey: ["org-invitations", orgId] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["org-invitations", orgId] }),
+        queryClient.invalidateQueries({ queryKey: ["org-subscription", orgId] }),
+      ]);
       toast.success("Đã thu hồi lời mời");
     } catch (error) { toast.error(errorMessage(error)); }
     finally { setRevoking(null); }
@@ -90,15 +109,19 @@ export function OwnerMembersView({ orgId, organizationName }: { orgId: string; o
   return <div className="space-y-6 text-[#14213d]">
     <section className="flex flex-wrap items-end justify-between gap-5">
       <div><p className="mb-2 text-[12px] font-bold uppercase tracking-[.1em] text-[#2864dc]">Quản lý tổ chức</p><h1 className="m-0 text-[clamp(28px,3vw,40px)] font-bold tracking-[-.04em]">Thành viên & lời mời</h1><p className="mt-2 max-w-[670px] text-[14px] leading-6 text-[#6b778c]">Quản lý quyền truy cập của đội ngũ trong {organizationName}.</p></div>
-      <button type="button" onClick={() => setShowInvite(true)} disabled={quota?.available === 0} className="inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-[#2864dc] px-5 text-[14px] font-semibold text-white shadow-[0_10px_24px_-14px_#2864dc] hover:bg-[#1f4fb2] disabled:cursor-not-allowed disabled:opacity-50"><Icon name="mail" className="h-4 w-4" />Mời thành viên</button>
+      <div className="flex flex-col items-start gap-2 sm:items-end">
+        <button type="button" onClick={() => isFull ? setShowCapacity(true) : setShowInvite(true)} className="inline-flex min-h-11 items-center gap-2 rounded-[10px] bg-[#2864dc] px-5 text-[14px] font-semibold text-white shadow-[0_10px_24px_-14px_#2864dc] hover:bg-[#1f4fb2]"><Icon name="mail" className="h-4 w-4" />Mời thành viên</button>
+        {quota && <span className={`text-[12px] ${isFull ? "font-semibold text-[#91621c]" : "text-[#6b778c]"}`}>{usedSeats}/{quota.limit} chỗ đã sử dụng · {planName}</span>}
+      </div>
     </section>
 
     <section className="grid gap-3 md:grid-cols-3" aria-label="Tổng quan thành viên">
       <div className="rounded-2xl border border-[#dfe7f2] bg-white p-5 shadow-[0_16px_38px_-32px_#213b6d]"><span className="text-[13px] text-[#64748b]">Thành viên</span><strong className="mt-2 block text-[30px] leading-none">{members.data?.total ?? "—"}</strong><p className="mb-0 mt-2 text-[12px] text-[#8190a4]">Đang thuộc tổ chức</p></div>
       <div className="rounded-2xl border border-[#f1e5ca] bg-[#fffbf3] p-5"><span className="text-[13px] text-[#876936]">Lời mời</span><strong className="mt-2 block text-[30px] leading-none">{invitations.data?.total ?? "—"}</strong><p className="mb-0 mt-2 text-[12px] text-[#947b53]">Tổng lời mời đã tạo</p></div>
-      <div className="rounded-2xl border border-[#dce7f9] bg-[#f5f9ff] p-5"><span className="text-[13px] text-[#51709e]">Chỗ trong gói</span><strong className="mt-2 block text-[30px] leading-none">{quota ? `${quota.count}/${quota.limit}` : "—"}</strong><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#dce8f8]"><div className="h-full rounded-full bg-[#2864dc]" style={{ width: quota ? `${Math.min(100, quota.count / Math.max(1, quota.limit) * 100)}%` : "0%" }} /></div></div>
+      <div className="rounded-2xl border border-[#dce7f9] bg-[#f5f9ff] p-5"><span className="text-[13px] text-[#51709e]">Chỗ trong gói</span><strong className="mt-2 block text-[30px] leading-none">{quota ? `${usedSeats}/${quota.limit}` : "—"}</strong><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-[#dce8f8]"><div className={`h-full rounded-full ${isFull ? "bg-[#d99a2b]" : "bg-[#2864dc]"}`} style={{ width: quota ? `${Math.min(100, usedSeats / Math.max(1, quota.limit) * 100)}%` : "0%" }} /></div>{quota && <p className="mb-0 mt-2 text-[12px] text-[#64748b]">{quota.count} thành viên (gồm Owner) + {quota.pending ?? 0} lời mời đang chờ</p>}</div>
     </section>
-    {quota?.available === 0 && <p className="rounded-xl border border-[#f1dfb5] bg-[#fff9e9] px-4 py-3 text-[13px] text-[#765b28]">Gói hiện tại đã hết chỗ. <Link href="/goi-dich-vu" className="font-semibold underline">Xem gói dịch vụ</Link> để mời thêm thành viên.</p>}
+    {isFull && <p className="rounded-xl border border-[#f1dfb5] bg-[#fff9e9] px-4 py-3 text-[13px] text-[#765b28]">Tổ chức đã hết chỗ. {(quota?.pending ?? 0) > 0 ? "Thu hồi lời mời đang chờ không còn cần thiết để giải phóng chỗ, hoặc " : "Bạn có thể "}<Link href="/goi-dich-vu" className="font-semibold underline">xem các gói dịch vụ</Link> để tăng hạn mức.</p>}
+    {showCapacity && <MemberCapacityDialog subscription={subscription.data} onClose={() => setShowCapacity(false)} onManage={(next) => { setShowCapacity(false); changeTab(next); }} />}
 
     <section className="overflow-hidden rounded-2xl border border-[#e1e7f0] bg-white shadow-[0_24px_55px_-48px_#17335f]">
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#e9edf3] px-5 pt-4 sm:px-6">

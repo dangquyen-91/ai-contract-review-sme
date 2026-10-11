@@ -9,7 +9,8 @@ import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
 import styles from "./staff-organization-required.module.css";
 
-export function StaffOrganizationRequired({ email }: { email: string }) {
+export function StaffOrganizationRequired({ email, role = "staff" }: { email: string; role?: "staff" | "reviewer" | "manager" }) {
+  const roleName = role === "reviewer" ? "Reviewer" : role === "manager" ? "Manager" : "Staff";
   const router = useRouter();
   const queryClient = useQueryClient();
   const [pending, setPending] = useState<"refresh" | "logout" | null>(null);
@@ -48,14 +49,14 @@ export function StaffOrganizationRequired({ email }: { email: string }) {
       <header className={styles.header}><Link href="/" aria-label="LawScan — về trang chủ"><Brand /></Link></header>
       <section className={styles.card} aria-labelledby="staff-join-heading">
         <span className={styles.icon}><Icon name="team" /></span>
-        <p className={styles.eyebrow}>Không gian nhân viên</p>
+        <p className={styles.eyebrow}>{role === "reviewer" ? "Không gian chuyên viên rà soát" : role === "manager" ? "Không gian quản lý" : "Không gian nhân viên"}</p>
         <h1 id="staff-join-heading">Tham gia tổ chức để bắt đầu</h1>
-        <p className={styles.description}>Tài khoản của bạn chưa thuộc tổ chức nào. Hãy nhận lời mời từ Owner để cùng đội ngũ tải lên và rà soát hợp đồng.</p>
+        <p className={styles.description}>Tài khoản của bạn chưa thuộc tổ chức nào. Hãy nhận lời mời từ Owner để cùng đội ngũ {role === "reviewer" ? "kiểm tra rủi ro và rà soát hợp đồng" : "tải lên và rà soát hợp đồng"}.</p>
         <div className={styles.account}><Icon name="mail" /><div><span>Email đang đăng nhập</span><strong>{email}</strong></div></div>
         <ol className={styles.steps}>
-          <li><strong>Nhận lời mời từ Owner</strong><p>Nhờ Owner mời đúng email ở trên và chọn vai trò Staff.</p></li>
+          <li><strong>Nhận lời mời từ Owner</strong><p>Nhờ Owner mời đúng email ở trên và chọn vai trò {roleName}.</p></li>
           <li><strong>Mở email lời mời</strong><p>Bấm vào liên kết trong email để kiểm tra thông tin tổ chức.</p></li>
-          <li><strong>Chấp nhận và vào làm việc</strong><p>Đăng nhập bằng email được mời, sau đó chấp nhận lời mời để vào dashboard Staff.</p></li>
+          <li><strong>Chấp nhận và vào làm việc</strong><p>Đăng nhập bằng email được mời, sau đó chấp nhận lời mời để vào dashboard {roleName}.</p></li>
         </ol>
         <p className={styles.note}>Nếu chưa thấy email, hãy kiểm tra thư rác hoặc nhờ Owner gửi lại lời mời.</p>
         {error && <p className={styles.error} role="alert">{error}</p>}

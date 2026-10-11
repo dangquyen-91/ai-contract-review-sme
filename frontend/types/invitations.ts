@@ -35,5 +35,5 @@ export type PageResult<T> = {
 export type MemberSubscription = {
   status: string;
   plan: { name?: string; code?: string } | null;
-  members: { count: number; limit: number; available: number };
+  members: { count: number; pending: number; limit: number; available: number };
 };

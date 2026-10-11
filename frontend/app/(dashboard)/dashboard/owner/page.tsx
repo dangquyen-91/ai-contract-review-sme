@@ -13,6 +13,11 @@ export default async function OwnerPage({ searchParams }: { searchParams: Promis
   if (!user) redirect("/dang-nhap");
   if (user.role === "administrator") redirect("/dashboard/admin");
   if (user.role === "staff") redirect("/dashboard/staff");
+  if (user.role === "reviewer") redirect("/dashboard/reviewer");
+  if (user.role === "manager") {
+    const { view } = await searchParams;
+    redirect(view === "upload" || view === "contracts" ? `/dashboard/manager?view=${view}` : "/dashboard/manager");
+  }
   if (needsOnboarding(user)) redirect("/chon-to-chuc");
   if (!["owner", "manager"].includes(user.role)) redirect("/dashboard/user");
   const { view } = await searchParams;
