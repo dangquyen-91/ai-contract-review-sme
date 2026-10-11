@@ -7,6 +7,7 @@ export function MemberContractChart({ data, reviewerMode, onFilter }: {
   onFilter: (filter?: DashboardContractFilter) => void;
 }) {
   const distribution = data.distribution;
+  const titleId = reviewerMode ? "member-risk-chart-title" : "member-status-chart-title";
   const items = reviewerMode ? [
     { label: "Rủi ro cao", value: distribution?.risks.high ?? 0, color: "#d65a70", filter: { riskLevel: "high" } as DashboardContractFilter },
     { label: "Trung bình", value: distribution?.risks.medium ?? 0, color: "#d69a32", filter: { riskLevel: "medium" } as DashboardContractFilter },
@@ -26,8 +27,8 @@ export function MemberContractChart({ data, reviewerMode, onFilter }: {
     return `${item.color} ${start}% ${offset}%`;
   }).join(", ");
 
-  return <section className={styles.chartCard} aria-labelledby="member-chart-title">
-    <h2 id="member-chart-title">{reviewerMode ? "Phân bố mức rủi ro" : "Trạng thái hợp đồng"}</h2>
+  return <section className={styles.chartCard} aria-labelledby={titleId}>
+    <h2 id={titleId}>{reviewerMode ? "Phân bố mức rủi ro" : "Trạng thái hợp đồng"}</h2>
     <p className={styles.subtitle}>Toàn tổ chức · số hợp đồng</p>
     {!distribution ? <p className={styles.empty}>Chưa tải được thống kê biểu đồ.</p> : !total ? <p className={styles.empty}>Chưa có hợp đồng để thống kê. Biểu đồ sẽ xuất hiện khi có dữ liệu.</p> : <>
       {!reviewerMode && <div className={styles.donut} style={{ background: `conic-gradient(${gradient})` }} aria-hidden="true"><div><strong>{total.toLocaleString("vi-VN")}</strong><span>hợp đồng</span></div></div>}

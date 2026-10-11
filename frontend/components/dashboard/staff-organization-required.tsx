@@ -9,8 +9,8 @@ import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
 import styles from "./staff-organization-required.module.css";
 
-export function StaffOrganizationRequired({ email, role = "staff" }: { email: string; role?: "staff" | "reviewer" }) {
-  const roleName = role === "reviewer" ? "Reviewer" : "Staff";
+export function StaffOrganizationRequired({ email, role = "staff" }: { email: string; role?: "staff" | "reviewer" | "manager" }) {
+  const roleName = role === "reviewer" ? "Reviewer" : role === "manager" ? "Manager" : "Staff";
   const router = useRouter();
   const queryClient = useQueryClient();
   const [pending, setPending] = useState<"refresh" | "logout" | null>(null);
@@ -49,7 +49,7 @@ export function StaffOrganizationRequired({ email, role = "staff" }: { email: st
       <header className={styles.header}><Link href="/" aria-label="LawScan — về trang chủ"><Brand /></Link></header>
       <section className={styles.card} aria-labelledby="staff-join-heading">
         <span className={styles.icon}><Icon name="team" /></span>
-        <p className={styles.eyebrow}>{role === "reviewer" ? "Không gian chuyên viên rà soát" : "Không gian nhân viên"}</p>
+        <p className={styles.eyebrow}>{role === "reviewer" ? "Không gian chuyên viên rà soát" : role === "manager" ? "Không gian quản lý" : "Không gian nhân viên"}</p>
         <h1 id="staff-join-heading">Tham gia tổ chức để bắt đầu</h1>
         <p className={styles.description}>Tài khoản của bạn chưa thuộc tổ chức nào. Hãy nhận lời mời từ Owner để cùng đội ngũ {role === "reviewer" ? "kiểm tra rủi ro và rà soát hợp đồng" : "tải lên và rà soát hợp đồng"}.</p>
         <div className={styles.account}><Icon name="mail" /><div><span>Email đang đăng nhập</span><strong>{email}</strong></div></div>

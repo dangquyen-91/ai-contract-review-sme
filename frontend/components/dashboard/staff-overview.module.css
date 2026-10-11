@@ -2,13 +2,13 @@
 .dashboard :is(h1, h2, h3, p) { margin: 0; }
 .dashboard button { font: inherit; cursor: pointer; }
 .dashboard button:disabled { cursor: wait; opacity: .55; }
-.hero { position: relative; display: flex; min-height: 220px; align-items: center; overflow: hidden; border: 1px solid #cbdcf7; border-radius: 20px; background: linear-gradient(112deg, #eaf2ff 0%, #f6f9ff 67%, #e7f5f2 100%); padding: 28px 34px; box-shadow: 0 22px 45px -40px #284d80; }
+.hero { position: relative; display: flex; min-height: 0; align-items: center; overflow: hidden; border: 1px solid #cbdcf7; border-radius: 20px; background: linear-gradient(112deg, #eaf2ff 0%, #f6f9ff 67%, #e7f5f2 100%); padding: 22px 28px; box-shadow: 0 22px 45px -40px #284d80; }
 .hero::after { position: absolute; right: -78px; top: -105px; width: 330px; height: 330px; border: 1px solid #bad1f2; border-radius: 50%; content: ""; }
 .heroContent { position: relative; z-index: 1; max-width: 720px; }
 .eyebrow { color: #245bd6; font-size: 12px; font-weight: 700; letter-spacing: .035em; }
-.hero h1 { max-width: 700px; margin-top: 12px; font-size: clamp(30px, 3.1vw, 40px); font-weight: 700; letter-spacing: -.04em; line-height: 1.14; }
+.hero h1 { max-width: 700px; margin-top: 12px; font-size: clamp(26px, 2.4vw, 32px); font-weight: 700; letter-spacing: -.04em; line-height: 1.14; }
 .hero p { max-width: 550px; margin-top: 13px; color: #576b87; font-size: 14px; line-height: 1.65; }
-.heroActions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.heroActions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
 .primaryAction, .secondaryAction { display: inline-flex; min-height: 44px; align-items: center; justify-content: center; gap: 9px; border-radius: 10px; padding: 0 18px; font-size: 14px !important; font-weight: 700 !important; transition: transform .18s ease, background .18s ease, border-color .18s ease; }
 .primaryAction { border: 1px solid #245bd6; background: #245bd6; color: #fff; box-shadow: 0 11px 22px -14px #245bd6; }
 .primaryAction:hover { background: #194cbd; transform: translateY(-1px); }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import workspaceStyles from "./review-workspace.module.css";
 import { Icon } from "@/components/ui/icon";
 import { ContractChat, RiskDetails } from "@/components/contract/review-extras";
 import { OriginalContractPreview } from "@/components/contract/original-contract-preview";
@@ -37,12 +38,15 @@ function findingClauseIndex(finding: RiskFinding, clauses: ContractClause[]): nu
   return linked?.index ?? finding.clause?.index ?? null;
 }
 
-export function ReviewResults({ result, canAsk = false }: { result: ContractReviewResult; canAsk?: boolean }) {
+export function ReviewResults({ result, canAsk = false, showAiContext = false }: { result: ContractReviewResult; canAsk?: boolean; showAiContext?: boolean }) {
   const [activeClause, setActiveClause] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<"original" | "text">("original");
   const [findingUpdates, setFindingUpdates] = useState<Record<string, RiskFinding>>({});
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
+  const [severityFilter, setSeverityFilter] = useState<"all" | RiskFinding["severity"]>("all");
+  const sectionId = useId();
   const findings = result.findings.map((finding) => findingUpdates[finding.id ?? finding._id ?? ""] ?? finding);
+  const visibleFindings = findings.filter((finding) => severityFilter === "all" || finding.severity === severityFilter);
   const contractBodyRef = useRef<HTMLDivElement>(null);
   const text = result.extractedText ?? "";
   const clauses = useMemo(() => [...result.clauses].sort((a, b) => a.index - b.index), [result.clauses]);
@@ -111,15 +115,17 @@ export function ReviewResults({ result, canAsk = false }: { result: ContractRevi
   }
 
   return (
-    <section className="overflow-hidden border [background:#fff] shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)] mt-5 rounded-[14px] border-solid border-[#e4e8ef]" aria-live="polite">
+    <section className={`overflow-hidden border [background:#fff] shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)] mt-5 rounded-[14px] border-solid border-[#e4e8ef] ${showAiContext ? workspaceStyles.workspace : ""}`}>
+      {showAiContext && <p className="m-0 border-b border-[#dce7f6] bg-[#f4f8ff] px-5 py-3 text-[13px] leading-6 text-[#536881]">Kết quả do AI phân tích, chưa thể hiện phê duyệt của chuyên viên. Cập nhật hợp đồng: {Number.isNaN(new Date(result.contract.updatedAt).getTime()) ? "chưa rõ" : new Date(result.contract.updatedAt).toLocaleString("vi-VN")}.</p>}
       <header className="flex items-center justify-between gap-5 [border-bottom:1px_solid_#e4e8ef] px-[22px] py-5 [&_h2]:text-[length:18px] [&_h2]:mt-[5px] [&_h2]:mb-0 [&_h2]:mx-0 [@media_(max-width:_580px)]:items-start [@media_(max-width:_580px)]:flex-col">
         <div><p className="text-[#2864dc] text-[length:10px] font-[780] tracking-[1.1px] uppercase m-0">Kết quả AI review</p><h2>{result.contract.title}</h2></div>
         <span className={!risksComplete ? "min-h-[30px] inline-flex items-center gap-[7px] flex-none text-[length:9px] font-bold px-2.5 py-0 rounded-lg text-[#875c08] [background:#fff4dc] [&_svg]:w-[15px]" : highCount ? "min-h-[30px] inline-flex items-center gap-[7px] flex-none text-[length:9px] font-bold px-2.5 py-0 rounded-lg text-[#a53348] [background:#fff0f2] [&_svg]:w-[15px]" : "min-h-[30px] inline-flex items-center gap-[7px] flex-none text-[length:9px] font-bold px-2.5 py-0 rounded-lg text-[#24705d] [background:#eaf6f2] [&_svg]:w-[15px]"}>
           <Icon name="shield" />{!risksComplete ? "Chưa hoàn tất đánh giá rủi ro" : highCount ? `${highCount} rủi ro cao` : "Không có rủi ro cao"}
         </span>
       </header>
-      <div className="grid grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] items-stretch [@media_(max-width:_1080px)]:grid-cols-[1fr]">
-        <div className="min-w-0 [border-right:1px_solid_#e4e8ef] [@media_(max-width:_1080px)]:[border-right:0] [@media_(max-width:_1080px)]:[border-bottom:1px_solid_#e4e8ef]">
+      {showAiContext && <nav className={workspaceStyles.navigation} aria-label="Điều hướng kết quả"><a href={`#${sectionId}-analysis`}>Tóm tắt & rủi ro</a><a href={`#${sectionId}-document`}>Nội dung hợp đồng</a></nav>}
+      <div className={`grid grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] items-stretch [@media_(max-width:_1080px)]:grid-cols-[1fr] ${showAiContext ? workspaceStyles.splitPane : ""}`}>
+        <div id={`${sectionId}-analysis`} className={`min-w-0 [border-right:1px_solid_#e4e8ef] [@media_(max-width:_1080px)]:[border-right:0] [@media_(max-width:_1080px)]:[border-bottom:1px_solid_#e4e8ef] ${showAiContext ? workspaceStyles.analysisPane : ""}`}>
           <article className="[border-bottom:1px_solid_#e4e8ef] [background:#fbfcff] px-[22px] py-5 [&_h3]:text-[length:13px] [&_h3]:m-0 [&_p]:text-[#5e6e84] [&_p]:text-[length:11px] [&_p]:leading-[1.7] [&_p]:whitespace-pre-wrap [&_p]:mt-[9px] [&_p]:mb-0 [&_p]:mx-0 [&_ul]:text-[#5e6e84] [&_ul]:text-[length:11px] [&_ul]:leading-[1.7] [&_ul]:mt-[9px] [&_ul]:mb-0 [&_ul]:mx-0 [&_ul]:pl-[18px] [&_li_+_li]:mt-[5px]">
             <h3>Tóm tắt điều hành</h3>
             {result.contract.currentVersion?.summaryPoints?.length ?
@@ -129,7 +135,8 @@ export function ReviewResults({ result, canAsk = false }: { result: ContractRevi
           </article>
           <section className="pt-5 pb-[25px] px-[22px] [&_ul]:grid [&_ul]:gap-3 [&_ul]:[list-style:none] [&_ul]:mt-[15px] [&_ul]:mb-0 [&_ul]:mx-0 [&_ul]:p-0 [&_li]:grid [&_li]:grid-cols-[74px_minmax(0,1fr)] [&_li]:gap-2.5 [&_li]:[border-top:1px_solid_#edf0f4] [&_li]:pt-3 [&_li]:[@media_(max-width:_580px)]:grid-cols-[1fr]" aria-labelledby="review-findings-heading">
             <div className="[&_h3]:text-[length:13px] [&_h3]:m-0 flex items-center gap-[7px] [&>_span]:grid [&>_span]:min-w-5 [&>_span]:h-5 [&>_span]:place-items-center [&>_span]:text-[#2859aa] [&>_span]:[background:#eaf1ff] [&>_span]:text-[length:9px] [&>_span]:font-bold [&>_span]:rounded-[10px]"><h3 id="review-findings-heading">Điểm cần lưu ý</h3><span>{findings.length}</span></div>
-            {findings.length ? <ul>{findings.map((finding, index) => {
+            {showAiContext && <div className={workspaceStyles.filters} aria-label="Lọc mức rủi ro">{(["all", "high", "medium", "low"] as const).map((severity) => <button type="button" key={severity} aria-pressed={severityFilter === severity} onClick={() => { setSeverityFilter(severity); setExpandedFinding(null); }}>{severity === "all" ? "Tất cả" : severityLabels[severity]} · {severity === "all" ? findings.length : findings.filter((finding) => finding.severity === severity).length}</button>)}</div>}
+            {visibleFindings.length ? <ul>{visibleFindings.map((finding, index) => {
               const clauseIndex = findingClauseIndex(finding, clauses);
               const canJump = clauseIndex !== null && visibleIndices.has(clauseIndex);
               const findingKey = finding.id ?? finding._id ?? `${finding.title}-${index}`;
@@ -145,10 +152,10 @@ export function ReviewResults({ result, canAsk = false }: { result: ContractRevi
                 <button className="text-[#2864dc] [background:none] [font:inherit] cursor-pointer mt-[9px] p-0 border-0 border-none border-current [font-size:10px] [font-weight:700] focus-visible:[outline:2px_solid_#2864dc] focus-visible:outline-offset-[3px]" type="button" aria-expanded={expanded} onClick={() => setExpandedFinding(expanded ? null : findingKey)}>{expanded ? "Ẩn chi tiết" : "Xem phân tích và đề xuất"}</button>
                 {expanded && <RiskDetails contractId={contractId} finding={finding} onChange={replaceFinding} allowProposalEditing={isDocx && canJump} />}</div>
               </li>;
-            })}</ul> : <p className="text-[#66758a] text-[length:11px] mt-3.5 mb-0 mx-0">{risksComplete ? "Chưa phát hiện điểm rủi ro đáng kể." : "Đánh giá rủi ro chưa hoàn tất."}</p>}
+            })}</ul> : <p className="text-[#66758a] text-[length:11px] mt-3.5 mb-0 mx-0">{severityFilter !== "all" ? "Không có rủi ro trong nhóm đang chọn." : risksComplete ? "Chưa phát hiện điểm rủi ro đáng kể." : "Đánh giá rủi ro chưa hoàn tất."}</p>}
           </section>
         </div>
-        <section className={`min-w-0 min-h-0 grid [@media_(max-width:_1080px)]:block ${isReadOnlyOriginal ? "grid-rows-[auto_auto_minmax(390px,1fr)]" : "grid-rows-[auto_minmax(390px,1fr)]"}`} aria-label="Nội dung hợp đồng">
+        <section className={`min-w-0 min-h-0 grid [@media_(max-width:_1080px)]:block ${isReadOnlyOriginal ? "grid-rows-[auto_auto_minmax(390px,1fr)]" : "grid-rows-[auto_minmax(390px,1fr)]"}`} id={`${sectionId}-document`} aria-label="Nội dung hợp đồng">
           <div className="flex flex-wrap items-center justify-between gap-3 [border-bottom:1px_solid_#e4e8ef] [background:#fbfcfe] px-5 py-[17px] [&_h3]:text-[length:13px] [&_h3]:m-0 [&_p]:max-w-[360px] [&_p]:overflow-hidden [&_p]:text-[#778398] [&_p]:text-[length:10px] [&_p]:text-ellipsis [&_p]:whitespace-nowrap [&_p]:mt-1 [&_p]:mb-0 [&_p]:mx-0"><div className="min-w-0"><h3>Nội dung hợp đồng</h3><p>{result.contract.currentVersion?.fileName ?? result.contract.title}</p></div><div className="flex items-center gap-2 text-[length:10px] font-semibold"><span className="text-[#607087] mr-1">{clauses.length} điều khoản</span>{canShowOriginal && <><button type="button" aria-pressed={showOriginal} onClick={() => setViewMode("original")} className={`px-2.5 py-1.5 rounded-md border cursor-pointer ${showOriginal ? "text-[#1e53b8] border-[#aac7fa] [background:#eaf1ff]" : "text-[#607087] border-[#dbe3ed] [background:white]"}`}>File gốc</button><button type="button" aria-pressed={!showOriginal} onClick={() => setViewMode("text")} className={`px-2.5 py-1.5 rounded-md border cursor-pointer ${!showOriginal ? "text-[#1e53b8] border-[#aac7fa] [background:#eaf1ff]" : "text-[#607087] border-[#dbe3ed] [background:white]"}`}>Văn bản phân tích</button></>}</div></div>
           {isReadOnlyOriginal && <p className="m-0 border-b border-[#e4e8ef] bg-[#f8faff] px-5 py-2 text-[length:10px] leading-[1.5] text-[#52647e]">Chọn một điểm cần lưu ý để đến đoạn OCR tương ứng. File gốc chỉ dùng để đối chiếu; đề xuất chỉnh sửa được hiển thị ở chế độ xem.</p>}
           <div className="min-h-0 overflow-hidden [@media_(max-width:_1080px)]:h-[min(58vh,650px)] [@media_(max-width:_1080px)]:min-h-[390px]">

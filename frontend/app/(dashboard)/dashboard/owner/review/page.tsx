@@ -12,6 +12,7 @@ export default async function OwnerReviewPage() {
   if (user.role === "administrator") redirect("/dashboard/admin");
   if (user.role === "staff") redirect("/dashboard/staff?view=upload");
   if (user.role === "reviewer") redirect("/dashboard/reviewer?view=review");
+  if (user.role === "manager") redirect("/dashboard/manager?view=upload");
   if (!["owner", "manager"].includes(user.role)) redirect("/dashboard/user");
   redirect("/dashboard/owner?view=upload");
 }
