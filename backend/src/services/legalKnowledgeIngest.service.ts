@@ -19,6 +19,38 @@ import {
 
 export const LEGAL_CHUNK_VECTOR_INDEX_NAME = 'legal_chunk_vector_index';
 
+export const LEGAL_CHUNK_TEXT_INDEX_NAME = 'legal_chunk_text_index';
+
+const LEGAL_TEXT_INDEX_DEFINITION = {
+  mappings: {
+    dynamic: false,
+    fields: {
+      chunkText: { type: 'string', analyzer: 'lucene.standard' },
+      articleTitle: { type: 'string', analyzer: 'lucene.standard' },
+      legalSourceId: { type: 'objectId' },
+    },
+  },
+};
+
+export async function ensureLegalTextIndex(): Promise<void> {
+  try {
+    const collection = mongoose.connection.collection(LegalKnowledgeChunkModel.collection.name);
+    const [existing] = await collection.listSearchIndexes(LEGAL_CHUNK_TEXT_INDEX_NAME).toArray();
+    if (existing) return;
+    await collection.createSearchIndex({
+      name: LEGAL_CHUNK_TEXT_INDEX_NAME,
+      type: 'search',
+      definition: LEGAL_TEXT_INDEX_DEFINITION,
+    });
+    logger.info(`Created Atlas Search index "${LEGAL_CHUNK_TEXT_INDEX_NAME}"`);
+  } catch (err) {
+    logger.warn(
+      'Could not ensure legal chunk text index (requires a MongoDB Atlas cluster with Search enabled)',
+      err,
+    );
+  }
+}
+
 const LEGAL_VECTOR_INDEX_DEFINITION = {
   fields: [
     {

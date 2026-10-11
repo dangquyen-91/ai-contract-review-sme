@@ -13,7 +13,7 @@ import {
   LlmFinding,
   LlmProposedRevision,
 } from './riskDetection.service';
-import { searchLegalChunks, LegalChunkMatch } from './legalRetrieval.service';
+import { searchLegalChunks, LegalChunkMatch, verifyLegalBasis } from './legalRetrieval.service';
 import {
   claimStage,
   getCurrentVersion,
@@ -278,17 +278,28 @@ export async function detectRisks(
 
     const clauseByIndex = new Map(clauses.map((c) => [c.index, c]));
 
-    const toLegalBasis = (finding: LlmFinding) =>
-      finding.legalBasis.map((b) => ({
-        text: b.text,
-        legalKnowledgeChunkIds: [
-          ...new Set(
-            b.citedExcerptNumbers
-              .map((n) => metaByNumber.get(n)?.chunkId)
-              .filter((id): id is string => Boolean(id)),
-          ),
-        ],
-      }));
+    const basisCounts = llmFindings.map((f) => f.legalBasis.length);
+    const verifiedBasis = await verifyLegalBasis(
+      llmFindings.flatMap((f) =>
+        f.legalBasis.map((b) => ({
+          text: b.text,
+          chunkIds: [
+            ...new Set(
+              b.citedExcerptNumbers
+                .map((n) => metaByNumber.get(n)?.chunkId)
+                .filter((id): id is string => Boolean(id)),
+            ),
+          ],
+        })),
+      ),
+    );
+    const legalBasisByFinding = new Map<LlmFinding, typeof verifiedBasis>();
+    let basisCursor = 0;
+    llmFindings.forEach((f, i) => {
+      legalBasisByFinding.set(f, verifiedBasis.slice(basisCursor, basisCursor + basisCounts[i]));
+      basisCursor += basisCounts[i];
+    });
+    const toLegalBasis = (finding: LlmFinding) => legalBasisByFinding.get(finding) ?? [];
 
     const pending: { doc: Record<string, unknown>; chunkIds: string[] }[] = [];
     const coveredMissingCodes = new Set<string>();
@@ -296,7 +307,8 @@ export async function detectRisks(
     const revisionByRule = new Map(ruleRevisions.map((r) => [r.ruleCode, r]));
     for (const finding of ruleFindings) {
       const clause = finding.clauseIndex === undefined ? undefined : clauseByIndex.get(finding.clauseIndex);
-      const chunkIds = ruleChunkIds.get(finding.rule.code) ?? [];
+      const resolvedCitations = ruleChunkIds.get(finding.rule.code);
+      const chunkIds = resolvedCitations?.chunkIds ?? [];
       pending.push({
         doc: {
           contractVersionId: version._id,
@@ -308,7 +320,13 @@ export async function detectRisks(
           problem: finding.problem,
           consequences: finding.consequences,
           recommendations: finding.recommendations,
-          legalBasis: [{ text: finding.rule.legalBasis, legalKnowledgeChunkIds: chunkIds }],
+          legalBasis: [
+            {
+              text: finding.rule.legalBasis,
+              legalKnowledgeChunkIds: chunkIds,
+              verification: resolvedCitations?.verification ?? 'not_in_knowledge_base',
+            },
+          ],
           proposedRevision: resolveProposedRevision(revisionByRule.get(finding.rule.code), clause?.text),
           detectedBy: 'rule' as const,
           ruleCode: finding.rule.code,
@@ -400,13 +418,13 @@ export async function detectRisks(
 
     const scoreByChunkId = new Map<string, number>();
     for (const meta of metaByNumber.values()) scoreByChunkId.set(meta.chunkId, meta.score);
-    for (const ids of ruleChunkIds.values()) for (const id of ids) scoreByChunkId.set(id, 1);
+    for (const { chunkIds } of ruleChunkIds.values()) for (const id of chunkIds) scoreByChunkId.set(id, 1);
 
     const citationDocs = inserted.flatMap((finding, i) =>
       pending[i].chunkIds.map((chunkId) => ({
         riskFindingId: finding._id,
         legalKnowledgeChunkId: chunkId,
-        relevanceScore: scoreByChunkId.get(chunkId) ?? 0,
+        relevanceScore: scoreByChunkId.get(chunkId) ?? 1,
       })),
     );
     if (citationDocs.length > 0) {

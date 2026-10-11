@@ -4,7 +4,7 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import { assertRedisReachable, closeQueues } from './config/queue';
 import { seedDefaultRoles } from './services/role.service';
-import { ensureLegalVectorIndex } from './services/legalKnowledgeIngest.service';
+import { ensureLegalTextIndex, ensureLegalVectorIndex } from './services/legalKnowledgeIngest.service';
 import { seedDefaultClauseTaxonomy } from './services/clauseTypeTaxonomy.service';
 import { seedDefaultContractProfiles } from './services/contractProfile.service';
 import { terminateOcr } from './services/textExtraction.service';
@@ -25,6 +25,7 @@ async function bootstrap() {
   await seedDefaultClauseTaxonomy();
   await seedDefaultContractProfiles();
   await ensureLegalVectorIndex();
+  await ensureLegalTextIndex();
 
   if (env.START_WORKERS) {
     startExtractionWorker();

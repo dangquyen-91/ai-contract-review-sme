@@ -9,10 +9,19 @@ export const RISK_FINDING_STATUSES = ['open', 'acknowledged', 'dismissed', 'reso
 
 export const RISK_DETECTED_BY = ['rule', 'llm', 'hybrid'] as const;
 
+export const LEGAL_BASIS_VERIFICATIONS = [
+  'verified',
+  'partially_verified',
+  'article_not_found',
+  'not_in_knowledge_base',
+  'unreferenced',
+] as const;
+
 const legalBasisSchema = new Schema(
   {
     text: { type: String, required: true },
     legalKnowledgeChunkIds: { type: [Types.ObjectId], ref: 'LegalKnowledgeChunk', default: [] },
+    verification: { type: String, enum: LEGAL_BASIS_VERIFICATIONS },
   },
   { _id: false },
 );

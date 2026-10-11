@@ -736,6 +736,13 @@ components:
                 type: array
                 items:
                   type: string
+              verification:
+                type: string
+                enum: [verified, partially_verified, article_not_found, not_in_knowledge_base, unreferenced]
+                description: |
+                  Whether the articles named in "text" (e.g. "khoản 2 Điều 418 Bộ luật Dân sự 2015") were checked against the knowledge base.
+                  verified: every named article exists and is linked. partially_verified: only some are. article_not_found: the law is uploaded but that article (or, for a rule, its expected wording) is not in it, so the citation may be wrong. not_in_knowledge_base: the law is not uploaded (or a different year of it is named). unreferenced: the text names no article; links come from the retrieved excerpts only.
+                  An excerpt the LLM cited for a different article than the one it names is dropped, and a named article is linked even when it was not among the retrieved excerpts.
         recommendations:
           type: array
           items:
@@ -798,7 +805,7 @@ components:
           type: string
         relevanceScore:
           type: number
-          description: Cosine similarity score from the vector search retrieval (0-1)
+          description: Retrieval relevance (0-1). Excerpts are found by hybrid search (Atlas Vector Search + Atlas Search full text, fused by reciprocal rank); 1 means ranked first by both. Articles linked directly (a rule citation, or an article the LLM named that was not retrieved) have 1.
 
     CreateContractRequest:
       type: object

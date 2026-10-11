@@ -4,6 +4,7 @@ import { LegalSourceModel } from '../models/legalSource.model';
 import { LegalKnowledgeChunkModel } from '../models/legalKnowledgeChunk.model';
 import type { ReviewContext } from './contractProfile.service';
 import type { ExtractedKeyTerm, KeyTermKey } from './keyTermExtraction.service';
+import type { LegalBasisVerification } from './legalRetrieval.service';
 
 type Severity = (typeof RISK_SEVERITIES)[number];
 
@@ -572,10 +573,15 @@ export function evaluateLegalRules(context: ReviewContext, keyTerms: ExtractedKe
 const citationKey = (c: RuleCitation) => `${c.sourceCode}:${c.article}:${c.clause ?? ''}:${c.verifyText}`;
 const normalizeForMatch = (value: string) => value.normalize('NFC').replace(/\s+/g, ' ').toLowerCase();
 
-export async function resolveRuleCitations(findings: RuleFinding[]): Promise<Map<string, string[]>> {
+export interface ResolvedRuleCitations {
+  chunkIds: string[];
+  verification: LegalBasisVerification;
+}
+
+export async function resolveRuleCitations(findings: RuleFinding[]): Promise<Map<string, ResolvedRuleCitations>> {
   const citations = [...new Map(findings.flatMap((f) => f.rule.citations).map((c) => [citationKey(c), c])).values()];
-  const chunkIdsByRule = new Map<string, string[]>();
-  if (citations.length === 0) return chunkIdsByRule;
+  const resolvedByRule = new Map<string, ResolvedRuleCitations>();
+  if (citations.length === 0) return resolvedByRule;
 
   const sources = await LegalSourceModel.find({
     code: { $in: [...new Set(citations.map((c) => c.sourceCode))] },
@@ -616,8 +622,20 @@ export async function resolveRuleCitations(findings: RuleFinding[]): Promise<Map
   }
 
   for (const finding of findings) {
-    const ids = finding.rule.citations.flatMap((c) => resolved.get(citationKey(c)) ?? []);
-    chunkIdsByRule.set(finding.rule.code, [...new Set(ids)]);
+    const { citations: ruleCitations } = finding.rule;
+    const found = ruleCitations.filter((c) => resolved.has(citationKey(c)));
+    const verification: LegalBasisVerification =
+      found.length === ruleCitations.length
+        ? 'verified'
+        : found.length > 0
+          ? 'partially_verified'
+          : ruleCitations.some((c) => sourceIdByCode.has(c.sourceCode))
+            ? 'article_not_found'
+            : 'not_in_knowledge_base';
+    resolvedByRule.set(finding.rule.code, {
+      chunkIds: [...new Set(found.map((c) => resolved.get(citationKey(c))!))],
+      verification,
+    });
   }
-  return chunkIdsByRule;
+  return resolvedByRule;
 }
