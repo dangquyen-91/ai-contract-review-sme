@@ -34,7 +34,6 @@ export type DashboardContract = {
 export type ContractTextResult = {
   text: string;
   extractionStatus: NonNullable<DashboardContract["currentVersion"]>["extractionStatus"];
-  fileUrl?: string;
   fileName?: string;
   mimeType?: string;
 };
@@ -46,8 +45,8 @@ export type ContractClause = {
   title?: string;
   text: string;
   summary?: string;
-  startOffset?: number;
-  endOffset?: number;
+  startOffset: number;
+  endOffset: number;
 };
 
 export type RiskFinding = {
@@ -76,8 +75,8 @@ export type RiskFinding = {
   clause?: {
     index: number;
     title?: string;
-    startOffset?: number;
-    endOffset?: number;
+    startOffset: number;
+    endOffset: number;
   } | null;
 };
 

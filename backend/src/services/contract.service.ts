@@ -7,11 +7,19 @@ import { ClauseModel } from '../models/clause.model';
 import { RiskFindingModel } from '../models/riskFinding.model';
 import { RiskCitationModel } from '../models/riskCitation.model';
 import { ChatMessageModel } from '../models/chatMessage.model';
+import { ReviewModel } from '../models/review.model';
 import { CreateContractInput, ListContractsQuery } from '../validations/contract.validation';
 import { logger } from '../config/logger';
-import { deleteContractFile, uploadContractFile } from './storage.service';
-import { extractContractText } from './textExtraction.service';
+import {
+  createFileDownloadLink,
+  deleteContractFile,
+  storedFileOf,
+  uploadContractFile,
+} from './storage.service';
+import { enqueueExtraction, waitForExtraction } from './extractionWorker.service';
 import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
+import { resolveContractProfile, validateContractContext } from './contractProfile.service';
+import { createRedactor, SensitiveDataType } from './redaction.service';
 
 interface CreateContractParams {
   orgId: string;
@@ -22,19 +30,32 @@ interface CreateContractParams {
     mimeType: string;
     buffer: Buffer;
   };
+  waitForExtraction: boolean;
 }
 
-export async function createContract({ orgId, uploadedBy, input, file }: CreateContractParams) {
-  const extraction = file ? await extractContractText(file.buffer, file.mimeType) : undefined;
+export async function createContract({
+  orgId,
+  uploadedBy,
+  input,
+  file,
+  waitForExtraction: shouldWait,
+}: CreateContractParams) {
+  const profile = await resolveContractProfile(input.type);
+  await validateContractContext(profile, input);
+
   const stored = file ? await uploadContractFile(file.buffer, orgId, file.name) : undefined;
 
   let contractId: Types.ObjectId | undefined;
+  let versionId: Types.ObjectId | undefined;
+  let job: Awaited<ReturnType<typeof enqueueExtraction>> | undefined;
   try {
     const contract = await ContractModel.create({
       orgId,
       uploadedBy,
       title: input.title,
-      type: input.type,
+      type: profile.code,
+      ourParty: input.ourParty,
+      industry: input.industry,
     });
     contractId = contract._id;
 
@@ -43,20 +64,22 @@ export async function createContract({ orgId, uploadedBy, input, file }: CreateC
       versionNumber: 1,
       createdBy: uploadedBy,
       fileKey: stored?.key,
-      fileUrl: stored?.url,
       fileResourceType: stored?.resourceType,
+      fileDeliveryType: stored?.deliveryType,
+      fileFormat: stored?.format,
       fileName: file?.name,
       mimeType: file?.mimeType,
-      extractedText: extraction?.text,
-      extractionStatus: extraction?.status ?? 'pending',
-      extractionError: extraction?.error,
+      extractionStatus: stored ? 'processing' : 'pending',
+      extractionStartedAt: stored ? new Date() : undefined,
     });
+    versionId = currentVersion._id;
 
-    return { ...contract.toObject(), currentVersion: currentVersion.toObject() };
+    if (stored) job = await enqueueExtraction(currentVersion.id);
   } catch (err) {
+    if (versionId) await ContractVersionModel.deleteOne({ _id: versionId });
     if (contractId) await ContractModel.deleteOne({ _id: contractId });
     if (stored) {
-      await deleteContractFile(stored.key, stored.resourceType).catch((cleanupErr) =>
+      await deleteContractFile(stored).catch((cleanupErr) =>
         logger.warn('Failed to remove uploaded contract file after a failed create', {
           fileKey: stored.key,
           error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
@@ -65,6 +88,9 @@ export async function createContract({ orgId, uploadedBy, input, file }: CreateC
     }
     throw err;
   }
+
+  if (job && shouldWait) await waitForExtraction(job);
+  return getContractById(orgId, contractId.toString());
 }
 
 export async function listContracts(
@@ -73,7 +99,8 @@ export async function listContracts(
   pagination: PaginationParams,
 ) {
   const match: Record<string, unknown> = { orgId: new Types.ObjectId(orgId) };
-  if (query.type) match.type = query.type;
+  if (query.type) match.type = (await resolveContractProfile(query.type)).code;
+  if (query.industry) match.industry = query.industry;
   if (query.status) match.status = query.status;
   if (query.search) match.$text = { $search: query.search };
 
@@ -157,28 +184,60 @@ export async function deleteContract(orgId: string, id: string) {
   }).distinct('_id');
   await RiskCitationModel.deleteMany({ riskFindingId: { $in: findingIds } });
   await RiskFindingModel.deleteMany({ contractVersionId: { $in: versionIds } });
+  await ReviewModel.deleteMany({ contractId: id });
   await ClauseModel.deleteMany({ contractVersionId: { $in: versionIds } });
   await ChatMessageModel.deleteMany({ contractVersionId: { $in: versionIds } });
   await ContractVersionModel.deleteMany({ contractId: id });
   await ContractModel.deleteOne({ _id: id, orgId });
 
-  for (const version of versions) {
-    if (version.fileKey && version.fileResourceType) {
-      await deleteContractFile(version.fileKey, version.fileResourceType);
-    }
-  }
+  await Promise.all(
+    versions.map(async (version) => {
+      const file = storedFileOf(version);
+      if (!file) return;
+      await deleteContractFile(file).catch((cleanupErr) =>
+        logger.warn('Failed to remove contract file after deleting the contract', {
+          fileKey: file.key,
+          error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+        }),
+      );
+    }),
+  );
 }
 
-export async function getContractText(orgId: string, id: string) {
+export async function getContractText(orgId: string, id: string, redacted = false) {
   const contract = await ContractModel.findOne({ _id: id, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
   const version = await getCurrentVersionWithText(id);
+  const text = version.extractedText ?? '';
+  let shownText = text;
+  if (redacted && text) {
+    const profile = await resolveContractProfile(contract.type);
+    shownText = createRedactor(text, profile.redactionPolicy as SensitiveDataType[]).mask(text);
+  }
   return {
-    text: version.extractedText ?? '',
+    text: shownText,
+    redacted,
     extractionStatus: version.extractionStatus,
-    fileUrl: version.fileUrl,
+    fileName: version.fileName,
+    mimeType: version.mimeType,
+  };
+}
+
+export async function getContractFileLink(orgId: string, id: string) {
+  const contract = await ContractModel.findOne({ _id: id, orgId });
+  if (!contract) {
+    throw AppError.notFound('Contract not found');
+  }
+  const version = await getCurrentVersion(id);
+  const file = storedFileOf(version);
+  if (!file) {
+    throw AppError.notFound('This contract has no uploaded file');
+  }
+
+  return {
+    ...createFileDownloadLink(file),
     fileName: version.fileName,
     mimeType: version.mimeType,
   };

@@ -24,6 +24,13 @@ const envSchema = z.object({
   SMTP_PASSWORD: z.string().optional(),
   SMTP_FROM: z.string().optional(),
 
+  DATA_ENCRYPTION_KEY: z
+    .string()
+    .refine(
+      (value) => Buffer.from(value, 'base64').length === 32,
+      'DATA_ENCRYPTION_KEY must be a base64-encoded 32-byte key',
+    ),
+
   CLOUDINARY_CLOUD_NAME: z.string().optional(),
   CLOUDINARY_API_KEY: z.string().optional(),
   CLOUDINARY_API_SECRET: z.string().optional(),
@@ -31,6 +38,16 @@ const envSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-3.1-flash-lite'),
   GEMINI_EMBEDDING_MODEL: z.string().default('gemini-embedding-001'),
+  LEGAL_EMBED_TOKENS_PER_MINUTE: z.coerce.number().int().min(1000).default(30000),
+  LEGAL_EMBED_REQUESTS_PER_MINUTE: z.coerce.number().int().min(1).default(100),
+
+  OCR_WORKERS: z.coerce.number().int().min(1).max(8).default(2),
+
+  REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
+  START_WORKERS: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
 });
 
 const parsed = envSchema.safeParse(process.env);

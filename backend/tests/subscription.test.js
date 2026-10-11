@@ -1,6 +1,7 @@
 process.env.NODE_ENV = 'test';
 process.env.MONGODB_URI = 'mongodb://127.0.0.1/unused';
 process.env.JWT_ACCESS_SECRET = 'subscription-test-access';
+process.env.DATA_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
 process.env.JWT_REFRESH_SECRET = 'subscription-test-refresh';
 process.env.GEMINI_API_KEY = '';
 process.env.MONGOMS_DOWNLOAD_DIR = require('path').join(
@@ -46,6 +47,8 @@ const { ContractModel } = require('../dist/models/contract.model');
 const { ContractVersionModel } = require('../dist/models/contractVersion.model');
 const { ChatMessageModel } = require('../dist/models/chatMessage.model');
 const { seedDefaultRoles, getRoleByCode } = require('../dist/services/role.service');
+const { seedDefaultClauseTaxonomy } = require('../dist/services/clauseTypeTaxonomy.service');
+const { seedDefaultContractProfiles } = require('../dist/services/contractProfile.service');
 const { tokensForUser } = require('../dist/services/auth.service');
 const {
   PlanModel,
@@ -131,6 +134,8 @@ beforeAll(async () => {
   repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(repl.getUri());
   await seedDefaultRoles();
+  await seedDefaultClauseTaxonomy();
+  await seedDefaultContractProfiles();
   await initializeSubscriptionModels();
   await Promise.all([
     OrganizationModel.init(),

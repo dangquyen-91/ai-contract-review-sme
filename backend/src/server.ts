@@ -2,22 +2,37 @@ import { createApp } from './app';
 import { connectDB, disconnectDB } from './config/db';
 import { env } from './config/env';
 import { logger } from './config/logger';
+import { assertRedisReachable, closeQueues } from './config/queue';
 import { seedDefaultRoles } from './services/role.service';
-import { ensureLegalVectorIndex } from './services/legalKnowledgeIngest.service';
+import { ensureLegalTextIndex, ensureLegalVectorIndex } from './services/legalKnowledgeIngest.service';
 import { seedDefaultClauseTaxonomy } from './services/clauseTypeTaxonomy.service';
-import { terminateOcrWorker } from './services/textExtraction.service';
+import { seedDefaultContractProfiles } from './services/contractProfile.service';
+import { terminateOcr } from './services/textExtraction.service';
+import { startExtractionWorker } from './services/extractionWorker.service';
+import { startReviewWorker } from './services/reviewWorker.service';
+import { startLegalIngestionWorker } from './services/legalIngestionWorker.service';
 import { OrganizationInvitationModel } from './models/organizationInvitation.model';
 import { initializeSubscriptionModels } from './models/subscription.model';
 import { seedPlans } from './services/subscription.service';
 
 async function bootstrap() {
   await connectDB();
+  await assertRedisReachable();
   await OrganizationInvitationModel.init();
   await initializeSubscriptionModels();
   await seedPlans();
   await seedDefaultRoles();
   await seedDefaultClauseTaxonomy();
+  await seedDefaultContractProfiles();
   await ensureLegalVectorIndex();
+  await ensureLegalTextIndex();
+
+  if (env.START_WORKERS) {
+    startExtractionWorker();
+    startReviewWorker();
+    startLegalIngestionWorker();
+    logger.info('Background workers started in the API process');
+  }
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {
@@ -28,7 +43,8 @@ async function bootstrap() {
   const shutdown = async (signal: string) => {
     logger.info(`${signal} received, shutting down gracefully`);
     server.close(async () => {
-      await terminateOcrWorker().catch(() => undefined);
+      await closeQueues();
+      await terminateOcr().catch(() => undefined);
       await disconnectDB();
       process.exit(0);
     });

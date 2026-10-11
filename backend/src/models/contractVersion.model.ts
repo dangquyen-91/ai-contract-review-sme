@@ -1,4 +1,5 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
+import { decryptOnSerialize, encryptedString } from '../utils/fieldEncryption';
 
 export const RISK_LEVELS = ['high', 'medium', 'low', 'none'] as const;
 
@@ -10,11 +11,52 @@ export const EXTRACTION_STATUSES = [
   'unsupported',
 ] as const;
 
+export const EXTRACTION_METHODS = ['text_layer', 'ocr', 'mixed', 'docx'] as const;
+
 export const SEGMENTATION_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
+
+const extractionQualitySchema = new Schema(
+  {
+    method: { type: String, enum: EXTRACTION_METHODS, required: true },
+    pageCount: { type: Number },
+    ocrPageCount: { type: Number, required: true },
+    ocrConfidence: { type: Number },
+    lowConfidence: { type: Boolean, required: true },
+    truncatedAtPage: { type: Number },
+  },
+  { _id: false },
+);
+
+const extractionProgressSchema = new Schema(
+  {
+    processedPages: { type: Number, required: true },
+    totalPages: { type: Number, required: true },
+  },
+  { _id: false },
+);
+
+const redactionSummarySchema = new Schema(
+  {
+    total: { type: Number, required: true },
+    counts: { type: Schema.Types.Mixed, default: {} },
+  },
+  { _id: false },
+);
 
 export const RISK_DETECTION_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
 
 export const SUMMARY_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
+
+const keyTermSchema = new Schema(
+  {
+    key: { type: String, required: true },
+    numberValue: { type: Number },
+    booleanValue: { type: Boolean },
+    clauseId: { type: Types.ObjectId, ref: 'Clause' },
+    quote: { type: String, ...encryptedString },
+  },
+  { _id: false, ...decryptOnSerialize },
+);
 
 const contractVersionSchema = new Schema(
   {
@@ -22,13 +64,18 @@ const contractVersionSchema = new Schema(
     versionNumber: { type: Number, required: true },
     createdBy: { type: Types.ObjectId, ref: 'User', required: true },
     fileKey: { type: String },
-    fileUrl: { type: String },
     fileResourceType: { type: String },
+    fileDeliveryType: { type: String },
+    fileFormat: { type: String },
     fileName: { type: String },
     mimeType: { type: String },
-    extractedText: { type: String, select: false },
+    extractedText: { type: String, select: false, ...encryptedString },
     extractionStatus: { type: String, enum: EXTRACTION_STATUSES, default: 'pending', index: true },
     extractionError: { type: String },
+    extractionStartedAt: { type: Date },
+    extractionProgress: { type: extractionProgressSchema, default: undefined },
+    extractionQuality: { type: extractionQualitySchema, default: undefined },
+    redactionSummary: { type: redactionSummarySchema, default: undefined },
     segmentationStatus: {
       type: String,
       enum: SEGMENTATION_STATUSES,
@@ -46,6 +93,8 @@ const contractVersionSchema = new Schema(
     riskDetectionError: { type: String },
     riskDetectionStartedAt: { type: Date },
     overallAssessment: { type: [String], default: [] },
+    keyTerms: { type: [keyTermSchema], default: undefined },
+    keyTermsExtractedAt: { type: Date },
     overallRiskLevel: { type: String, enum: RISK_LEVELS, default: 'none', index: true },
     analysisFocus: { type: String },
     summaryPoints: { type: [String], default: [] },
@@ -53,7 +102,7 @@ const contractVersionSchema = new Schema(
     summaryError: { type: String },
     summaryStartedAt: { type: Date },
   },
-  { timestamps: true },
+  { timestamps: true, ...decryptOnSerialize },
 );
 
 contractVersionSchema.index({ contractId: 1, versionNumber: -1 });

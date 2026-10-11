@@ -3,6 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
 import * as riskService from '../services/risk.service';
+import { listKeyTerms } from '../services/keyTermExtraction.service';
 import { openSseStream } from '../utils/sse';
 
 export const detectRisksHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -19,6 +20,11 @@ export const listRiskFindingsHandler = asyncHandler(async (req: Request, res: Re
   const user = getOrganizationUser(req);
   const findings = await riskService.listRiskFindings(user.orgId, req.params.id);
   ok(res, findings);
+});
+
+export const listKeyTermsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getOrganizationUser(req);
+  ok(res, await listKeyTerms(user.orgId, req.params.id));
 });
 
 export const detectRisksStreamHandler = asyncHandler(async (req: Request, res: Response) => {

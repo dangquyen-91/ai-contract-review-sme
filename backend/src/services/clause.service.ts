@@ -12,7 +12,9 @@ import {
   setContractStatus,
   settledStatus,
 } from './contractVersion.service';
-import { getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
+import { getTaxonomyByCodes, getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
+import { buildReviewContext } from './contractProfile.service';
+import { createRedactor } from './redaction.service';
 
 export async function segmentClauses(orgId: string, contractId: string, signal?: AbortSignal) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
@@ -26,6 +28,9 @@ export async function segmentClauses(orgId: string, contractId: string, signal?:
     throw AppError.badRequest('Contract text has not been extracted yet');
   }
 
+  const reviewContext = await buildReviewContext(contract);
+  const categories = await getTaxonomyByCodes(reviewContext.clauseCategories);
+
   const versionId = versionWithText._id;
   const claimed = await claimStage(versionId, 'segmentation', {
     blockedBy: ['summary', 'riskDetection'],
@@ -36,7 +41,12 @@ export async function segmentClauses(orgId: string, contractId: string, signal?:
   await setContractStatus(contractId, orgId, 'processing');
 
   try {
-    const clauses = await segmentContractClauses(extractedText, signal);
+    const clauses = await segmentContractClauses(extractedText, {
+      contractLabel: reviewContext.contractLabel,
+      categories: categories.map(({ code, name, description }) => ({ code, name, description })),
+      redactor: createRedactor(extractedText, reviewContext.redactionPolicy),
+      signal,
+    });
     signal?.throwIfAborted();
     const taxonomyIdByCode = await getTaxonomyIdByCode();
 

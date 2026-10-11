@@ -1,8 +1,5 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
 
-// sales = mua bán hàng hóa, service = cung ứng dịch vụ, labor = lao động, saas = thuê phần mềm/công nghệ
-export const CONTRACT_TYPES = ['sales', 'service', 'labor', 'saas'] as const;
-
 export const CONTRACT_STATUSES = [
   'uploaded',
   'processing',
@@ -15,7 +12,9 @@ const contractSchema = new Schema(
     orgId: { type: Types.ObjectId, ref: 'Organization', required: true, index: true },
     uploadedBy: { type: Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true, trim: true },
-    type: { type: String, enum: CONTRACT_TYPES, required: true, index: true },
+    type: { type: String, required: true, index: true },
+    ourParty: { type: String },
+    industry: { type: String, index: true },
     status: { type: String, enum: CONTRACT_STATUSES, default: 'uploaded', index: true },
   },
   { timestamps: true },

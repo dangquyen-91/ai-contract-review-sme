@@ -13,6 +13,8 @@ tags:
   - name: Invitations
   - name: Subscriptions
   - name: Contracts
+  - name: ContractProfiles
+  - name: Reviews
   - name: LegalKB
 
 components:
@@ -222,8 +224,13 @@ components:
           type: string
         type:
           type: string
-          enum: [sales, service, labor, saas]
-          description: "Contract type: sales (mua bán hàng hóa), service (cung ứng dịch vụ), labor (lao động), saas (thuê phần mềm/công nghệ)"
+          description: Contract profile code (see GET /contract-profiles), e.g. sales, service, office_lease, labor, housing_purchase, life_insurance
+        ourParty:
+          type: string
+          description: Party code the user represents in this contract (one of the profile's parties); absent if not specified
+        industry:
+          type: string
+          description: Industry code of the user's business (see GET /contract-profiles); absent if not specified
         status:
           type: string
         currentVersion:
@@ -245,20 +252,64 @@ components:
           type: string
         versionNumber:
           type: integer
-        fileUrl:
-          type: string
-          description: Cloudinary secure URL of the uploaded contract file
         fileName:
           type: string
+          description: Original file name. The file itself is stored privately - get a short-lived download link from GET /contracts/{id}/file
         mimeType:
           type: string
         extractionStatus:
           type: string
           enum: [pending, processing, completed, failed, unsupported]
-          description: Status of text extraction (OCR/parsing) from the uploaded file
+          description: Status of text extraction (OCR/parsing) from the uploaded file. Extraction runs in a background worker; "processing" means the job is queued or running.
         extractionError:
           type: string
           description: Error message when extractionStatus is "failed"
+        extractionStartedAt:
+          type: string
+          format: date-time
+        extractionProgress:
+          type: object
+          description: Present only while extraction is running
+          properties:
+            processedPages:
+              type: integer
+            totalPages:
+              type: integer
+        redactionSummary:
+          type: object
+          description: Personal data found in the extracted text under the contract profile's redactionPolicy; these values are replaced by placeholders before any AI call
+          properties:
+            total:
+              type: integer
+            counts:
+              type: object
+              additionalProperties:
+                type: integer
+              example: { person_name: 2, national_id: 1, phone: 2, bank_account: 1 }
+        extractionQuality:
+          type: object
+          description: How the text was extracted and how reliable it is. PDFs are read page by page - pages with a text layer use it, scanned pages are OCRed (Vietnamese + English).
+          properties:
+            method:
+              type: string
+              enum: [text_layer, ocr, mixed, docx]
+              description: mixed = some PDF pages had a text layer and the rest were OCRed
+            pageCount:
+              type: integer
+              description: Total pages in the file (absent for DOCX)
+            ocrPageCount:
+              type: integer
+            ocrConfidence:
+              type: integer
+              minimum: 0
+              maximum: 100
+              description: Average Tesseract confidence over OCRed pages, weighted by text length; absent when nothing was OCRed
+            lowConfidence:
+              type: boolean
+              description: True when OCR confidence is below 70 - the scan is likely blurry and the analysis may contain reading errors
+            truncatedAtPage:
+              type: integer
+              description: Set when the PDF has more than 100 pages; only the first 100 pages were extracted
         segmentationStatus:
           type: string
           enum: [pending, processing, completed, failed]
@@ -285,18 +336,18 @@ components:
           type: array
           items:
             type: string
-          description: '"Đánh giá tổng quan" bullets (Vietnamese), written together with the findings by /risks/detect'
+          description: '"Đánh giá tổng quan" bullets (Vietnamese), written together with the findings by a review (POST /contracts/{id}/reviews)'
         overallRiskLevel:
           type: string
           enum: [high, medium, low, none]
         analysisFocus:
           type: string
-          description: Free-text analysis direction the user last requested (e.g. "phân tích theo hướng có lợi cho bên A"), sent to /risks/detect or /summary. Reused by later calls and by chat when not re-sent.
+          description: Free-text analysis direction the user last requested (e.g. "phân tích theo hướng có lợi cho bên A"), sent with POST /contracts/{id}/reviews. Also used as context by chat.
         summaryPoints:
           type: array
           items:
             type: string
-          description: '"Tóm tắt nội dung" bullets - plain-language Vietnamese overview of the whole contract, generated by the LLM (see /contracts/{id}/summary)'
+          description: '"Tóm tắt nội dung" bullets - plain-language Vietnamese overview of the whole contract, generated by the LLM during a complete analysis'
         summaryStatus:
           type: string
           enum: [pending, processing, completed, failed]
@@ -315,9 +366,113 @@ components:
           type: string
           format: date-time
 
+    Review:
+      type: object
+      description: One review run of a contract (clause segmentation, then summary and risk detection in parallel), executed by a background worker. Results are written to the contract like the step-by-step endpoints do, and a snapshot is kept on the review so earlier runs stay visible.
+      properties:
+        _id:
+          type: string
+        contractId:
+          type: string
+        versionId:
+          type: string
+        requestedBy:
+          type: string
+        idempotencyKey:
+          type: string
+          description: Key the review was started with; reusing it returns this review
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        currentStage:
+          type: string
+          enum: [waiting_for_extraction, segmentation, summary, risk_detection]
+          description: Present while running. waiting_for_extraction means the upload is still being OCRed.
+        stageDetail:
+          type: string
+          description: Extra progress text, e.g. "7/12 pages" while waiting for extraction, or retrieving_legal_sources / analyzing_clauses / saving_findings during risk detection
+        stages:
+          type: object
+          description: A retry re-runs only the stages that are not completed
+          properties:
+            segmentation:
+              type: string
+              enum: [pending, running, completed, failed]
+            summary:
+              type: string
+              enum: [pending, running, completed, failed]
+            riskDetection:
+              type: string
+              enum: [pending, running, completed, failed]
+        analysisFocus:
+          type: string
+        error:
+          type: string
+          description: Last error; set while a retry is pending or when the review failed
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        result:
+          type: object
+          description: Snapshot of the outcome, present when status is completed
+          properties:
+            overallRiskLevel:
+              type: string
+              enum: [high, medium, low, none]
+            overallAssessment:
+              type: array
+              items:
+                type: string
+            summaryPoints:
+              type: array
+              items:
+                type: string
+            clauseCount:
+              type: integer
+            findingCounts:
+              type: object
+              properties:
+                high:
+                  type: integer
+                medium:
+                  type: integer
+                low:
+                  type: integer
+            findings:
+              type: array
+              items:
+                type: object
+                properties:
+                  findingType:
+                    type: string
+                    enum: [clause_risk, missing_clause]
+                  severity:
+                    type: string
+                    enum: [high, medium, low]
+                  title:
+                    type: string
+                  clauseIndex:
+                    type: integer
+                  clauseTitle:
+                    type: string
+                  detectedBy:
+                    type: string
+                    enum: [rule, llm, hybrid]
+                  ruleCode:
+                    type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
     ClauseTypeTaxonomy:
       type: object
-      description: A clause category in the shared taxonomy, seeded on server boot
+      description: A clause category in the shared taxonomy, seeded on server boot. Which categories a contract is classified into, and which are mandatory, is decided by its contract profile.
       properties:
         id:
           type: string
@@ -325,34 +480,156 @@ components:
           type: string
           enum:
             [
+              subject_scope,
               payment,
+              deposit,
+              term,
+              delivery_handover,
+              service_level,
+              warranty,
+              property_legal_status,
+              ownership_transfer,
+              maintenance_repair,
+              sublease_transfer,
+              probation,
+              wages,
+              working_time,
+              social_insurance,
+              insurance_benefits,
+              insurance_exclusions,
+              claims,
+              surrender_value,
               confidentiality,
-              termination,
+              data_protection,
+              intellectual_property,
               penalty,
               indemnity,
-              intellectual_property,
-              dispute_resolution,
               liability,
-              force_majeure,
               renewal,
-              warranty,
+              termination,
+              force_majeure,
+              dispute_resolution,
               other,
             ]
         name:
           type: string
         description:
           type: string
-        applicableContractTypes:
+
+    ContractProfile:
+      type: object
+      description: A contract type with its Vietnamese legal context. Decides how contracts of this type are classified and which clauses are mandatory.
+      properties:
+        code:
+          type: string
+          example: office_lease
+        aliases:
           type: array
           items:
             type: string
-            enum: [sales, service, labor, saas]
-        isMandatory:
-          type: boolean
-          description: If true and applicable to a contract's type, a missing clause of this type is flagged as a rule-based "missing_clause" finding
+          description: Older codes still accepted as this profile (e.g. saas for service)
+        name:
+          type: string
+          example: Thuê văn phòng, mặt bằng
+        segment:
+          type: string
+          enum: [business, individual, both]
+        parties:
+          type: array
+          description: Valid values for Contract.ourParty
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                example: lessee
+              name:
+                type: string
+                example: Bên thuê
+        governingLaws:
+          type: array
+          items:
+            type: string
+          example: [Bộ luật Dân sự 2015, Luật Kinh doanh bất động sản 2023]
+        legalSources:
+          type: array
+          description: The governing laws as legal source codes. Risk detection only searches these sources for citations; when none of them is in the knowledge base yet it searches every source that is not repealed.
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                example: civil_code_2015
+              name:
+                type: string
+                example: Bộ luật Dân sự 2015
+              inKnowledgeBase:
+                type: boolean
+                description: A legal source with this code has been uploaded
+              searchable:
+                type: boolean
+                description: Uploaded, not repealed, and at least one chunk is embedded
+              ingestionStatus:
+                type: string
+                enum: [queued, running, paused, completed, failed]
+        redactionPolicy:
+          type: array
+          description: Kinds of personal data replaced by placeholders before any contract text is sent to the AI provider
+          items:
+            $ref: '#/components/schemas/SensitiveDataType'
+        mandatoryClauses:
+          type: array
+          description: Clause categories flagged as a "missing_clause" finding when absent
+          items:
+            $ref: '#/components/schemas/ClauseCategoryRef'
+        industries:
+          type: array
+          description: Every industry, with the extra checks and mandatory clauses this profile adds for it (empty when the profile has no rule for that industry)
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                example: fnb
+              name:
+                type: string
+                example: Ăn uống (F&B)
+              checks:
+                type: array
+                items:
+                  type: string
+              extraMandatoryClauses:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClauseCategoryRef'
+
+    SensitiveDataType:
+      type: string
+      enum:
+        [
+          person_name,
+          national_id,
+          passport,
+          date_of_birth,
+          phone,
+          email,
+          bank_account,
+          personal_address,
+          tax_code,
+          land_certificate,
+        ]
+
+    ClauseCategoryRef:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
 
     Clause:
       type: object
+      required: [index, text, startOffset, endOffset]
       properties:
         id:
           type: string
@@ -369,7 +646,7 @@ components:
           description: Verbatim clause text extracted from the contract
         startOffset:
           type: integer
-          description: Start position (inclusive) of this clause in the extracted text returned by GET /contracts/{id}/text. Absent if the clause could not be located (or was segmented before this field existed - re-run segmentation).
+          description: Start position (inclusive) of this clause in the extracted text returned by GET /contracts/{id}/text. Clause text is always the exact slice text[startOffset, endOffset).
         endOffset:
           type: integer
           description: End position (exclusive) of this clause in the extracted text
@@ -423,7 +700,7 @@ components:
               type: string
             startOffset:
               type: integer
-              description: Offset into the text from GET /contracts/{id}/text; absent if the clause could not be located
+              description: Offset into the text from GET /contracts/{id}/text
             endOffset:
               type: integer
         expectedClauseTypeId:
@@ -459,6 +736,13 @@ components:
                 type: array
                 items:
                   type: string
+              verification:
+                type: string
+                enum: [verified, partially_verified, article_not_found, not_in_knowledge_base, unreferenced]
+                description: |
+                  Whether the articles named in "text" (e.g. "khoản 2 Điều 418 Bộ luật Dân sự 2015") were checked against the knowledge base.
+                  verified: every named article exists and is linked. partially_verified: only some are. article_not_found: the law is uploaded but that article (or, for a rule, its expected wording) is not in it, so the citation may be wrong. not_in_knowledge_base: the law is not uploaded (or a different year of it is named). unreferenced: the text names no article; links come from the retrieved excerpts only.
+                  An excerpt the LLM cited for a different article than the one it names is dropped, and a named article is linked even when it was not among the retrieved excerpts.
         recommendations:
           type: array
           items:
@@ -484,9 +768,17 @@ components:
         detectedBy:
           type: string
           enum: [rule, llm, hybrid]
+          description: rule = a fixed legal rule (ruleCode is set) or a missing mandatory clause the LLM did not describe; llm = found by the LLM; hybrid = a missing clause found by the taxonomy check and described by the LLM
+        ruleCode:
+          type: string
+          description: Set when detectedBy is rule and a legal rule fired, e.g. LTM_PENALTY_CAP, BLLD_PROBATION_WAGE
+          example: LTM_PENALTY_CAP
+        ruleVersion:
+          type: integer
+          description: Version of the rule that produced the finding
         citations:
           type: array
-          description: Legal sources the LLM actually relied on for this finding (RAG), populated by GET/POST risk endpoints
+          description: Legal sources behind this finding. For a rule finding these are the exact articles the rule cites (relevanceScore 1), attached only when that law is in the knowledge base and the article text contains the rule's expected wording. For an LLM finding these are the retrieved excerpts it relied on.
           items:
             $ref: '#/components/schemas/RiskCitation'
         createdAt:
@@ -513,7 +805,7 @@ components:
           type: string
         relevanceScore:
           type: number
-          description: Cosine similarity score from the vector search retrieval (0-1)
+          description: Retrieval relevance (0-1). Excerpts are found by hybrid search (Atlas Vector Search + Atlas Search full text, fused by reciprocal rank); 1 means ranked first by both. Articles linked directly (a rule citation, or an article the LLM named that was not retrieved) have 1.
 
     CreateContractRequest:
       type: object
@@ -525,33 +817,142 @@ components:
           maxLength: 300
         type:
           type: string
-          enum: [sales, service, labor, saas]
+          description: Contract profile code or alias (see GET /contract-profiles). Unknown codes return 400.
+          example: sales
+        ourParty:
+          type: string
+          description: Optional. One of the profile's party codes; risks are then judged from this party's point of view
+          example: buyer
+        industry:
+          type: string
+          description: Optional. Industry code; adds the profile's industry-specific checks and mandatory clauses
+          example: fnb
         file:
           type: string
           format: binary
 
+    LegalHeading:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [part, chapter, section, subsection]
+          description: part = Phần, chapter = Chương, section = Mục, subsection = Tiểu mục
+        number:
+          type: string
+          example: II
+        title:
+          type: string
+          example: MUA BÁN HÀNG HÓA
+
+    LegalCoverage:
+      type: object
+      description: How completely the uploaded text covers the document, so a truncated or partial file is visible before it is relied on
+      properties:
+        structured:
+          type: boolean
+          description: false when no "Điều N" headings were found and the text was split into plain passages
+        articleCount:
+          type: integer
+        firstArticle:
+          type: integer
+        lastArticle:
+          type: integer
+        expectedArticleCount:
+          type: integer
+          description: Echoes the optional expectedArticleCount sent on upload
+        missingArticleCount:
+          type: integer
+          description: Article numbers from 1 to max(lastArticle, expectedArticleCount) that were not found
+        missingRanges:
+          type: array
+          items:
+            type: string
+          example: ['1-116', '200']
+        suffixedArticles:
+          type: array
+          items:
+            type: string
+          description: Inserted articles such as "6a" from consolidated texts
+        headingCount:
+          type: integer
+          description: Number of Phần/Chương/Mục/Tiểu mục headings found
+        chunkCount:
+          type: integer
+        complete:
+          type: boolean
+          description: true when no article is missing
+        warnings:
+          type: array
+          items:
+            type: string
+
     LegalSource:
       type: object
       properties:
-        id:
+        _id:
           type: string
+        code:
+          type: string
+          description: Unique stable code that contract profiles use to reference this source
+          example: commercial_law_2005
         title:
           type: string
-          description: 'e.g. "Bo luat Dan su 2015"'
+          example: Luật Thương mại 2005
+        documentNumber:
+          type: string
+          description: Official number; detected from the "Số:" line when not provided
+          example: 36/2005/QH11
         sourceType:
           type: string
-          enum: [law, standard_template]
+          enum: [law, decree, circular, resolution, standard_template]
+        status:
+          type: string
+          enum: [in_force, amended, repealed, not_yet_effective]
         citationLabel:
           type: string
           description: 'Short label used when citing this source, e.g. "BLDS 2015"'
         issuingBody:
           type: string
+        issuedDate:
+          type: string
+          format: date-time
         effectiveDate:
           type: string
           format: date-time
+        expiryDate:
+          type: string
+          format: date-time
+        coverage:
+          $ref: '#/components/schemas/LegalCoverage'
+        ingestion:
+          $ref: '#/components/schemas/LegalIngestion'
+        parts:
+          type: array
+          description: Files uploaded into this source, in order
+          items:
+            type: object
+            properties:
+              fileName:
+                type: string
+              articleFrom:
+                type: integer
+              articleTo:
+                type: integer
+              chunkCount:
+                type: integer
+                description: Chunks added by this file
+              skippedArticles:
+                type: array
+                items:
+                  type: string
+                description: Articles in the file that the source already had, so they were not added again
+              uploadedAt:
+                type: string
+                format: date-time
         chunkCount:
           type: integer
-          description: Number of LegalKnowledgeChunk documents produced from this source (list endpoint only)
+          description: Number of LegalKnowledgeChunk documents produced from this source, embedded or not
         createdAt:
           type: string
           format: date-time
@@ -559,17 +960,91 @@ components:
           type: string
           format: date-time
 
+    LegalIngestion:
+      type: object
+      description: Background embedding progress. Only embedded chunks are searchable, so a source can already be cited while it is still running.
+      properties:
+        status:
+          type: string
+          enum: [queued, running, paused, completed, failed]
+          description: paused = waiting for the Gemini embedding quota; it resumes automatically at resumeAt. failed = gave up after 5 attempts; call POST /kb/legal-sources/{id}/resume.
+        totalChunks:
+          type: integer
+        embeddedChunks:
+          type: integer
+        error:
+          type: string
+        resumeAt:
+          type: string
+          format: date-time
+        queuedAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+
+    LegalSourcePreview:
+      type: object
+      properties:
+        documentNumber:
+          type: string
+          example: 36/2005/QH11
+        coverage:
+          $ref: '#/components/schemas/LegalCoverage'
+        chunks:
+          type: array
+          items:
+            type: object
+            properties:
+              order:
+                type: integer
+              articleRef:
+                type: string
+                example: Điều 3, khoản 1-9
+              articleTitle:
+                type: string
+              hierarchy:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LegalHeading'
+              characters:
+                type: integer
+              preview:
+                type: string
+                description: First 120 characters of the chunk
+
     CreateLegalSourceRequest:
       type: object
-      required: [title, sourceType, citationLabel, file]
+      required: [code, title, sourceType, citationLabel, file]
       properties:
+        code:
+          type: string
+          minLength: 2
+          maxLength: 60
+          pattern: '^[a-z0-9]+(?:_[a-z0-9]+)*$'
+          description: |
+            Lowercased before validation. Contract profiles reference these codes, so use them for the governing laws:
+            commercial_law_2005 (Luật Thương mại 2005), civil_code_2015 (Bộ luật Dân sự 2015), labor_code_2019 (Bộ luật Lao động 2019), decree_145_2020 (Nghị định 145/2020/NĐ-CP), real_estate_business_law_2023 (Luật Kinh doanh bất động sản 2023), housing_law_2023 (Luật Nhà ở 2023), land_law_2024 (Luật Đất đai 2024), insurance_business_law_2022 (Luật Kinh doanh bảo hiểm 2022).
+          example: commercial_law_2005
         title:
           type: string
           minLength: 2
           maxLength: 300
+        documentNumber:
+          type: string
+          maxLength: 60
+          description: Optional; detected from the "Số:" line of the document when omitted
         sourceType:
           type: string
-          enum: [law, standard_template]
+          enum: [law, decree, circular, resolution, standard_template]
+        status:
+          type: string
+          enum: [in_force, amended, repealed, not_yet_effective]
+          default: in_force
         citationLabel:
           type: string
           minLength: 1
@@ -577,13 +1052,25 @@ components:
         issuingBody:
           type: string
           maxLength: 200
+        issuedDate:
+          type: string
+          format: date
         effectiveDate:
           type: string
           format: date
+        expiryDate:
+          type: string
+          format: date
+          description: Must be after effectiveDate
+        expectedArticleCount:
+          type: integer
+          minimum: 1
+          maximum: 5000
+          description: Optional. Total number of articles in the official text, so a missing tail is reported in coverage
         file:
           type: string
           format: binary
-          description: Legal document to chunk and embed (pdf, docx, or txt)
+          description: Legal document to chunk and embed (pdf, docx, doc, or txt)
 
 paths:
   /plans:
@@ -683,57 +1170,6 @@ paths:
         '404': { description: No scheduled downgrade }
         '409': { description: Scheduled downgrade has already been paid }
 
-  /contracts/{id}/analysis:
-    post:
-      tags: [Contracts, Subscriptions]
-      summary: Run a complete analysis and charge one analysis credit on success
-      description: Replaces the separate segmentation, summary and risk-detection POST endpoints. Requires extracted contract text, active plan and available quota. Reserves a credit atomically; failures release it. Repeating the same idempotency key replays the saved response without AI calls or another charge.
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string, pattern: '^[a-f\d]{24}$' }
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                analysisFocus: { type: string, maxLength: 1000 }
-      responses:
-        '200': { description: 'data contains runId, replayed and result with contract and findings' }
-        '400': { description: Invalid key, body or contract text not extracted }
-        '403': { description: Inactive plan or analysis quota exhausted }
-        '404': { description: Contract not in the user organization }
-        '409': { description: Analysis already running or conflicting idempotency key }
-
-  /contracts/{id}/analysis/stream:
-    post:
-      tags: [Contracts, Subscriptions]
-      summary: Complete analysis with SSE progress and the same one-credit accounting
-      parameters:
-        - in: path
-          name: id
-          required: true
-          schema: { type: string, pattern: '^[a-f\d]{24}$' }
-        - $ref: '#/components/parameters/IdempotencyKey'
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                analysisFocus: { type: string, maxLength: 1000 }
-      responses:
-        '200':
-          description: 'SSE progress {stage}, done {runId, replayed, result}, or error {status, message}. done is sent after quota is finalized.'
-          content:
-            text/event-stream:
-              schema: { type: string }
-        '400': { description: Invalid Idempotency-Key header or input }
   /organizations/{id}/invitations:
     parameters:
       - in: path
@@ -1089,7 +1525,11 @@ paths:
           schema: { type: string, enum: [asc, desc] }
         - in: query
           name: type
-          schema: { type: string, enum: [sales, service, labor, saas] }
+          schema: { type: string }
+          description: Contract profile code or alias (see GET /contract-profiles). Unknown codes return 400.
+        - in: query
+          name: industry
+          schema: { type: string }
         - in: query
           name: status
           schema: { type: string }
@@ -1120,6 +1560,18 @@ paths:
     post:
       tags: [Contracts]
       summary: Upload a new contract
+      description: |
+        The file is stored and text extraction is queued for a background worker (OCR of a large scanned PDF can take minutes).
+        - Without a `Prefer` header the request waits for extraction to finish and returns 201, as before.
+        - With `Prefer: respond-async` it returns 202 immediately with `currentVersion.extractionStatus = "processing"`; poll GET /contracts/{id} and read `extractionProgress` until the status is completed, failed or unsupported.
+      parameters:
+        - in: header
+          name: Prefer
+          required: false
+          schema:
+            type: string
+            enum: [respond-async]
+          description: RFC 7240 preference. Send respond-async to get 202 without waiting for extraction.
       requestBody:
         required: true
         content:
@@ -1128,13 +1580,36 @@ paths:
               $ref: '#/components/schemas/CreateContractRequest'
       responses:
         '201':
-          description: Created
+          description: Created; extraction has finished (completed, failed or unsupported)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '202':
+          description: Accepted with Prefer respond-async; extraction is still running in the background
+          headers:
+            Preference-Applied:
+              schema:
+                type: string
+                example: respond-async
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Contract'
         '400':
-          description: Validation error
+          description: Validation error or unsupported file type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File exceeds the 20MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background job queue (Redis) is unavailable; nothing was saved
           content:
             application/json:
               schema:
@@ -1167,9 +1642,16 @@ paths:
     delete:
       tags: [Contracts]
       summary: Delete a contract
+      description: Deletes the contract, all its versions, clauses, findings, chat messages and stored files. Roles - administrator, owner, manager, and user (the owner of a personal workspace).
       responses:
         '204':
           description: No Content
+        '403':
+          description: Role not allowed to delete contracts (staff, reviewer)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
           content:
@@ -1204,32 +1686,6 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /contracts/{id}/clauses/segment:
-    parameters:
-      - in: path
-        name: id
-        required: true
-        schema: { type: string }
-    post:
-      tags: [Contracts]
-      deprecated: true
-      summary: Retired - use POST /contracts/{id}/analysis or /analysis/stream
-      responses:
-        '410': { description: Individual stages are retired to enforce one credit per complete analysis }
-
-  /contracts/{id}/summary:
-    parameters:
-      - in: path
-        name: id
-        required: true
-        schema: { type: string }
-    post:
-      tags: [Contracts]
-      deprecated: true
-      summary: Retired - use POST /contracts/{id}/analysis or /analysis/stream
-      responses:
-        '410': { description: Individual stages are retired to enforce one credit per complete analysis }
-
   /contracts/{id}/risks:
     parameters:
       - in: path
@@ -1257,18 +1713,70 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /contracts/{id}/risks/detect:
+  /contracts/{id}/key-terms:
     parameters:
       - in: path
         name: id
         required: true
-        schema: { type: string }
-    post:
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
       tags: [Contracts]
-      deprecated: true
-      summary: Retired - use POST /contracts/{id}/analysis or /analysis/stream
+      summary: List the key terms extracted from the current version during the last review
+      description: |
+        During risk detection the LLM extracts the terms that legal rules check for this contract type (e.g. penalty rate, deposit share, probation length, working hours). A term is kept only when its quote appears verbatim in the cited clause. A few yes/no terms have a legal default when the contract is silent (e.g. no notarization, penalty without damages); those are returned with inferredFromSilence true and no clause.
+        Life insurance has no rule checks yet, so its list is empty.
       responses:
-        '410': { description: Individual stages are retired to enforce one credit per complete analysis }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  extractedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: null until a review has run on this version
+                  terms:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          example: penalty_percent
+                        label:
+                          type: string
+                          example: Mức phạt vi phạm (%)
+                        value:
+                          oneOf:
+                            - type: number
+                            - type: boolean
+                          example: 15
+                        inferredFromSilence:
+                          type: boolean
+                        clause:
+                          type: object
+                          nullable: true
+                          properties:
+                            index:
+                              type: integer
+                            title:
+                              type: string
+                              nullable: true
+                        quote:
+                          type: string
+                          nullable: true
+                          example: phạt vi phạm bằng 15% giá trị phần nghĩa vụ hợp đồng bị vi phạm
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /contracts/{id}/risks/{findingId}:
     parameters:
@@ -1361,7 +1869,17 @@ paths:
     get:
       tags: [Contracts]
       summary: Get the extracted text of the contract (for the document view next to the analysis)
-      description: Clause.startOffset/endOffset and RiskFinding.clause.startOffset/endOffset index into this text, so the UI can highlight the clause a finding refers to.
+      description: |
+        Clause.startOffset/endOffset and RiskFinding.clause.startOffset/endOffset index into the original text (redacted=false), so the UI can highlight the clause a finding refers to.
+        With `redacted=true` the personal data covered by the contract profile's redactionPolicy (names, ID numbers, phones, bank accounts...) is replaced by placeholders such as `[PERSON_1]` or `[PHONE_2]` - the same text the AI receives. Offsets do not apply to the redacted text.
+      parameters:
+        - in: query
+          name: redacted
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+            default: 'false'
       responses:
         '200':
           description: OK
@@ -1372,11 +1890,11 @@ paths:
                 properties:
                   text:
                     type: string
+                  redacted:
+                    type: boolean
                   extractionStatus:
                     type: string
                     enum: [pending, processing, completed, failed, unsupported]
-                  fileUrl:
-                    type: string
                   fileName:
                     type: string
                   mimeType:
@@ -1388,18 +1906,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
-  /contracts/{id}/risks/detect/stream:
+  /contracts/{id}/file:
     parameters:
       - in: path
         name: id
         required: true
-        schema: { type: string }
-    post:
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
       tags: [Contracts]
-      deprecated: true
-      summary: Retired - use POST /contracts/{id}/analysis or /analysis/stream
+      summary: Get a short-lived download link for the original contract file
+      description: Contract files are stored as private Cloudinary assets and cannot be opened without a signed link. Each call returns a new signed link that expires after 5 minutes - request a fresh one each time the file is opened instead of storing it.
       responses:
-        '410': { description: Individual stages are retired to enforce one credit per complete analysis }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                    description: Signed Cloudinary download URL
+                  expiresAt:
+                    type: string
+                    format: date-time
+                  fileName:
+                    type: string
+                  mimeType:
+                    type: string
+        '404':
+          description: Contract not found, or the contract has no uploaded file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
 
   /contracts/{id}/chat:
     parameters:
@@ -1508,6 +2050,188 @@ paths:
               schema:
                 type: string
 
+  /contracts/{id}/reviews:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Start a full review in the background
+      description: |
+        Queues segmentation, summary and risk detection as one review run and returns 202 immediately. Follow it with GET /reviews/{reviewId}/events (SSE) or by polling GET /reviews/{reviewId}. If the upload is still being extracted, the review waits for it. Only one review can run per contract at a time. Rate-limited (AI cost control).
+
+        A review costs one `analysis` credit. The credit is reserved when the review is queued, consumed when it completes and released if it fails. Sending the same Idempotency-Key again returns the same review (200, `replayed: true`) without using another credit.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9_-]{8,128}$'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                analysisFocus:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '202':
+          description: Review queued
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /api/v1/reviews/665f1c2e8b3a4d0012a1b2c3
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Review'
+                  - type: object
+                    properties:
+                      replayed:
+                        type: boolean
+                        example: false
+        '200':
+          description: Same Idempotency-Key as an earlier request - the existing review is returned and no credit is used
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Review'
+                  - type: object
+                    properties:
+                      replayed:
+                        type: boolean
+                        example: true
+        '400':
+          description: Missing or invalid Idempotency-Key, the contract has no file, or its text could not be extracted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: No active plan, or the analysis quota of the current period is used up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Contract not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A review or complete analysis is already running for this contract, or the Idempotency-Key was used for a different request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background job queue (Redis) is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags: [Reviews]
+      summary: List the review runs of a contract, newest first
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+        '404':
+          description: Contract not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Reviews]
+      summary: Get one review run
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/events:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Reviews]
+      summary: Follow a review's progress as Server-Sent Events
+      description: |
+        `text/event-stream`. Works with `EventSource` when the access token is sent by a proxy, or with `fetch`. Events:
+        - `review` - the full Review object, sent on connect and whenever it changes
+        - `done` `{ "status": "completed" | "failed" }` - sent once the review finishes, then the stream closes
+        - `error` `{ "status": number, "message": string }`
+        A `: ping` comment is sent every 15s. Reconnecting is safe - the current state is sent again on connect.
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contract-profiles:
+    get:
+      tags: [ContractProfiles]
+      summary: List the supported contract types with their parties, governing law, mandatory clauses and industry rules
+      description: Use a profile's code as Contract.type, one of its parties' codes as ourParty, and one of its industries' codes as industry when uploading a contract.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContractProfile'
+
   /kb/legal-sources:
     get:
       tags: [LegalKB]
@@ -1523,8 +2247,17 @@ paths:
                   $ref: '#/components/schemas/LegalSource'
     post:
       tags: [LegalKB]
-      summary: Upload a legal document (pdf/docx/txt), chunk it by "Dieu N" headings, and embed each chunk (Gemini)
-      description: Admin only. Rate-limited (AI cost control). Each "Điều N" becomes one chunk; an article longer than 3000 characters is split at the nearest paragraph/line/sentence/word boundary, and consecutive pieces overlap by ~300 characters. Chunks are embedded in batches of up to 100 (task type RETRIEVAL_DOCUMENT). All chunks are embedded before anything is saved, and a failed save removes the partial source, so a failed upload never leaves a half-ingested source behind.
+      summary: Upload a legal document (pdf/docx/doc/txt), split it by its legal structure, and embed it in the background (Gemini)
+      description: |
+        Admin only. Rate-limited (AI cost control). Use POST /kb/legal-sources/preview first to check coverage without spending embedding quota.
+
+        The text is read as Phần > Chương > Mục > Tiểu mục > Điều > khoản > điểm. An "Điều N" heading only counts when its number is higher than the previous article, so cross-references such as "Điều 5 của Luật này" at the start of a line stay in the body. The signature block after the last article (e.g. "Luật này đã được Quốc hội ... thông qua", "CHỦ TỊCH QUỐC HỘI", "Nơi nhận:") is dropped.
+
+        Each article becomes one chunk of up to 2200 characters. A longer article is split into groups of whole khoản, and each group repeats the article heading (and the short lead-in sentence) so it can be read alone, e.g. "Điều 3, khoản 1-9". A khoản that is still too long is split into groups of điểm. A document with no "Điều N" headings (e.g. a standard template) is split into plain passages.
+
+        The source and its chunks are saved right away and the request returns 202. A background worker then embeds the chunks in batches of 20 (task type RETRIEVAL_DOCUMENT), paced under LEGAL_EMBED_TOKENS_PER_MINUTE and LEGAL_EMBED_REQUESTS_PER_MINUTE (each text counts as one request). The text sent to the embedding model is the citation label, the chapter/section titles and the chunk text.
+
+        On a Gemini 429 the worker waits the delay Gemini suggests. If the daily quota is used up, or the wait would exceed 5 minutes, the source becomes "paused" and resumes automatically at ingestion.resumeAt. Progress is kept per chunk, so a crash, retry or resume only embeds the chunks that are still missing. Poll GET /kb/legal-sources/{id} (Location header) for ingestion progress.
       requestBody:
         required: true
         content:
@@ -1532,20 +2265,91 @@ paths:
             schema:
               $ref: '#/components/schemas/CreateLegalSourceRequest'
       responses:
-        '201':
-          description: Created
+        '202':
+          description: Saved; embedding runs in the background (ingestion.status queued)
+          headers:
+            Location:
+              schema:
+                type: string
+              description: /api/v1/kb/legal-sources/{id}
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Validation error, unsupported file type, or LLM not configured
+          description: Validation error, unsupported or unreadable file, no usable text, or LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A legal source with this code already exists (checked before any embedding)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background queue (Redis) is unavailable; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File exceeds the 20MB limit
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
           description: Requires administrator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/preview:
+    post:
+      tags: [LegalKB]
+      summary: Dry-run a legal document upload and report its structure and coverage
+      description: Admin only. Parses and chunks the file exactly like the upload endpoint, but saves nothing and calls no AI model, so it costs no embedding quota. Use it to check that every article was read (e.g. a .doc converted badly, or a file that only contains part of the law) before uploading.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  example: 324
+                file:
+                  type: string
+                  format: binary
+                  description: pdf, docx, doc, or txt
+      responses:
+        '200':
+          description: Parsed structure; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSourcePreview'
+        '400':
+          description: Missing, unsupported or unreadable file, or no usable text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires administrator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File exceeds the 20MB limit
           content:
             application/json:
               schema:
@@ -1559,9 +2363,25 @@ paths:
         schema:
           type: string
           pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [LegalKB]
+      summary: Get a legal source with its coverage report, ingestion progress and chunk count
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSource'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       tags: [LegalKB]
-      summary: Delete a legal source and all of its chunks
+      summary: Delete a legal source and all of its chunks (also stops a running ingestion)
       description: Admin only.
       responses:
         '204':
@@ -1574,6 +2394,124 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/parts:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [LegalKB]
+      summary: Add another file to an existing legal source (e.g. the rest of a law uploaded in pieces)
+      description: |
+        Admin only. Rate-limited. The file is parsed like a new upload. Articles the source already has are skipped and listed in parts[].skippedArticles, so uploading the full text over a partial source only adds what was missing. New chunks are appended after the existing ones, coverage is recomputed over the whole source, and only the new chunks are embedded in the background. If an ingestion is already running it is replaced by one that covers both.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  description: Optional; replaces the stored expected article count
+                file:
+                  type: string
+                  format: binary
+                  description: pdf, docx, doc, or txt
+      responses:
+        '202':
+          description: Part added; embedding runs in the background
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSource'
+        '400':
+          description: Missing, unsupported or unreadable file, no usable text, or LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires administrator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Every article in the file is already in the source, or another part is being uploaded at the same time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background queue (Redis) is unavailable; the part was saved and ingestion is marked failed, so call resume later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/resume:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [LegalKB]
+      summary: Resume embedding the chunks that are still missing
+      description: Admin only. Use it after ingestion.status became failed, or to resume a paused source before its resumeAt. Only chunks without an embedding are sent to Gemini.
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSource'
+        '400':
+          description: LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires administrator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Every chunk is already embedded, or the source is already being embedded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background queue (Redis) is unavailable
           content:
             application/json:
               schema:

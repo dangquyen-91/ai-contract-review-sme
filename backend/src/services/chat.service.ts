@@ -3,14 +3,15 @@ import { ChatMessageModel } from '../models/chatMessage.model';
 import { ClauseModel } from '../models/clause.model';
 import { ContractModel } from '../models/contract.model';
 import { RiskFindingModel } from '../models/riskFinding.model';
-import { getCurrentVersion } from './contractVersion.service';
+import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
 import { generateText, generateTextStream } from './llm.service';
-import { CONTRACT_TYPE_LABELS } from './riskDetection.service';
+import { buildReviewContext, describeReviewContext, ReviewContext } from './contractProfile.service';
+import { createRedactor, placeholderInstruction } from './redaction.service';
 import { withUsage } from './usage.service';
 
 const HISTORY_LIMIT = 10;
 
-const SYSTEM_INSTRUCTION = `You are a legal assistant helping a small business owner understand a Vietnamese contract they uploaded.
+const SYSTEM_INSTRUCTION = `You are a legal assistant helping a user with no legal background understand a Vietnamese contract they uploaded.
 Answer in Vietnamese, in plain language, using ONLY the contract content and analysis provided in the prompt. Refer to clauses by their number (e.g. "Điều 3" or "clause 3") when relevant.
 If the answer is not in the contract, say so instead of guessing. You give information, not formal legal advice - recommend consulting a lawyer for important decisions.`;
 
@@ -19,7 +20,7 @@ async function loadContractContext(orgId: string, contractId: string) {
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await getCurrentVersion(contractId);
+  const version = await getCurrentVersionWithText(contractId);
   if (version.segmentationStatus !== 'completed') {
     throw AppError.badRequest('Contract clauses have not been segmented yet');
   }
@@ -27,7 +28,7 @@ async function loadContractContext(orgId: string, contractId: string) {
 }
 
 async function buildContractContext(
-  contract: { type: keyof typeof CONTRACT_TYPE_LABELS },
+  reviewContext: ReviewContext,
   version: {
     _id: unknown;
     summaryPoints?: string[];
@@ -57,7 +58,7 @@ async function buildContractContext(
     findingLines.length > 0 ? findingLines.join('\n') : '(no risk findings recorded)';
 
   return [
-    `Contract type: ${CONTRACT_TYPE_LABELS[contract.type]}`,
+    describeReviewContext(reviewContext),
     version.analysisFocus ? `Analysis focus requested by user: ${version.analysisFocus}` : '',
     version.summaryPoints?.length
       ? `Summary:\n${version.summaryPoints.map((p) => `- ${p}`).join('\n')}`
@@ -87,11 +88,18 @@ async function buildHistoryBlock(contractVersionId: unknown): Promise<string> {
 async function prepareChat(orgId: string, contractId: string, message: string) {
   const { contract, version } = await loadContractContext(orgId, contractId);
 
-  const contextBlock = await buildContractContext(contract, version);
+  const reviewContext = await buildReviewContext(contract);
+  const redactor = createRedactor(version.extractedText ?? '', reviewContext.redactionPolicy);
+  const contextBlock = await buildContractContext(reviewContext, version);
   const historyBlock = await buildHistoryBlock(version._id);
-  const prompt = `${contextBlock}\n\n${historyBlock}User question: ${message}`;
+  const prompt = redactor.mask(`${contextBlock}\n\n${historyBlock}User question: ${message}`);
 
-  return { versionId: version._id, prompt };
+  return {
+    versionId: version._id,
+    prompt,
+    redactor,
+    systemInstruction: SYSTEM_INSTRUCTION + placeholderInstruction(redactor),
+  };
 }
 
 async function saveExchange(
@@ -115,7 +123,7 @@ export async function askAboutContract(
   idempotencyKey: string,
   signal?: AbortSignal,
 ) {
-  const { versionId, prompt } = await prepareChat(orgId, contractId, message);
+  const { versionId, prompt, redactor, systemInstruction } = await prepareChat(orgId, contractId, message);
   const usage = await withUsage(
     {
       orgId,
@@ -126,7 +134,7 @@ export async function askAboutContract(
       payload: { versionId: versionId.toString(), message },
     },
     async (runSignal) => {
-      const reply = await generateText(prompt, SYSTEM_INSTRUCTION, runSignal);
+      const reply = redactor.unmask(await generateText(prompt, systemInstruction, runSignal));
       runSignal.throwIfAborted();
       await saveExchange(versionId, orgId, userId, message, reply);
       return { reply };
@@ -145,7 +153,7 @@ export async function streamAboutContract(
   idempotencyKey: string,
   signal?: AbortSignal,
 ) {
-  const { versionId, prompt } = await prepareChat(orgId, contractId, message);
+  const { versionId, prompt, redactor, systemInstruction } = await prepareChat(orgId, contractId, message);
 
   const usage = await withUsage(
     {
@@ -157,11 +165,17 @@ export async function streamAboutContract(
       payload: { versionId: versionId.toString(), message },
     },
     async (runSignal) => {
+      const unmasker = redactor.createStreamUnmasker();
       let reply = '';
-      for await (const token of generateTextStream(prompt, SYSTEM_INSTRUCTION, runSignal)) {
-        reply += token;
-        onToken(token);
+      const emit = (text: string) => {
+        if (!text) return;
+        reply += text;
+        onToken(text);
+      };
+      for await (const token of generateTextStream(prompt, systemInstruction, runSignal)) {
+        emit(unmasker.push(token));
       }
+      emit(unmasker.flush());
       runSignal.throwIfAborted();
       if (!reply) throw AppError.internal('LLM returned an empty response.');
       await saveExchange(versionId, orgId, userId, message, reply);

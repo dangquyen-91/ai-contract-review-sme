@@ -1,28 +1,45 @@
 import { Schema, model, InferSchemaType } from 'mongoose';
-import { CONTRACT_TYPES } from './contract.model';
 
 export const CLAUSE_CATEGORIES = [
+  'subject_scope',
   'payment',
+  'deposit',
+  'term',
+  'delivery_handover',
+  'service_level',
+  'warranty',
+  'property_legal_status',
+  'ownership_transfer',
+  'maintenance_repair',
+  'sublease_transfer',
+  'probation',
+  'wages',
+  'working_time',
+  'social_insurance',
+  'insurance_benefits',
+  'insurance_exclusions',
+  'claims',
+  'surrender_value',
   'confidentiality',
-  'termination',
+  'data_protection',
+  'intellectual_property',
   'penalty',
   'indemnity',
-  'intellectual_property',
-  'dispute_resolution',
   'liability',
-  'force_majeure',
   'renewal',
-  'warranty',
+  'termination',
+  'force_majeure',
+  'dispute_resolution',
   'other',
 ] as const;
+
+export type ClauseCategory = (typeof CLAUSE_CATEGORIES)[number];
 
 const clauseTypeTaxonomySchema = new Schema(
   {
     code: { type: String, enum: CLAUSE_CATEGORIES, required: true, unique: true },
     name: { type: String, required: true },
     description: { type: String, required: true },
-    applicableContractTypes: { type: [String], enum: CONTRACT_TYPES, default: [] },
-    isMandatory: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

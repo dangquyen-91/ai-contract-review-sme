@@ -17,14 +17,12 @@ export function decodeSessionUser(value?: string): AuthUser | null {
       || typeof user.email !== "string"
       || typeof user.role !== "string"
       || (user.orgId !== null && typeof user.orgId !== "string")
+      || typeof user.hasCompletedOnboarding !== "boolean"
     ) {
       return null;
     }
 
-    return {
-      ...user,
-      hasCompletedOnboarding: user.hasCompletedOnboarding === true || Boolean(user.orgId),
-    } as AuthUser;
+    return user as AuthUser;
   } catch {
     return null;
   }

@@ -16,7 +16,7 @@ export interface UsageInput {
 }
 const LEASE_MS = 5 * 60 * 1000;
 
-export async function reserveUsage(input: UsageInput, now = new Date()) {
+export async function reserveUsage(input: UsageInput, now = new Date(), leaseMs = LEASE_MS) {
   const fingerprint = createHash('sha256')
     .update(
       JSON.stringify({
@@ -92,13 +92,21 @@ export async function reserveUsage(input: UsageInput, now = new Date()) {
           kind: input.kind,
           idempotencyKey: input.idempotencyKey,
           fingerprint,
-          leaseExpiresAt: new Date(now.getTime() + LEASE_MS),
+          leaseExpiresAt: new Date(now.getTime() + leaseMs),
         },
       ],
       { session },
     );
     return { run, replayed: false };
   });
+}
+
+export async function extendUsageLease(runId: string, leaseMs = LEASE_MS): Promise<boolean> {
+  const updated = await UsageRunModel.updateOne(
+    { _id: runId, status: 'reserved', leaseExpiresAt: { $gt: new Date() } },
+    { $set: { leaseExpiresAt: new Date(Date.now() + leaseMs) } },
+  );
+  return updated.matchedCount > 0;
 }
 
 export async function finishUsage(

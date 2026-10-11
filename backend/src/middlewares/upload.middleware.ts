@@ -8,7 +8,7 @@ const ALLOWED_MIME_TYPES = new Set([
   'image/jpeg',
 ]);
 
-const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
+export const MAX_FILE_SIZE_BYTES = 20 * 1024 * 1024; // 20MB
 
 export const contractFileUpload = multer({
   storage: multer.memoryStorage(),
@@ -24,6 +24,7 @@ export const contractFileUpload = multer({
 const LEGAL_DOC_MIME_TYPES = new Set([
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'application/msword',
   'text/plain',
 ]);
 
