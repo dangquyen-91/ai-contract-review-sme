@@ -76,8 +76,9 @@ components:
           type: object
           properties:
             count: { type: integer }
+            pending: { type: integer, description: Unexpired invitations reserving seats }
             limit: { type: integer }
-            available: { type: integer }
+            available: { type: integer, description: Limit minus members and pending invitations }
         analysis:
           $ref: '#/components/schemas/UsageCounter'
         chat:
@@ -1096,7 +1097,7 @@ paths:
     get:
       tags: [Subscriptions]
       summary: Get current subscription, scheduled downgrade, future paid periods and quotas
-      description: Organization members only. Personal Free resets at midnight on the first day of the month in Vietnam. Business without an active plan cannot use AI or add members. Payment integration is not implemented yet.
+      description: Organization members only. Personal Free resets at midnight on the first day of the month in Vietnam. A business without an active paid plan has three member seats including Owner, but no AI allowance. Payment integration is not implemented yet.
       parameters:
         - in: path
           name: id
@@ -1179,7 +1180,7 @@ paths:
     post:
       tags: [Invitations]
       summary: Owner sends an invitation email
-      description: One organization per user. Expires in 7 days. Active Business plan and an available seat (including the scheduled downgrade limit) are required. SMTP must be configured. Maximum 20 requests per owner per hour. Token is only sent by email.
+      description: One organization per user. Expires in 7 days. A free business has three seats including Owner; active paid plans use their member limit. Unexpired pending invitations reserve seats, and scheduled downgrade limits apply. SMTP must be configured. Maximum 20 requests per owner per hour. Token is only sent by email.
       requestBody:
         required: true
         content:

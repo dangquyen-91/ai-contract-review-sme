@@ -1,6 +1,7 @@
 import mongoose, { ClientSession } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { OrganizationModel } from '../../models/organization.model';
+import { OrganizationInvitationModel } from '../../models/organizationInvitation.model';
 import { UserModel } from '../../models/user.model';
 import { Role } from '../../models/role.model';
 import {
@@ -54,6 +55,8 @@ export const DEFAULT_PLANS = [
     memberLimit: 15,
   },
 ] as const;
+
+const FREE_BUSINESS_MEMBER_LIMIT = 3;
 
 export async function seedPlans() {
   for (const plan of DEFAULT_PLANS) {
@@ -146,7 +149,9 @@ export async function resolveSubscription(orgId: string, session: ClientSession,
     subscription.scheduledDowngrade = undefined;
     await subscription.save({ session });
   }
-  let memberLimit = period?.plan.memberLimit ?? 1;
+  // An unpaid organization can collaborate with two invitees plus its owner.
+  // Personal workspaces remain single-user until converted to an organization.
+  let memberLimit = period?.plan.memberLimit ?? (organization.isPersonal ? 1 : FREE_BUSINESS_MEMBER_LIMIT);
   if (subscription.scheduledDowngrade) {
     const target = await PlanModel.findOne({
       code: subscription.scheduledDowngrade.planCode,
@@ -162,6 +167,11 @@ export async function getSubscription(userId: string, orgId: string) {
     await lockSubscriptionOrganization(orgId, session);
     const state = await resolveSubscription(orgId, session);
     const memberCount = await UserModel.countDocuments({ orgId }).session(session);
+    const pendingInvitations = await OrganizationInvitationModel.countDocuments({
+      orgId,
+      status: 'pending',
+      expiresAt: { $gt: new Date() },
+    }).session(session);
     const futurePeriods = await SubscriptionPeriodModel.find({
       orgId,
       cancelledAt: null,
@@ -187,8 +197,9 @@ export async function getSubscription(userId: string, orgId: string) {
       futurePeriods,
       members: {
         count: memberCount,
+        pending: pendingInvitations,
         limit: state.memberLimit,
-        available: Math.max(0, state.memberLimit - memberCount),
+        available: Math.max(0, state.memberLimit - memberCount - pendingInvitations),
       },
       analysis: {
         used: period?.analysisUsed ?? 0,
@@ -215,6 +226,20 @@ export async function assertMemberCapacity(orgId: string, session: ClientSession
   const state = await resolveSubscription(orgId, session);
   const count = await UserModel.countDocuments({ orgId }).session(session);
   if (count >= state.memberLimit)
+    throw new AppError('Member limit reached. Upgrade the organization plan or free a seat.', 403);
+}
+
+// Call after locking the organization; pending invitations reserve seats until accepted,
+// revoked, expired, or marked delivery_failed.
+export async function assertInvitationCapacity(orgId: string, session: ClientSession) {
+  const state = await resolveSubscription(orgId, session);
+  const members = await UserModel.countDocuments({ orgId }).session(session);
+  const pending = await OrganizationInvitationModel.countDocuments({
+    orgId,
+    status: 'pending',
+    expiresAt: { $gt: new Date() },
+  }).session(session);
+  if (members + pending >= state.memberLimit)
     throw new AppError('Member limit reached. Upgrade the organization plan or free a seat.', 403);
 }
 

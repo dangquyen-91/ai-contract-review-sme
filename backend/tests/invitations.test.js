@@ -10,7 +10,7 @@ process.env.MONGOMS_DOWNLOAD_DIR = require('path').join(
   '../node_modules/.cache/mongodb-memory-server',
 );
 
-jest.mock('../dist/services/invitationEmail.service', () => ({
+jest.mock('../dist/services/organization/invitationEmail.service', () => ({
   ensureInvitationEmailConfigured: jest.fn(),
   sendInvitationEmail: jest.fn().mockResolvedValue(undefined),
 }));
@@ -26,10 +26,10 @@ const { OrganizationModel } = require('../dist/models/organization.model');
 const {
   OrganizationInvitationModel: Invitations,
 } = require('../dist/models/organizationInvitation.model');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/role.service');
-const { tokensForUser } = require('../dist/services/auth.service');
-const { sendInvitationEmail } = require('../dist/services/invitationEmail.service');
-const { seedPlans, activatePaidSubscription } = require('../dist/services/subscription.service');
+const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
+const { tokensForUser } = require('../dist/services/identity/auth.service');
+const { sendInvitationEmail } = require('../dist/services/organization/invitationEmail.service');
+const { seedPlans, activatePaidSubscription } = require('../dist/services/billing/subscription.service');
 const {
   initializeSubscriptionModels,
   SubscriptionPeriodModel,

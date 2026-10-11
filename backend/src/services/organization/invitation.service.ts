@@ -8,7 +8,7 @@ import { Role } from '../../models/role.model';
 import { getRoleByCode } from '../identity/role.service';
 import { ensureInvitationEmailConfigured, sendInvitationEmail } from './invitationEmail.service';
 import { CreateInvitationInput } from '../../validations/invitation.validation';
-import { assertMemberCapacity, lockSubscriptionOrganization } from '../billing/subscription.service';
+import { assertInvitationCapacity, assertMemberCapacity, lockSubscriptionOrganization } from '../billing/subscription.service';
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
@@ -57,10 +57,6 @@ export async function createInvitation(
 ) {
   const organization = await requireOwner(userId, orgId);
   ensureInvitationEmailConfigured();
-  await mongoose.connection.transaction(async (session) => {
-    await lockSubscriptionOrganization(orgId, session);
-    await assertMemberCapacity(orgId, session);
-  });
   const existing = await UserModel.findOne({ email: input.email });
   if (existing?.orgId) {
     throw AppError.conflict(
@@ -69,26 +65,32 @@ export async function createInvitation(
         : 'This user already belongs to another organization',
     );
   }
-  await OrganizationInvitationModel.updateMany(
-    {
-      orgId,
-      email: input.email,
-      status: 'pending',
-      expiresAt: { $lte: new Date() },
-    },
-    { $set: { status: 'expired' } },
-  );
   const token = randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   let invitation;
   try {
-    invitation = await OrganizationInvitationModel.create({
-      orgId,
-      email: input.email,
-      role: input.role,
-      invitedBy: userId,
-      tokenHash: hashToken(token),
-      expiresAt,
+    invitation = await mongoose.connection.transaction(async (session) => {
+      await lockSubscriptionOrganization(orgId, session);
+      await OrganizationInvitationModel.updateMany(
+        {
+          orgId,
+          email: input.email,
+          status: 'pending',
+          expiresAt: { $lte: new Date() },
+        },
+        { $set: { status: 'expired' } },
+        { session },
+      );
+      await assertInvitationCapacity(orgId, session);
+      const [created] = await OrganizationInvitationModel.create([{
+        orgId,
+        email: input.email,
+        role: input.role,
+        invitedBy: userId,
+        tokenHash: hashToken(token),
+        expiresAt,
+      }], { session });
+      return created;
     });
   } catch (error) {
     if ((error as { code?: number }).code === 11000) {
