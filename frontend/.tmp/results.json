@@ -1,0 +1,77 @@
+[
+  {
+    "label": "desktop",
+    "title": "Quản trị hệ thống | LawScan",
+    "viewport": 1440,
+    "scrollWidth": 1425,
+    "headings": [
+      "Trung tâm điều hành LawScan",
+      "Cần xử lý 3",
+      "Xu hướng & mức sử dụng",
+      "Kho dữ liệu pháp lý",
+      "Hoạt động quản trị gần đây"
+    ],
+    "buttons": 0,
+    "chartCount": 2,
+    "bodyLength": 2734
+  },
+  {
+    "label": "mobile",
+    "title": "Quản trị hệ thống | LawScan",
+    "viewport": 390,
+    "scrollWidth": 390,
+    "headings": [
+      "Trung tâm điều hành LawScan",
+      "Cần xử lý 3",
+      "Xu hướng & mức sử dụng",
+      "Kho dữ liệu pháp lý",
+      "Hoạt động quản trị gần đây"
+    ],
+    "buttons": 0,
+    "chartCount": 2,
+    "bodyLength": 4910
+  },
+  {
+    "label": "mobile-menu",
+    "visible": true,
+    "links": 7,
+    "scrollWidth": 390
+  },
+  {
+    "label": "mobile-reports",
+    "scrollWidth": 390,
+    "viewport": 390,
+    "filters": [
+      "7",
+      ""
+    ],
+    "csvButton": true
+  },
+  {
+    "label": "popup",
+    "found": true,
+    "centerX": 720,
+    "viewportCenterX": 720,
+    "width": 680,
+    "height": 558,
+    "viewportHeight": 900
+  },
+  {
+    "label": "popup-tab",
+    "focusInDialog": true,
+    "focusedText": "Đóng"
+  },
+  {
+    "label": "popup-escape",
+    "closed": true
+  },
+  {
+    "label": "mobile-popup",
+    "found": true,
+    "left": 16,
+    "right": 374,
+    "viewport": 390,
+    "scrollWidth": 390,
+    "height": 725.828125
+  }
+]

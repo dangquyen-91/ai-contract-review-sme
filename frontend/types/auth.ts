@@ -18,8 +18,8 @@ export type LoginFormValues = z.infer<typeof loginFormSchema>;
 export type RegisterFormValues = z.infer<typeof registerFormSchema>;
 export type AuthFormValues = z.infer<typeof authFormSchema>;
 
-export type LoginInput = LoginFormValues;
-export type RegisterInput = Omit<RegisterFormValues, "confirmPassword">;
+export type LoginInput = LoginFormValues & { invitationToken?: string };
+export type RegisterInput = Omit<RegisterFormValues, "confirmPassword"> & { invitationToken?: string };
 
 export type AuthSession = {
   user: AuthUser;

@@ -8,6 +8,7 @@ export const metadata: Metadata = {
   description: "Tạo tài khoản LawScan để bắt đầu rà soát hợp đồng.",
 };
 
-export default function RegisterPage() {
-  return <AuthShell panel={<AuthBrandPanel />}><AuthForm mode="register" /></AuthShell>;
+export default async function RegisterPage({ searchParams }: { searchParams: Promise<{ invitationToken?: string }> }) {
+  const { invitationToken } = await searchParams;
+  return <AuthShell panel={<AuthBrandPanel />}><AuthForm mode="register" invitationToken={invitationToken} /></AuthShell>;
 }

@@ -9,24 +9,24 @@ process.env.MONGOMS_DOWNLOAD_DIR = require('path').join(
   '../node_modules/.cache/mongodb-memory-server',
 );
 
-jest.mock('../dist/services/invitationEmail.service', () => ({
+jest.mock('../dist/services/organization/invitationEmail.service', () => ({
   ensureInvitationEmailConfigured: jest.fn(),
   sendInvitationEmail: jest.fn().mockResolvedValue(undefined),
 }));
-jest.mock('../dist/services/clause.service', () => ({
+jest.mock('../dist/services/analysis/clause.service', () => ({
   segmentClauses: jest.fn().mockResolvedValue([]),
   listClauses: jest.fn(),
 }));
-jest.mock('../dist/services/summary.service', () => ({
+jest.mock('../dist/services/analysis/summary.service', () => ({
   generateContractSummary: jest.fn().mockResolvedValue({}),
 }));
-jest.mock('../dist/services/risk.service', () => ({
+jest.mock('../dist/services/analysis/risk.service', () => ({
   detectRisks: jest.fn().mockResolvedValue([]),
   listRiskFindings: jest.fn(),
   updateProposedRevision: jest.fn(),
   removeProposedRevision: jest.fn(),
 }));
-jest.mock('../dist/services/llm.service', () => ({
+jest.mock('../dist/services/ai/llm.service', () => ({
   generateText: jest.fn().mockResolvedValue('Test AI reply'),
   generateTextStream: jest.fn(async function* () {
     yield 'Test ';
@@ -46,10 +46,10 @@ const { UserModel } = require('../dist/models/user.model');
 const { ContractModel } = require('../dist/models/contract.model');
 const { ContractVersionModel } = require('../dist/models/contractVersion.model');
 const { ChatMessageModel } = require('../dist/models/chatMessage.model');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/role.service');
-const { seedDefaultClauseTaxonomy } = require('../dist/services/clauseTypeTaxonomy.service');
-const { seedDefaultContractProfiles } = require('../dist/services/contractProfile.service');
-const { tokensForUser } = require('../dist/services/auth.service');
+const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
+const { seedDefaultClauseTaxonomy } = require('../dist/services/analysis/clauseTypeTaxonomy.service');
+const { seedDefaultContractProfiles } = require('../dist/services/contract/contractProfile.service');
+const { tokensForUser } = require('../dist/services/identity/auth.service');
 const {
   PlanModel,
   SubscriptionPeriodModel,
@@ -64,15 +64,15 @@ const {
   activatePaidSubscription,
   scheduleDowngrade,
   cancelDowngrade,
-} = require('../dist/services/subscription.service');
-const { reserveUsage, finishUsage, withUsage } = require('../dist/services/usage.service');
+} = require('../dist/services/billing/subscription.service');
+const { reserveUsage, finishUsage, withUsage } = require('../dist/services/billing/usage.service');
 const { vietnamCalendarMonth, addSubscriptionMonth } = require('../dist/utils/subscriptionPeriods');
-const invitations = require('../dist/services/invitation.service');
-const { sendInvitationEmail } = require('../dist/services/invitationEmail.service');
+const invitations = require('../dist/services/organization/invitation.service');
+const { sendInvitationEmail } = require('../dist/services/organization/invitationEmail.service');
 const { OrganizationInvitationModel } = require('../dist/models/organizationInvitation.model');
-const { generateContractSummary } = require('../dist/services/summary.service');
-const { generateText, generateTextStream } = require('../dist/services/llm.service');
-const { segmentClauses } = require('../dist/services/clause.service');
+const { generateContractSummary } = require('../dist/services/analysis/summary.service');
+const { generateText, generateTextStream } = require('../dist/services/ai/llm.service');
+const { segmentClauses } = require('../dist/services/analysis/clause.service');
 
 let repl,
   app,
@@ -196,18 +196,19 @@ test('free usage resets at calendar boundary without rollover', async () => {
   expect(next.period.chatUsed).toBe(0);
 });
 
-test('unpaid business blocks AI and invitations but can read subscription and contracts', async () => {
+test('unpaid business blocks AI but has two invitation seats and can read contracts', async () => {
   const w = await workspace();
   const sub = await getSubscription(w.owner.id, w.org.id);
   expect(sub.status).toBe('unsubscribed');
-  expect(sub.members).toMatchObject({ count: 1, limit: 1, available: 0 });
+  expect(sub.members).toMatchObject({ count: 1, pending: 0, limit: 3, available: 2 });
   await expect(reserveUsage(usage(w))).rejects.toMatchObject({ statusCode: 403 });
-  await expect(
-    invitations.createInvitation(w.owner.id, w.org.id, {
-      email: 'unpaid@example.com',
-      role: 'staff',
-    }),
-  ).rejects.toMatchObject({ statusCode: 403 });
+  await invitations.createInvitation(w.owner.id, w.org.id, {
+    email: 'unpaid@example.com',
+    role: 'staff',
+  });
+  expect((await getSubscription(w.owner.id, w.org.id)).members).toMatchObject({
+    count: 1, pending: 1, limit: 3, available: 1,
+  });
   const response = await request(app)
     .get(`/api/v1/contracts/${w.contract.id}`)
     .set('Authorization', bearer(w.owner));
@@ -353,25 +354,25 @@ test('recreating a personal workspace does not reset account free credits in the
   expect((await getSubscription(w.owner.id, replacement.id)).analysis.used).toBe(1);
 });
 
-test('pending invitations do not reserve seats; simultaneous acceptance only fills final seat', async () => {
+test('pending invitation reserves the final paid seat', async () => {
   const w = await workspace();
   await pay(w, 'business_starter');
   for (let i = 0; i < 3; i++) await user('staff', w.org._id);
   const a = await user();
   const b = await user();
-  const tokens = [];
-  for (const member of [a, b]) {
-    await invitations.createInvitation(w.owner.id, w.org.id, {
-      email: member.email,
-      role: 'staff',
-    });
-    tokens.push(sendInvitationEmail.mock.calls.at(-1)[0].token);
-  }
-  const results = await Promise.allSettled([
-    invitations.acceptInvitation(a.id, tokens[0]),
-    invitations.acceptInvitation(b.id, tokens[1]),
-  ]);
-  expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+  await invitations.createInvitation(w.owner.id, w.org.id, {
+    email: a.email,
+    role: 'staff',
+  });
+  const token = sendInvitationEmail.mock.calls.at(-1)[0].token;
+  await expect(invitations.createInvitation(w.owner.id, w.org.id, {
+    email: b.email,
+    role: 'staff',
+  })).rejects.toMatchObject({ statusCode: 403 });
+  expect((await getSubscription(w.owner.id, w.org.id)).members).toMatchObject({
+    count: 4, pending: 1, limit: 5, available: 0,
+  });
+  await invitations.acceptInvitation(a.id, token);
   expect(await UserModel.countDocuments({ orgId: w.org._id })).toBe(5);
 });
 
