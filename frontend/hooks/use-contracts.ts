@@ -114,7 +114,10 @@ export function useUploadContractMutation() {
   return useMutation<DashboardContract, ApiClientError, FormData>({
     mutationKey: contractMutationKeys.upload,
     mutationFn: (formData) => contractsApi.upload(formData),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
+      queryClient.invalidateQueries({ queryKey: ["member-contracts"] }),
+    ]),
   });
 }
 
@@ -133,6 +136,7 @@ export function useReviewContractMutation() {
     mutationFn: ({ contractId, analysisFocus }) => contractsApi.review(contractId, analysisFocus),
     // Segmentation may have succeeded even when summary or risk detection failed.
     onSettled: (_result, _error, { contractId }) => {
+      queryClient.invalidateQueries({ queryKey: ["member-contracts"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       queryClient.invalidateQueries({ queryKey: contractMutationKeys.detail(contractId) });
       queryClient.invalidateQueries({ queryKey: contractMutationKeys.clauses(contractId) });

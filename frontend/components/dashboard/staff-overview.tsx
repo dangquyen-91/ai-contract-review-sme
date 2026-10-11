@@ -1,6 +1,8 @@
 import { Icon } from "@/components/ui/icon";
 import type { DashboardContract } from "@/types/contracts";
-import type { DashboardData } from "@/types/dashboard";
+import type { DashboardContractFilter, DashboardData } from "@/types/dashboard";
+import { MemberContractChart } from "./member-contract-chart";
+import insights from "./member-insights.module.css";
 import styles from "./staff-overview.module.css";
 
 const contractTypes: Record<string, string> = {
@@ -33,19 +35,30 @@ export function StaffOverview({
   onViewContracts,
   onReview,
   isReviewing,
+  reviewerMode = false,
+  onQuickUpload,
 }: {
   data: DashboardData;
   onUpload: () => void;
-  onViewContracts: () => void;
+  onViewContracts: (filter?: DashboardContractFilter) => void;
   onReview: (contract: DashboardContract) => void;
   isReviewing: boolean;
+  reviewerMode?: boolean;
+  onQuickUpload?: (file: File) => void;
 }) {
   const recent = [...data.contracts]
     .filter((contract) => contract.status !== "archived")
-    .sort((left, right) => priority(left) - priority(right))
+    .filter((contract) => reviewerMode || contract.status === "uploaded" || contract.status === "processing")
+    .sort((left, right) => reviewerMode ? priority(left) - priority(right) : (left.status === "uploaded" ? -1 : left.status === "processing" ? 0 : 1) - (right.status === "uploaded" ? -1 : right.status === "processing" ? 0 : 1))
     .slice(0, 4);
   const firstName = data.user?.name?.trim().split(/\s+/).at(-1);
-  const overview = [
+  const nextContract = recent.find((contract) => (contract.id ?? contract._id) && contract.status !== "processing");
+  const headingId = reviewerMode ? "reviewer-heading" : "staff-heading";
+  const overview = reviewerMode ? [
+    { label: "Rủi ro cao", value: data.stats.highRisk, icon: "shield" as const, tone: "rose" },
+    { label: "Đã rà soát bằng AI", value: data.stats.reviewed, icon: "check" as const, tone: "blue" },
+    { label: "AI đang xử lý", value: data.stats.processing, icon: "sparkle" as const, tone: "amber" },
+  ] : [
     { label: "Hợp đồng", value: data.totalContracts, icon: "document" as const, tone: "blue" },
     { label: "Đang xử lý", value: data.stats.processing, icon: "sparkle" as const, tone: "amber" },
     { label: "Rủi ro cao", value: data.stats.highRisk, icon: "shield" as const, tone: "rose" },
@@ -53,16 +66,16 @@ export function StaffOverview({
 
   return (
     <div className={styles.dashboard}>
-      <section className={styles.hero} aria-labelledby="staff-heading">
+      <section className={styles.hero} aria-labelledby={headingId}>
         <div className={styles.heroContent}>
-          <span className={styles.eyebrow}>Không gian nhân viên · {data.organization.name}</span>
-          <h1 id="staff-heading">{firstName ? `Chào ${firstName}, bắt đầu công việc hôm nay.` : "Bắt đầu công việc hôm nay."}</h1>
-          <p>Tải hợp đồng, theo dõi kết quả rà soát và ưu tiên những rủi ro cần xem xét.</p>
+          <span className={styles.eyebrow}>{reviewerMode ? "Không gian chuyên viên rà soát" : "Không gian nhân viên"} · {data.organization.name}</span>
+          <h1 id={headingId}>{reviewerMode ? (firstName ? `Chào ${firstName}, cùng kiểm tra những rủi ro cần lưu ý.` : "Kiểm tra những rủi ro cần lưu ý.") : (firstName ? `Chào ${firstName}, bắt đầu công việc hôm nay.` : "Bắt đầu công việc hôm nay.")}</h1>
+          <p>{reviewerMode ? "Xem kết quả AI, đối chiếu căn cứ pháp lý và chỉnh sửa đề xuất cho hợp đồng của tổ chức." : "Tải hợp đồng, theo dõi kết quả rà soát và ưu tiên những rủi ro cần xem xét."}</p>
           <div className={styles.heroActions}>
-            <button type="button" className={styles.primaryAction} onClick={onUpload}>
-              <Icon name="upload" className={styles.actionIcon} /> Tải hợp đồng mới
+            <button type="button" className={styles.primaryAction} onClick={reviewerMode ? () => nextContract ? onReview(nextContract) : onViewContracts() : onUpload} disabled={reviewerMode && isReviewing}>
+              <Icon name={reviewerMode ? "shield" : "upload"} className={styles.actionIcon} /> {reviewerMode ? (nextContract ? "Mở hợp đồng ưu tiên" : "Xem danh sách hợp đồng") : "Tải hợp đồng mới"}
             </button>
-            <button type="button" className={styles.secondaryAction} onClick={onViewContracts}>
+            <button type="button" className={styles.secondaryAction} onClick={() => onViewContracts()}>
               Xem hợp đồng <Icon name="arrow" className={styles.actionIcon} />
             </button>
           </div>
@@ -86,21 +99,30 @@ export function StaffOverview({
         ))}
       </section>
 
-      <div className={styles.contentGrid}>
+      <div className={insights.filters} aria-label="Lọc nhanh hợp đồng">
+        {reviewerMode ? <>
+          <button type="button" onClick={() => onViewContracts({ riskLevel: "high" })}>Rủi ro cao · {data.stats.highRisk}</button>
+          <button type="button" onClick={() => onViewContracts({ status: "reviewed" })}>Đã có kết quả · {data.stats.reviewed}</button>
+        </> : <button type="button" onClick={() => onViewContracts({ status: "uploaded" })}>Chờ rà soát · {data.distribution?.statuses.uploaded ?? "—"}</button>}
+        <button type="button" onClick={() => onViewContracts({ status: "processing" })}>AI đang xử lý · {data.stats.processing}</button>
+      </div>
+      <div className={insights.insights}>
+        <MemberContractChart data={data} reviewerMode={reviewerMode} onFilter={onViewContracts} />
         <section className={styles.priorityCard} aria-labelledby="staff-priority-heading">
           <div className={styles.sectionHeading}>
             <div>
-              <h2 id="staff-priority-heading">Hợp đồng gần đây</h2>
-              <p>Rủi ro cao được đưa lên đầu danh sách.</p>
+              <h2 id="staff-priority-heading">{reviewerMode ? "Ưu tiên kiểm tra" : "Cần xử lý gần đây"}</h2>
+              <p>{reviewerMode ? "Trong các hợp đồng gần đây của tổ chức · ưu tiên rủi ro cao." : "Ưu tiên hợp đồng chờ rà soát trong các tài liệu gần đây."}</p>
             </div>
-            <button type="button" onClick={onViewContracts}>Xem tất cả <Icon name="arrow" /></button>
+            <button type="button" onClick={() => onViewContracts()}>Xem tất cả <Icon name="arrow" /></button>
           </div>
           {recent.length ? (
             <ul className={styles.contractList}>
               {recent.map((contract) => {
                 const id = contract.id ?? contract._id;
                 const highRisk = contract.overallRiskLevel === "high";
-                const status = highRisk ? "Rủi ro cao" : contract.status === "uploaded" ? "Chờ rà soát" : contract.status === "processing" ? "Đang xử lý" : "Đã rà soát";
+                const failed = contract.currentVersion?.extractionStatus === "failed" || contract.currentVersion?.riskDetectionStatus === "failed" || contract.currentVersion?.summaryStatus === "failed" || contract.currentVersion?.segmentationStatus === "failed";
+                const status = contract.status === "processing" ? "Đang xử lý" : failed ? "Cần thử lại" : highRisk ? "Rủi ro cao" : contract.status === "uploaded" ? "Chờ rà soát" : "Đã rà soát";
                 return (
                   <li key={id ?? `${contract.title}-${contract.updatedAt}`} className={styles.contractRow}>
                     <span className={styles.contractIcon}><Icon name="document" /></span>
@@ -108,7 +130,7 @@ export function StaffOverview({
                       <strong>{contract.title}</strong>
                       <span>{contractTypes[contract.type] ?? contract.type} · {formatDate(contract.updatedAt)}</span>
                     </div>
-                    <span className={`${styles.status} ${highRisk ? styles.statusHigh : contract.status === "processing" ? styles.statusProcessing : styles.statusNormal}`}>{status}</span>
+                    <span className={`${styles.status} ${contract.status === "processing" ? styles.statusProcessing : highRisk || failed ? styles.statusHigh : styles.statusNormal}`}>{status}</span>
                     {id && contract.status !== "processing" && (
                       <button className={styles.reviewAction} type="button" onClick={() => onReview(contract)} disabled={isReviewing}>
                         {contract.status === "reviewed" ? "Xem kết quả" : "Rà soát"}
@@ -121,28 +143,21 @@ export function StaffOverview({
           ) : (
             <div className={styles.emptyState}>
               <span><Icon name="document" /></span>
-              <h3>Chưa có hợp đồng nào</h3>
-              <p>Tải hợp đồng đầu tiên để bắt đầu rà soát.</p>
-              <button type="button" onClick={onUpload}>Tải hợp đồng <Icon name="arrow" /></button>
+              <h3>{data.totalContracts ? "Không có hợp đồng cần xử lý trong danh sách gần đây" : "Chưa có hợp đồng nào"}</h3>
+              <p>{data.totalContracts ? "Bạn có thể xem toàn bộ hợp đồng bằng bộ lọc ở trên." : reviewerMode ? "Hợp đồng do Owner, Manager hoặc Staff tải lên sẽ xuất hiện tại đây." : "Tải hợp đồng đầu tiên để bắt đầu rà soát."}</p>
+              {!reviewerMode && <button type="button" onClick={onUpload}>Tải hợp đồng <Icon name="arrow" /></button>}
             </div>
           )}
         </section>
 
-        <aside className={styles.sideCard} aria-labelledby="staff-progress-heading">
-          <div className={styles.sideIcon}><Icon name="chart" /></div>
-          <h2 id="staff-progress-heading">Tiến độ rà soát</h2>
-          <p>Theo dõi tình trạng hợp đồng trong tổ chức.</p>
-          <div className={styles.progressFigure}>
-            <strong>{data.stats.reviewed.toLocaleString("vi-VN")}</strong>
-            <span>hợp đồng đã rà soát</span>
-          </div>
-          <div className={styles.progressTrack} role="progressbar" aria-valuenow={data.stats.reviewed} aria-valuemin={0} aria-valuemax={Math.max(1, data.totalContracts)} aria-label="Hợp đồng đã rà soát">
-            <span style={{ width: `${data.totalContracts ? Math.min(100, data.stats.reviewed / data.totalContracts * 100) : 0}%` }} />
-          </div>
-          <div className={styles.progressLegend}><span>Đã rà soát</span><strong>{data.totalContracts ? Math.round(data.stats.reviewed / data.totalContracts * 100) : 0}%</strong></div>
-          <div className={styles.sideNote}><Icon name="shield" /><span>Các rủi ro cao cần được kiểm tra trước khi dùng kết quả để trao đổi với đối tác.</span></div>
-        </aside>
       </div>
+      {!reviewerMode && onQuickUpload && <section className={insights.quickUpload} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) onQuickUpload(file); }}>
+        <h2>Tải hợp đồng nhanh</h2>
+        <p>Kéo thả tài liệu vào đây hoặc chọn tệp. Bạn sẽ kiểm tra thông tin trước khi tải lên.</p>
+        <label><Icon name="upload" />Chọn tài liệu<input type="file" accept=".pdf,.docx,.png,.jpg,.jpeg" onChange={(event) => { const file = event.target.files?.[0]; if (file) onQuickUpload(file); event.target.value = ""; }} /></label>
+        <p>PDF, DOCX, PNG, JPG · Tối đa 20 MB</p>
+      </section>}
+
     </div>
   );
 }

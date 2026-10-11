@@ -19,6 +19,7 @@ export default async function ChooseOrganizationPage() {
 
   if (user?.role === "administrator") redirect("/dashboard/admin");
   if (user?.role === "staff") redirect("/dashboard/staff");
+  if (user?.role === "reviewer") redirect("/dashboard/reviewer");
   if (user?.orgId && ["owner", "manager", "staff", "reviewer"].includes(user.role)) {
     redirect(workspacePath(user));
   }

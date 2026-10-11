@@ -82,12 +82,34 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    let distribution;
+    if (claims.role === "staff" || claims.role === "reviewer") {
+      const filters = ["status=uploaded", "status=archived", "riskLevel=medium", "riskLevel=low", "riskLevel=none"];
+      const extraMetrics = await Promise.all(filters.map(async (filter) => {
+        const response = await fetch(`${apiBaseUrl}/api/v1/contracts?limit=1&${filter}`, { headers, cache: "no-store" });
+        const payload = await response.json();
+        return { response, payload };
+      }));
+      const failed = extraMetrics.find(({ response }) => !response.ok);
+      if (failed) return NextResponse.json(failed.payload, { status: failed.response.status });
+      const totals = extraMetrics.map(({ payload }) => {
+        const total = payload.meta?.total;
+        if (!Number.isInteger(total) || total < 0) throw new Error("Missing contract count");
+        return total as number;
+      });
+      distribution = {
+        statuses: { uploaded: totals[0], processing: processingPayload.meta.total, reviewed: reviewedPayload.meta.total, archived: totals[1] },
+        risks: { high: highRiskPayload.meta.total, medium: totals[2], low: totals[3], none: totals[4] },
+      };
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         organization: organizationPayload.data,
         contracts,
         totalContracts: contractsPayload.meta?.total ?? contracts.length,
+        ...(distribution ? { distribution } : {}),
         stats: {
           processing: processingPayload.meta?.total ?? 0,
           reviewed: reviewedPayload.meta?.total ?? 0,

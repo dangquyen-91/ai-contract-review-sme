@@ -2,7 +2,7 @@
 .dashboard :is(h1, h2, h3, p) { margin: 0; }
 .dashboard button { font: inherit; cursor: pointer; }
 .dashboard button:disabled { cursor: wait; opacity: .55; }
-.hero { position: relative; display: flex; min-height: 264px; align-items: center; overflow: hidden; border: 1px solid #cbdcf7; border-radius: 20px; background: linear-gradient(112deg, #eaf2ff 0%, #f6f9ff 67%, #e7f5f2 100%); padding: 34px 38px; box-shadow: 0 22px 45px -40px #284d80; }
+.hero { position: relative; display: flex; min-height: 220px; align-items: center; overflow: hidden; border: 1px solid #cbdcf7; border-radius: 20px; background: linear-gradient(112deg, #eaf2ff 0%, #f6f9ff 67%, #e7f5f2 100%); padding: 28px 34px; box-shadow: 0 22px 45px -40px #284d80; }
 .hero::after { position: absolute; right: -78px; top: -105px; width: 330px; height: 330px; border: 1px solid #bad1f2; border-radius: 50%; content: ""; }
 .heroContent { position: relative; z-index: 1; max-width: 720px; }
 .eyebrow { color: #245bd6; font-size: 12px; font-weight: 700; letter-spacing: .035em; }
@@ -53,6 +53,12 @@
 .statusProcessing { background: #fff5e8; color: #8a5b1c; }
 .statusNormal { background: #eaf5f1; color: #1d7256; }
 .reviewAction { min-height: 33px; flex: none; border: 0; background: transparent; color: #245bd6; font-size: 12px !important; font-weight: 700 !important; }
+.primaryAction:disabled, .reviewAction:disabled { opacity: .55; cursor: wait; }
+.workbench { border: 1px solid #d8e5f8; border-radius: 18px; background: linear-gradient(120deg, #edf4ff, #fff); padding: 28px; }
+.workbench h1 { margin-top: 12px; overflow-wrap: anywhere; font-size: clamp(28px, 3vw, 38px); font-weight: 700; letter-spacing: -.035em; line-height: 1.2; }
+.workbench > p { margin-top: 12px; color: #65748b; font-size: 14px; line-height: 1.65; }
+.reviewStatus { display: flex; gap: 10px; align-items: center; margin-top: 22px; color: #345174; font-size: 13px; line-height: 1.6; }
+.reviewStatus svg { width: 20px; height: 20px; flex: none; color: #245bd6; }
 .emptyState { display: grid; min-height: 272px; justify-items: center; align-content: center; padding: 28px; text-align: center; }
 .emptyState > span { display: grid; width: 48px; height: 48px; place-items: center; border-radius: 12px; background: #eaf2ff; color: #2864dc; }
 .emptyState > span svg { width: 22px; height: 22px; }

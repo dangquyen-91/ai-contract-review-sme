@@ -1,9 +1,16 @@
-import { apiRequest } from "@/lib/api/client";
+import { apiClient, apiRequest } from "@/lib/api/client";
+import type { DashboardContractFilter } from "@/types/dashboard";
 import { readContractStream } from "@/lib/api/contract-stream";
 import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractReviewResult, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding, RiskStreamEvent } from "@/types/contracts";
 
 
 export const contractsApi = {
+  async list(filter: DashboardContractFilter & { page?: number; search?: string } = {}) {
+    const response = await apiClient.get<{ data: DashboardContract[]; meta: { total: number; page: number; limit: number } }>("/contracts", {
+      params: { ...filter, limit: 10, sortBy: "updatedAt", sortOrder: "desc" },
+    });
+    return { items: response.data.data.map((contract) => ({ ...contract, overallRiskLevel: contract.currentVersion?.overallRiskLevel ?? contract.overallRiskLevel ?? "none" })), total: response.data.meta.total };
+  },
   getContract(contractId: string) {
     return apiRequest<DashboardContract>({ url: `/contracts/${contractId}` });
   },
