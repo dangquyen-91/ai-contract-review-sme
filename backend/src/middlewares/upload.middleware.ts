@@ -24,6 +24,7 @@ export const contractFileUpload = multer({
 const LEGAL_DOC_MIME_TYPES = new Set([
   'application/pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'application/msword',
   'text/plain',
 ]);
 

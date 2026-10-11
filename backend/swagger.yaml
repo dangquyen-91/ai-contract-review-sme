@@ -790,28 +790,103 @@ components:
           type: string
           format: binary
 
+    LegalHeading:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [part, chapter, section, subsection]
+          description: part = Phần, chapter = Chương, section = Mục, subsection = Tiểu mục
+        number:
+          type: string
+          example: II
+        title:
+          type: string
+          example: MUA BÁN HÀNG HÓA
+
+    LegalCoverage:
+      type: object
+      description: How completely the uploaded text covers the document, so a truncated or partial file is visible before it is relied on
+      properties:
+        structured:
+          type: boolean
+          description: false when no "Điều N" headings were found and the text was split into plain passages
+        articleCount:
+          type: integer
+        firstArticle:
+          type: integer
+        lastArticle:
+          type: integer
+        expectedArticleCount:
+          type: integer
+          description: Echoes the optional expectedArticleCount sent on upload
+        missingArticleCount:
+          type: integer
+          description: Article numbers from 1 to max(lastArticle, expectedArticleCount) that were not found
+        missingRanges:
+          type: array
+          items:
+            type: string
+          example: ['1-116', '200']
+        suffixedArticles:
+          type: array
+          items:
+            type: string
+          description: Inserted articles such as "6a" from consolidated texts
+        headingCount:
+          type: integer
+          description: Number of Phần/Chương/Mục/Tiểu mục headings found
+        chunkCount:
+          type: integer
+        complete:
+          type: boolean
+          description: true when no article is missing
+        warnings:
+          type: array
+          items:
+            type: string
+
     LegalSource:
       type: object
       properties:
-        id:
+        _id:
           type: string
+        code:
+          type: string
+          description: Unique stable code that contract profiles use to reference this source
+          example: commercial_law_2005
         title:
           type: string
-          description: 'e.g. "Bo luat Dan su 2015"'
+          example: Luật Thương mại 2005
+        documentNumber:
+          type: string
+          description: Official number; detected from the "Số:" line when not provided
+          example: 36/2005/QH11
         sourceType:
           type: string
-          enum: [law, standard_template]
+          enum: [law, decree, circular, resolution, standard_template]
+        status:
+          type: string
+          enum: [in_force, amended, repealed, not_yet_effective]
         citationLabel:
           type: string
           description: 'Short label used when citing this source, e.g. "BLDS 2015"'
         issuingBody:
           type: string
+        issuedDate:
+          type: string
+          format: date-time
         effectiveDate:
           type: string
           format: date-time
+        expiryDate:
+          type: string
+          format: date-time
+        coverage:
+          $ref: '#/components/schemas/LegalCoverage'
         chunkCount:
           type: integer
-          description: Number of LegalKnowledgeChunk documents produced from this source (list endpoint only)
+          description: Number of LegalKnowledgeChunk documents produced from this source
         createdAt:
           type: string
           format: date-time
@@ -819,17 +894,62 @@ components:
           type: string
           format: date-time
 
+    LegalSourcePreview:
+      type: object
+      properties:
+        documentNumber:
+          type: string
+          example: 36/2005/QH11
+        coverage:
+          $ref: '#/components/schemas/LegalCoverage'
+        chunks:
+          type: array
+          items:
+            type: object
+            properties:
+              order:
+                type: integer
+              articleRef:
+                type: string
+                example: Điều 3, khoản 1-9
+              articleTitle:
+                type: string
+              hierarchy:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LegalHeading'
+              characters:
+                type: integer
+              preview:
+                type: string
+                description: First 120 characters of the chunk
+
     CreateLegalSourceRequest:
       type: object
-      required: [title, sourceType, citationLabel, file]
+      required: [code, title, sourceType, citationLabel, file]
       properties:
+        code:
+          type: string
+          minLength: 2
+          maxLength: 60
+          pattern: '^[a-z0-9]+(?:_[a-z0-9]+)*$'
+          description: Lowercased before validation
+          example: commercial_law_2005
         title:
           type: string
           minLength: 2
           maxLength: 300
+        documentNumber:
+          type: string
+          maxLength: 60
+          description: Optional; detected from the "Số:" line of the document when omitted
         sourceType:
           type: string
-          enum: [law, standard_template]
+          enum: [law, decree, circular, resolution, standard_template]
+        status:
+          type: string
+          enum: [in_force, amended, repealed, not_yet_effective]
+          default: in_force
         citationLabel:
           type: string
           minLength: 1
@@ -837,13 +957,25 @@ components:
         issuingBody:
           type: string
           maxLength: 200
+        issuedDate:
+          type: string
+          format: date
         effectiveDate:
           type: string
           format: date
+        expiryDate:
+          type: string
+          format: date
+          description: Must be after effectiveDate
+        expectedArticleCount:
+          type: integer
+          minimum: 1
+          maximum: 5000
+          description: Optional. Total number of articles in the official text, so a missing tail is reported in coverage
         file:
           type: string
           format: binary
-          description: Legal document to chunk and embed (pdf, docx, or txt)
+          description: Legal document to chunk and embed (pdf, docx, doc, or txt)
 
 paths:
   /plans:
@@ -1955,8 +2087,15 @@ paths:
                   $ref: '#/components/schemas/LegalSource'
     post:
       tags: [LegalKB]
-      summary: Upload a legal document (pdf/docx/txt), chunk it by "Dieu N" headings, and embed each chunk (Gemini)
-      description: Admin only. Rate-limited (AI cost control). Each "Điều N" becomes one chunk; an article longer than 3000 characters is split at the nearest paragraph/line/sentence/word boundary, and consecutive pieces overlap by ~300 characters. Chunks are embedded in batches of up to 100 (task type RETRIEVAL_DOCUMENT). All chunks are embedded before anything is saved, and a failed save removes the partial source, so a failed upload never leaves a half-ingested source behind.
+      summary: Upload a legal document (pdf/docx/doc/txt), split it by its legal structure, and embed each chunk (Gemini)
+      description: |
+        Admin only. Rate-limited (AI cost control). Use POST /kb/legal-sources/preview first to check coverage without spending embedding quota.
+
+        The text is read as Phần > Chương > Mục > Tiểu mục > Điều > khoản > điểm. An "Điều N" heading only counts when its number is higher than the previous article, so cross-references such as "Điều 5 của Luật này" at the start of a line stay in the body. The signature block after the last article (e.g. "Luật này đã được Quốc hội ... thông qua", "CHỦ TỊCH QUỐC HỘI", "Nơi nhận:") is dropped.
+
+        Each article becomes one chunk of up to 2200 characters. A longer article is split into groups of whole khoản, and each group repeats the article heading (and the short lead-in sentence) so it can be read alone, e.g. "Điều 3, khoản 1-9". A khoản that is still too long is split into groups of điểm. A document with no "Điều N" headings (e.g. a standard template) is split into plain passages.
+
+        The text sent to the embedding model is the citation label, the chapter/section titles and the chunk text. All chunks are embedded before anything is saved, and a failed save removes the partial source.
       requestBody:
         required: true
         content:
@@ -1971,7 +2110,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Validation error, unsupported file type, or LLM not configured
+          description: Validation error, unsupported or unreadable file, no usable text, or LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A legal source with this code already exists (checked before any embedding)
           content:
             application/json:
               schema:
@@ -1989,6 +2134,54 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /kb/legal-sources/preview:
+    post:
+      tags: [LegalKB]
+      summary: Dry-run a legal document upload and report its structure and coverage
+      description: Admin only. Parses and chunks the file exactly like the upload endpoint, but saves nothing and calls no AI model, so it costs no embedding quota. Use it to check that every article was read (e.g. a .doc converted badly, or a file that only contains part of the law) before uploading.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  example: 324
+                file:
+                  type: string
+                  format: binary
+                  description: pdf, docx, doc, or txt
+      responses:
+        '200':
+          description: Parsed structure; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSourcePreview'
+        '400':
+          description: Missing, unsupported or unreadable file, or no usable text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires administrator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File exceeds the 20MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /kb/legal-sources/{id}:
     parameters:
       - in: path
@@ -1997,6 +2190,22 @@ paths:
         schema:
           type: string
           pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [LegalKB]
+      summary: Get a legal source with its coverage report and chunk count
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSource'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       tags: [LegalKB]
       summary: Delete a legal source and all of its chunks
