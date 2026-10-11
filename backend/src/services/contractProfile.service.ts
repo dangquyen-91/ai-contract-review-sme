@@ -3,6 +3,7 @@ import { AppError } from '../errors/AppError';
 import { ClauseCategory } from '../models/clauseTypeTaxonomy.model';
 import { ContractProfile, ContractProfileModel, PROFILE_SEGMENTS } from '../models/contractProfile.model';
 import { IndustryModel } from '../models/industry.model';
+import { LegalSourceModel } from '../models/legalSource.model';
 import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
 import type { SensitiveDataType } from './redaction.service';
 
@@ -27,12 +28,25 @@ interface DefaultProfile {
   promptLabel: string;
   segment: (typeof PROFILE_SEGMENTS)[number];
   parties: { code: string; name: string }[];
-  governingLaws: string[];
+  legalSources: LegalSourceCode[];
   clauseCategories: ClauseCategory[];
   mandatoryClauses: ClauseCategory[];
   industryRules?: DefaultIndustryRule[];
   redactionPolicy: SensitiveDataType[];
 }
+
+export const LEGAL_SOURCE_CATALOG = {
+  commercial_law_2005: 'Luật Thương mại 2005',
+  civil_code_2015: 'Bộ luật Dân sự 2015',
+  labor_code_2019: 'Bộ luật Lao động 2019',
+  decree_145_2020: 'Nghị định 145/2020/NĐ-CP',
+  real_estate_business_law_2023: 'Luật Kinh doanh bất động sản 2023',
+  housing_law_2023: 'Luật Nhà ở 2023',
+  land_law_2024: 'Luật Đất đai 2024',
+  insurance_business_law_2022: 'Luật Kinh doanh bảo hiểm 2022',
+} as const;
+
+type LegalSourceCode = keyof typeof LEGAL_SOURCE_CATALOG;
 
 const PERSONAL_DATA: SensitiveDataType[] = [
   'person_name',
@@ -56,7 +70,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
       { code: 'buyer', name: 'Bên mua' },
       { code: 'seller', name: 'Bên bán' },
     ],
-    governingLaws: ['Luật Thương mại 2005', 'Bộ luật Dân sự 2015'],
+    legalSources: ['commercial_law_2005', 'civil_code_2015'],
     clauseCategories: [
       'subject_scope', 'payment', 'delivery_handover', 'warranty', 'confidentiality', 'penalty',
       'indemnity', 'liability', 'termination', 'force_majeure', 'dispute_resolution', 'other',
@@ -99,7 +113,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
       { code: 'client', name: 'Bên thuê dịch vụ' },
       { code: 'provider', name: 'Bên cung ứng dịch vụ' },
     ],
-    governingLaws: ['Luật Thương mại 2005', 'Bộ luật Dân sự 2015'],
+    legalSources: ['commercial_law_2005', 'civil_code_2015'],
     clauseCategories: [
       'subject_scope', 'payment', 'term', 'delivery_handover', 'service_level', 'warranty',
       'confidentiality', 'data_protection', 'intellectual_property', 'penalty', 'indemnity',
@@ -143,7 +157,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
       { code: 'lessee', name: 'Bên thuê' },
       { code: 'lessor', name: 'Bên cho thuê' },
     ],
-    governingLaws: ['Bộ luật Dân sự 2015', 'Luật Kinh doanh bất động sản 2023'],
+    legalSources: ['civil_code_2015', 'real_estate_business_law_2023'],
     clauseCategories: [
       'subject_scope', 'property_legal_status', 'payment', 'deposit', 'term', 'delivery_handover',
       'maintenance_repair', 'sublease_transfer', 'renewal', 'penalty', 'indemnity', 'termination',
@@ -189,7 +203,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
       { code: 'employee', name: 'Người lao động' },
       { code: 'employer', name: 'Người sử dụng lao động' },
     ],
-    governingLaws: ['Bộ luật Lao động 2019', 'Nghị định 145/2020/NĐ-CP'],
+    legalSources: ['labor_code_2019', 'decree_145_2020'],
     clauseCategories: [
       'subject_scope', 'term', 'probation', 'wages', 'working_time', 'social_insurance',
       'confidentiality', 'intellectual_property', 'penalty', 'indemnity', 'termination',
@@ -231,12 +245,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
       { code: 'buyer', name: 'Bên mua' },
       { code: 'seller', name: 'Bên bán' },
     ],
-    governingLaws: [
-      'Luật Nhà ở 2023',
-      'Luật Kinh doanh bất động sản 2023',
-      'Luật Đất đai 2024',
-      'Bộ luật Dân sự 2015',
-    ],
+    legalSources: ['housing_law_2023', 'real_estate_business_law_2023', 'land_law_2024', 'civil_code_2015'],
     clauseCategories: [
       'subject_scope', 'property_legal_status', 'payment', 'deposit', 'delivery_handover', 'warranty',
       'ownership_transfer', 'penalty', 'termination', 'force_majeure', 'dispute_resolution', 'other',
@@ -256,7 +265,7 @@ const DEFAULT_PROFILES: DefaultProfile[] = [
       { code: 'policyholder', name: 'Bên mua bảo hiểm' },
       { code: 'insurer', name: 'Doanh nghiệp bảo hiểm' },
     ],
-    governingLaws: ['Luật Kinh doanh bảo hiểm 2022', 'Bộ luật Dân sự 2015'],
+    legalSources: ['insurance_business_law_2022', 'civil_code_2015'],
     clauseCategories: [
       'subject_scope', 'payment', 'term', 'insurance_benefits', 'insurance_exclusions', 'claims',
       'surrender_value', 'termination', 'dispute_resolution', 'other',
@@ -301,10 +310,18 @@ export async function seedDefaultContractProfiles(): Promise<void> {
   );
 
   await Promise.all(
-    DEFAULT_PROFILES.map((profile) =>
+    DEFAULT_PROFILES.map(({ legalSources, ...profile }) =>
       ContractProfileModel.findOneAndUpdate(
         { code: profile.code },
-        { $set: { aliases: [], industryRules: [], ...profile } },
+        {
+          $set: {
+            aliases: [],
+            industryRules: [],
+            ...profile,
+            governingLaws: legalSources.map((code) => LEGAL_SOURCE_CATALOG[code]),
+            legalSourceCodes: legalSources,
+          },
+        },
         { upsert: true, runValidators: true },
       ),
     ),
@@ -338,6 +355,7 @@ export interface ReviewContext {
   profileCode: string;
   contractLabel: string;
   governingLaws: string[];
+  legalSourceCodes: string[];
   partyName?: string;
   industryName?: string;
   industryChecks: string[];
@@ -363,6 +381,7 @@ export async function buildReviewContext(contract: {
     profileCode: profile.code,
     contractLabel: profile.promptLabel,
     governingLaws: profile.governingLaws,
+    legalSourceCodes: profile.legalSourceCodes,
     partyName: profile.parties.find((p) => p.code === contract.ourParty)?.name,
     industryName: industry?.name,
     industryChecks: rule?.checks ?? [],
@@ -406,6 +425,19 @@ export async function listContractProfiles() {
     code,
     name: taxonomy.find((t) => t.code === code)?.name ?? code,
   });
+  const sources = await LegalSourceModel.find({
+    code: { $in: [...new Set(profiles.flatMap((p) => p.legalSourceCodes))] },
+  }).select('code title status ingestion.status ingestion.embeddedChunks');
+  const legalSource = (code: string) => {
+    const source = sources.find((s) => s.code === code);
+    return {
+      code,
+      name: source?.title ?? LEGAL_SOURCE_CATALOG[code as LegalSourceCode] ?? code,
+      inKnowledgeBase: Boolean(source),
+      searchable: Boolean(source && source.status !== 'repealed' && (source.ingestion?.embeddedChunks ?? 0) > 0),
+      ingestionStatus: source?.ingestion?.status,
+    };
+  };
 
   return profiles.map((profile) => ({
     code: profile.code,
@@ -414,6 +446,7 @@ export async function listContractProfiles() {
     segment: profile.segment,
     parties: profile.parties.map(({ code, name }) => ({ code, name })),
     governingLaws: profile.governingLaws,
+    legalSources: profile.legalSourceCodes.map(legalSource),
     mandatoryClauses: profile.mandatoryClauses.map(clauseName),
     redactionPolicy: profile.redactionPolicy,
     industries: industries.map((industry) => {

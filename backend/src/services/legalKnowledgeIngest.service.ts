@@ -19,25 +19,35 @@ import {
 
 export const LEGAL_CHUNK_VECTOR_INDEX_NAME = 'legal_chunk_vector_index';
 
+const LEGAL_VECTOR_INDEX_DEFINITION = {
+  fields: [
+    {
+      type: 'vector',
+      path: 'embedding',
+      numDimensions: EMBEDDING_DIMENSIONS,
+      similarity: 'cosine',
+    },
+    { type: 'filter', path: 'legalSourceId' },
+  ],
+};
+
 export async function ensureLegalVectorIndex(): Promise<void> {
   try {
     const collection = mongoose.connection.collection(LegalKnowledgeChunkModel.collection.name);
-    const existing = await collection.listSearchIndexes(LEGAL_CHUNK_VECTOR_INDEX_NAME).toArray();
-    if (existing.length > 0) return;
+    const [existing] = await collection.listSearchIndexes(LEGAL_CHUNK_VECTOR_INDEX_NAME).toArray();
+    if (existing) {
+      const { latestDefinition } = existing as { latestDefinition?: { fields?: { type?: string; path?: string }[] } };
+      const fields = latestDefinition?.fields ?? [];
+      if (fields.some((f) => f.type === 'filter' && f.path === 'legalSourceId')) return;
+      await collection.updateSearchIndex(LEGAL_CHUNK_VECTOR_INDEX_NAME, LEGAL_VECTOR_INDEX_DEFINITION);
+      logger.info(`Updated Atlas Vector Search index "${LEGAL_CHUNK_VECTOR_INDEX_NAME}" to filter by legal source`);
+      return;
+    }
 
     await collection.createSearchIndex({
       name: LEGAL_CHUNK_VECTOR_INDEX_NAME,
       type: 'vectorSearch',
-      definition: {
-        fields: [
-          {
-            type: 'vector',
-            path: 'embedding',
-            numDimensions: EMBEDDING_DIMENSIONS,
-            similarity: 'cosine',
-          },
-        ],
-      },
+      definition: LEGAL_VECTOR_INDEX_DEFINITION,
     });
     logger.info(`Created Atlas Vector Search index "${LEGAL_CHUNK_VECTOR_INDEX_NAME}"`);
   } catch (err) {

@@ -53,12 +53,13 @@ interface PopulatedClauseType {
 async function buildLegalExcerpts(
   clauses: { text: string }[],
   redactor: Redactor,
+  legalSourceCodes: string[],
   signal?: AbortSignal,
 ): Promise<{ excerpts: LegalExcerptInput[]; metaByNumber: Map<number, LegalExcerptMeta> }> {
   const perClauseMatches = await searchLegalChunks(
     clauses.map((c) => redactor.mask(c.text)),
     LEGAL_EXCERPTS_PER_CLAUSE,
-    signal,
+    { legalSourceCodes, signal },
   );
 
   const candidates = perClauseMatches
@@ -228,7 +229,12 @@ export async function detectRisks(
     );
 
     onProgress?.('retrieving_legal_sources');
-    const { excerpts, metaByNumber } = await buildLegalExcerpts(clauses, redactor, signal);
+    const { excerpts, metaByNumber } = await buildLegalExcerpts(
+      clauses,
+      redactor,
+      reviewContext.legalSourceCodes,
+      signal,
+    );
 
     signal?.throwIfAborted();
     onProgress?.('analyzing_clauses');

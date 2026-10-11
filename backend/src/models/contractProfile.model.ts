@@ -42,6 +42,7 @@ const contractProfileSchema = new Schema(
     segment: { type: String, enum: PROFILE_SEGMENTS, required: true },
     parties: { type: [partySchema], default: [] },
     governingLaws: { type: [String], default: [] },
+    legalSourceCodes: { type: [String], default: [] },
     clauseCategories: { type: [String], enum: CLAUSE_CATEGORIES, default: [] },
     mandatoryClauses: { type: [String], enum: CLAUSE_CATEGORIES, default: [] },
     industryRules: { type: [industryRuleSchema], default: [] },

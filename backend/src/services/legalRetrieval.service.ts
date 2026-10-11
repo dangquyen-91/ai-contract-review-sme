@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { LegalKnowledgeChunkModel, EMBEDDING_DIMENSIONS } from '../models/legalKnowledgeChunk.model';
 import { LegalSourceModel } from '../models/legalSource.model';
 import { logger } from '../config/logger';
@@ -21,7 +22,30 @@ interface VectorSearchResult {
   score: number;
 }
 
-async function vectorSearch(queryVector: number[], topK: number) {
+export interface LegalSearchOptions {
+  legalSourceCodes?: string[];
+  signal?: AbortSignal;
+}
+
+const SEARCHABLE_SOURCE = { status: { $ne: 'repealed' } };
+
+export async function resolveLegalSearchScope(legalSourceCodes: string[] = []): Promise<Types.ObjectId[]> {
+  if (legalSourceCodes.length > 0) {
+    const preferred = await LegalSourceModel.find({ ...SEARCHABLE_SOURCE, code: { $in: legalSourceCodes } }).select('code');
+    if (preferred.length > 0) {
+      const found = new Set(preferred.map((s) => s.code));
+      const missing = legalSourceCodes.filter((code) => !found.has(code));
+      if (missing.length) logger.info('Some governing laws are not in the legal knowledge base yet', { missing });
+      return preferred.map((s) => s._id);
+    }
+    logger.warn('None of the governing laws are in the legal knowledge base; searching every legal source', {
+      legalSourceCodes,
+    });
+  }
+  return (await LegalSourceModel.find(SEARCHABLE_SOURCE).select('_id')).map((s) => s._id);
+}
+
+async function vectorSearch(queryVector: number[], topK: number, legalSourceIds: Types.ObjectId[]) {
   return LegalKnowledgeChunkModel.aggregate<VectorSearchResult>([
     {
       $vectorSearch: {
@@ -30,6 +54,7 @@ async function vectorSearch(queryVector: number[], topK: number) {
         queryVector,
         numCandidates: Math.max(topK * 20, 100),
         limit: topK,
+        filter: { legalSourceId: { $in: legalSourceIds } },
       },
     },
     {
@@ -46,18 +71,21 @@ async function vectorSearch(queryVector: number[], topK: number) {
 export async function searchLegalChunks(
   queryTexts: string[],
   topKPerQuery: number,
-  signal?: AbortSignal,
+  { legalSourceCodes, signal }: LegalSearchOptions = {},
 ): Promise<LegalChunkMatch[][]> {
   if (queryTexts.length === 0) return [];
 
   try {
+    const legalSourceIds = await resolveLegalSearchScope(legalSourceCodes);
+    if (legalSourceIds.length === 0) return queryTexts.map(() => []);
+
     const queryVectors = await embedTexts(queryTexts, {
       taskType: 'RETRIEVAL_QUERY',
       outputDimensionality: EMBEDDING_DIMENSIONS,
       signal,
     });
     const resultsPerQuery = await Promise.all(
-      queryVectors.map((vector) => vectorSearch(vector, topKPerQuery)),
+      queryVectors.map((vector) => vectorSearch(vector, topKPerQuery, legalSourceIds)),
     );
 
     const sourceIds = [
