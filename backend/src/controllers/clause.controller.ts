@@ -2,13 +2,7 @@ import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
-import * as clauseService from '../services/clause.service';
-
-export const segmentClausesHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
-  const clauses = await clauseService.segmentClauses(user.orgId, req.params.id);
-  ok(res, clauses);
-});
+import * as clauseService from '../services/analysis/clause.service';
 
 export const listClausesHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);

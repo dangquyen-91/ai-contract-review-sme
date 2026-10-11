@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
-import * as chatService from '../services/chat.service';
+import * as chatService from '../services/analysis/chat.service';
 import { openSseStream } from '../utils/sse';
 import { getIdempotencyKey } from '../validations/subscription.validation';
 

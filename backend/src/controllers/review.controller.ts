@@ -3,8 +3,8 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
 import { openSseStream } from '../utils/sse';
-import * as reviewService from '../services/review.service';
-import { subscribeToReview } from '../services/reviewWorker.service';
+import * as reviewService from '../services/review/review.service';
+import { subscribeToReview } from '../services/review/reviewWorker.service';
 import { getIdempotencyKey } from '../validations/subscription.validation';
 
 const STREAM_POLL_MS = 5000;

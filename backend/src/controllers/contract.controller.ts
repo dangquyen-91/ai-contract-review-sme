@@ -3,7 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok, paginated } from '../utils/ApiResponse';
 import { parsePagination } from '../utils/pagination';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
-import * as contractService from '../services/contract.service';
+import * as contractService from '../services/contract/contract.service';
 import { ListContractsQuery } from '../validations/contract.validation';
 
 export const createContractHandler = asyncHandler(async (req: Request, res: Response) => {
