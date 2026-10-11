@@ -1,6 +1,7 @@
 process.env.NODE_ENV = 'test';
 process.env.MONGODB_URI = 'mongodb://127.0.0.1/unused';
 process.env.JWT_ACCESS_SECRET = 'invitation-tests-access';
+process.env.DATA_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
 process.env.JWT_REFRESH_SECRET = 'invitation-tests-refresh';
 process.env.SMTP_HOST = 'localhost';
 process.env.SMTP_FROM = 'test@example.com';
