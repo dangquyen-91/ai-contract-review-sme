@@ -5,7 +5,7 @@ export type DashboardContract = {
   id?: string;
   _id?: string;
   title: string;
-  type: "sales" | "service" | "labor" | "saas";
+  type: string;
   status: ContractStatus;
   overallRiskLevel: ContractRiskLevel;
   currentVersion?: {
@@ -82,16 +82,45 @@ export type RiskFinding = {
 
 export type ProposedRevisionUpdate = { revisedText?: string; reason?: string };
 
-export type RiskStreamEvent =
-  | { event: "progress"; data: { stage: "retrieving_legal_sources" | "analyzing_clauses" | "saving_findings" } }
-  | { event: "finding"; data: RiskFinding }
-  | { event: "done"; data: { total: number } };
-
 export type ContractReviewResult = {
   contract: DashboardContract;
   findings: RiskFinding[];
   clauses: ContractClause[];
   extractedText?: string;
+};
+
+export type ContractReviewRun = {
+  _id: string;
+  contractId: string;
+  status: "queued" | "running" | "completed" | "failed";
+  currentStage?: "waiting_for_extraction" | "segmentation" | "summary" | "risk_detection";
+  stageDetail?: string;
+  stages?: {
+    segmentation: "pending" | "running" | "completed" | "failed";
+    summary: "pending" | "running" | "completed" | "failed";
+    riskDetection: "pending" | "running" | "completed" | "failed";
+  };
+  error?: string;
+  replayed?: boolean;
+};
+
+export type ContractProfile = {
+  code: string;
+  name: string;
+  parties: { code: string; name: string }[];
+  industries: { code: string; name: string }[];
+};
+
+export type ContractKeyTerms = {
+  extractedAt: string | null;
+  terms: {
+    key: string;
+    label: string;
+    value: number | boolean | null;
+    inferredFromSilence: boolean;
+    clause: { index: number; title: string | null } | null;
+    quote: string | null;
+  }[];
 };
 
 export type ContractChatMessage = {

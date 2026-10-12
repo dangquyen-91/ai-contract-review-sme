@@ -1,10 +1,13 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
 import { readContractStream } from "@/lib/api/contract-stream";
-import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractReviewResult, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding, RiskStreamEvent } from "@/types/contracts";
+import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyTerms, ContractProfile, ContractReviewResult, ContractReviewRun, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
 
 export const contractsApi = {
+  listProfiles() {
+    return apiRequest<ContractProfile[]>({ url: "/contract-profiles" });
+  },
   async list(filter: DashboardContractFilter & { page?: number; search?: string } = {}) {
     const response = await apiClient.get<{ data: DashboardContract[]; meta: { total: number; page: number; limit: number } }>("/contracts", {
       params: { ...filter, limit: 10, sortBy: "updatedAt", sortOrder: "desc" },
@@ -21,33 +24,6 @@ export const contractsApi = {
 
   listClauses(contractId: string) {
     return apiRequest<ContractClause[]>({ url: `/contracts/${contractId}/clauses` });
-  },
-
-  segmentClauses(contractId: string) {
-    return apiRequest<ContractClause[]>({
-      url: `/contracts/${contractId}/clauses/segment`, method: "POST", timeout: 180_000,
-    });
-  },
-
-  generateSummary(contractId: string, analysisFocus?: string) {
-    return apiRequest<DashboardContract>({
-      url: `/contracts/${contractId}/summary`, method: "POST",
-      data: analysisFocus ? { analysisFocus } : {}, timeout: 180_000,
-    });
-  },
-
-  detectRisks(contractId: string, analysisFocus?: string) {
-    return apiRequest<RiskFinding[]>({
-      url: `/contracts/${contractId}/risks/detect`, method: "POST",
-      data: analysisFocus ? { analysisFocus } : {}, timeout: 180_000,
-    });
-  },
-
-  streamRisks(contractId: string, onEvent: (event: RiskStreamEvent) => void, analysisFocus?: string, signal?: AbortSignal) {
-    return readContractStream<RiskStreamEvent>(
-      `/api/contracts/${contractId}/risks/detect/stream`,
-      analysisFocus ? { analysisFocus } : {}, onEvent, signal,
-    );
   },
 
   streamChat(contractId: string, message: string, onEvent: (event: ChatStreamEvent) => void, signal?: AbortSignal) {
@@ -69,17 +45,30 @@ export const contractsApi = {
       url: "/contracts",
       method: "POST",
       data: formData,
+      headers: { Prefer: "respond-async" },
       timeout: 60_000,
     });
   },
 
-  review(contractId: string, analysisFocus?: string) {
-    return apiRequest<ContractReviewResult>({
+  startReview(contractId: string, idempotencyKey: string, analysisFocus?: string) {
+    return apiRequest<ContractReviewRun>({
       url: `/contracts/${contractId}/review`,
       method: "POST",
       data: analysisFocus ? { analysisFocus } : {},
-      timeout: 180_000,
+      headers: { "Idempotency-Key": idempotencyKey },
     });
+  },
+
+  getReviewRun(reviewId: string) {
+    return apiRequest<ContractReviewRun>({ url: `/reviews/${reviewId}` });
+  },
+
+  listReviewRuns(contractId: string) {
+    return apiRequest<ContractReviewRun[]>({ url: `/contracts/${contractId}/reviews` });
+  },
+
+  getKeyTerms(contractId: string) {
+    return apiRequest<ContractKeyTerms>({ url: `/contracts/${contractId}/key-terms` });
   },
 
   listFindings(contractId: string) {

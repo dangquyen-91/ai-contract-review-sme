@@ -5,6 +5,7 @@ import workspaceStyles from "./review-workspace.module.css";
 import { Icon } from "@/components/ui/icon";
 import { ContractChat, RiskDetails } from "@/components/contract/review-extras";
 import { OriginalContractPreview } from "@/components/contract/original-contract-preview";
+import { KeyTerms } from "@/components/contract/key-terms";
 import type { ContractClause, ContractReviewResult, RiskFinding } from "@/types/contracts";
 
 const severityLabels = { high: "Rủi ro cao", medium: "Trung bình", low: "Rủi ro thấp" };
@@ -40,6 +41,7 @@ function findingClauseIndex(finding: RiskFinding, clauses: ContractClause[]): nu
 
 export function ReviewResults({ result, canAsk = false, showAiContext = false }: { result: ContractReviewResult; canAsk?: boolean; showAiContext?: boolean }) {
   const [activeClause, setActiveClause] = useState<number | null>(null);
+  const [originalTarget, setOriginalTarget] = useState<{ text: string; requestId: number } | null>(null);
   const [viewMode, setViewMode] = useState<"original" | "text">("original");
   const [findingUpdates, setFindingUpdates] = useState<Record<string, RiskFinding>>({});
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
@@ -89,8 +91,14 @@ export function ReviewResults({ result, canAsk = false, showAiContext = false }:
 
   function jumpToClause(index: number) {
     setActiveClause(index);
-    setViewMode("text");
-    if (!showOriginal) scrollToClause(index);
+    if (isDocx && canShowOriginal) {
+      const clause = clauses.find((item) => item.index === index);
+      if (clause) setOriginalTarget((current) => ({ text: clause.text, requestId: (current?.requestId ?? 0) + 1 }));
+      setViewMode("original");
+    } else {
+      setViewMode("text");
+      if (!showOriginal) scrollToClause(index);
+    }
   }
 
   const contractParts = located.flatMap((clause, index) => {
@@ -138,7 +146,7 @@ export function ReviewResults({ result, canAsk = false, showAiContext = false }:
             {showAiContext && <div className={workspaceStyles.filters} aria-label="Lọc mức rủi ro">{(["all", "high", "medium", "low"] as const).map((severity) => <button type="button" key={severity} aria-pressed={severityFilter === severity} onClick={() => { setSeverityFilter(severity); setExpandedFinding(null); }}>{severity === "all" ? "Tất cả" : severityLabels[severity]} · {severity === "all" ? findings.length : findings.filter((finding) => finding.severity === severity).length}</button>)}</div>}
             {visibleFindings.length ? <ul>{visibleFindings.map((finding, index) => {
               const clauseIndex = findingClauseIndex(finding, clauses);
-              const canJump = clauseIndex !== null && visibleIndices.has(clauseIndex);
+              const canJump = clauseIndex !== null && (isDocx ? clauses.some((clause) => clause.index === clauseIndex) : visibleIndices.has(clauseIndex));
               const findingKey = finding.id ?? finding._id ?? `${finding.title}-${index}`;
               const expanded = expandedFinding === findingKey;
               return <li key={finding.id ?? finding._id ?? `${finding.title}-${index}`}>
@@ -159,13 +167,14 @@ export function ReviewResults({ result, canAsk = false, showAiContext = false }:
           <div className="flex flex-wrap items-center justify-between gap-3 [border-bottom:1px_solid_#e4e8ef] [background:#fbfcfe] px-5 py-[17px] [&_h3]:text-[length:13px] [&_h3]:m-0 [&_p]:max-w-[360px] [&_p]:overflow-hidden [&_p]:text-[#778398] [&_p]:text-[length:10px] [&_p]:text-ellipsis [&_p]:whitespace-nowrap [&_p]:mt-1 [&_p]:mb-0 [&_p]:mx-0"><div className="min-w-0"><h3>Nội dung hợp đồng</h3><p>{result.contract.currentVersion?.fileName ?? result.contract.title}</p></div><div className="flex items-center gap-2 text-[length:10px] font-semibold"><span className="text-[#607087] mr-1">{clauses.length} điều khoản</span>{canShowOriginal && <><button type="button" aria-pressed={showOriginal} onClick={() => setViewMode("original")} className={`px-2.5 py-1.5 rounded-md border cursor-pointer ${showOriginal ? "text-[#1e53b8] border-[#aac7fa] [background:#eaf1ff]" : "text-[#607087] border-[#dbe3ed] [background:white]"}`}>File gốc</button><button type="button" aria-pressed={!showOriginal} onClick={() => setViewMode("text")} className={`px-2.5 py-1.5 rounded-md border cursor-pointer ${!showOriginal ? "text-[#1e53b8] border-[#aac7fa] [background:#eaf1ff]" : "text-[#607087] border-[#dbe3ed] [background:white]"}`}>Văn bản phân tích</button></>}</div></div>
           {isReadOnlyOriginal && <p className="m-0 border-b border-[#e4e8ef] bg-[#f8faff] px-5 py-2 text-[length:10px] leading-[1.5] text-[#52647e]">Chọn một điểm cần lưu ý để đến đoạn OCR tương ứng. File gốc chỉ dùng để đối chiếu; đề xuất chỉnh sửa được hiển thị ở chế độ xem.</p>}
           <div className="min-h-0 overflow-hidden [@media_(max-width:_1080px)]:h-[min(58vh,650px)] [@media_(max-width:_1080px)]:min-h-[390px]">
-            {showOriginal && contractId && mimeType ? <OriginalContractPreview contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} /> :
+            {showOriginal && contractId && mimeType ? <OriginalContractPreview contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} target={isDocx ? originalTarget : null} /> :
               <div ref={contractBodyRef} className="h-full overflow-y-auto scroll-smooth p-[26px] [@media_(max-width:_580px)]:p-[18px] motion-reduce:scroll-auto">
                 {text ? <div className="text-[#263750] [font-family:Georgia,'Times_New_Roman',serif] text-[length:13px] leading-[1.85] [overflow-wrap:anywhere] whitespace-pre-wrap">{contractParts}</div> : clauses.length ? clauses.map((clause) => <article key={clause.id ?? clause._id ?? clause.index} className={`${"focus:[outline:none] border [scroll-margin-block:30px] mb-4 p-[15px] rounded-[9px] border-solid border-[#e4e8ef] [&_h4]:text-[length:12px] [&_h4]:mt-0 [&_h4]:mb-2 [&_h4]:mx-0 [&_p]:text-[#3e4c60] [&_p]:[font-family:Georgia,'Times_New_Roman',serif] [&_p]:text-[length:12px] [&_p]:leading-[1.8] [&_p]:whitespace-pre-wrap [&_p]:m-0"} ${activeClause === clause.index ? "[background:#fff0bf] shadow-[0_0_0_4px_#fff0bf]" : ""}`} data-clause-index={clause.index} tabIndex={-1}><h4>{clause.title || `Điều khoản ${clause.index + 1}`}</h4><p>{clause.text}</p></article>) : <p className="text-[#66758a] text-[length:11px] mt-3.5 mb-0 mx-0">Chưa có nội dung hợp đồng để hiển thị.</p>}
               </div>}
           </div>
         </section>
       </div>
+      {contractId && <KeyTerms contractId={contractId} />}
       {contractId && <ContractChat key={contractId} contractId={contractId} canAsk={canAsk} />}
       <p className="text-[#8a94a3] [border-top:1px_solid_#edf0f4] [background:#fafbfc] text-[length:8px] text-right m-0 px-[22px] py-[9px]">Kết quả do AI hỗ trợ, không thay thế ý kiến tư vấn pháp lý chuyên môn.</p>
     </section>

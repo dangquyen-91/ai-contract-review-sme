@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { UserDashboard } from "@/components/dashboard/user-dashboard";
+import { OwnerDashboard } from "@/components/dashboard/owner-dashboard";
 import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { needsOnboarding } from "@/lib/workspace-path";
 
@@ -22,5 +22,5 @@ export default async function OwnerPage({ searchParams }: { searchParams: Promis
   if (!["owner", "manager"].includes(user.role)) redirect("/dashboard/user");
   const { view } = await searchParams;
   if (view === "members" && user.role !== "owner") redirect("/dashboard/owner");
-  return <UserDashboard ownerMode />;
+  return <OwnerDashboard />;
 }

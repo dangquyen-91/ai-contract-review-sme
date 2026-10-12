@@ -9,6 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/components/ui/icon";
+import { usePaginationPage } from "@/hooks/use-pagination-page";
 
 type SectionConfig = {
   title: string;
@@ -110,7 +111,7 @@ export function AdminSectionTable({
   const [secondary, setSecondary] = useState("");
   const [extra, setExtra] = useState("");
   const [sortDescending, setSortDescending] = useState(false);
-  const [page, setPage] = useState(1);
+  const [page, setPage] = usePaginationPage();
   const [selected, setSelected] = useState(
     config.rows.find((row) => row[0] === initialItem) ?? null,
   );

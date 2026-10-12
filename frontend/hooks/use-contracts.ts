@@ -2,13 +2,26 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { contractsApi } from "@/lib/api/contracts";
-import type { ApiClientError } from "@/lib/api/client";
-import type { ChatStreamEvent, ContractReviewResult, DashboardContract, ProposedRevisionUpdate, RiskStreamEvent } from "@/types/contracts";
+import { ApiClientError } from "@/lib/api/client";
+import type { ChatStreamEvent, ContractReviewResult, ContractReviewRun, DashboardContract, ProposedRevisionUpdate } from "@/types/contracts";
 
 type ReviewContractVariables = {
   contractId: string;
   analysisFocus?: string;
+  onProgress?: (review: ContractReviewRun) => void;
 };
+
+async function waitForReview(reviewId: string, onProgress?: (review: ContractReviewRun) => void) {
+  const deadline = Date.now() + 20 * 60_000;
+  while (Date.now() < deadline) {
+    const review = await contractsApi.getReviewRun(reviewId);
+    onProgress?.(review);
+    if (review.status === "completed") return;
+    if (review.status === "failed") throw new Error(review.error || "AI không thể hoàn tất lượt rà soát.");
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  throw new Error("Lượt rà soát vẫn đang chạy. Hãy mở lại hợp đồng để xem kết quả.");
+}
 
 export const contractMutationKeys = {
   all: ["contracts"] as const,
@@ -46,57 +59,6 @@ export function useContractClauses(contractId: string) {
   });
 }
 
-export function useSegmentClausesMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (contractId: string) => contractsApi.segmentClauses(contractId),
-    onSuccess: (_clauses, contractId) => {
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.clauses(contractId) });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.detail(contractId) });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.findings(contractId) });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.getReview });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
-}
-
-export function useGenerateSummaryMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ contractId, analysisFocus }: ReviewContractVariables) =>
-      contractsApi.generateSummary(contractId, analysisFocus),
-    onSuccess: (_contract, { contractId }) =>
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.detail(contractId) }),
-  });
-}
-
-export function useDetectRisksMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ contractId, analysisFocus }: ReviewContractVariables) =>
-      contractsApi.detectRisks(contractId, analysisFocus),
-    onSuccess: (_findings, { contractId }) => {
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.findings(contractId) });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.detail(contractId) });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
-}
-
-export function useStreamRisksMutation() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ contractId, analysisFocus, onEvent, signal }: ReviewContractVariables & {
-      onEvent: (event: RiskStreamEvent) => void; signal?: AbortSignal;
-    }) => contractsApi.streamRisks(contractId, onEvent, analysisFocus, signal),
-    onSuccess: (_result, { contractId }) => {
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.findings(contractId) });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.detail(contractId) });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-    },
-  });
-}
-
 export function useStreamChatMutation() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -131,9 +93,43 @@ export function useGetContractReviewMutation() {
 export function useReviewContractMutation() {
   const queryClient = useQueryClient();
 
-  return useMutation<ContractReviewResult, ApiClientError, ReviewContractVariables>({
+  return useMutation<ContractReviewResult, Error, ReviewContractVariables>({
     mutationKey: contractMutationKeys.review,
-    mutationFn: ({ contractId, analysisFocus }) => contractsApi.review(contractId, analysisFocus),
+    mutationFn: async ({ contractId, analysisFocus, onProgress }) => {
+      const storageKey = `lawscan_review_${contractId}`;
+      let review: ContractReviewRun | undefined;
+      const previousId = sessionStorage.getItem(storageKey);
+      if (previousId) {
+        try {
+          review = await contractsApi.getReviewRun(previousId);
+          if (review.status === "failed") {
+            sessionStorage.removeItem(storageKey);
+            review = undefined;
+          }
+        } catch (error) {
+          if (!(error instanceof ApiClientError) || error.status !== 404) throw error;
+          sessionStorage.removeItem(storageKey);
+          review = undefined;
+        }
+      }
+      if (!review) {
+        try {
+          review = await contractsApi.startReview(contractId, crypto.randomUUID(), analysisFocus);
+        } catch (error) {
+          if (!(error instanceof ApiClientError) || ![409, 503].includes(error.status ?? 0)) throw error;
+          const runs = await contractsApi.listReviewRuns(contractId);
+          const active = runs.find((run) => run.status === "queued" || run.status === "running");
+          if (!active) throw error;
+          review = active;
+        }
+        sessionStorage.setItem(storageKey, review._id);
+      }
+      onProgress?.(review);
+      if (review.status !== "completed") await waitForReview(review._id, onProgress);
+      const result = await contractsApi.getReview(contractId);
+      sessionStorage.removeItem(storageKey);
+      return result;
+    },
     // Segmentation may have succeeded even when summary or risk detection failed.
     onSettled: (_result, _error, { contractId }) => {
       queryClient.invalidateQueries({ queryKey: ["member-contracts"] });

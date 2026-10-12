@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { UserDashboard } from "@/components/dashboard/user-dashboard";
+import { StaffDashboard } from "@/components/dashboard/staff-dashboard";
 import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { workspacePath } from "@/lib/workspace-path";
 import { StaffOrganizationRequired } from "@/components/dashboard/staff-organization-required";
@@ -17,5 +17,5 @@ export default async function StaffPage() {
   if (!user) redirect("/dang-nhap");
   if (user.role !== "staff") redirect(workspacePath(user));
   if (!user.orgId) return <StaffOrganizationRequired email={user.email} />;
-  return <UserDashboard staffMode />;
+  return <StaffDashboard />;
 }

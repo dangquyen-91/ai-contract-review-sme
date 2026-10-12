@@ -31,7 +31,7 @@ export function AnalysisFocusDialog({ contractTitle, isReviewing, onSkip, onRevi
       aria-labelledby="analysis-focus-title"
       aria-describedby="analysis-focus-description"
       onCancel={(event) => { event.preventDefault(); if (!isReviewing) onSkip(); }}
-      className="w-[min(460px,calc(100%-32px))] max-h-[calc(100dvh-32px)] overflow-y-auto border border-[#dce4ef] [background:white] text-[color:var(--ink)] shadow-[0_24px_80px_rgb(20_33_61_/_0.22)] p-0 rounded-[16px] backdrop:[background:rgb(16_28_50_/_0.56)]"
+      className="fixed inset-0 m-auto w-[min(460px,calc(100%-32px))] max-h-[calc(100dvh-32px)] overflow-y-auto border border-[#dce4ef] [background:white] text-[color:var(--ink)] shadow-[0_24px_80px_rgb(20_33_61_/_0.22)] p-0 rounded-[16px] backdrop:[background:rgb(16_28_50_/_0.56)]"
     >
       <form onSubmit={submit} className="p-6 [@media_(max-width:_580px)]:p-5">
         <div className="w-11 h-11 grid place-items-center text-[color:var(--accent)] [background:#eaf1ff] rounded-xl [&_svg]:w-5"><Icon name="sparkle" /></div>

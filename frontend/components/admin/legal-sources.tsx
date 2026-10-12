@@ -8,6 +8,7 @@ import { LegalSourceForm } from "./legal-source-form";
 import { EmptyState, PageHeading } from "./admin-panels";
 import { Icon } from "@/components/ui/icon";
 import { AvailableOverview } from "./available-overview";
+import { usePaginationPage } from "@/hooks/use-pagination-page";
 
 type LegalSource = {
   _id: string;
@@ -22,7 +23,7 @@ type LegalSource = {
 export function LegalSources() {
   const [search, setSearch] = useState("");
   const [type, setType] = useState("all");
-  const [page, setPage] = useState(1);
+  const [page, setPage] = usePaginationPage();
   const [showForm, setShowForm] = useState(false);
   const [deleting, setDeleting] = useState<LegalSource | null>(null);
   const [deletePending, setDeletePending] = useState(false);

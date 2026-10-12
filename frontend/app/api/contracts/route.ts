@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   try {
     const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: { Authorization: `Bearer ${accessToken}`, Prefer: "respond-async" },
       body: await request.formData(),
       cache: "no-store",
     });

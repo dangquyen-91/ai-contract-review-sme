@@ -2,12 +2,19 @@
 
 import { useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { parseAsString, useQueryStates } from "nuqs";
 import { useQuery } from "@tanstack/react-query";
 import { contractsApi } from "@/lib/api/contracts";
 import { isApiClientError } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
 import type { DashboardContract } from "@/types/contracts";
+import { paginationPageParser } from "@/hooks/use-pagination-page";
 import styles from "./member-insights.module.css";
+
+const listSearchParams = {
+  page: paginationPageParser,
+  search: parseAsString.withDefault(""),
+};
 
 
 export function MemberContractsView({ orgId, filter, reviewerMode, managerMode = false, onFilter, renderContracts }: {
@@ -21,17 +28,14 @@ export function MemberContractsView({ orgId, filter, reviewerMode, managerMode =
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
-  const pageValue = Number(params.get("page") ?? 1);
-  const page = Number.isSafeInteger(pageValue) && pageValue > 0 ? pageValue : 1;
-  const search = params.get("search") ?? "";
+  const [{ page, search }, setListState] = useQueryStates(
+    listSearchParams,
+    { history: "push" },
+  );
   const highlighted = params.get("uploaded") || undefined;
   const [draft, setDraft] = useState(search);
   function updateList(next: { page?: number; search?: string }) {
-    const query = new URLSearchParams(params.toString());
-    query.set("page", String(next.page ?? page));
-    const text = next.search ?? search;
-    if (text) query.set("search", text); else query.delete("search");
-    router.replace(`${pathname}?${query}`, { scroll: false });
+    void setListState({ page: next.page ?? page, search: next.search ?? search });
   }
   const query = useQuery({ queryKey: ["member-contracts", orgId, filter, page, search], queryFn: () => contractsApi.list({ ...filter, page, search: search || undefined }), retry: false, refetchInterval: (query) => query.state.data?.items.some((item) => item.status === "processing") ? 30_000 : false });
   const pages = Math.max(1, Math.ceil((query.data?.total ?? 0) / 10));
