@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { authApi } from "@/lib/api/auth";
+import { useLogoutMutation, useRefreshTokenMutation } from "@/hooks/use-auth";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
 import styles from "./staff-organization-required.module.css";
@@ -13,6 +13,8 @@ export function StaffOrganizationRequired({ email, role = "staff" }: { email: st
   const roleName = role === "reviewer" ? "Reviewer" : role === "manager" ? "Manager" : "Staff";
   const router = useRouter();
   const queryClient = useQueryClient();
+  const refreshTokenMutation = useRefreshTokenMutation();
+  const logoutMutation = useLogoutMutation();
   const [pending, setPending] = useState<"refresh" | "logout" | null>(null);
   const [error, setError] = useState("");
 
@@ -20,7 +22,7 @@ export function StaffOrganizationRequired({ email, role = "staff" }: { email: st
     setPending("refresh");
     setError("");
     try {
-      await authApi.refreshToken();
+      await refreshTokenMutation.mutateAsync();
       queryClient.clear();
       router.refresh();
     } catch {
@@ -34,7 +36,7 @@ export function StaffOrganizationRequired({ email, role = "staff" }: { email: st
     setPending("logout");
     setError("");
     try {
-      await authApi.logout();
+      await logoutMutation.mutateAsync();
       queryClient.clear();
       router.replace("/dang-nhap");
       router.refresh();

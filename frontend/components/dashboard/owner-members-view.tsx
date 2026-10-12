@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Icon } from "@/components/ui/icon";
 import { MemberCapacityDialog } from "@/components/dashboard/member-capacity-dialog";
-import { invitationsApi } from "@/lib/api/invitations";
+import { useCreateInvitationMutation, useMemberSubscription, useOrganizationInvitations, useOrganizationMembers, useRevokeInvitationMutation } from "@/hooks/use-invitations";
 import { isApiClientError } from "@/lib/api/client";
 import type { InvitationRole, InvitationStatus } from "@/types/invitations";
 
@@ -25,6 +25,8 @@ const pageButton = "rounded-lg border border-[#dce4ee] bg-white px-3 py-2 text-[
 
 export function OwnerMembersView({ orgId, organizationName }: { orgId: string; organizationName: string }) {
   const queryClient = useQueryClient();
+  const createInvitation = useCreateInvitationMutation(orgId);
+  const revokeInvitation = useRevokeInvitationMutation(orgId);
   const [tab, setTab] = useState<"members" | "invitations">("members");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
@@ -35,9 +37,9 @@ export function OwnerMembersView({ orgId, organizationName }: { orgId: string; o
   const [submitting, setSubmitting] = useState(false);
   const [revoking, setRevoking] = useState<string | null>(null);
 
-  const members = useQuery({ queryKey: ["org-members", orgId, page], queryFn: () => invitationsApi.members(orgId, page), retry: false });
-  const invitations = useQuery({ queryKey: ["org-invitations", orgId, page], queryFn: () => invitationsApi.invitations(orgId, page), retry: false });
-  const subscription = useQuery({ queryKey: ["org-subscription", orgId], queryFn: () => invitationsApi.subscription(orgId), retry: false });
+  const members = useOrganizationMembers(orgId, page);
+  const invitations = useOrganizationInvitations(orgId, page);
+  const subscription = useMemberSubscription(orgId);
   const current = tab === "members" ? members : invitations;
   const items = tab === "members" ? members.data?.items : invitations.data?.items;
   const filtered = items?.filter((item) => {
@@ -72,11 +74,7 @@ export function OwnerMembersView({ orgId, organizationName }: { orgId: string; o
     }
     setSubmitting(true);
     try {
-      await invitationsApi.create(orgId, { email: email.trim().toLowerCase(), role });
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["org-invitations", orgId] }),
-        queryClient.invalidateQueries({ queryKey: ["org-subscription", orgId] }),
-      ]);
+      await createInvitation.mutateAsync({ email: email.trim().toLowerCase(), role });
       setShowInvite(false);
       setEmail("");
       setPage(1);
@@ -96,11 +94,7 @@ export function OwnerMembersView({ orgId, organizationName }: { orgId: string; o
     if (!window.confirm("Thu hồi lời mời này? Người nhận sẽ không thể dùng liên kết trong email nữa.")) return;
     setRevoking(id);
     try {
-      await invitationsApi.revoke(orgId, id);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["org-invitations", orgId] }),
-        queryClient.invalidateQueries({ queryKey: ["org-subscription", orgId] }),
-      ]);
+      await revokeInvitation.mutateAsync(id);
       toast.success("Đã thu hồi lời mời");
     } catch (error) { toast.error(errorMessage(error)); }
     finally { setRevoking(null); }

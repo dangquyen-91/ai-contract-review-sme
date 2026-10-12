@@ -12,6 +12,7 @@ type ContractUploadFormProps = {
   typeLabels: Record<string, string>;
   profile?: ContractProfile;
   ourParty: string;
+  fixedOurParty?: string;
   industry: string;
   isUploading: boolean;
   onFileChange: (file?: File) => void;
@@ -21,7 +22,7 @@ type ContractUploadFormProps = {
   onIndustryChange: (industry: string) => void;
 };
 
-export function ContractUploadForm({ file, title, contractType, typeLabels, profile, ourParty, industry, isUploading, onFileChange, onTitleChange, onContractTypeChange, onOurPartyChange, onIndustryChange }: ContractUploadFormProps) {
+export function ContractUploadForm({ file, title, contractType, typeLabels, profile, ourParty, fixedOurParty, industry, isUploading, onFileChange, onTitleChange, onContractTypeChange, onOurPartyChange, onIndustryChange }: ContractUploadFormProps) {
   const [isDragging, setIsDragging] = useState(false);
 
   function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
@@ -42,7 +43,7 @@ export function ContractUploadForm({ file, title, contractType, typeLabels, prof
         <label><span>Loại hợp đồng</span><select className={styles.select} value={contractType} onChange={(event) => onContractTypeChange(event.target.value)} disabled={isUploading}>{Object.entries(typeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       </div>
       {profile && <div className="mb-4 grid grid-cols-2 gap-3.5 [@media_(max-width:_580px)]:grid-cols-1 [&_label_>_span]:mb-[7px] [&_label_>_span]:block [&_label_>_span]:text-[10px] [&_label_>_span]:font-bold [&_label_>_span]:text-[#34435a] [&_select]:h-[42px] [&_select]:w-full [&_select]:rounded-[9px] [&_select]:border [&_select]:border-[#d8e0ea] [&_select]:bg-white [&_select]:pl-3 [&_select]:text-[11px]">
-        <label><span>Đối tượng sử dụng</span><select className={styles.select} value={ourParty} onChange={(event) => onOurPartyChange(event.target.value)} disabled={isUploading}><option value="">Chưa xác định</option>{profile.parties.map((party) => <option key={party.code} value={party.code}>{party.name}</option>)}</select></label>
+        <label><span>Đối tượng sử dụng</span><select className={styles.select} value={fixedOurParty ?? ourParty} onChange={(event) => onOurPartyChange(event.target.value)} disabled={isUploading || Boolean(fixedOurParty)}>{!fixedOurParty && <option value="">Chưa xác định</option>}{profile.parties.filter((party) => !fixedOurParty || party.code === fixedOurParty).map((party) => <option key={party.code} value={party.code}>{party.name}</option>)}</select></label>
         <label><span>Ngành kinh doanh</span><select className={styles.select} value={industry} onChange={(event) => onIndustryChange(event.target.value)} disabled={isUploading}><option value="">Không chọn</option>{profile.industries.map((item) => <option key={item.code} value={item.code}>{item.name}</option>)}</select></label>
       </div>}
       <label className={`min-h-[146px] flex items-center justify-center gap-3.5 p-[22px] rounded-xl border-[1.5px] border-dashed border-[#b9c8dc] [background:#fafcff] [@media_(max-width:_580px)]:min-h-[135px] [@media_(max-width:_580px)]:flex-col [@media_(max-width:_580px)]:text-center ${isUploading ? "opacity-70 cursor-wait" : "cursor-pointer hover:border-[color:var(--accent)] hover:[background:#f2f7ff]"} ${isDragging ? "border-[color:var(--accent)] [background:#f2f7ff]" : ""} ${file ? "[background:#f5fbf9] border-[#78ad9b]" : ""}`} onDragOver={(event) => { event.preventDefault(); if (!isUploading) setIsDragging(true); }} onDragLeave={() => setIsDragging(false)} onDrop={handleDrop}>

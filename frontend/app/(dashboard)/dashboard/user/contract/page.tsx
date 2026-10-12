@@ -3,12 +3,11 @@
 import { useRouter } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { Fragment, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@/components/ui/icon";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { paginationPageParser } from "@/hooks/use-pagination-page";
-import { contractsApi } from "@/lib/api/contracts";
+import { useContractsList } from "@/hooks/use-contracts";
 import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
 import { UserDashboardShell, type UserDashboardContext } from "@/components/dashboard/user-dashboard-shell";
 
@@ -74,12 +73,10 @@ function ContractSearchForm({ search, onSearch }: { search: string; onSearch: (v
 function ContractsView({ contracts, totalContracts, canReview, onReview, isReviewing }: { contracts: DashboardContract[]; totalContracts: number; canReview: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean }) {
   const [{ page, search }, setListState] = useQueryStates(contractListParams, { history: "push" });
   const requestedPage = search ? page : Math.min(page, Math.max(1, Math.ceil(totalContracts / 10)));
-  const { data: pageData, error, isLoading, refetch } = useQuery({
-    queryKey: ["dashboard", "contracts", requestedPage, search],
-    queryFn: () => contractsApi.list({ page: requestedPage, search: search || undefined }),
-    initialData: requestedPage === 1 && !search ? { items: contracts, total: totalContracts } : undefined,
-    retry: false,
-  });
+  const { data: pageData, error, isLoading, refetch } = useContractsList(
+    { page: requestedPage, search: search || undefined },
+    { queryKey: ["dashboard", "contracts", requestedPage, search], initialData: requestedPage === 1 && !search ? { items: contracts, total: totalContracts } : undefined },
+  );
   const total = pageData?.total ?? (search ? 0 : totalContracts);
   const totalPages = Math.max(1, Math.ceil(total / 10));
   const currentPage = Math.min(requestedPage, totalPages);

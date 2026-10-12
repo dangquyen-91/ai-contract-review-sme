@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Brand } from "@/components/ui/brand";
+import { DashboardNavigation, DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
+import { getDashboardNavigation } from "@/config/navigation-config";
 import { OwnerMembersView } from "@/components/dashboard/owner-members-view";
 import { MemberContractsView } from "@/components/dashboard/member-contracts-view";
 import { MemberContractCards } from "@/components/dashboard/member-contract-cards";
@@ -16,12 +18,11 @@ import { ReviewResults } from "@/components/contract/review-results";
 import { AnalysisFocusDialog } from "@/components/contract/analysis-focus-dialog";
 import { ContractUploadForm } from "@/components/contract/contract-upload-form";
 import { Icon } from "@/components/ui/icon";
-import { useGetContractReviewMutation, useReviewContractMutation, useUploadContractMutation } from "@/hooks/use-contracts";
-import { authApi } from "@/lib/api/auth";
+import { useContractProfiles, useGetContractReviewMutation, useReviewContractMutation, useUploadContractMutation } from "@/hooks/use-contracts";
+import { useDashboardOverview } from "@/hooks/use-dashboard";
+import { useLogoutMutation } from "@/hooks/use-auth";
 import { isApiClientError } from "@/lib/api/client";
 import { reviewProgressLabel } from "@/lib/review-progress";
-import { dashboardApi } from "@/lib/api/dashboard";
-import { contractsApi } from "@/lib/api/contracts";
 import type { ContractReviewResult, ContractReviewRun, ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
 import type { DashboardContractFilter, DashboardData } from "@/types/dashboard";
 
@@ -44,6 +45,13 @@ const roleLabels: Record<string, string> = {
 const typeLabels: Record<string, string> = {
   sales: "Mua bán hàng hóa", service: "Cung ứng dịch vụ",
   labor: "Hợp đồng lao động", office_lease: "Thuê văn phòng", housing_purchase: "Mua bán nhà ở", life_insurance: "Bảo hiểm nhân thọ",
+};
+
+const businessTypeLabels: Record<string, string> = {
+  sales: "Hợp đồng mua bán hàng hóa",
+  labor: "Hợp đồng lao động",
+  service: "Hợp đồng cung cấp dịch vụ",
+  office_lease: "Hợp đồng thuê văn phòng, mặt bằng",
 };
 
 const statusLabels: Record<ContractStatus, string> = {
@@ -106,6 +114,7 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const logoutMutation = useLogoutMutation();
   const requestedView = searchParams.get("view");
   const [selectedTab, setActiveTab] = useState<DashboardTab>(() => {
     if (reviewerMode) return requestedView === "review" ? "upload" : requestedView === "contracts" ? "contracts" : "overview";
@@ -148,26 +157,11 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
       : workflowComplete
         ? "done"
         : "idle";
-  const { data, error, isLoading, isFetching, dataUpdatedAt, refetch } = useQuery({
-    queryKey: ["dashboard"],
-    queryFn: async () => {
-      try { return await dashboardApi.getOverview(); }
-      catch (requestError) {
-        if (isApiClientError(requestError) && requestError.status === 403) {
-          await authApi.refreshToken();
-          return dashboardApi.getOverview();
-        }
-        throw requestError;
-      }
-    },
-    retry: false,
-    refetchInterval: (query) => query.state.data?.stats.processing ? 30_000 : false,
-  });
+  const { data, error, isLoading, isFetching, dataUpdatedAt, refetch } = useDashboardOverview();
   const access = roleAccess[data?.role ?? "staff"] ?? roleAccess.staff;
-  const { data: profiles } = useQuery({ queryKey: ["contract-profiles"], queryFn: contractsApi.listProfiles, staleTime: 5 * 60_000 });
-  const availableTypeLabels = profiles?.length ? Object.fromEntries(profiles.map((profile) => [profile.code, profile.name])) : typeLabels;
+  const { data: profiles } = useContractProfiles();
+  const availableTypeLabels = businessTypeLabels;
   const selectedProfile = profiles?.find((profile) => profile.code === contractType);
-  const hasOwnerWorkspace = ["owner", "administrator"].includes(data?.role ?? "");
   const profileInitials = useMemo(() => initials(data?.user?.name), [data?.user?.name]);
 
   useEffect(() => {
@@ -336,7 +330,7 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
   async function logout() {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
-    try { await authApi.logout(); queryClient.clear(); router.replace("/dang-nhap"); router.refresh(); }
+    try { await logoutMutation.mutateAsync(); queryClient.clear(); router.replace("/dang-nhap"); router.refresh(); }
     catch { setIsLoggingOut(false); toast.error("Không thể đăng xuất. Vui lòng thử lại."); }
   }
 
@@ -350,27 +344,12 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
   return (
     <div className={`[--ink:#14213d] [--muted:#6b778c] [--line:#e4e8ef] [--accent:#2864dc] [--accent-dark:#1f4fb2] [--soft:#f4f7fb] min-h-dvh flex text-[color:var(--ink)] [background:#f6f7f9] [font-family:var(--font-geist-sans),Arial,sans-serif] [&_*]:box-border [&_:is(a,_button)]:[text-decoration:none] [&_:is(a,_button,_input,_select,_textarea)]:focus-visible:[outline:3px_solid_#9bbcf8] [&_:is(a,_button,_input,_select,_textarea)]:focus-visible:outline-offset-2 [@media_(max-width:_820px)]:block [&_*]:motion-reduce:!transition-none [&_*::before]:motion-reduce:!transition-none [&_*::after]:motion-reduce:!transition-none ${ownerMode || staffMode || reviewerMode || managerMode ? styles.shell : ""}`}>
       <a className="fixed top-[-60px] z-20 text-[color:var(--ink)] [background:white] px-3.5 py-2.5 rounded-lg left-4 focus:top-3" href="#dashboard-content">Đến nội dung chính</a>
-      <aside className="sticky w-[252px] h-dvh flex flex-none flex-col [border-right:1px_solid_var(--line)] [background:#fff] pt-[22px] pb-[18px] px-4 top-0 [@media_(max-width:_1100px)]:w-[218px] [@media_(max-width:_820px)]:hidden">
-        <Link className="w-fit pl-2 [&_.brand-image]:w-[150px] [&_.brand-image]:h-[52px] [&_.brand-image_img]:top-[-18px] [&_.brand-image_img]:w-[154px] [&_.brand-image_img]:h-[84px]" href={data.role === "manager" ? "/dashboard/manager" : data.role === "staff" ? "/dashboard/staff" : data.role === "reviewer" ? "/dashboard/reviewer" : "/dashboard/owner"} aria-label="LawScan dashboard"><Brand /></Link>
-        <div className="grid grid-cols-[38px_minmax(0,1fr)] items-center gap-2.5 border [background:#f8fafc] mt-[22px] p-[11px] rounded-[11px] border-solid border-[#dbe3ed] [&>_span]:w-[38px] [&>_span]:h-[38px] [&>_span]:grid [&>_span]:place-items-center [&>_span]:text-[color:var(--accent)] [&>_span]:[background:#eaf1ff] [&>_span]:rounded-[9px] [&_svg]:w-[18px] [&_strong]:block [&_strong]:overflow-hidden [&_strong]:text-ellipsis [&_strong]:whitespace-nowrap [&_small]:block [&_small]:overflow-hidden [&_small]:text-ellipsis [&_small]:whitespace-nowrap [&_strong]:text-[length:12px] [&_small]:text-[color:var(--muted)] [&_small]:text-[length:9px] [&_small]:mt-0.5"><span><Icon name="building" /></span><div><strong>{data.organization.name}</strong><small>Không gian làm việc</small></div></div>
-        <nav className="grid gap-1 mt-[22px] [&_p]:text-[#929baa] [&_p]:text-[length:9px] [&_p]:font-[750] [&_p]:tracking-[0.9px] [&_p]:uppercase [&_p]:mt-[18px] [&_p]:mb-1.5 [&_p]:mx-2.5 [&_p]:first:mt-0 [&_:is(a,_button)]:w-full [&_:is(a,_button)]:min-h-[42px] [&_:is(a,_button)]:flex [&_:is(a,_button)]:items-center [&_:is(a,_button)]:gap-[11px] [&_:is(a,_button)]:text-[#5f6d82] [&_:is(a,_button)]:[background:transparent] [&_:is(a,_button)]:[font-family:inherit] [&_:is(a,_button)]:text-left [&_:is(a,_button)]:cursor-pointer [&_:is(a,_button)]:transition-all [&_:is(a,_button)]:duration-[160ms] [&_:is(a,_button)]:ease-[ease] [&_:is(a,_button)]:delay-0 [&_:is(a,_button)]:px-3 [&_:is(a,_button)]:py-0 [&_:is(a,_button)]:rounded-[9px] [&_:is(a,_button)]:border-0 [&_:is(a,_button)]:border-none [&_:is(a,_button)]:border-current [&_:is(a,_button)]:hover:text-[color:var(--ink)] [&_:is(a,_button)]:hover:[background:#f3f5f8] [&_:is(a,_button)]:[font-size:12px] [&_:is(a,_button)]:[font-weight:580] [&_:is(a,_button)_svg]:w-[18px] [&_:is(a,_button)_svg]:flex-none [&_:is(a,_button)_small]:min-w-[22px] [&_:is(a,_button)_small]:[background:#e8edf4] [&_:is(a,_button)_small]:text-[length:9px] [&_:is(a,_button)_small]:text-center [&_:is(a,_button)_small]:ml-auto [&_:is(a,_button)_small]:px-1.5 [&_:is(a,_button)_small]:py-0.5 [&_:is(a,_button)_small]:rounded-[10px] [&_button[aria-current=page]]:text-[#1e53b8] [&_button[aria-current=page]]:[background:#eaf1ff] [&_button[aria-current=page]]:font-bold" aria-label="Điều hướng dashboard">
-          <p>{hasOwnerWorkspace ? "Quản lý tổ chức" : "Không gian làm việc"}</p>
-          {(hasOwnerWorkspace || staffMode || reviewerMode || managerMode) && <button aria-current={activeTab === "overview" ? "page" : undefined} type="button" onClick={() => selectTab("overview")}><Icon name="building" />Tổng quan</button>}
-          <button aria-current={activeTab === "upload" ? "page" : undefined} type="button" onClick={() => selectTab("upload")}><Icon name={reviewerMode ? "shield" : "upload"} />{reviewerMode ? "Rà soát hợp đồng" : "Tải & rà soát"}</button>
-          <button aria-current={activeTab === "contracts" ? "page" : undefined} type="button" onClick={() => selectTab("contracts")}><Icon name="document" />Hợp đồng<small>{data.totalContracts}</small></button>
-          {access.administer && <button aria-current={activeTab === "administration" ? "page" : undefined} type="button" onClick={() => selectTab("administration")}><Icon name="team" />Quản trị</button>}
-          {data.role === "owner" && <button aria-current={activeTab === "members" ? "page" : undefined} type="button" onClick={() => selectTab("members")}><Icon name="team" />Thành viên & lời mời</button>}
-          <p>Hỗ trợ</p>
-          
-          <Link href="/bao-cao-mau"><Icon name="search" />Báo cáo mẫu</Link><Link href="/goi-dich-vu"><Icon name="sparkle" />Gói dịch vụ</Link>
-        </nav>
-        <div className="grid grid-cols-[38px_minmax(0,1fr)] items-center gap-2.5 [border-top:1px_solid_var(--line)] mt-auto pt-[17px] pb-0 px-[7px] [&>_span]:w-9 [&>_span]:h-9 [&>_span]:grid [&>_span]:place-items-center [&>_span]:text-[white] [&>_span]:[background:#1b3154] [&>_span]:text-[length:10px] [&>_span]:font-extrabold [&>_span]:rounded-[9px] [&_strong]:block [&_strong]:overflow-hidden [&_strong]:text-ellipsis [&_strong]:whitespace-nowrap [&_small]:block [&_small]:overflow-hidden [&_small]:text-ellipsis [&_small]:whitespace-nowrap [&_strong]:text-[length:11px] [&_small]:text-[color:var(--muted)] [&_small]:text-[length:9px] [&_small]:mt-0.5"><span>{profileInitials}</span><div><strong>{data.user?.name ?? "Tài khoản LawScan"}</strong><small>{roleLabel}</small></div><button className="col-span-full min-h-[38px] flex items-center justify-center gap-2 text-[#627086] border border-[color:var(--line)] [background:white] [font-family:inherit] cursor-pointer mt-[7px] rounded-lg border-solid hover:text-[#a6374b] hover:[background:#fff8f8] hover:border-[#eac5cc] disabled:opacity-60 [font-size:10px] [font-weight:650] [&_svg]:w-[15px] [&_svg]:[transform:rotate(180deg)]" type="button" onClick={logout} disabled={isLoggingOut}><Icon name="arrow" />{isLoggingOut ? "Đang đăng xuất..." : "Đăng xuất"}</button></div>
-      </aside>
+      <DashboardSidebar homeHref={`/dashboard/${role}`} workspaceName={data.organization.name} workspaceLabel="Không gian làm việc" name={data.user?.name ?? "Tài khoản LawScan"} roleLabel={roleLabel} onLogout={logout} loggingOut={isLoggingOut} items={getDashboardNavigation(role)} activeKey={activeTab} onNavigate={(key) => selectTab(key as DashboardTab)} contractCount={data.totalContracts} />
 
       <div className="min-w-0 flex-1">
         <header className="min-h-[68px] flex items-center justify-between gap-5 [border-bottom:1px_solid_var(--line)] [background:rgb(255_255_255_/_0.94)] px-[clamp(24px,4vw,52px)] py-[13px] [&>_p]:flex [&>_p]:items-center [&>_p]:gap-2.5 [&>_p]:text-[color:var(--muted)] [&>_p]:text-[length:11px] [&>_p_i]:text-[#bdc5d0] [&>_p_i]:not-italic [&>_p_strong]:text-[color:var(--ink)] [@media_(max-width:_820px)]:min-h-[62px] [@media_(max-width:_820px)]:[padding-inline:18px] [&>_p]:[@media_(max-width:_820px)]:hidden"><div className="hidden [@media_(max-width:_820px)]:flex [@media_(max-width:_820px)]:items-center [@media_(max-width:_820px)]:gap-2 [&_.brand-image]:[@media_(max-width:_820px)]:w-[33px] [&_.brand-image]:[@media_(max-width:_820px)]:h-[33px] [&_strong]:[@media_(max-width:_820px)]:text-[length:15px]"><Brand markOnly /><strong>LawScan</strong></div><p><span>{data.organization.name}</span><i>/</i><strong>{activeTab === "overview" ? "Tổng quan" : activeTab === "upload" ? (reviewerMode ? "Rà soát hợp đồng" : "Tải & rà soát") : activeTab === "contracts" ? "Hợp đồng" : activeTab === "members" ? "Thành viên & lời mời" : "Quản trị"}</strong></p><div className="flex items-center gap-[13px]"><span className="min-h-[30px] inline-flex items-center gap-[7px] text-[#345981] border [background:#f6f9fc] text-[length:10px] font-[650] px-2.5 py-0 rounded-[20px] border-solid border-[#d9e4f0] [&_svg]:w-3.5 [@media_(max-width:_820px)]:hidden"><Icon name="shield" />{roleLabel}</span><span className="w-9 h-9 grid place-items-center text-[white] [background:#1b3154] text-[length:10px] font-extrabold rounded-[9px] w-[34px] h-[34px] [@media_(max-width:_820px)]:hidden">{profileInitials}</span><button className="hidden [@media_(max-width:_820px)]:w-[35px] [@media_(max-width:_820px)]:h-[35px] [@media_(max-width:_820px)]:grid [@media_(max-width:_820px)]:place-items-center [@media_(max-width:_820px)]:text-[#607087] [@media_(max-width:_820px)]:border [@media_(max-width:_820px)]:border-[color:var(--line)] [@media_(max-width:_820px)]:[background:white] [@media_(max-width:_820px)]:rounded-[9px] [@media_(max-width:_820px)]:border-solid [&_svg]:[@media_(max-width:_820px)]:w-[15px] [&_svg]:[@media_(max-width:_820px)]:[transform:rotate(180deg)]" type="button" onClick={logout} disabled={isLoggingOut} aria-label="Đăng xuất"><Icon name="arrow" /></button></div></header>
-        <nav className="hidden [@media_(max-width:_820px)]:flex [@media_(max-width:_820px)]:gap-[5px] [@media_(max-width:_820px)]:overflow-x-auto [@media_(max-width:_820px)]:[border-bottom:1px_solid_var(--line)] [@media_(max-width:_820px)]:[background:white] [@media_(max-width:_820px)]:px-[18px] [@media_(max-width:_820px)]:py-2 [&_:is(a,_button)]:[@media_(max-width:_820px)]:min-h-[34px] [&_:is(a,_button)]:[@media_(max-width:_820px)]:inline-flex [&_:is(a,_button)]:[@media_(max-width:_820px)]:items-center [&_:is(a,_button)]:[@media_(max-width:_820px)]:gap-[7px] [&_:is(a,_button)]:[@media_(max-width:_820px)]:flex-none [&_:is(a,_button)]:[@media_(max-width:_820px)]:text-[#66758b] [&_:is(a,_button)]:[@media_(max-width:_820px)]:[background:transparent] [&_:is(a,_button)]:[@media_(max-width:_820px)]:[font:inherit] [&_:is(a,_button)]:[@media_(max-width:_820px)]:px-2.5 [&_:is(a,_button)]:[@media_(max-width:_820px)]:py-0 [&_:is(a,_button)]:[@media_(max-width:_820px)]:rounded-lg [&_:is(a,_button)]:[@media_(max-width:_820px)]:border-0 [&_:is(a,_button)]:[@media_(max-width:_820px)]:border-none [&_:is(a,_button)]:[@media_(max-width:_820px)]:border-current [&_:is(a,_button)]:[@media_(max-width:_820px)]:aria-[current=page]:text-[color:var(--accent)] [&_:is(a,_button)]:[@media_(max-width:_820px)]:aria-[current=page]:[background:#eaf1ff] [&_svg]:[@media_(max-width:_820px)]:w-[15px] [@media_(max-width:_820px)]:[&_:is(a,_button)]:[font-size:10px] [@media_(max-width:_820px)]:[&_:is(a,_button)]:[font-weight:650]" aria-label="Điều hướng dashboard trên điện thoại">{(hasOwnerWorkspace || staffMode || reviewerMode || managerMode) && <button type="button" aria-current={activeTab === "overview" ? "page" : undefined} onClick={() => selectTab("overview")}><Icon name="building" />Tổng quan</button>}<button type="button" aria-current={activeTab === "upload" ? "page" : undefined} onClick={() => selectTab("upload")}><Icon name={reviewerMode ? "shield" : "upload"} />{reviewerMode ? "Rà soát hợp đồng" : "Tải & rà soát"}</button><button type="button" aria-current={activeTab === "contracts" ? "page" : undefined} onClick={() => selectTab("contracts")}><Icon name="document" />Hợp đồng</button></nav>
-        {data.role === "owner" && <div className="hidden [@media_(max-width:_820px)]:flex [@media_(max-width:_820px)]:border-b [@media_(max-width:_820px)]:border-[#e4e8ef] [@media_(max-width:_820px)]:bg-white [@media_(max-width:_820px)]:px-[18px] [@media_(max-width:_820px)]:pb-2"><button type="button" onClick={() => selectTab("members")} aria-current={activeTab === "members" ? "page" : undefined} className="rounded-lg px-3 py-2 text-[12px] font-semibold text-[#5f6d82] aria-[current=page]:bg-[#eaf1ff] aria-[current=page]:text-[#1e53b8]">Thành viên & lời mời</button></div>}
+        <DashboardNavigation mobile items={getDashboardNavigation(role)} activeKey={activeTab} onNavigate={(key) => selectTab(key as DashboardTab)} />
+
         <main id="dashboard-content" className={`w-[min(1420px,100%)] [margin-inline:auto] pt-[38px] pb-16 px-[clamp(24px,4vw,52px)] [@media_(max-width:_820px)]:pt-[30px] [@media_(max-width:_820px)]:pb-12 [@media_(max-width:_820px)]:px-[18px] ${ownerMode && activeTab === "overview" ? styles.overview : ""} ${(ownerMode || staffMode || reviewerMode || managerMode) && activeTab === "upload" ? styles.upload : ""} ${(ownerMode || staffMode || reviewerMode || managerMode) && activeTab === "contracts" ? styles.contracts : ""} ${ownerMode && activeTab === "administration" ? styles.administration : ""} ${ownerMode && activeTab === "members" ? styles.members : ""}`}>
           {(staffMode || reviewerMode || managerMode) && <div className={memberStyles.freshness} role="status">{isFetching ? "Đang cập nhật dữ liệu…" : dataUpdatedAt ? "Cập nhật lúc "+new Date(dataUpdatedAt).toLocaleTimeString("vi-VN") : ""}{data.stats.processing > 0 && <span> · Tự cập nhật khi AI đang xử lý</span>}</div>}
           {(staffMode || reviewerMode || managerMode) && activeTab === "upload" && <div className={memberStyles.reviewNavigation}><button type="button" onClick={backToWork}>← Quay lại danh sách</button><strong>{title || "Rà soát hợp đồng"}</strong></div>}
@@ -414,7 +393,7 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
           {activeTab === "members" && data.role === "owner" && <OwnerMembersView orgId={data.organization.id} organizationName={data.organization.name} />}
         </main>
       </div>
-      {uploadedContract && <AnalysisFocusDialog key={uploadedContract.id} contractTitle={uploadedContract.title} isReviewing={stage === "reviewing"} onSkip={skipUploadedReview} onReview={reviewUploadedContract} />}
+      {uploadedContract && <AnalysisFocusDialog key={uploadedContract.id} contractTitle={uploadedContract.title} isReviewing={stage === "reviewing"} onDismiss={skipUploadedReview} onReview={reviewUploadedContract} />}
     </div>
   );
 }

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Icon } from "@/components/ui/icon";
-import { authApi } from "@/lib/api/auth";
+import { useLogoutMutation } from "@/hooks/use-auth";
 import { getUserInitials } from "@/lib/user-display";
 import type { AuthUser } from "@/types/auth";
 
@@ -17,6 +17,7 @@ export function AccountMenu({ user, accountHref }: { user: AuthUser; accountHref
   const trigger = useRef<HTMLButtonElement>(null);
   const router = useRouter();
   const queryClient = useQueryClient();
+  const logoutMutation = useLogoutMutation();
 
   useEffect(() => {
     if (!open) return;
@@ -44,7 +45,7 @@ export function AccountMenu({ user, accountHref }: { user: AuthUser; accountHref
     setIsLoggingOut(true);
 
     try {
-      await authApi.logout();
+      await logoutMutation.mutateAsync();
       queryClient.clear();
       setOpen(false);
       toast.success("Đăng xuất thành công");

@@ -1,0 +1,94 @@
+.details {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 13px;
+  border: 1px solid #e3eaf5;
+  border-radius: 10px;
+  background: #f8faff;
+}
+
+.details section {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid #e4eaf3;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.details h4 {
+  margin: 0;
+  color: #31445f;
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.details ul {
+  display: grid;
+  gap: 7px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+  list-style: disc;
+  color: #40536e;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.details li {
+  display: list-item;
+  padding: 0;
+  border: 0;
+}
+
+.details li p {
+  margin: 5px 0 0;
+  white-space: pre-wrap;
+}
+
+.details li strong {
+  color: #31445f;
+}
+
+.details .problem {
+  border-color: #f0cbd2;
+  border-left: 4px solid #ba5265;
+  background: #fff3f5;
+}
+
+.details .problem h4 {
+  color: #98364b;
+}
+
+.details .consequences {
+  border-color: #f1dab0;
+  border-left: 4px solid #d68b1f;
+  background: #fff8eb;
+}
+
+.details .consequences h4 {
+  color: #8b5208;
+}
+
+.details .consequences ul {
+  color: #654b2a;
+}
+
+.details .recommendations {
+  border-color: #bcd3fa;
+  border-left: 4px solid #2864dc;
+  background: #edf4ff;
+}
+
+.details .recommendations h4 {
+  color: #1d4fa9;
+}
+
+.details .recommendations ul {
+  color: #24456f;
+  font-weight: 600;
+}
+
+.details .reference {
+  background: #fbfcff;
+}

@@ -1,6 +1,6 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
 import type { AuthSession } from "@/types/auth";
-import type { InvitationPreview, InvitationRole, MemberSubscription, OrganizationInvitation, OrganizationMember, PageResult } from "@/types/invitations";
+import type { CreateInvitationInput, InvitationPreview, MemberSubscription, OrganizationInvitation, OrganizationMember, PageResult } from "@/types/invitations";
 
 type PaginatedResponse<T> = { data: T[]; meta: { page: number; total: number; totalPages?: number; limit: number } };
 
@@ -20,7 +20,7 @@ export const invitationsApi = {
   subscription(orgId: string) {
     return apiRequest<MemberSubscription>({ url: `/organizations/${orgId}/subscription` });
   },
-  create(orgId: string, input: { email: string; role: InvitationRole }) {
+  create(orgId: string, input: CreateInvitationInput) {
     return apiRequest<OrganizationInvitation>({ url: `/organizations/${orgId}/invitations`, method: "POST", data: input });
   },
   revoke(orgId: string, invitationId: string) {

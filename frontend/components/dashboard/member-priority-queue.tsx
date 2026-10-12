@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { contractsApi } from "@/lib/api/contracts";
+import { useContractsList } from "@/hooks/use-contracts";
 import type { DashboardContractFilter } from "@/types/dashboard";
 import type { DashboardContract } from "@/types/contracts";
 import { MemberContractCards } from "./member-contract-cards";
@@ -24,7 +23,7 @@ export function MemberPriorityQueue({ orgId, role, onReview, onViewContracts, is
     { label: "Đang xử lý", filter: { status: "processing" } },
   ];
   const group = groups[selected];
-  const query = useQuery({ queryKey: ["member-contracts", "priority", orgId, group.filter], queryFn: () => contractsApi.list({ ...group.filter, page: 1 }), retry: false, refetchInterval: (query) => query.state.data?.items.some((item) => item.status === "processing") ? 30_000 : false });
+  const query = useContractsList({ ...group.filter, page: 1 }, { queryKey: ["member-contracts", "priority", orgId, group.filter], pollProcessing: true });
   return <section className={styles.queue} aria-labelledby="member-queue-title">
     <div className={styles.queueHeading}><div><h2 id="member-queue-title">{role === "staff" ? "Công việc cần xử lý" : "Hợp đồng cần chú ý"}</h2><p>Toàn tổ chức · tối đa 4 hợp đồng mới cập nhật trong nhóm</p></div><button type="button" onClick={() => onViewContracts(group.filter)}>Xem tất cả{query.data ? ` (${query.data.total})` : ""}</button></div>
     <div className={styles.filters}>{groups.map((item, index) => <button key={item.label} type="button" aria-pressed={selected === index} onClick={() => setSelected(index)}>{item.label}</button>)}</div>

@@ -6,11 +6,11 @@ import { Icon } from "@/components/ui/icon";
 type AnalysisFocusDialogProps = {
   contractTitle: string;
   isReviewing: boolean;
-  onSkip: () => void;
+  onDismiss: () => void;
   onReview: (focus: string) => void;
 };
 
-export function AnalysisFocusDialog({ contractTitle, isReviewing, onSkip, onReview }: AnalysisFocusDialogProps) {
+export function AnalysisFocusDialog({ contractTitle, isReviewing, onDismiss, onReview }: AnalysisFocusDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [focus, setFocus] = useState("");
 
@@ -30,7 +30,7 @@ export function AnalysisFocusDialog({ contractTitle, isReviewing, onSkip, onRevi
       ref={dialogRef}
       aria-labelledby="analysis-focus-title"
       aria-describedby="analysis-focus-description"
-      onCancel={(event) => { event.preventDefault(); if (!isReviewing) onSkip(); }}
+      onCancel={(event) => { event.preventDefault(); if (!isReviewing) onDismiss(); }}
       className="fixed inset-0 m-auto w-[min(460px,calc(100%-32px))] max-h-[calc(100dvh-32px)] overflow-y-auto border border-[#dce4ef] [background:white] text-[color:var(--ink)] shadow-[0_24px_80px_rgb(20_33_61_/_0.22)] p-0 rounded-[16px] backdrop:[background:rgb(16_28_50_/_0.56)]"
     >
       <form onSubmit={submit} className="p-6 [@media_(max-width:_580px)]:p-5">
@@ -40,7 +40,7 @@ export function AnalysisFocusDialog({ contractTitle, isReviewing, onSkip, onRevi
         <label htmlFor="analysis-focus-input" className="block text-[#34435a] text-[length:11px] font-bold mt-5 mb-2">Trọng tâm rà soát <span className="text-[#929dab] font-normal">(không bắt buộc)</span></label>
         <textarea id="analysis-focus-input" autoFocus value={focus} onChange={(event) => setFocus(event.target.value)} placeholder="Ví dụ: ưu tiên điều khoản thanh toán, phạt vi phạm và chấm dứt hợp đồng..." maxLength={1000} className="w-full min-h-28 resize-y border border-[#d8e0ea] [background:white] text-[color:var(--ink)] text-[length:12px] leading-normal p-3 rounded-[9px]" />
         <div className="flex justify-end gap-2.5 mt-5 [@media_(max-width:_580px)]:flex-col-reverse">
-          <button type="button" onClick={onSkip} disabled={isReviewing} className="min-h-[42px] border border-[#d8e0ea] [background:white] text-[#526178] text-[length:11px] font-bold px-4 rounded-[9px] cursor-pointer disabled:opacity-50">Bỏ qua</button>
+          <button type="button" onClick={() => onReview("")} disabled={isReviewing} className="min-h-[42px] border border-[#d8e0ea] [background:white] text-[#526178] text-[length:11px] font-bold px-4 rounded-[9px] cursor-pointer disabled:opacity-50">Bỏ qua</button>
           <button type="submit" disabled={isReviewing} className="min-h-[42px] inline-flex items-center justify-center gap-2 border-0 [background:var(--accent)] text-white text-[length:11px] font-bold px-4 rounded-[9px] cursor-pointer hover:[background:var(--accent-dark)] disabled:opacity-50"><Icon name="sparkle" />{isReviewing ? "AI đang rà soát..." : "Rà soát"}</button>
         </div>
       </form>

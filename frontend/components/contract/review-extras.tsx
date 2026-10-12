@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useContractChatMessages, useRemoveProposedRevisionMutation, useStreamChatMutation, useUpdateProposedRevisionMutation } from "@/hooks/use-contracts";
 import { isApiClientError } from "@/lib/api/client";
 import type { RiskFinding } from "@/types/contracts";
+import styles from "./risk-details.module.css";
 
 function errorMessage(error: unknown) {
   return isApiClientError(error) ? error.message : "Vui lòng thử lại sau.";
@@ -49,12 +50,12 @@ export function RiskDetails({ contractId, finding, onChange, allowProposalEditin
     }
   }
 
-  return <div className="[&_h4]:text-[#31445f] [&_h4]:text-[length:11px] [&_h4]:m-0 grid gap-[13px] border [background:#f8faff] mt-3 p-3.5 rounded-lg border-solid border-[#e3eaf5] [&_ul]:grid [&_ul]:gap-1 [&_ul]:[list-style:disc] [&_ul]:text-[#52647e] [&_ul]:text-[length:10px] [&_ul]:leading-[1.6] [&_ul]:mt-1.5 [&_ul]:mb-0 [&_ul]:mx-0 [&_ul]:pl-[17px] [&_li]:list-item [&_li]:p-0 [&_li]:border-0 [&_li]:border-none [&_li]:border-current [&_li_p]:whitespace-pre-wrap [&_li_p]:mt-1 [&_li_p]:mb-0 [&_li_p]:mx-0 [&_li_strong]:text-[#31445f]">
-    {!!finding.problem?.length && <div><h4>Vấn đề</h4><ul>{finding.problem.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
-    {!!finding.consequences?.length && <div><h4>Hệ quả</h4><ul>{finding.consequences.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
-    {!!finding.recommendations?.length && <div><h4>Khuyến nghị</h4><ul>{finding.recommendations.map((item, index) => <li key={index}>{item}</li>)}</ul></div>}
-    {!!finding.legalBasis?.length && <div><h4>Cơ sở pháp lý</h4><ul>{finding.legalBasis.map((item, index) => <li key={index}>{item.text}</li>)}</ul></div>}
-    {!!finding.citations?.length && <div><h4>Nguồn tham chiếu</h4><ul>{finding.citations.map((citation, index) => <li key={`${citation.legalKnowledgeChunkId}-${index}`}><strong>{citation.citationLabel || citation.sourceTitle}</strong>{citation.articleRef && ` · ${citation.articleRef}`}{citation.chunkText && <p>{citation.chunkText}</p>}</li>)}</ul></div>}
+  return <div className={styles.details}>
+    {!!finding.problem?.length && <section className={styles.problem}><h4>Vấn đề</h4><ul>{finding.problem.map((item, index) => <li key={index}>{item}</li>)}</ul></section>}
+    {!!finding.consequences?.length && <section className={styles.consequences}><h4>Hệ quả</h4><ul>{finding.consequences.map((item, index) => <li key={index}>{item}</li>)}</ul></section>}
+    {!!finding.recommendations?.length && <section className={styles.recommendations}><h4>Khuyến nghị</h4><ul>{finding.recommendations.map((item, index) => <li key={index}>{item}</li>)}</ul></section>}
+    {!!finding.legalBasis?.length && <section className={styles.reference}><h4>Cơ sở pháp lý</h4><ul>{finding.legalBasis.map((item, index) => <li key={index}>{item.text}</li>)}</ul></section>}
+    {!!finding.citations?.length && <section className={styles.reference}><h4>Nguồn tham chiếu</h4><ul>{finding.citations.map((citation, index) => <li key={`${citation.legalKnowledgeChunkId}-${index}`}><strong>{citation.citationLabel || citation.sourceTitle}</strong>{citation.articleRef && ` · ${citation.articleRef}`}{citation.chunkText && <p>{citation.chunkText}</p>}</li>)}</ul></section>}
     {editing && allowProposalEditing ? <form onSubmit={save} className="[&_button]:text-[#2864dc] [&_button]:[background:none] [&_button]:[font:inherit] [&_button]:cursor-pointer [&_button]:mt-[9px] [&_button]:p-0 [&_button]:border-0 [&_button]:border-none [&_button]:border-current [&_button]:[font-size:10px] [&_button]:[font-weight:700] [&_button:focus-visible]:[outline:2px_solid_#2864dc] [&_button:focus-visible]:outline-offset-[3px] [&>_div]:flex [&>_div]:gap-[15px] grid gap-2.5 [&_label]:grid [&_label]:gap-[5px] [&_label]:text-[#31445f] [&_label]:text-[length:10px] [&_label]:font-bold [&_textarea]:w-full [&_textarea]:min-w-0 [&_textarea]:border [&_textarea]:[background:#fff] [&_textarea]:text-[#263750] [&_textarea]:[font:inherit] [&_textarea]:resize-y [&_textarea]:p-[9px] [&_textarea]:rounded-md [&_textarea]:border-solid [&_textarea]:border-[#cad5e5] [&_textarea]:[font-size:11px] [&_textarea]:[line-height:1.5] [&_button:disabled]:opacity-50 [&_button:disabled]:cursor-default">
       <label>Đoạn đề xuất<textarea value={revisedText} onChange={(event) => setRevisedText(event.target.value)} rows={5} required /></label>
       <label>Lý do chỉnh sửa<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} /></label>

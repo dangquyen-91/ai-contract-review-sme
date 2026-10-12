@@ -3,8 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
-import { useQuery } from "@tanstack/react-query";
-import { contractsApi } from "@/lib/api/contracts";
+import { useContractsList } from "@/hooks/use-contracts";
 import { isApiClientError } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
 import type { DashboardContract } from "@/types/contracts";
@@ -37,7 +36,7 @@ export function MemberContractsView({ orgId, filter, reviewerMode, managerMode =
   function updateList(next: { page?: number; search?: string }) {
     void setListState({ page: next.page ?? page, search: next.search ?? search });
   }
-  const query = useQuery({ queryKey: ["member-contracts", orgId, filter, page, search], queryFn: () => contractsApi.list({ ...filter, page, search: search || undefined }), retry: false, refetchInterval: (query) => query.state.data?.items.some((item) => item.status === "processing") ? 30_000 : false });
+  const query = useContractsList({ ...filter, page, search: search || undefined }, { queryKey: ["member-contracts", orgId, filter, page, search], pollProcessing: true });
   const pages = Math.max(1, Math.ceil((query.data?.total ?? 0) / 10));
   const uploaded = highlighted && query.data?.items.find((contract) => (contract.id ?? contract._id) === highlighted);
   const choices: { label: string; filter: DashboardContractFilter }[] = [
