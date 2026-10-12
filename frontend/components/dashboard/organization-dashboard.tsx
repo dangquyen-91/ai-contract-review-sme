@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState, type ComponentType } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Brand } from "@/components/ui/brand";
@@ -20,6 +20,7 @@ import { useGetContractReviewMutation, useReviewContractMutation, useUploadContr
 import { authApi } from "@/lib/api/auth";
 import { isApiClientError } from "@/lib/api/client";
 import { reviewProgressLabel } from "@/lib/review-progress";
+import { isReviewCancelled, readReviewSession } from "@/lib/review-session";
 import { dashboardApi } from "@/lib/api/dashboard";
 import { contractsApi } from "@/lib/api/contracts";
 import type { ContractReviewResult, ContractReviewRun, ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
@@ -130,6 +131,7 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
   const [workflowComplete, setWorkflowComplete] = useState(false);
   const [reviewResult, setReviewResult] = useState<ContractReviewResult | null>(null);
   const [reviewProgress, setReviewProgress] = useState<ContractReviewRun | null>(null);
+  const restoredReview = useRef<string | null>(null);
   const reviewResultRef = useRef<HTMLDivElement>(null);
   const [pendingReviewId, setPendingReviewId] = useState<string | null>(null);
   const [pendingReviewFocus, setPendingReviewFocus] = useState("");
@@ -141,6 +143,8 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
   const uploadContractMutation = useUploadContractMutation();
   const reviewContractMutation = useReviewContractMutation();
   const getContractReviewMutation = useGetContractReviewMutation();
+  const cancelReview = reviewContractMutation.cancel;
+  const cancelResult = getContractReviewMutation.cancel;
   const stage: ReviewStage = uploadContractMutation.isPending
     ? "uploading"
     : reviewContractMutation.isPending
@@ -173,6 +177,41 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
   useEffect(() => {
     if (reviewResult) reviewResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [reviewResult]);
+
+  useEffect(() => {
+    if (activeTab !== "upload") { cancelReview(); cancelResult(); restoredReview.current = null; }
+  }, [activeTab, cancelReview, cancelResult]);
+
+  const restoreFromUrl = useEffectEvent(async (contract: DashboardContract, mode: string | null) => {
+    const id = contract.id ?? contract._id;
+    if (!id) return;
+    setTitle(contract.title); setReviewResult(null); setWorkflowComplete(false); setReviewError(""); setPendingReviewId(null);
+    if (mode === "load" && !readReviewSession(id)) {
+      setRetryKind("load");
+      const result = await getContractReviewMutation.mutateAsync(id);
+      setReviewResult(result); setWorkflowComplete(true);
+    } else await runReview(id, "", true);
+  });
+  useEffect(() => {
+    const id = searchParams.get("reviewContract");
+    if (!id || activeTab !== "upload" || !data || restoredReview.current === id) return;
+    let cancelled = false;
+    let started = false;
+    void (async () => {
+      try {
+        await Promise.resolve();
+        if (cancelled) return;
+        const contract = data.contracts.find((item) => (item.id ?? item._id) === id) ?? await contractsApi.getContract(id);
+        if (cancelled) return;
+        restoredReview.current = id; started = true;
+        await restoreFromUrl(contract, searchParams.get("reviewMode"));
+      } catch (requestError) {
+        if ((cancelled && !started) || isReviewCancelled(requestError)) return;
+        setPendingReviewId(id); setReviewError(reviewErrorMessage(requestError));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [activeTab, data, searchParams]);
 
   useEffect(() => {
     if (activeTab === "upload" || returnScroll.current === null) return;
@@ -243,14 +282,24 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
     }
   }
 
-  async function runReview(contractId: string, focus = "") {
+  async function runReview(contractId: string, focus = "", resumeOnly = false) {
+    restoredReview.current = contractId;
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", reviewerMode ? "review" : "upload");
+    params.set("reviewContract", contractId); params.set("reviewMode", "resume");
+    setActiveTab("upload");
+    window.history.replaceState(null, "", `/dashboard/${role}?${params}`);
     setRetryKind("run");
     setReviewError("");
     setReviewProgress(null);
     const result = await reviewContractMutation.mutateAsync({
       contractId,
       analysisFocus: focus.trim() || undefined,
-      onProgress: setReviewProgress,
+      onProgress: (review) => {
+        setReviewProgress(review);
+        if (review.status === "completed") setRetryKind("load");
+      },
+      resumeOnly,
     });
     setReviewProgress(null);
     setReviewResult(result);
@@ -279,6 +328,7 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
     setUploadedContract(null);
     try { await runReview(contractId, focus); }
     catch (requestError) {
+      if (isReviewCancelled(requestError)) return;
       setPendingReviewId(contractId);
       setPendingReviewFocus(focus);
       setReviewError("Hợp đồng đã tải lên thành công. Chưa hoàn tất phân tích; bạn không cần tải lại tài liệu.");
@@ -296,11 +346,16 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
       const base = reviewerMode ? "/dashboard/reviewer" : managerMode ? "/dashboard/manager" : "/dashboard/staff";
       if (activeTab !== "upload") returnLocation.current = { url: `${base}${searchParams.size ? `?${searchParams}` : ""}`, scroll: window.scrollY };
     }
-    const requestKind = contract.status === "reviewed" && !rerun ? "load" : "run";
+    const requestKind = contract.status === "reviewed" && !rerun && !readReviewSession(contractId) ? "load" : "run";
     setRetryKind(requestKind);
-    selectTab("upload"); setTitle(contract.title); setReviewResult(null); setWorkflowComplete(false);
+    setActiveTab("upload"); setTitle(contract.title); setReviewResult(null); setWorkflowComplete(false);
+    restoredReview.current = contractId;
+    const params = new URLSearchParams(window.location.search);
+    params.set("view", reviewerMode ? "review" : "upload");
+    params.set("reviewContract", contractId); params.set("reviewMode", requestKind === "load" ? "load" : "resume");
+    window.history.replaceState(null, "", `/dashboard/${role}?${params}`);
     try {
-      if (contract.status === "reviewed" && !rerun) {
+      if (requestKind === "load") {
         const result = await getContractReviewMutation.mutateAsync(contractId);
         setReviewResult(result);
         setWorkflowComplete(true);
@@ -309,6 +364,7 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
       }
     }
     catch (requestError) {
+      if (isReviewCancelled(requestError)) return;
       setPendingReviewId(contractId);
       setReviewError(requestKind === "load" ? "Chưa tải được kết quả đã lưu. Hãy thử tải lại kết quả hoặc quay về danh sách." : "Chưa hoàn tất phân tích hợp đồng. Tài liệu vẫn được giữ trong tổ chức.");
       toast.error("Chưa thể rà soát hợp đồng", { description: reviewErrorMessage(requestError) });
@@ -328,6 +384,7 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
       } else await runReview(pendingReviewId, pendingReviewFocus);
     }
     catch (requestError) {
+      if (isReviewCancelled(requestError)) return;
       setReviewError(retryKind === "load" ? "Chưa tải được kết quả. Bạn có thể thử lại hoặc quay về danh sách." : "Phân tích chưa hoàn tất. Tài liệu vẫn được giữ; bạn có thể thử lại sau.");
       toast.error("AI chưa thể hoàn tất rà soát", { description: reviewErrorMessage(requestError) });
     }
@@ -372,6 +429,7 @@ export function OrganizationDashboard({ role, Overview }: { role: "owner" | "man
         <nav className="hidden [@media_(max-width:_820px)]:flex [@media_(max-width:_820px)]:gap-[5px] [@media_(max-width:_820px)]:overflow-x-auto [@media_(max-width:_820px)]:[border-bottom:1px_solid_var(--line)] [@media_(max-width:_820px)]:[background:white] [@media_(max-width:_820px)]:px-[18px] [@media_(max-width:_820px)]:py-2 [&_:is(a,_button)]:[@media_(max-width:_820px)]:min-h-[34px] [&_:is(a,_button)]:[@media_(max-width:_820px)]:inline-flex [&_:is(a,_button)]:[@media_(max-width:_820px)]:items-center [&_:is(a,_button)]:[@media_(max-width:_820px)]:gap-[7px] [&_:is(a,_button)]:[@media_(max-width:_820px)]:flex-none [&_:is(a,_button)]:[@media_(max-width:_820px)]:text-[#66758b] [&_:is(a,_button)]:[@media_(max-width:_820px)]:[background:transparent] [&_:is(a,_button)]:[@media_(max-width:_820px)]:[font:inherit] [&_:is(a,_button)]:[@media_(max-width:_820px)]:px-2.5 [&_:is(a,_button)]:[@media_(max-width:_820px)]:py-0 [&_:is(a,_button)]:[@media_(max-width:_820px)]:rounded-lg [&_:is(a,_button)]:[@media_(max-width:_820px)]:border-0 [&_:is(a,_button)]:[@media_(max-width:_820px)]:border-none [&_:is(a,_button)]:[@media_(max-width:_820px)]:border-current [&_:is(a,_button)]:[@media_(max-width:_820px)]:aria-[current=page]:text-[color:var(--accent)] [&_:is(a,_button)]:[@media_(max-width:_820px)]:aria-[current=page]:[background:#eaf1ff] [&_svg]:[@media_(max-width:_820px)]:w-[15px] [@media_(max-width:_820px)]:[&_:is(a,_button)]:[font-size:10px] [@media_(max-width:_820px)]:[&_:is(a,_button)]:[font-weight:650]" aria-label="Điều hướng dashboard trên điện thoại">{(hasOwnerWorkspace || staffMode || reviewerMode || managerMode) && <button type="button" aria-current={activeTab === "overview" ? "page" : undefined} onClick={() => selectTab("overview")}><Icon name="building" />Tổng quan</button>}<button type="button" aria-current={activeTab === "upload" ? "page" : undefined} onClick={() => selectTab("upload")}><Icon name={reviewerMode ? "shield" : "upload"} />{reviewerMode ? "Rà soát hợp đồng" : "Tải & rà soát"}</button><button type="button" aria-current={activeTab === "contracts" ? "page" : undefined} onClick={() => selectTab("contracts")}><Icon name="document" />Hợp đồng</button></nav>
         {data.role === "owner" && <div className="hidden [@media_(max-width:_820px)]:flex [@media_(max-width:_820px)]:border-b [@media_(max-width:_820px)]:border-[#e4e8ef] [@media_(max-width:_820px)]:bg-white [@media_(max-width:_820px)]:px-[18px] [@media_(max-width:_820px)]:pb-2"><button type="button" onClick={() => selectTab("members")} aria-current={activeTab === "members" ? "page" : undefined} className="rounded-lg px-3 py-2 text-[12px] font-semibold text-[#5f6d82] aria-[current=page]:bg-[#eaf1ff] aria-[current=page]:text-[#1e53b8]">Thành viên & lời mời</button></div>}
         <main id="dashboard-content" className={`w-[min(1420px,100%)] [margin-inline:auto] pt-[38px] pb-16 px-[clamp(24px,4vw,52px)] [@media_(max-width:_820px)]:pt-[30px] [@media_(max-width:_820px)]:pb-12 [@media_(max-width:_820px)]:px-[18px] ${ownerMode && activeTab === "overview" ? styles.overview : ""} ${(ownerMode || staffMode || reviewerMode || managerMode) && activeTab === "upload" ? styles.upload : ""} ${(ownerMode || staffMode || reviewerMode || managerMode) && activeTab === "contracts" ? styles.contracts : ""} ${ownerMode && activeTab === "administration" ? styles.administration : ""} ${ownerMode && activeTab === "members" ? styles.members : ""}`}>
+          {reviewContractMutation.reconnecting && <p role="status" className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Mất kết nối tạm thời. Đang theo dõi lại lượt rà soát đã lưu.</p>}
           {(staffMode || reviewerMode || managerMode) && <div className={memberStyles.freshness} role="status">{isFetching ? "Đang cập nhật dữ liệu…" : dataUpdatedAt ? "Cập nhật lúc "+new Date(dataUpdatedAt).toLocaleTimeString("vi-VN") : ""}{data.stats.processing > 0 && <span> · Tự cập nhật khi AI đang xử lý</span>}</div>}
           {(staffMode || reviewerMode || managerMode) && activeTab === "upload" && <div className={memberStyles.reviewNavigation}><button type="button" onClick={backToWork}>← Quay lại danh sách</button><strong>{title || "Rà soát hợp đồng"}</strong></div>}
           {reviewError && activeTab === "upload" && <div className={memberStyles.errorBanner} role="alert"><p>{reviewError}</p><button type="button" onClick={retryReview} disabled={stage === "reviewing" || getContractReviewMutation.isPending}>{retryKind === "load" ? "Tải lại kết quả" : "Thử phân tích lại"}</button></div>}

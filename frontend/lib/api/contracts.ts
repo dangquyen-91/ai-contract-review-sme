@@ -32,11 +32,12 @@ export const contractsApi = {
     );
   },
 
-  getReview(contractId: string) {
+  getReview(contractId: string, signal?: AbortSignal) {
     return apiRequest<ContractReviewResult>({
       url: `/contracts/${contractId}/review`,
       method: "GET",
       timeout: 30_000,
+      signal,
     });
   },
 
@@ -50,21 +51,22 @@ export const contractsApi = {
     });
   },
 
-  startReview(contractId: string, idempotencyKey: string, analysisFocus?: string) {
+  startReview(contractId: string, idempotencyKey: string, analysisFocus?: string, signal?: AbortSignal) {
     return apiRequest<ContractReviewRun>({
       url: `/contracts/${contractId}/review`,
       method: "POST",
       data: analysisFocus ? { analysisFocus } : {},
       headers: { "Idempotency-Key": idempotencyKey },
+      signal,
     });
   },
 
-  getReviewRun(reviewId: string) {
-    return apiRequest<ContractReviewRun>({ url: `/reviews/${reviewId}` });
+  getReviewRun(reviewId: string, signal?: AbortSignal) {
+    return apiRequest<ContractReviewRun>({ url: `/reviews/${reviewId}`, signal });
   },
 
-  listReviewRuns(contractId: string) {
-    return apiRequest<ContractReviewRun[]>({ url: `/contracts/${contractId}/reviews` });
+  listReviewRuns(contractId: string, signal?: AbortSignal) {
+    return apiRequest<ContractReviewRun[]>({ url: `/contracts/${contractId}/reviews`, signal });
   },
 
   getKeyTerms(contractId: string) {
