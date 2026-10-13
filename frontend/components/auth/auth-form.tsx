@@ -6,11 +6,14 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { get, useForm, useWatch, type FieldError as FormFieldError, type FieldErrors, type FieldPath, type SubmitHandler } from "react-hook-form";
 import { toast } from "sonner";
 import { Icon } from "@/components/ui/icon";
 import { useAuthMutation } from "@/hooks/use-auth";
 import { isApiClientError } from "@/lib/api/client";
+import { invitationsApi } from "@/lib/api/invitations";
+import { invitationError } from "@/lib/invitation-error";
 import { authFormSchema } from "@/schemas/auth.schema";
 import type { AuthFormValues, AuthMode, AuthMutationVariables } from "@/types/auth";
 
@@ -36,12 +39,42 @@ function FieldError({ id, message }: { id: string; message?: string }) {
 }
 
 export function AuthForm({ mode, invitationToken }: { mode: AuthMode; invitationToken?: string }) {
+  const hasInvitation = invitationToken !== undefined;
+  const validToken = Boolean(invitationToken && /^[a-f\d]{64}$/.test(invitationToken));
+  const preview = useQuery({
+    queryKey: ["invitation-preview", invitationToken],
+    queryFn: () => invitationsApi.preview(invitationToken!),
+    enabled: hasInvitation && validToken,
+    retry: false,
+    staleTime: 0,
+    refetchOnMount: "always",
+  });
+
+  if (hasInvitation) {
+    if (validToken && preview.isPending) {
+      return <p role="status" className="text-sm text-[#69788e]">Đang kiểm tra email nhận lời mời...</p>;
+    }
+    if (!validToken || preview.isError || !preview.data) {
+      const failure = invitationError(preview.error);
+      return <div className="grid max-w-[460px] gap-4 text-sm">
+        <p role="alert" className="text-[#9c2032]">{validToken ? failure.message : "Liên kết lời mời không hợp lệ. Hãy mở lại link đầy đủ trong email hoặc liên hệ Owner."}</p>
+        {validToken && failure.retryable && <button type="button" disabled={preview.isFetching} onClick={() => void preview.refetch()} className="text-[#0868ed] underline disabled:opacity-60">{preview.isFetching ? "Đang kiểm tra..." : "Thử lại"}</button>}
+        <Link href="/dang-nhap" className="text-[#0868ed] underline">Về trang đăng nhập</Link>
+      </div>;
+    }
+  }
+
+  return <ResolvedAuthForm key={`${mode}:${invitationToken ?? ""}:${preview.data?.email ?? ""}`} mode={mode} invitationToken={invitationToken} invitedEmail={hasInvitation ? preview.data?.email : undefined} />;
+}
+
+function ResolvedAuthForm({ mode, invitationToken, invitedEmail }: { mode: AuthMode; invitationToken?: string; invitedEmail?: string }) {
   const isRegister = mode === "register";
   const invited = Boolean(invitationToken && /^[a-f\d]{64}$/.test(invitationToken));
   const inviteQuery = invited ? `?invitationToken=${invitationToken}` : "";
   const router = useRouter();
   const authMutation = useAuthMutation();
   const [showPassword, setShowPassword] = useState(false);
+  const [accountExists, setAccountExists] = useState(false);
   const {
     control,
     formState: { errors, isSubmitting },
@@ -53,7 +86,7 @@ export function AuthForm({ mode, invitationToken }: { mode: AuthMode; invitation
     mode: "onBlur",
     defaultValues: {
       mode,
-      email: "",
+      email: invitedEmail ?? "",
       password: "",
       remember: false,
       name: "",
@@ -67,17 +100,18 @@ export function AuthForm({ mode, invitationToken }: { mode: AuthMode; invitation
   const confirmPasswordError = getFieldError(errors, "confirmPassword");
 
   const submit: SubmitHandler<AuthFormValues> = async (values) => {
+    setAccountExists(false);
     let request: AuthMutationVariables;
 
     if (values.mode === "register") {
       const { confirmPassword: _confirmPassword, mode: _mode, ...data } = values;
       void _confirmPassword;
       void _mode;
-      request = { mode: "register", data: { ...data, ...(invited ? { invitationToken } : {}) } };
+      request = { mode: "register", data: { ...data, ...(invited ? { invitationToken, email: invitedEmail! } : {}) } };
     } else {
       const { mode: _mode, ...data } = values;
       void _mode;
-      request = { mode: "login", data: { ...data, ...(invited ? { invitationToken } : {}) } };
+      request = { mode: "login", data: { ...data, ...(invited ? { invitationToken, email: invitedEmail! } : {}) } };
     }
 
     try {
@@ -93,6 +127,14 @@ export function AuthForm({ mode, invitationToken }: { mode: AuthMode; invitation
       if (!isApiClientError(error)) {
         const message = "Đã xảy ra lỗi không xác định. Vui lòng thử lại.";
         setError("root.server", { message });
+        toast.error(message);
+        return;
+      }
+
+      if (isRegister && invited && error.status === 409 && error.message === "Email already registered") {
+        const message = "Email này đã đăng ký. Vui lòng đăng nhập để nhận lời mời.";
+        setAccountExists(true);
+        setError("root.server", { type: "server", message });
         toast.error(message);
         return;
       }
@@ -140,8 +182,10 @@ export function AuthForm({ mode, invitationToken }: { mode: AuthMode; invitation
 
         <label className="grid gap-[7px] text-[#253650] text-[length:11px] font-[650]" htmlFor="email">
           <span>Email công việc</span>
-          <span className={`${"relative box-border flex items-center min-h-[50px] border [background:#fff] [transition:border-color_0.18s,box-shadow_0.18s,background_0.18s] rounded-[10px] border-solid border-[#d5deea] focus-within:[background:#fff] focus-within:shadow-[0_0_0_4px_#0870f612] focus-within:border-[#1675f5] [&>_svg]:w-[18px] [&>_svg]:flex-none [&>_svg]:text-[#8290a3] [&>_svg]:ml-3.5 [&_input]:flex-auto [&_input]:w-auto [&_input]:min-w-0 [&_input]:h-12 [&_input]:box-border [&_input]:text-[#111c34] [&_input]:[outline:0] [&_input]:[background:transparent] [&_input]:[font:inherit] [&_input]:px-[13px] [&_input]:py-0 [&_input]:border-0 [&_input]:border-none [&_input]:border-current [&_input]:placeholder:text-[#a0aaba] [&_input]:[font-size:13px] [&_input]:[font-weight:450] [&_input:focus]:[outline:0] [&_input:focus]:shadow-none [&_input:focus-visible]:[outline:0] [&_input:focus-visible]:shadow-none motion-reduce:transition-none"} ${errors.email ? "[background:#fffafa] border-[#d45264] focus-within:shadow-[0_0_0_4px_#d84c6212] focus-within:border-[#c83a50]" : ""}`}><Icon name="mail" /><input id="email" type="email" autoComplete="email" inputMode="email" maxLength={254} aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? "email-error" : undefined} placeholder="ban@doanhnghiep.vn" {...register("email")} /></span>
+          <span className={`${"relative box-border flex items-center min-h-[50px] border [background:#fff] [transition:border-color_0.18s,box-shadow_0.18s,background_0.18s] rounded-[10px] border-solid border-[#d5deea] focus-within:[background:#fff] focus-within:shadow-[0_0_0_4px_#0870f612] focus-within:border-[#1675f5] [&>_svg]:w-[18px] [&>_svg]:flex-none [&>_svg]:text-[#8290a3] [&>_svg]:ml-3.5 [&_input]:flex-auto [&_input]:w-auto [&_input]:min-w-0 [&_input]:h-12 [&_input]:box-border [&_input]:text-[#111c34] [&_input]:[outline:0] [&_input]:[background:transparent] [&_input]:[font:inherit] [&_input]:px-[13px] [&_input]:py-0 [&_input]:border-0 [&_input]:border-none [&_input]:border-current [&_input]:placeholder:text-[#a0aaba] [&_input]:[font-size:13px] [&_input]:[font-weight:450] [&_input:focus]:[outline:0] [&_input:focus]:shadow-none [&_input:focus-visible]:[outline:0] [&_input:focus-visible]:shadow-none motion-reduce:transition-none"} ${errors.email ? "[background:#fffafa] border-[#d45264] focus-within:shadow-[0_0_0_4px_#d84c6212] focus-within:border-[#c83a50]" : ""}`}><Icon name="mail" /><input id="email" type="email" readOnly={invited} autoComplete={invited ? "off" : "email"} inputMode="email" maxLength={254} aria-invalid={Boolean(errors.email)} aria-describedby={errors.email ? "email-error" : undefined} placeholder="ban@doanhnghiep.vn" {...register("email")} /></span>
           <FieldError id="email-error" message={errors.email?.message} />
+          {invited && <span className="text-[11px] font-normal text-[#69788e]">Email này được cố định theo lời mời của tổ chức.</span>}
+          {accountExists && <Link href={`/dang-nhap${inviteQuery}`} className="text-sm font-semibold text-[#0868ed] underline">Đăng nhập để nhận lời mời</Link>}
         </label>
 
         <label className="grid gap-[7px] text-[#253650] text-[length:11px] font-[650]" htmlFor="password">
