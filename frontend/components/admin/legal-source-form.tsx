@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { apiClient } from "@/lib/api/client";
+import { useCreateLegalSourceMutation } from "@/hooks/use-legal-sources";
 
 const field =
   "min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm focus-visible:outline-blue-600";
@@ -13,7 +13,8 @@ export function LegalSourceForm({
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const [pending, setPending] = useState(false);
+  const createMutation = useCreateLegalSourceMutation();
+  const pending = createMutation.isPending;
   const [error, setError] = useState("");
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -54,17 +55,14 @@ export function LegalSourceForm({
       setError("Nhập tên nguồn ít nhất 2 ký tự và mã trích dẫn.");
       return;
     }
-    setPending(true);
     setError("");
     try {
-      await apiClient.post("/admin/legal-sources", body, { timeout: 190000 });
+      await createMutation.mutateAsync(body);
       onSaved();
     } catch (err) {
       setError(
         `${err instanceof Error ? err.message : "Không thể thêm nguồn pháp lý."} Nếu yêu cầu bị gián đoạn, hãy kiểm tra danh sách trước khi gửi lại.`,
       );
-    } finally {
-      setPending(false);
     }
   }
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { contractsApi } from "@/lib/api/contracts";
 import { ApiClientError } from "@/lib/api/client";
-import type { ChatStreamEvent, ContractReviewResult, ContractReviewRun, DashboardContract, ProposedRevisionUpdate } from "@/types/contracts";
+import type { ChatStreamEvent, ContractListResult, ContractReviewResult, ContractReviewRun, DashboardContract, ProposedRevisionUpdate } from "@/types/contracts";
+import type { DashboardContractFilter } from "@/types/dashboard";
 
 type ReviewContractVariables = {
   contractId: string;
@@ -34,6 +35,33 @@ export const contractMutationKeys = {
   text: (contractId: string) => ["contracts", contractId, "text"] as const,
   clauses: (contractId: string) => ["contracts", contractId, "clauses"] as const,
 };
+
+export function useContractsList(
+  filter: DashboardContractFilter & { page?: number; search?: string },
+  options: { queryKey?: QueryKey; initialData?: ContractListResult; retry?: boolean; pollProcessing?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: options.queryKey ?? ["contracts", "list", filter],
+    queryFn: () => contractsApi.list(filter),
+    initialData: options.initialData,
+    retry: options.retry ?? false,
+    refetchInterval: options.pollProcessing
+      ? (query) => query.state.data?.items.some((item) => item.status === "processing") ? 30_000 : false
+      : false,
+  });
+}
+
+export function useContractProfiles() {
+  return useQuery({ queryKey: ["contract-profiles"], queryFn: contractsApi.listProfiles, staleTime: 5 * 60_000 });
+}
+
+export function useContractKeyTerms(contractId: string) {
+  return useQuery({
+    queryKey: ["contracts", contractId, "key-terms"],
+    queryFn: () => contractsApi.getKeyTerms(contractId),
+    enabled: Boolean(contractId),
+  });
+}
 
 export function useContract(contractId: string) {
   return useQuery({

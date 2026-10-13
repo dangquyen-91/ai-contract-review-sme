@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-type ContractTextPayload = {
-  data?: { fileUrl?: string; fileName?: string; mimeType?: string };
+type ContractFilePayload = {
+  data?: { url?: string; fileName?: string; mimeType?: string };
 };
 
 export async function GET(request: NextRequest, context: RouteContext<"/api/contracts/[id]/file">) {
@@ -15,20 +15,21 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/cont
 
   try {
     const metadataResponse = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/text`,
+      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/file`,
       { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" },
     );
     if (!metadataResponse.ok) {
       return NextResponse.json({ error: "Không thể mở file hợp đồng." }, { status: metadataResponse.status });
     }
 
-    const { data }: ContractTextPayload = await metadataResponse.json();
-    if (!data?.fileUrl || !data.mimeType) {
+    const { data }: ContractFilePayload = await metadataResponse.json();
+    if (!data?.url || !data.mimeType) {
       return NextResponse.json({ error: "Hợp đồng không có file gốc." }, { status: 404 });
     }
-    const fileUrl = new URL(data.fileUrl);
-    if (fileUrl.protocol !== "https:" || fileUrl.hostname !== "res.cloudinary.com" ||
-      !/^\/[a-zA-Z0-9_-]+\/(?:image|raw|video)\/upload\//.test(fileUrl.pathname)) {
+    const fileUrl = new URL(data.url);
+    if (fileUrl.protocol !== "https:" || fileUrl.hostname !== "api.cloudinary.com" ||
+      !/^\/v1_1\/[a-zA-Z0-9_-]+\/(?:image|raw|video)\/download$/.test(fileUrl.pathname) ||
+      !fileUrl.searchParams.has("signature") || !fileUrl.searchParams.has("api_key")) {
       return NextResponse.json({ error: "Đường dẫn file không hợp lệ." }, { status: 502 });
     }
 

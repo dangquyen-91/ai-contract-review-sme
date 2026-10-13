@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api/client";
-import type { AuthSession, LoginInput, RefreshTokenResult, RegisterInput } from "@/types/auth";
+import type { AuthSession, LoginInput, LogoutResult, RefreshTokenResult, RegisterInput } from "@/types/auth";
 
 export const authApi = {
   login(input: LoginInput) {
@@ -33,7 +33,7 @@ export const authApi = {
   },
 
   logout() {
-    return apiRequest<{ loggedOut: true }>({
+    return apiRequest<LogoutResult>({
       url: "/auth/logout",
       method: "POST",
     });

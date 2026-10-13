@@ -1,15 +1,9 @@
 @import "tailwindcss";
-:root {
-  @apply [--background:#ffffff] [--foreground:#171717] dark:[--background:#0a0a0a] dark:[--foreground:#ededed];
-}
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-body {
-  @apply [background:var(--background)] text-[color:var(--foreground)] [font-family:Arial,Helvetica,sans-serif];
 }
 
 /* Migrated keyframes */
@@ -58,12 +52,6 @@ body {
 @keyframes shimmer {
  to {
   background-position: -200% 0;
- }
-}
-
-@keyframes spin {
- to {
-  transform: rotate(360deg);
  }
 }
 
@@ -225,12 +213,6 @@ body {
  }
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @keyframes price-in {
   from {
     opacity: .3;
@@ -261,3 +243,27 @@ body {
     opacity: 1;
   }
 }
+
+@keyframes growBar {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes revealDonut {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes reveal { from { opacity: .2; } to { opacity: 1; } }

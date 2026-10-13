@@ -4,6 +4,8 @@ import { ok } from '../utils/ApiResponse';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
 import { openSseStream } from '../utils/sse';
 import * as reviewService from '../services/review/review.service';
+import * as contractService from '../services/contract/contract.service';
+import { assertBusinessReviewContract, assertPersonalReviewContract } from '../services/contract/personalReviewPolicy';
 import { subscribeToReview } from '../services/review/reviewWorker.service';
 import { getIdempotencyKey } from '../validations/subscription.validation';
 
@@ -11,6 +13,9 @@ const STREAM_POLL_MS = 5000;
 
 export const startReviewHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
+  const contract = await contractService.getContractById(user.orgId, req.params.id);
+  if (user.role === 'user') assertPersonalReviewContract(contract.type, contract.ourParty);
+  else assertBusinessReviewContract(contract.type);
   const { review, replayed } = await reviewService.startReview({
     orgId: user.orgId,
     userId: user.sub,
