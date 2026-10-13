@@ -1,5 +1,5 @@
 import { Icon } from "@/components/ui/icon";
-import { ContractTable } from "@/components/dashboard/contracts/contract-list";
+import { ContractTable } from "@/components/contract/contract-table";
 import type { DashboardContract } from "@/types/contracts";
 import type { DashboardData } from "@/types/dashboard";
 

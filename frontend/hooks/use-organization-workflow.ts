@@ -1,27 +1,27 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { useReviewWorkflow } from "@/hooks/use-review-workflow";
+import { reviewErrorMessage, useReviewWorkflow } from "@/hooks/use-review-workflow";
 import { useDashboardWorkspace } from "@/hooks/use-dashboard-workspace";
 import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
 import type { DashboardContractFilter } from "@/types/dashboard";
+import { organizationDashboardPath, organizationDashboardView, type OrganizationDashboardRole, type OrganizationDashboardView } from "@/lib/organization-dashboard-route";
+import { contractsApi } from "@/lib/api/contracts";
 
-export type DashboardTab = "overview" | "upload" | "contracts" | "administration" | "members";
+export type DashboardTab = OrganizationDashboardView;
 
 // Share data and actions while each dashboard owns its role-specific views.
-export function useOrganizationWorkflow(role: "owner" | "manager" | "staff" | "reviewer") {
+export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
   const ownerMode = role === "owner";
   const managerMode = role === "manager";
   const staffMode = role === "staff";
   const reviewerMode = role === "reviewer";
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
-  const requestedView = searchParams.get("view");
-  const activeTab: DashboardTab = (reviewerMode ? requestedView === "review" : requestedView === "upload")
-    ? "upload" : requestedView === "contracts" ? "contracts"
-    : ownerMode && (requestedView === "administration" || requestedView === "members") ? requestedView : "overview";
+  const activeTab = organizationDashboardView(pathname);
   const statusParam = searchParams.get("status");
   const riskParam = searchParams.get("riskLevel");
   const contractFilter: DashboardContractFilter = {
@@ -30,8 +30,28 @@ export function useOrganizationWorkflow(role: "owner" | "manager" | "staff" | "r
   };
   const returnLocation = useRef<{ url: string; scroll: number } | null>(null);
   const returnScroll = useRef<number | null>(null);
+  const openedReviewRequest = useRef<string | null>(null);
   const { data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel } = useDashboardWorkspace();
   const { file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, setUploadedContract, reviewResult, reviewProgress, reviewResultRef, pendingReviewId, retryKind, reviewError, stage, isReviewing, selectedProfile, selectFile, reviewUploadedContract, reviewExisting: performReviewExisting, retryReview } = useReviewWorkflow({ access, initialType: "service" });
+
+  useEffect(() => {
+    const contractId = searchParams.get("contract");
+    if (!contractId) {
+      openedReviewRequest.current = null;
+      return;
+    }
+    if (activeTab !== "upload" || !data || !access.review || openedReviewRequest.current === contractId) return;
+    openedReviewRequest.current = contractId;
+    void (async () => {
+      try {
+        const contract = data.contracts.find((item) => (item.id ?? item._id) === contractId)
+          ?? await contractsApi.getContract(contractId);
+        await performReviewExisting(contract, searchParams.get("rerun") === "1");
+      } catch (requestError) {
+        toast.error("Chưa thể mở hợp đồng", { description: reviewErrorMessage(requestError) });
+      }
+    })();
+  }, [activeTab, data, access.review, searchParams, performReviewExisting]);
 
   useEffect(() => {
     if (activeTab === "upload" || returnScroll.current === null) return;
@@ -43,19 +63,14 @@ export function useOrganizationWorkflow(role: "owner" | "manager" | "staff" | "r
 
   function selectTab(tab: DashboardTab, filter: DashboardContractFilter = {}) {
     if (!ownerMode && (tab === "administration" || tab === "members")) return;
-    if (ownerMode) router.replace(tab === "overview" ? "/dashboard/owner" : `/dashboard/owner?view=${tab}`, { scroll: false });
-    if (staffMode || reviewerMode || managerMode) {
-      const base = reviewerMode ? "/dashboard/reviewer" : managerMode ? "/dashboard/manager" : "/dashboard/staff";
-      const params = new URLSearchParams();
-      if (tab !== "overview") params.set("view", reviewerMode && tab === "upload" ? "review" : tab);
-      if (tab === "contracts") {
-        const search = searchParams.get("search");
-        if (search && activeTab === "contracts") params.set("search", search);
-        if (filter.status) params.set("status", filter.status);
-        if (filter.riskLevel) params.set("riskLevel", filter.riskLevel);
-      }
-      router.replace(`${base}${params.size ? `?${params}` : ""}`, { scroll: false });
+    const params = new URLSearchParams();
+    if (tab === "contracts") {
+      const search = searchParams.get("search");
+      if (search && activeTab === "contracts") params.set("search", search);
+      if (filter.status) params.set("status", filter.status);
+      if (filter.riskLevel) params.set("riskLevel", filter.riskLevel);
     }
+    router.replace(`${organizationDashboardPath(role, tab)}${params.size ? `?${params}` : ""}`, { scroll: false });
   }
 
   function backToWork() {
@@ -72,17 +87,16 @@ export function useOrganizationWorkflow(role: "owner" | "manager" | "staff" | "r
     setUploadedContract(null);
     toast.success("Đã tải hợp đồng lên");
     if (uploadedTitle && (staffMode || managerMode)) {
-      const params = new URLSearchParams({ view: "contracts", search: uploadedTitle, page: "1" });
+      const params = new URLSearchParams({ search: uploadedTitle, page: "1" });
       if (uploadedId) params.set("uploaded", uploadedId);
-      router.replace(`${managerMode ? "/dashboard/manager" : "/dashboard/staff"}?${params}`, { scroll: false });
+      router.replace(`${organizationDashboardPath(role, "contracts")}?${params}`, { scroll: false });
     }
   }
 
   function reviewExisting(contract: DashboardContract, rerun = false) {
     if (!(contract.id ?? contract._id) || contract.status === "archived" || isReviewing) return;
     if (staffMode || reviewerMode || managerMode) {
-      const base = reviewerMode ? "/dashboard/reviewer" : managerMode ? "/dashboard/manager" : "/dashboard/staff";
-      if (activeTab !== "upload") returnLocation.current = { url: `${base}${searchParams.size ? `?${searchParams}` : ""}`, scroll: window.scrollY };
+      if (activeTab !== "upload") returnLocation.current = { url: `${pathname}${searchParams.size ? `?${searchParams}` : ""}`, scroll: window.scrollY };
     }
     selectTab("upload");
     void performReviewExisting(contract, rerun);

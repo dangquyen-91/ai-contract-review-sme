@@ -25,7 +25,10 @@ export function DashboardNavigation({ items, activeKey, onNavigate, contractCoun
         return (
           <div key={item.key} className={mobile ? "shrink-0" : undefined}>
             {!mobile && item.group && <p className="mb-2 mt-4 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400 first:mt-0">{item.group}</p>}
-            {item.href ? <Link href={item.href} aria-current={active ? "page" : undefined} className={className}>{content}</Link> : <button type="button" onClick={() => onNavigate?.(item.key)} aria-current={active ? "page" : undefined} className={className}>{content}</button>}
+            {item.href ? <Link href={item.href} onNavigate={item.workspaceTab && onNavigate ? (event) => {
+              event.preventDefault();
+              onNavigate(item.key);
+            } : undefined} aria-current={active ? "page" : undefined} className={className}>{content}</Link> : <button type="button" onClick={() => onNavigate?.(item.key)} aria-current={active ? "page" : undefined} className={className}>{content}</button>}
           </div>
         );
       })}
