@@ -14,15 +14,9 @@ const envSchema = z.object({
   JWT_REFRESH_REMEMBER_EXPIRES_IN: z.string().default('30d'),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   INVITATION_ACCEPT_URL: z.string().url().default('http://localhost:3000/loi-moi'),
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.coerce.number().int().positive().default(587),
-  SMTP_SECURE: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((value) => value === 'true'),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASSWORD: z.string().optional(),
-  SMTP_FROM: z.string().optional(),
+  BREVO_API_KEY: z.string().optional(),
+  BREVO_SENDER_EMAIL: z.union([z.string().trim().email(), z.literal('')]).optional(),
+  BREVO_SENDER_NAME: z.string().trim().min(1).default('AI Contract Review'),
 
   DATA_ENCRYPTION_KEY: z
     .string()

@@ -1180,7 +1180,7 @@ paths:
     post:
       tags: [Invitations]
       summary: Owner sends an invitation email
-      description: One organization per user. Expires in 7 days. A free business has three seats including Owner; active paid plans use their member limit. Unexpired pending invitations reserve seats, and scheduled downgrade limits apply. SMTP must be configured. Maximum 20 requests per owner per hour. Token is only sent by email.
+      description: One organization per user. Expires in 7 days. A free business has three seats including Owner; active paid plans use their member limit. Unexpired pending invitations reserve seats, and scheduled downgrade limits apply. Brevo API key and verified sender must be configured. Maximum 20 requests per owner per hour. Token is only sent by email.
       requestBody:
         required: true
         content:
@@ -1192,14 +1192,14 @@ paths:
                 email: { type: string, format: email }
                 role: { type: string, enum: [manager, staff, reviewer] }
       responses:
-        '201': { description: Invitation metadata after SMTP acceptance; no token or tokenHash }
+        '201': { description: Invitation metadata after Brevo API acceptance; no token or tokenHash }
         '400': { description: Invalid email or role }
         '401': { description: Missing, expired or stale bearer token }
         '403': { description: Not the owner of this organization }
         '409': { description: Pending invitation exists or recipient already belongs to an organization }
         '429': { description: Invitation request limit exceeded }
-        '502': { description: SMTP delivery request failed; invitation marked delivery_failed }
-        '503': { description: SMTP is not configured }
+        '502': { description: Brevo API delivery request failed; invitation marked delivery_failed }
+        '503': { description: Brevo API key or sender is not configured }
     get:
       tags: [Invitations]
       summary: Owner lists organization invitations
