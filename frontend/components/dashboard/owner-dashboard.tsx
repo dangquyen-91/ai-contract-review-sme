@@ -1,20 +1,32 @@
 "use client";
 
-import { Icon } from "@/components/ui/icon";
-import { ContractTable, OrganizationDashboard } from "@/components/dashboard/organization-dashboard";
-import type { DashboardContract } from "@/types/contracts";
-import type { DashboardData } from "@/types/dashboard";
+import { AdministrationView } from "./owner/administration-view";
+import { ContractsView, RecentContracts } from "./contracts/contract-list";
+import { OwnerMembersView } from "@/components/dashboard/owner/owner-members-view";
+import { OwnerOverview } from "@/components/dashboard/owner/owner-overview";
+import memberStyles from "./member/member-insights.module.css";
+import styles from "./owner/owner-typography.module.css";
 
+import { useOrganizationWorkflow } from "@/hooks/use-organization-workflow";
+import { OrganizationWorkspace } from "./organization-workspace";
+import { OrganizationUpload, UploadedReviewDialog } from "./organization-review-panels";
 export function OwnerDashboard() {
-  return <OrganizationDashboard role="owner" Overview={OwnerOverview} />;
-}
-function OwnerOverview({ data, onUpload, onViewContracts, onMembers, onReview, isReviewing }: { data: DashboardData; onUpload: () => void; onViewContracts: () => void; onMembers: () => void; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean }) {
-  return <>
-    <section className="flex [align-items:end] justify-between gap-7 [&_h1]:text-[length:clamp(30px,3vw,42px)] [&_h1]:leading-[1.12] [&_h1]:tracking-[-1.5px] [&_h1]:mt-[7px] [&_h1]:mb-0 [&_h1]:mx-0 [&_div_>_p]:last:max-w-[660px] [&_div_>_p]:last:text-[color:var(--muted)] [&_div_>_p]:last:text-[length:13px] [&_div_>_p]:last:leading-[1.6] [&_div_>_p]:last:mt-[9px] [&_div_>_p]:last:mb-0 [&_div_>_p]:last:mx-0 [@media_(max-width:_580px)]:items-start [@media_(max-width:_580px)]:flex-col [&_h1]:[@media_(max-width:_580px)]:text-[length:31px]"><div><p className="text-[color:var(--accent)] text-[length:10px] font-[780] tracking-[1.1px] uppercase m-0">Dashboard owner</p><h1>Tổng quan tổ chức</h1><p>Theo dõi hợp đồng, tình trạng rà soát và những rủi ro cần ưu tiên xử lý.</p></div><button className="min-h-[42px] inline-flex items-center gap-3 flex-none text-[white] [background:var(--accent)] text-[length:10px] font-bold px-[15px] py-0 rounded-[9px] hover:[background:var(--accent-dark)] [&_svg]:w-[15px] [@media_(max-width:_580px)]:w-full [@media_(max-width:_580px)]:justify-between" type="button" onClick={onUpload}>Tải hợp đồng mới <Icon name="arrow" /></button></section>
-    <section className="grid grid-cols-4 overflow-hidden border border-[color:var(--line)] [background:white] mt-7 rounded-[14px] border-solid [&_article]:[border-right:1px_solid_var(--line)] [&_article]:px-[21px] [&_article]:py-5 [&_article]:last:[border-right:0] [&:is(span,_small)]:block [&:is(span,_small)]:text-[color:var(--muted)] [&:is(span,_small)]:text-[length:10px] [&_strong]:block [&_strong]:text-[length:30px] [&_strong]:leading-none [&_strong]:[font-variant-numeric:tabular-nums] [&_strong]:mt-[7px] [&_strong]:mb-[5px] [&_strong]:mx-0 [&_article:nth-child(3)_strong]:text-[#aa3449] [@media_(max-width:_820px)]:grid-cols-[1fr_1fr] [&_article:nth-child(2)]:[@media_(max-width:_820px)]:[border-right:0] [&_article:nth-child(-n+2)]:[@media_(max-width:_820px)]:[border-bottom:1px_solid_var(--line)]" aria-label="Chỉ số hợp đồng"><article><span>Tổng hợp đồng</span><strong>{data.totalContracts}</strong><small>Trong tổ chức</small></article><article><span>Đang xử lý</span><strong>{data.stats.processing}</strong><small>Cần theo dõi</small></article><article><span>Rủi ro cao</span><strong>{data.stats.highRisk}</strong><small>Cần ưu tiên xem</small></article><article><span>Đã rà soát</span><strong>{data.stats.reviewed}</strong><small>Sẵn sàng quyết định</small></article></section>
-    <div className="grid grid-cols-[minmax(0,1.7fr)_minmax(260px,0.7fr)] gap-5 [align-items:start] [@media_(max-width:_1100px)]:grid-cols-[1fr]">
-      <section className="border border-[color:var(--line)] [background:white] shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)] rounded-[14px] border-solid min-w-0 overflow-hidden mt-5"><header className="flex items-center justify-between gap-5 [border-bottom:1px_solid_var(--line)] px-[21px] py-[18px] [&_h2]:text-[length:14px] [&_h2]:m-0 [&_p]:text-[color:var(--muted)] [&_p]:text-[length:10px] [&_p]:mt-[3px] [&_p]:mb-0 [&_p]:mx-0 [&>_button]:inline-flex [&>_button]:items-center [&>_button]:gap-[9px] [&>_button]:text-[color:var(--accent)] [&>_button]:[background:transparent] [&>_button]:[font:inherit] [&>_button]:cursor-pointer [&>_button]:border-0 [&>_button]:border-none [&>_button]:border-current [&>_button]:[font-size:10px] [&>_button]:[font-weight:700] [&>_button_svg]:w-3.5 [@media_(max-width:_580px)]:[padding-inline:16px]"><div><h2>Hợp đồng gần đây</h2><p>Cập nhật mới nhất của tổ chức.</p></div>{data.contracts.length > 0 && <button type="button" onClick={onViewContracts}>Xem tất cả <Icon name="arrow" /></button>}</header><ContractTable contracts={data.contracts.slice(0, 5)} canReview onReview={onReview} isReviewing={isReviewing} /></section>
-      <aside className="grid gap-4 mt-5 [&_section]:border [&_section]:border-[color:var(--line)] [&_section]:[background:white] [&_section]:p-5 [&_section]:rounded-[14px] [&_section]:border-solid [&_section_>_span]:w-[38px] [&_section_>_span]:h-[38px] [&_section_>_span]:grid [&_section_>_span]:place-items-center [&_section_>_span]:text-[color:var(--accent)] [&_section_>_span]:[background:#eaf1ff] [&_section_>_span]:rounded-[9px] [&_section_>_span_svg]:w-[18px] [&_h2]:text-[length:14px] [&_h2]:mt-3.5 [&_h2]:mb-0 [&_h2]:mx-0 [&_p]:text-[color:var(--muted)] [&_p]:text-[length:10px] [&_p]:leading-normal [&_p]:mt-1 [&_p]:mb-0 [&_p]:mx-0 [&_dl]:grid [&_dl]:gap-2.5 [&_dl]:[border-top:1px_solid_var(--line)] [&_dl]:mt-4 [&_dl]:mb-0 [&_dl]:mx-0 [&_dl]:pt-3.5 [&_dl_>_div]:grid [&_dl_>_div]:grid-cols-[88px_minmax(0,1fr)] [&_dl_>_div]:gap-2 [&_dl_>_div]:text-[length:9px] [&_dt]:text-[color:var(--muted)] [&_dd]:font-[650] [&_dd]:[overflow-wrap:anywhere] [&_dd]:m-0 [&_a]:inline-flex [&_a]:items-center [&_a]:gap-2 [&_a]:text-[color:var(--accent)] [&_a]:text-[length:10px] [&_a]:font-bold [&_a]:mt-3.5 [&_a_svg]:w-3.5 [@media_(max-width:_1100px)]:grid-cols-[1fr_1fr] [@media_(max-width:_1100px)]:mt-0 [@media_(max-width:_820px)]:grid-cols-[1fr]"><section><span><Icon name="building" /></span><h2>{data.organization.name}</h2><p>Thông tin tổ chức</p><dl><div><dt>Mã số thuế</dt><dd>{data.organization.taxCode ?? "Chưa cập nhật"}</dd></div><div><dt>Địa chỉ</dt><dd>{data.organization.address ?? "Chưa cập nhật"}</dd></div><div><dt>Vai trò</dt><dd>Chủ tổ chức</dd></div></dl></section><section><span><Icon name="team" /></span><h2>Quản trị thành viên</h2><p>Quản lý thông tin và quyền truy cập của tổ chức trong cùng không gian làm việc.</p>{data.role === "owner" ? <button type="button" onClick={onMembers}>Quản lý lời mời <Icon name="arrow" /></button> : <span className="mt-3.5 inline-block text-[10px] text-[#8b94a1]">Chỉ Owner có quyền quản lý lời mời</span>}</section></aside>
-    </div>
+    const workspace = useOrganizationWorkflow("owner");
+    const { activeTab, data, access, roleLabel, selectTab, reviewExisting, retryKind, reviewError, isReviewing, retryReview } = workspace;
+    if (!data) return <OrganizationWorkspace role="owner" workspace={workspace}>{null}</OrganizationWorkspace>;
+    const recentContracts = <RecentContracts memberMode={false} contracts={data.contracts.slice(0, 5)} canReview={access.review} onReview={reviewExisting} isReviewing={isReviewing} onViewAll={() => selectTab("contracts")}/>;
+    return <>
+    <OrganizationWorkspace role="owner" workspace={workspace} mainClassName={[activeTab === "overview" && styles.overview, activeTab === "upload" && styles.upload, activeTab === "contracts" && styles.contracts, activeTab === "administration" && styles.administration, activeTab === "members" && styles.members].filter(Boolean).join(" ")}>
+          {reviewError && activeTab === "upload" && <div className={memberStyles.errorBanner} role="alert"><p>{reviewError}</p><button type="button" onClick={retryReview} disabled={isReviewing}>{retryKind === "load" ? "Tải lại kết quả" : "Thử phân tích lại"}</button></div>}
+          {activeTab === "overview" && (<OwnerOverview data={data} onUpload={() => selectTab("upload")} onViewContracts={() => selectTab("contracts")} onMembers={() => selectTab("members")} onReview={reviewExisting} isReviewing={isReviewing}/>)}
+          {activeTab === "upload" && <>
+            <OrganizationUpload workspace={workspace} showInlineRetry showAiContext={false} />
+            {recentContracts}
+          </>}
+          {activeTab === "contracts" && <ContractsView contracts={data.contracts} canReview={access.review} onReview={reviewExisting} isReviewing={isReviewing}/>}
+          {activeTab === "administration" && access.administer && <AdministrationView organization={data.organization} roleLabel={roleLabel} onMembers={() => selectTab("members")}/>}
+          {activeTab === "members" && data.role === "owner" && <OwnerMembersView orgId={data.organization.id} organizationName={data.organization.name}/>}
+    </OrganizationWorkspace>
+      <UploadedReviewDialog workspace={workspace} />
   </>;
 }

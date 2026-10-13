@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ManagerDashboard } from "@/components/dashboard/manager-dashboard";
-import { StaffOrganizationRequired } from "@/components/dashboard/staff-organization-required";
+import { StaffOrganizationRequired } from "@/components/dashboard/overview/staff-organization-required";
 import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { workspacePath } from "@/lib/workspace-path";
 

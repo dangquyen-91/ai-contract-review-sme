@@ -1,55 +1,23 @@
-"use client";
+﻿"use client";
 
 import { useRouter } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { Fragment, useState } from "react";
 import { Icon } from "@/components/ui/icon";
+import { contractTypeLabels, contractStatusLabels, contractRiskLabels, contractStatusClasses, contractRiskClasses, formatContractDate } from "@/config/contract-display";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { paginationPageParser } from "@/hooks/use-pagination-page";
 import { useContractsList } from "@/hooks/use-contracts";
-import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
-import { UserDashboardShell, type UserDashboardContext } from "@/components/dashboard/user-dashboard-shell";
+import type { DashboardContract } from "@/types/contracts";
+import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
 
-const typeLabels: Record<string, string> = {
-  sales: "Mua bán hàng hóa", service: "Cung ứng dịch vụ",
-  labor: "Hợp đồng lao động", office_lease: "Thuê văn phòng", housing_purchase: "Mua bán nhà ở", life_insurance: "Bảo hiểm nhân thọ",
-};
-
-const statusLabels: Record<ContractStatus, string> = {
-  uploaded: "Đã tải lên", processing: "AI đang xử lý", reviewed: "Đã rà soát", archived: "Lưu trữ",
-};
-
-const riskLabels: Record<ContractRiskLevel, string> = {
-  high: "Rủi ro cao", medium: "Trung bình", low: "Rủi ro thấp", none: "Chưa đánh giá",
-};
-
-const statusClasses: Record<ContractStatus, string> = {
-  uploaded: "text-[#53677f] bg-[#eef2f6]",
-  processing: "text-[#1557ae] bg-[#e7f0ff]",
-  reviewed: "text-[#206c59] bg-[#e8f5f1]",
-  archived: "text-[#6a7280] bg-[#eff1f3]",
-};
-
-const riskClasses: Record<ContractRiskLevel, string> = {
-  high: "text-[#a63045] bg-[#fff0f2]",
-  medium: "text-[#875a00] bg-[#fff4dc]",
-  low: "text-[#20705d] bg-[#e8f5f1]",
-  none: "text-[#75808e] bg-[#f0f2f5]",
-};
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
-}
-
-export default function ContractPage() { return <UserDashboardShell view="contract">{(context) => <ContractContent {...context} />}</UserDashboardShell>; }
-
-function ContractContent({ data, access }: UserDashboardContext) {
+export function ContractContent({ data, access }: DashboardWorkspaceContext) {
   const router = useRouter();
   function openReview(contract: DashboardContract, rerun = false) {
     const contractId = contract.id ?? contract._id;
     if (!contractId) return;
-    router.push(`/dashboard/user/review?contract=${encodeURIComponent(contractId)}${rerun ? "&rerun=1" : ""}`);
+    router.push(`/dashboard/${data.role}/review?contract=${encodeURIComponent(contractId)}${rerun ? "&rerun=1" : ""}`);
   }
   return <ContractsView contracts={data.contracts} totalContracts={data.totalContracts} canReview={access.review} onReview={openReview} isReviewing={false} />;
 }
@@ -128,10 +96,10 @@ function ContractTable({ contracts, canReview, onReview, isReviewing }: { contra
     </TableHeader>
     <TableBody>
       {contracts.map((contract) => <TableRow key={contract.id ?? contract._id ?? contract.title} className="hover:bg-[#fbfcff]">
-        <TableCell><div className="flex min-w-0 items-center gap-3"><span className="grid h-8 w-8 flex-none place-items-center rounded-md bg-[#edf3ff] text-[#2864dc] [&_svg]:size-4"><Icon name="document" /></span><div className="min-w-0"><strong className="block truncate text-[13px] font-semibold leading-5 text-[#263750]" title={contract.title}>{contract.title}</strong><small className="block truncate text-[11px] leading-4 text-[#8996a9]">{typeLabels[contract.type] ?? contract.type}</small></div></div></TableCell>
-        <TableCell><span className={`inline-flex max-w-full whitespace-nowrap rounded-[5px] px-2 py-1 text-[11px] font-medium leading-4 ${statusClasses[contract.status]}`}>{statusLabels[contract.status]}</span></TableCell>
-        <TableCell><span className={`inline-flex max-w-full whitespace-nowrap rounded-[5px] px-2 py-1 text-[11px] font-medium leading-4 ${riskClasses[contract.overallRiskLevel]}`}>{riskLabels[contract.overallRiskLevel]}</span></TableCell>
-        <TableCell className="whitespace-nowrap text-xs tabular-nums text-[#6b7a90]"><time dateTime={contract.updatedAt}>{formatDate(contract.updatedAt)}</time></TableCell>
+        <TableCell><div className="flex min-w-0 items-center gap-3"><span className="grid h-8 w-8 flex-none place-items-center rounded-md bg-[#edf3ff] text-[#2864dc] [&_svg]:size-4"><Icon name="document" /></span><div className="min-w-0"><strong className="block truncate text-[13px] font-semibold leading-5 text-[#263750]" title={contract.title}>{contract.title}</strong><small className="block truncate text-[11px] leading-4 text-[#8996a9]">{contractTypeLabels[contract.type] ?? contract.type}</small></div></div></TableCell>
+        <TableCell><span className={`inline-flex max-w-full whitespace-nowrap rounded-[5px] px-2 py-1 text-[11px] font-medium leading-4 ${contractStatusClasses[contract.status]}`}>{contractStatusLabels[contract.status]}</span></TableCell>
+        <TableCell><span className={`inline-flex max-w-full whitespace-nowrap rounded-[5px] px-2 py-1 text-[11px] font-medium leading-4 ${contractRiskClasses[contract.overallRiskLevel]}`}>{contractRiskLabels[contract.overallRiskLevel]}</span></TableCell>
+        <TableCell className="whitespace-nowrap text-xs tabular-nums text-[#6b7a90]"><time dateTime={contract.updatedAt}>{formatContractDate(contract.updatedAt)}</time></TableCell>
         <TableCell>{canReview && <div className="flex items-center gap-3 whitespace-nowrap">
           <button type="button" onClick={() => onReview(contract)} disabled={isReviewing || contract.status === "archived"} className="inline-flex min-h-8 items-center justify-center gap-1.5 whitespace-nowrap rounded-md border border-[#d8e4fa] bg-[#f6f9ff] px-2.5 text-[11px] font-semibold text-[#2256b6] transition-colors hover:border-[#b6cdf5] hover:bg-[#edf4ff] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2864dc] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-3.5"><Icon name={contract.status === "reviewed" ? "document" : "sparkle"} />{contract.status === "reviewed" ? "Xem kết quả" : contract.status === "processing" ? "Theo dõi xử lý" : "AI review"}</button>
           {contract.status === "reviewed" && <button type="button" onClick={() => onReview(contract, true)} disabled={isReviewing} className="inline-flex min-h-8 items-center justify-center gap-1 whitespace-nowrap rounded-md px-1.5 text-[11px] font-medium text-[#526987] transition-colors hover:bg-[#f1f5fb] hover:text-[#2256b6] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2864dc] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-3.5"><Icon name="sparkle" />Rà soát lại</button>}
@@ -140,3 +108,4 @@ function ContractTable({ contracts, canReview, onReview, isReviewing }: { contra
     </TableBody>
   </Table>;
 }
+

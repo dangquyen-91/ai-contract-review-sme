@@ -1,7 +1,7 @@
-import { MemberPriorityQueue } from "./member-priority-queue";
+import { MemberPriorityQueue } from "../member/member-priority-queue";
 import type { DashboardContract } from "@/types/contracts";
 import { Icon } from "@/components/ui/icon";
-import { MemberContractChart } from "./member-contract-chart";
+import { MemberContractChart } from "../member/member-contract-chart";
 import type { DashboardContractFilter, DashboardData } from "@/types/dashboard";
 import styles from "./staff-overview.module.css";
 import manager from "./manager-overview.module.css";

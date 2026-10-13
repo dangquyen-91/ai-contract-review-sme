@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
-import type { NavigationItem } from "../../config/navigation-config";
+import type { NavigationItem } from "@/config/dashboard-navigation";
 
 type NavigationProps = {
   items: NavigationItem[];

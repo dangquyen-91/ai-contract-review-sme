@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { StaffDashboard } from "@/components/dashboard/staff-dashboard";
 import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { workspacePath } from "@/lib/workspace-path";
-import { StaffOrganizationRequired } from "@/components/dashboard/staff-organization-required";
+import { StaffOrganizationRequired } from "@/components/dashboard/overview/staff-organization-required";
 
 export const metadata: Metadata = {
   title: "Không gian nhân viên | LawScan",

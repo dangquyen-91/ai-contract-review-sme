@@ -1,10 +1,10 @@
-import { QuickContractUpload } from "./quick-contract-upload";
+import { QuickContractUpload } from "../member/quick-contract-upload";
 import { Icon } from "@/components/ui/icon";
 import type { DashboardContract } from "@/types/contracts";
 import type { DashboardContractFilter, DashboardData } from "@/types/dashboard";
-import { MemberPriorityQueue } from "./member-priority-queue";
-import { MemberContractChart } from "./member-contract-chart";
-import insights from "./member-insights.module.css";
+import { MemberPriorityQueue } from "../member/member-priority-queue";
+import { MemberContractChart } from "../member/member-contract-chart";
+import insights from "../member/member-insights.module.css";
 import styles from "./staff-overview.module.css";
 
 export function StaffOverview({

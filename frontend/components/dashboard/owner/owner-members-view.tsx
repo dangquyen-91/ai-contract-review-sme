@@ -5,7 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Icon } from "@/components/ui/icon";
-import { MemberCapacityDialog } from "@/components/dashboard/member-capacity-dialog";
+import { MemberCapacityDialog } from "@/components/dashboard/owner/member-capacity-dialog";
 import { useCreateInvitationMutation, useMemberSubscription, useOrganizationInvitations, useOrganizationMembers, useRevokeInvitationMutation } from "@/hooks/use-invitations";
 import { isApiClientError } from "@/lib/api/client";
 import type { InvitationRole, InvitationStatus } from "@/types/invitations";

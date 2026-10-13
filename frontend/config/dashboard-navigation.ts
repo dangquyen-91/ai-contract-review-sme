@@ -1,6 +1,6 @@
 import type { Icon } from "@/components/ui/icon";
+import type { DashboardRole } from "./dashboard-roles";
 
-export type DashboardRole = "administrator" | "owner" | "manager" | "staff" | "reviewer" | "user";
 export type NavigationItem = {
   key: string;
   label: string;
@@ -17,7 +17,7 @@ const adminNavigation: NavigationItem[] = [
   { key: "organizations", href: "/dashboard/admin/organizations", label: "Tổ chức", icon: "building", pending: true, mobile: true },
   { key: "users", href: "/dashboard/admin/users", label: "Người dùng", icon: "team", pending: true, mobile: true },
   { key: "ai-jobs", href: "/dashboard/admin/ai-jobs", label: "Giám sát AI", icon: "sparkle", group: "Vận hành", pending: true, mobile: true },
-  { key: "legal-sources", href: "/dash  board/admin/legal-sources", label: "Kho pháp lý", icon: "scales", mobile: true },
+  { key: "legal-sources", href: "/dashboard/admin/legal-sources", label: "Kho pháp lý", icon: "scales", mobile: true },
   { key: "reports", href: "/dashboard/admin/reports", label: "Báo cáo & thống kê", icon: "chart", pending: true, mobile: true },
   { key: "audit-log", href: "/dashboard/admin/audit-log", label: "Nhật ký quản trị", icon: "shield", pending: true, mobile: true },
 ];
@@ -37,12 +37,12 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
   ];
 
   return [
-    { key: "overview", label: "Tổng quan", icon: "building", group: role === "owner" ? "Quản lý tổ chức" : "Không gian làm việc", mobile: true },
-    { key: "upload", label: role === "reviewer" ? "Rà soát hợp đồng" : "Tải & rà soát", icon: role === "reviewer" ? "shield" : "upload", mobile: true },
-    { key: "contracts", label: "Hợp đồng", icon: "document", count: true, mobile: true },
+    { key: "overview", href: role === "owner" || role === "manager" || role === "staff" ? `/dashboard/${role}` : undefined, label: "Tổng quan", icon: "building", group: role === "owner" ? "Quản lý tổ chức" : "Không gian làm việc", mobile: true },
+    { key: "upload", href: role === "owner" || role === "manager" || role === "staff" ? `/dashboard/${role}/review` : undefined, label: role === "reviewer" ? "Rà soát hợp đồng" : "Tải & rà soát", icon: role === "reviewer" ? "shield" : "upload", mobile: true },
+    { key: "contracts", href: role === "owner" || role === "manager" || role === "staff" ? `/dashboard/${role}/contract` : undefined, label: "Hợp đồng", icon: "document", count: true, mobile: true },
     ...(role === "owner" ? [
-      { key: "administration", label: "Quản trị", icon: "team" as const, mobile: true },
-      { key: "members", label: "Thành viên & lời mời", icon: "team" as const, mobile: true },
+      { key: "administration", href: "/dashboard/owner?view=administration", label: "Quản trị", icon: "team" as const, mobile: true },
+      { key: "members", href: "/dashboard/owner?view=members", label: "Thành viên & lời mời", icon: "team" as const, mobile: true },
     ] : []),
     ...supportNavigation,
   ];
