@@ -13,4 +13,3 @@ export const roleLabels: Record<string, string> = {
   administrator: "Quản trị viên", owner: "Chủ tổ chức", manager: "Quản lý",
   staff: "Nhân viên", reviewer: "Chuyên viên rà soát", user: "Người dùng",
 };
-

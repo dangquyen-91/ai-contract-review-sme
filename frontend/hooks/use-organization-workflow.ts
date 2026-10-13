@@ -1,14 +1,15 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import { toast } from "sonner";
 import { reviewErrorMessage, useReviewWorkflow } from "@/hooks/use-review-workflow";
 import { useDashboardWorkspace } from "@/hooks/use-dashboard-workspace";
 import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
 import type { DashboardContractFilter } from "@/types/dashboard";
 import { organizationDashboardPath, organizationDashboardView, type OrganizationDashboardRole, type OrganizationDashboardView } from "@/lib/organization-dashboard-route";
-import { contractsApi } from "@/lib/api/contracts";
+import { useLoadContract } from "@/hooks/use-contracts";
+import { isReviewCancelled } from "@/lib/review-session";
 
 export type DashboardTab = OrganizationDashboardView;
 
@@ -32,7 +33,9 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
   const returnScroll = useRef<number | null>(null);
   const openedReviewRequest = useRef<string | null>(null);
   const { data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel } = useDashboardWorkspace();
-  const { file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, setUploadedContract, reviewResult, reviewProgress, reviewResultRef, pendingReviewId, retryKind, reviewError, stage, isReviewing, selectedProfile, selectFile, reviewUploadedContract, reviewExisting: performReviewExisting, retryReview } = useReviewWorkflow({ access, initialType: "service" });
+  const { file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, setUploadedContract, reviewResult, reviewProgress, reviewResultRef, pendingReviewId, retryKind, reviewError, stage, isReviewing, selectedProfile, selectFile, reviewUploadedContract, reviewExisting: performReviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing, loadingResult, reconnecting } = useReviewWorkflow({ access, initialType: "service", reviewPath: organizationDashboardPath(role, "upload") });
+  const openReview = useEffectEvent(performReviewExisting);
+  const loadContract = useLoadContract();
 
   useEffect(() => {
     const contractId = searchParams.get("contract");
@@ -42,16 +45,29 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
     }
     if (activeTab !== "upload" || !data || !access.review || openedReviewRequest.current === contractId) return;
     openedReviewRequest.current = contractId;
+    if (activeReviewRequest.current === contractId) return;
+    let cancelled = false;
+    let initiated = false;
     void (async () => {
       try {
+        await Promise.resolve();
+        if (cancelled) return;
         const contract = data.contracts.find((item) => (item.id ?? item._id) === contractId)
-          ?? await contractsApi.getContract(contractId);
-        await performReviewExisting(contract, searchParams.get("rerun") === "1");
+          ?? await loadContract(contractId);
+        if (!cancelled) {
+          initiated = true;
+          await openReview(contract, searchParams.get("rerun") === "1", searchParams.get("reviewMode") === "resume");
+        }
       } catch (requestError) {
+        if (cancelled || isReviewCancelled(requestError)) return;
         toast.error("Chưa thể mở hợp đồng", { description: reviewErrorMessage(requestError) });
       }
     })();
-  }, [activeTab, data, access.review, searchParams, performReviewExisting]);
+    return () => {
+      cancelled = true;
+      if (!initiated && openedReviewRequest.current === contractId) openedReviewRequest.current = null;
+    };
+  }, [activeTab, data, access.review, searchParams, activeReviewRequest, loadContract]);
 
   useEffect(() => {
     if (activeTab === "upload" || returnScroll.current === null) return;
@@ -101,7 +117,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
     selectTab("upload");
     void performReviewExisting(contract, rerun);
   }
-  return { activeTab, searchParams, contractFilter, data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel, selectTab, backToWork, skipUploadedReview, reviewExisting, file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, reviewResult, reviewProgress, reviewResultRef, pendingReviewId, retryKind, reviewError, stage, isReviewing, selectedProfile, selectFile, reviewUploadedContract, retryReview };
+  return { activeTab, searchParams, contractFilter, data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel, selectTab, backToWork, skipUploadedReview, reviewExisting, file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, reviewResult, reviewProgress, reviewResultRef, pendingReviewId, retryKind, reviewError, stage, isReviewing, selectedProfile, selectFile, reviewUploadedContract, retryReview, workflowComplete, reviewing, loadingResult, reconnecting };
 }
 
 export type OrganizationWorkflow = ReturnType<typeof useOrganizationWorkflow>;

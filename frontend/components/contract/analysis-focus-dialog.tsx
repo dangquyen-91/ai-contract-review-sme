@@ -35,13 +35,13 @@ export function AnalysisFocusDialog({ contractTitle, isReviewing, onDismiss, onR
     >
       <form onSubmit={submit} className="p-6 [@media_(max-width:_580px)]:p-5">
         <div className="w-11 h-11 grid place-items-center text-[color:var(--accent)] [background:#eaf1ff] rounded-xl [&_svg]:w-5"><Icon name="sparkle" /></div>
-        <h2 id="analysis-focus-title" className="text-[length:20px] mt-4 mb-0">AI cần tập trung vào</h2>
-        <p id="analysis-focus-description" className="text-[color:var(--muted)] text-[length:12px] leading-[1.6] mt-2 mb-0">Đã tải lên “{contractTitle}”. Bạn có thể nêu điều khoản cần ưu tiên trước khi rà soát.</p>
-        <label htmlFor="analysis-focus-input" className="block text-[#34435a] text-[length:11px] font-bold mt-5 mb-2">Trọng tâm rà soát <span className="text-[#929dab] font-normal">(không bắt buộc)</span></label>
-        <textarea id="analysis-focus-input" autoFocus value={focus} onChange={(event) => setFocus(event.target.value)} placeholder="Ví dụ: ưu tiên điều khoản thanh toán, phạt vi phạm và chấm dứt hợp đồng..." maxLength={1000} className="w-full min-h-28 resize-y border border-[#d8e0ea] [background:white] text-[color:var(--ink)] text-[length:12px] leading-normal p-3 rounded-[9px]" />
+        <h2 id="analysis-focus-title" className="text-ui-dialog mt-4 mb-0">AI cần tập trung vào</h2>
+        <p id="analysis-focus-description" className="text-[color:var(--muted)] text-ui leading-[1.6] mt-2 mb-0">Đã tải lên “{contractTitle}”. Bạn có thể nêu điều khoản cần ưu tiên trước khi rà soát.</p>
+        <label htmlFor="analysis-focus-input" className="block text-[#34435a] text-ui font-bold mt-5 mb-2">Trọng tâm rà soát <span className="text-[#929dab] font-normal">(không bắt buộc)</span></label>
+        <textarea id="analysis-focus-input" autoFocus value={focus} onChange={(event) => setFocus(event.target.value)} placeholder="Ví dụ: ưu tiên điều khoản thanh toán, phạt vi phạm và chấm dứt hợp đồng..." maxLength={1000} className="w-full min-h-28 resize-y border border-[#d8e0ea] [background:white] text-[color:var(--ink)] text-ui-document leading-[1.6] p-3 rounded-[9px]" />
         <div className="flex justify-end gap-2.5 mt-5 [@media_(max-width:_580px)]:flex-col-reverse">
-          <button type="button" onClick={() => onReview("")} disabled={isReviewing} className="min-h-[42px] border border-[#d8e0ea] [background:white] text-[#526178] text-[length:11px] font-bold px-4 rounded-[9px] cursor-pointer disabled:opacity-50">Bỏ qua</button>
-          <button type="submit" disabled={isReviewing} className="min-h-[42px] inline-flex items-center justify-center gap-2 border-0 [background:var(--accent)] text-white text-[length:11px] font-bold px-4 rounded-[9px] cursor-pointer hover:[background:var(--accent-dark)] disabled:opacity-50"><Icon name="sparkle" />{isReviewing ? "AI đang rà soát..." : "Rà soát"}</button>
+          <button type="button" onClick={() => onReview("")} disabled={isReviewing} className="min-h-[46px] border border-[#d8e0ea] [background:white] text-[#526178] text-ui font-bold px-4 rounded-[9px] cursor-pointer disabled:opacity-50">Bỏ qua</button>
+          <button type="submit" disabled={isReviewing} className="min-h-[46px] inline-flex items-center justify-center gap-2 border-0 [background:var(--accent)] text-white text-ui font-bold px-4 rounded-[9px] cursor-pointer hover:[background:var(--accent-dark)] disabled:opacity-50"><Icon name="sparkle" />{isReviewing ? "AI đang rà soát..." : "Rà soát"}</button>
         </div>
       </form>
     </dialog>

@@ -12,9 +12,9 @@ export function OrganizationUpload({ workspace, showInlineRetry = false, showAiC
   showInlineRetry?: boolean;
   showAiContext?: boolean;
 }) {
-  const { access, roleLabel, file, title, contractType, selectedProfile, ourParty, industry, stage, selectFile, setTitle, setContractType, setOurParty, setIndustry, reviewProgress, pendingReviewId, retryReview, reviewResult, reviewResultRef } = workspace;
+  const { access, roleLabel, file, title, contractType, selectedProfile, ourParty, industry, stage, selectFile, setTitle, setContractType, setOurParty, setIndustry, reviewProgress, pendingReviewId, retryReview, reviewResult, reviewResultRef, reviewing, loadingResult, reconnecting, reviewError, retryKind } = workspace;
   const availableTypeLabels = businessTypeLabels;
-  return <ReviewUploadWorkspace access={access} roleLabel={roleLabel} formProps={{ file, title, contractType, typeLabels: availableTypeLabels, profile: selectedProfile, ourParty, industry, isUploading: stage === "uploading", onFileChange: selectFile, onTitleChange: setTitle, onContractTypeChange: (value) => { setContractType(value); setOurParty(""); }, onOurPartyChange: setOurParty, onIndustryChange: setIndustry }} stage={stage} reviewProgress={reviewProgress} pendingReviewId={pendingReviewId} showInlineRetry={showInlineRetry} onRetry={retryReview} reviewResult={reviewResult} resultRef={reviewResultRef} canAsk showAiContext={showAiContext}/>;
+  return <ReviewUploadWorkspace access={access} roleLabel={roleLabel} formProps={{ file, title, contractType, typeLabels: availableTypeLabels, profile: selectedProfile, ourParty, industry, isUploading: stage === "uploading", onFileChange: selectFile, onTitleChange: setTitle, onContractTypeChange: (value) => { setContractType(value); setOurParty(""); }, onOurPartyChange: setOurParty, onIndustryChange: setIndustry }} stage={stage} reviewing={reviewing} loadingResult={loadingResult} reconnecting={reconnecting} reviewError={reviewError} retryKind={retryKind} reviewProgress={reviewProgress} pendingReviewId={pendingReviewId} showInlineRetry={showInlineRetry} onRetry={retryReview} reviewResult={reviewResult} resultRef={reviewResultRef} canAsk showAiContext={showAiContext}/>;
 }
 
 export function UploadedReviewDialog({ workspace }: { workspace: OrganizationWorkflow }) {

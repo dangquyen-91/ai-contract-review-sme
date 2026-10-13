@@ -35,6 +35,9 @@ export type ContractListResult = { items: DashboardContract[]; total: number };
 
 export type ContractTextResult = {
   text: string;
+  redacted: boolean;
+  redactionMode?: "token" | "partial";
+  redactionSpans?: { type: string; start: number; end: number }[];
   extractionStatus: NonNullable<DashboardContract["currentVersion"]>["extractionStatus"];
   fileName?: string;
   mimeType?: string;
@@ -87,8 +90,7 @@ export type ProposedRevisionUpdate = { revisedText?: string; reason?: string };
 export type ContractReviewResult = {
   contract: DashboardContract;
   findings: RiskFinding[];
-  clauses: ContractClause[];
-  extractedText?: string;
+  clauses: Pick<ContractClause, "id" | "_id" | "index" | "startOffset" | "endOffset">[];
 };
 
 export type ContractReviewRun = {
@@ -103,6 +105,8 @@ export type ContractReviewRun = {
     riskDetection: "pending" | "running" | "completed" | "failed";
   };
   error?: string;
+  startedAt?: string;
+  finishedAt?: string;
   replayed?: boolean;
 };
 
