@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { Icon } from "@/components/ui/icon";
-import styles from "./review-timeline.module.css";
+import styles from "@/styles/review/review-timeline.module.css";
 import { buildReviewTimeline, reviewElapsed, type StepState, type TimelineInput } from "@/lib/review-timeline";
 
 const labels: Record<StepState, string> = { pending: "Đang chờ", running: "Đang xử lý", completed: "Hoàn thành", failed: "Thất bại" };

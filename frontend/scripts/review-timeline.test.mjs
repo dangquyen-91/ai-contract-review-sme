@@ -116,7 +116,7 @@ const { ReviewTimeline } = load('../components/contract/review-timeline.tsx', {
   'react': React, 'react/jsx-runtime': jsx,
   '@/lib/review-timeline': helpers,
   '@/components/ui/icon': { Icon: () => null },
-  './review-timeline.module.css': { default: {} },
+  '@/styles/review/review-timeline.module.css': { default: {} },
 });
 
 test('Timeline uses five steps, separate permissions and a result-only retry action', () => {

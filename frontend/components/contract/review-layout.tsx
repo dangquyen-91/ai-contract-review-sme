@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import styles from "./review-layout.module.css";
+import styles from "@/styles/review/review-layout.module.css";
 
 export function ReviewLayout({ form, timeline, result, className = "" }: {
   form: ReactNode;
