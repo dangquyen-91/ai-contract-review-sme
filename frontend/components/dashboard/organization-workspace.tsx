@@ -22,7 +22,7 @@ export function OrganizationWorkspace({ role, workspace, mainClassName, children
       <DashboardShell
         role={role}
         activeKey={activeTab}
-        sectionLabel={getDashboardNavigation(role).find((item) => item.key === activeTab)?.label ?? activeTab}
+        sectionLabel={getDashboardNavigation(role).find((item) => item.key === activeTab)?.label ?? (activeTab === "upload" ? "Tải & rà soát" : activeTab === "contracts" ? "Hợp đồng" : activeTab)}
         workspaceName={data.organization.name}
         workspaceLabel="Không gian làm việc"
         name={data.user?.name ?? "Tài khoản LawScan"}

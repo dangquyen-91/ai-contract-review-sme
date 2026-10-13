@@ -17,7 +17,7 @@ export function PageHeading({
       <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-blue-700">
         {eyebrow}
       </p>
-      <h1 className="text-[30px] font-semibold leading-[1.12] tracking-[-0.035em] sm:text-[36px] lg:text-[40px]">
+      <h1 className="text-[length:var(--dashboard-title-size)] font-bold leading-[var(--dashboard-title-leading)] tracking-[var(--dashboard-title-tracking)]">
         {title}
       </h1>
       <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
@@ -278,7 +278,7 @@ export function AdminOverview() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.13em] text-blue-700">
               Không gian quản trị
             </p>
-            <h1 className="mt-3 max-w-3xl text-[32px] font-semibold leading-[1.08] tracking-[-0.04em] text-[#14213d] sm:text-[42px]">
+            <h1 className="mt-3 max-w-3xl text-[length:var(--dashboard-title-size)] font-bold leading-[var(--dashboard-title-leading)] tracking-[var(--dashboard-title-tracking)] text-[#14213d]">
               Trung tâm điều hành LawScan
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-6 text-[#526783]">

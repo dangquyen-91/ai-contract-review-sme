@@ -43,10 +43,10 @@
 
 :is(.overview, .upload, .contracts, .administration) > section:first-child h1,
 .members h1 {
-  font-size: clamp(32px, 3vw, 38px);
+  font-size: var(--dashboard-title-size);
   font-weight: 700;
-  line-height: 1.15;
-  letter-spacing: -0.035em;
+  line-height: var(--dashboard-title-leading);
+  letter-spacing: var(--dashboard-title-tracking);
 }
 
 :is(.overview, .upload, .contracts, .administration) > section:first-child p:first-child,
@@ -55,7 +55,7 @@
 }
 
 :is(.overview, .upload, .contracts, .administration) > section:first-child p:last-child {
-  font-size: 14px;
+  font-size: var(--dashboard-description-size);
   line-height: 1.6;
 }
 
@@ -100,7 +100,7 @@
 }
 
 .overview > div section h2 {
-  font-size: 18px;
+  font-size: var(--dashboard-section-title-size);
   font-weight: 700;
   line-height: 1.3;
 }
@@ -164,7 +164,7 @@
 .upload > section:nth-child(2) aside h2,
 .upload > section:nth-child(2) + section h2,
 .administration > div h2 {
-  font-size: 18px;
+  font-size: var(--dashboard-section-title-size);
   font-weight: 700;
   line-height: 1.3;
 }
@@ -191,13 +191,13 @@
 }
 
 .members > section:first-child p:last-child {
-  font-size: 14px;
+  font-size: var(--dashboard-description-size);
   line-height: 1.6;
 }
 
 @media (max-width: 580px) {
   :is(.overview, .upload, .contracts, .administration) > section:first-child h1,
   .members h1 {
-    font-size: 30px;
+    font-size: var(--dashboard-title-size);
   }
 }

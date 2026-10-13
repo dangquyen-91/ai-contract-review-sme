@@ -54,7 +54,7 @@ function ContractsView({ contracts, totalContracts, canReview, onReview, isRevie
 
   return <>
     <section className="flex items-end justify-between gap-7 max-[580px]:items-start max-[580px]:flex-col">
-      <div><p className="text-[10px] font-bold uppercase tracking-wide text-[#2864dc]">Kho tài liệu</p><h1 className="mt-2 text-[clamp(30px,3vw,42px)] font-bold leading-tight">Tất cả hợp đồng</h1><p className="mt-2 text-sm text-[#6b778c]">Theo dõi trạng thái xử lý và mức rủi ro của các hợp đồng.</p></div>
+      <div><p className="text-[10px] font-bold uppercase tracking-wide text-[#2864dc]">Kho tài liệu</p><h1 className="mt-2 text-[length:var(--dashboard-title-size)] font-bold leading-[var(--dashboard-title-leading)] tracking-[var(--dashboard-title-tracking)]">Tất cả hợp đồng</h1><p className="mt-2 text-sm text-[#6b778c]">Theo dõi trạng thái xử lý và mức rủi ro của các hợp đồng.</p></div>
     </section>
     <section className="mt-7 min-w-0 overflow-hidden rounded-[14px] border border-[color:var(--line)] bg-white shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)]">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[color:var(--line)] px-[21px] py-[18px]">
