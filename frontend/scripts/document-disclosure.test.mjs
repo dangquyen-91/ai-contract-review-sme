@@ -82,7 +82,7 @@ function setup(mimeType = 'application/pdf') {
   });
   const { ReviewResults } = load('../components/contract/review-results.tsx', {
     react, 'react/jsx-runtime': jsx, '@/hooks/use-contracts': hooks,
-    './review-workspace.module.css': { default: {} }, '@/components/ui/icon': { Icon: () => null },
+    '@/styles/review/review-workspace.module.css': { default: {} }, '@/components/ui/icon': { Icon: () => null },
     '@/components/contract/redacted-document': { RedactedDocument },
     '@/components/contract/contract-chat': { ContractChat: () => null },
     '@/components/contract/risk-details': { RiskDetails: () => null },

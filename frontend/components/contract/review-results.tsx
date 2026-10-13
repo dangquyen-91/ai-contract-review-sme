@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useContractText } from "@/hooks/use-contracts";
-import workspaceStyles from "./review-workspace.module.css";
+import workspaceStyles from "@/styles/review/review-workspace.module.css";
 import { Icon } from "@/components/ui/icon";
 import { ContractChat } from "@/components/contract/contract-chat";
 import { RiskDetails } from "@/components/contract/risk-details";
