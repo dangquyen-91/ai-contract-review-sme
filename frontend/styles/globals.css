@@ -8,6 +8,19 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
+@theme {
+  --text-ui-caption: 0.75rem;
+  --text-ui-meta: 0.8125rem;
+  --text-ui: 0.875rem;
+  --text-ui-document: 1rem;
+  --text-ui-section: 1rem;
+  --text-ui-card: 1.125rem;
+  --text-ui-dialog: 1.25rem;
+  --text-ui-title: 2rem;
+}
+@media (max-width: 580px) {
+  :root { --text-ui-title: 1.75rem; }
+}
 body {
   @apply [background:var(--background)] text-[color:var(--foreground)] [font-family:Arial,Helvetica,sans-serif];
 }

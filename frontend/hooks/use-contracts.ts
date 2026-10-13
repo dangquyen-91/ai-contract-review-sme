@@ -34,11 +34,31 @@ export function useContract(contractId: string) {
   });
 }
 
-export function useContractText(contractId: string) {
+export function useContractText(contractId: string, options: {
+  redacted?: boolean;
+  redactionMode?: "token" | "partial";
+  enabled?: boolean;
+  version?: string;
+} = {}) {
+  const mode = options.redactionMode ?? "token";
   return useQuery({
-    queryKey: contractMutationKeys.text(contractId),
-    queryFn: () => contractsApi.getText(contractId),
-    enabled: Boolean(contractId),
+    queryKey: options.redacted
+      ? [...contractMutationKeys.text(contractId), "redacted", mode === "partial" ? "partial-email-preview" : mode, options.version]
+      : [...contractMutationKeys.text(contractId), "full", options.version],
+    queryFn: async ({ signal }) => {
+      const response = await contractsApi.getText(contractId, { redacted: options.redacted, redactionMode: mode, signal });
+      if (options.redacted && (response.redacted !== true || (mode === "partial" && response.redactionMode !== "partial") || typeof response.text !== "string")) {
+        throw new Error("Máy chủ chưa trả về văn bản đã che.");
+      }
+      if (!options.redacted && (response.redacted !== false || typeof response.text !== "string")) {
+        throw new Error("Máy chủ chưa trả về văn bản đầy đủ hợp lệ.");
+      }
+      return response;
+    },
+    enabled: Boolean(contractId) && options.enabled !== false,
+    retry: false,
+    refetchOnWindowFocus: false,
+    ...(!options.redacted ? { gcTime: 0 } : {}),
   });
 }
 
@@ -120,6 +140,7 @@ export function useReviewContractMutation() {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
       queryClient.invalidateQueries({ queryKey: contractMutationKeys.detail(contractId) });
       queryClient.invalidateQueries({ queryKey: contractMutationKeys.clauses(contractId) });
+      queryClient.invalidateQueries({ queryKey: contractMutationKeys.text(contractId) });
       queryClient.invalidateQueries({ queryKey: contractMutationKeys.findings(contractId) });
       queryClient.invalidateQueries({ queryKey: contractMutationKeys.getReview });
     },

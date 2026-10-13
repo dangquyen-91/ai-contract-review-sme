@@ -52,6 +52,7 @@ export const getContractTextHandler = asyncHandler(async (req: Request, res: Res
     user.orgId,
     req.params.id,
     req.query.redacted === 'true',
+    req.query.redactionMode === 'partial' ? 'partial' : 'token',
   );
   ok(res, text);
 });

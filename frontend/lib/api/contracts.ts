@@ -18,8 +18,12 @@ export const contractsApi = {
     return apiRequest<DashboardContract>({ url: `/contracts/${contractId}` });
   },
 
-  getText(contractId: string) {
-    return apiRequest<ContractTextResult>({ url: `/contracts/${contractId}/text` });
+  getText(contractId: string, options: { redacted?: boolean; redactionMode?: "token" | "partial"; signal?: AbortSignal } = {}) {
+    return apiRequest<ContractTextResult>({
+      url: `/contracts/${contractId}/text`,
+      params: options.redacted ? { redacted: true, redactionMode: options.redactionMode } : undefined,
+      signal: options.signal,
+    });
   },
 
   listClauses(contractId: string) {

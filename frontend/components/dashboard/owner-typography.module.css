@@ -1,47 +1,4 @@
-.shell {
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-.shell > aside nav p {
-  color: #65748b;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.07em;
-}
-
-.shell > aside nav :is(a, button) {
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.shell > aside > div strong {
-  font-size: 13px;
-}
-
-.shell > aside > div small {
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.shell > aside > div:last-child button {
-  font-size: 13px;
-}
-
-.shell > div > header p {
-  font-size: 12px;
-}
-
-.shell > div > header p strong {
-  font-weight: 700;
-}
-
-.shell > div > nav :is(a, button) {
-  font-size: 13px;
-  font-weight: 700;
-}
-
-:is(.overview, .upload, .contracts, .administration) > section:first-child h1,
+:is(.overview, .contracts, .administration) > section:first-child h1,
 .members h1 {
   font-size: clamp(32px, 3vw, 38px);
   font-weight: 700;
@@ -49,12 +6,12 @@
   letter-spacing: -0.035em;
 }
 
-:is(.overview, .upload, .contracts, .administration) > section:first-child p:first-child,
+:is(.overview, .contracts, .administration) > section:first-child p:first-child,
 .members > section:first-child p:first-child {
   font-size: 12px;
 }
 
-:is(.overview, .upload, .contracts, .administration) > section:first-child p:last-child {
+:is(.overview, .contracts, .administration) > section:first-child p:last-child {
   font-size: 14px;
   line-height: 1.6;
 }
@@ -129,56 +86,46 @@
   font-size: 13px;
 }
 
-:is(.overview, .upload, .contracts) table th {
+:is(.overview, .contracts) table th {
   color: #5f6d82;
   font-size: 12px;
   letter-spacing: 0.04em;
 }
 
-:is(.overview, .upload, .contracts) table td {
+:is(.overview, .contracts) table td {
   color: #40506a;
   font-size: 13px;
   line-height: 1.45;
 }
 
-:is(.overview, .upload, .contracts) table td strong {
+:is(.overview, .contracts) table td strong {
   font-size: 13px;
 }
 
-:is(.overview, .upload, .contracts) table td small {
+:is(.overview, .contracts) table td small {
   color: #65748b;
   font-size: 12px;
 }
 
-:is(.overview, .upload, .contracts) table td:nth-child(2) > span,
-:is(.overview, .upload, .contracts) table td:nth-child(3) > span {
+:is(.overview, .contracts) table td:nth-child(2) > span,
+:is(.overview, .contracts) table td:nth-child(3) > span {
   font-size: 12px;
 }
 
-:is(.overview, .upload, .contracts) table td button {
+:is(.overview, .contracts) table td button {
   min-height: 34px;
   font-size: 12px;
 }
 
-.upload > section:nth-child(2) h2,
-.upload > section:nth-child(2) aside h2,
-.upload > section:nth-child(2) + section h2,
 .administration > div h2 {
   font-size: 18px;
   font-weight: 700;
   line-height: 1.3;
 }
 
-.upload > section:nth-child(2) :is(label, p, small),
-.upload > section:nth-child(2) + section header p,
 .administration > div p {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
-}
-
-.upload > section:nth-child(2) :is(input, select),
-.upload > section:nth-child(2) :is(button, a) {
-  font-size: 13px;
 }
 
 .administration > div dl > div {
@@ -196,7 +143,7 @@
 }
 
 @media (max-width: 580px) {
-  :is(.overview, .upload, .contracts, .administration) > section:first-child h1,
+  :is(.overview, .contracts, .administration) > section:first-child h1,
   .members h1 {
     font-size: 30px;
   }

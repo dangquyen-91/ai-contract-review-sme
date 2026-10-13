@@ -38,6 +38,7 @@ export const contractIdParamSchema = z.object({
 
 export const contractTextQuerySchema = z.object({
   redacted: z.enum(['true', 'false']).optional(),
+  redactionMode: z.enum(['token', 'partial']).optional(),
 });
 
 export const analysisFocusBodySchema = z.object({

@@ -41,8 +41,8 @@
 .queue { min-width: 0; border: 1px solid #e1e8f2; border-radius: 18px; background: white; padding: 22px; }
 .queueHeading { display: flex; align-items: start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .queueHeading h2 { font-size: 18px; font-weight: 700; }
-.queueHeading p { margin-top: 6px; color: #708099; font-size: 12px; line-height: 1.6; }
-.queueHeading > button { border: 0; background: transparent; color: #245bd6; min-height: 36px; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.queueHeading p { margin-top: 6px; color: #708099; font-size: var(--text-ui-meta); line-height: 1.6; }
+.queueHeading > button { border: 0; background: transparent; color: #245bd6; min-height: 36px; font-size: var(--text-ui); font-weight: 600; white-space: nowrap; cursor: pointer; }
 .contractCards { display: grid; gap: 12px; padding: 0; margin: 18px 0 0; list-style: none; }
 .contractCards > li { border: 1px solid #e4ebf5; border-radius: 12px; padding: 16px; background: #fbfcff; }
 .cardTitle { display: flex; gap: 10px; align-items: start; }
@@ -53,15 +53,15 @@
 .badges .high { background: #fff0f2; color: #a83248; }
 .badges .medium { background: #fff4dc; color: #875c08; }
 .cardFooter { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 13px; }
-.cardFooter time { font-size: 12px; color: #708099; }
-.cardFooter button { display: inline-flex; min-height: 38px; align-items: center; gap: 7px; border: 1px solid #d1def5; border-radius: 8px; background: #f1f6ff; color: #245bd6; padding: 7px 12px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.cardFooter time { font-size: var(--text-ui-meta); color: #708099; }
+.cardFooter button { display: inline-flex; min-height: 38px; align-items: center; gap: 7px; border: 1px solid #d1def5; border-radius: 8px; background: #f1f6ff; color: #245bd6; padding: 7px 12px; font: inherit; font-size: var(--text-ui); font-weight: 600; cursor: pointer; }
 .cardFooter button:disabled { opacity: .55; cursor: default; }
 .cardFooter svg { width: 15px; height: 15px; }
-.freshness { margin-bottom: 14px; font-size: 12px; color: #708099; }
+.freshness { margin-bottom: 14px; font-size: var(--text-ui-meta); color: #708099; }
 .reviewNavigation { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; align-items: center; gap: 16px; margin-bottom: 18px; padding: 13px 16px; border: 1px solid #dce5f2; border-radius: 12px; background: #fff; box-shadow: 0 12px 25px -22px #314b75; }
-.reviewNavigation button { min-height: 38px; border: 0; border-radius: 8px; padding: 7px 10px; color: #245bd6; background: #edf3ff; font-size: 13px; font-weight: 600; cursor: pointer; }
-.reviewNavigation strong { overflow-wrap: anywhere; font-size: 14px; }
-.errorBanner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid #f0d5c0; border-radius: 12px; background: #fff9f1; color: #80572a; padding: 16px; margin-bottom: 18px; font-size: 13px; line-height: 1.6; }
+.reviewNavigation button { min-height: 38px; border: 0; border-radius: 8px; padding: 7px 10px; color: #245bd6; background: #edf3ff; font-size: var(--text-ui); font-weight: 600; cursor: pointer; }
+.reviewNavigation strong { overflow-wrap: anywhere; font-size: var(--text-ui); }
+.errorBanner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid #f0d5c0; border-radius: 12px; background: #fff9f1; color: #80572a; padding: 16px; margin-bottom: 18px; font-size: var(--text-ui); line-height: 1.6; }
 .errorBanner p { margin: 0; }
 .errorBanner button { min-height: 40px; border: 1px solid #e8ca9f; border-radius: 8px; background: white; padding: 8px 12px; color: inherit; cursor: pointer; }
 .mobileCards { display: none; }

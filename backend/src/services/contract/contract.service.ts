@@ -204,7 +204,7 @@ export async function deleteContract(orgId: string, id: string) {
   );
 }
 
-export async function getContractText(orgId: string, id: string, redacted = false) {
+export async function getContractText(orgId: string, id: string, redacted = false, redactionMode: 'token' | 'partial' = 'token') {
   const contract = await ContractModel.findOne({ _id: id, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
@@ -212,13 +212,20 @@ export async function getContractText(orgId: string, id: string, redacted = fals
   const version = await getCurrentVersionWithText(id);
   const text = version.extractedText ?? '';
   let shownText = text;
+  let redactionSpans: { type: SensitiveDataType; start: number; end: number }[] = [];
   if (redacted && text) {
     const profile = await resolveContractProfile(contract.type);
-    shownText = createRedactor(text, profile.redactionPolicy as SensitiveDataType[]).mask(text);
+    const redactor = createRedactor(text, profile.redactionPolicy as SensitiveDataType[]);
+    if (redactionMode === 'partial') {
+      const preview = redactor.maskForDisplay(text);
+      shownText = preview.text;
+      redactionSpans = preview.spans;
+    } else shownText = redactor.mask(text);
   }
   return {
     text: shownText,
     redacted,
+    ...(redacted ? { redactionMode, ...(redactionMode === 'partial' ? { redactionSpans } : {}) } : {}),
     extractionStatus: version.extractionStatus,
     fileName: version.fileName,
     mimeType: version.mimeType,

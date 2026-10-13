@@ -1,15 +1,22 @@
 .workspace { scroll-margin-top: 80px; }
-.workspace h3 { font-size: 15px !important; }
-.workspace :is(p, li) { font-size: 13px; }
-.workspace li strong { font-size: 14px !important; }
+.workspace h3 { font-size: var(--text-ui-section); font-weight: 600; }
+.workspace li strong { font-size: var(--text-ui-section); font-weight: 600; }
 .workspace li :is(span, p) { line-height: 1.65; }
 .navigation { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 20px; border-bottom: 1px solid #e4e8ef; background: #f8faff; }
-.navigation a { display: inline-flex; align-items: center; min-height: 38px; padding: 7px 12px; border: 1px solid #dce5f2; border-radius: 8px; color: #245bd6; background: white; font-size: 13px; font-weight: 600; text-decoration: none; }
+.navigation a { display: inline-flex; align-items: center; min-height: 42px; padding: 7px 12px; border: 1px solid #dce5f2; border-radius: 8px; color: #245bd6; background: white; font-size: var(--text-ui); font-weight: 600; text-decoration: none; }
 .splitPane { height: min(78dvh, 880px); min-height: 540px; }
 .analysisPane { overflow-y: auto; scroll-margin-top: 90px; }
 .workspace section[aria-label="Nội dung hợp đồng"] { scroll-margin-top: 90px; }
 .filters { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }
-.filters button { min-height: 36px; padding: 6px 10px; border: 1px solid #dce5f2; border-radius: 18px; color: #536881; background: white; font-size: 12px; font-weight: 600; cursor: pointer; }
+.filters button { min-height: 40px; padding: 6px 10px; border: 1px solid #dce5f2; border-radius: 18px; color: #536881; background: white; font-size: var(--text-ui); font-weight: 600; cursor: pointer; }
 .filters button[aria-pressed=true] { color: #245bd6; background: #edf3ff; border-color: #a9c5f4; }
 .workspace :is(a, button):focus-visible { outline: 3px solid #9bbcf8; outline-offset: 3px; }
+.resultColumns { min-width: 0; }
+.documentBody { min-height: 0; }
+@container review-result (max-width: 1000px) {
+  .resultColumns { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; }
+  .resultColumns > div:first-child { border-right: 0; border-bottom: 1px solid #e4e8ef; overflow: visible; }
+  .documentPane { display: block; }
+  .documentBody { height: min(58vh, 650px); min-height: 390px; }
+}
 @media (max-width: 1080px) { .splitPane { height: auto; min-height: 0; } .analysisPane { overflow: visible; } }

@@ -91,17 +91,17 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
     };
   }, [isDocx, rendered, target]);
 
-  const errorMessage = error && <div role="alert" className="m-4 rounded-xl border border-[#e4e8ef] bg-white p-5 text-[length:12px] text-[#607087]">
-    <p className="m-0">Không thể hiển thị file gốc. Bạn vẫn có thể chọn “Văn bản phân tích” để xem nội dung.</p>
+  const errorMessage = error && <div role="alert" className="m-4 rounded-xl border border-[#e4e8ef] bg-white p-5 text-ui text-[#607087]">
+    <p className="m-0">Không thể hiển thị file gốc. Bạn vẫn có thể chọn “Văn bản đầy đủ” để xem nội dung.</p>
     <button type="button" onClick={() => setAttempt((value) => value + 1)} className="mt-3 rounded-lg border border-[#aac7fa] bg-[#eaf1ff] px-3 py-2 font-semibold text-[#1e53b8]">Thử tải lại file</button>
   </div>;
-  const loadingMessage = !error && !rendered && <p role="status" className="m-4 text-[length:12px] text-[#607087]">Đang tải file gốc…</p>;
+  const loadingMessage = !error && !rendered && <p role="status" className="m-4 text-ui text-[#607087]">Đang tải file gốc…</p>;
 
   if (isDocx) {
     return <div className="h-full overflow-auto [background:#eef1f5] p-4 [@media_(max-width:_580px)]:p-2 [&_.docx-wrapper]:!p-0 [&_.docx-wrapper]:!bg-transparent [&_.docx]:shadow-[0_3px_18px_#17243d24]">
       {errorMessage}
       {loadingMessage}
-      {locationNotFound && !error && <p className="text-[#875c08] text-[length:12px] m-3">Không tìm thấy vị trí điều khoản trong file gốc. Bạn có thể xem trong “Văn bản phân tích”.</p>}
+      {locationNotFound && !error && <p className="text-[#875c08] text-ui m-3">Không tìm thấy vị trí điều khoản trong file gốc. Bạn có thể xem trong “Văn bản đầy đủ”.</p>}
       <div ref={containerRef} aria-label={fileName ?? "File hợp đồng gốc"} />
     </div>;
   }
