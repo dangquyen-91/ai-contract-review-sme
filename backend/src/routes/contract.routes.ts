@@ -35,6 +35,7 @@ import {
   chatMessageBodySchema,
   contractIdParamSchema,
   contractTextQuerySchema,
+  contractFileQuerySchema,
   createContractSchema,
   findingParamSchema,
   listContractsQuerySchema,
@@ -63,7 +64,7 @@ router.get(
   getContractTextHandler,
 );
 
-router.get('/:id/file', validate({ params: contractIdParamSchema }), getContractFileHandler);
+router.get('/:id/file', validate({ params: contractIdParamSchema, query: contractFileQuerySchema }), getContractFileHandler);
 
 router.post(
   '/:id/reviews',

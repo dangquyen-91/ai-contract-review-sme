@@ -10,7 +10,7 @@ function load(path, dependencies = {}, globals = {}) {
   const source = ts.transpileModule(fs.readFileSync(new URL(path, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? {}, URL, ...globals });
+  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? (name === "@/components/ui/button" ? { Button: "button" } : {}), URL, ...globals });
   return exports;
 }
 
@@ -53,7 +53,7 @@ test('Review proxy requires a session and preserves upstream access failures', a
   assert.equal((await proxySetup('session', '/clauses').run()).status, 403);
 });
 
-function setup(mimeType = 'application/pdf') {
+function setup(mimeType = 'application/pdf', findings) {
   const states = [];
   let cursor = 0;
   let queries = [];
@@ -68,7 +68,7 @@ function setup(mimeType = 'application/pdf') {
     useRef: () => ({ current: null }), useId: () => 'review', useMemo: (fn) => fn(), useEffect: () => {}, useLayoutEffect: () => {},
   };
   const hooks = load('../hooks/use-contracts.ts', {
-    '@/lib/contract-query-keys': load('../lib/contract-query-keys.ts'),
+    '@/lib/query-keys/contracts': load('../lib/query-keys/contracts.ts'),
     react,
     '@tanstack/react-query': { useQuery: (options) => {
       queries.push(options);
@@ -87,7 +87,7 @@ function setup(mimeType = 'application/pdf') {
     '@/components/contract/contract-chat': { ContractChat: () => null },
     '@/components/contract/risk-details': { RiskDetails: () => null },
     '@/components/contract/key-terms': { KeyTerms: () => null },
-    '@/components/contract/original-contract-preview': { OriginalContractPreview: (props) => jsx.jsx('iframe', { title: 'Original', ...props }) },
+    '@/components/contract/original-contract-preview': { OriginalContractPreview: (props) => props.redacted ? jsx.jsx('div', { 'data-redacted-docx': true, ...props }) : jsx.jsx('iframe', { title: 'Original', ...props }) },
     '@/components/contract/document-disclosure-dialog': { DocumentDisclosureDialog: ({ mode, onConfirm, onCancel }) => jsx.jsxs('dialog', { children: [
       jsx.jsx('button', { onClick: onConfirm, children: `Confirm ${mode}` }), jsx.jsx('button', { onClick: onCancel, children: 'Cancel' }),
     ] }) },
@@ -95,7 +95,7 @@ function setup(mimeType = 'application/pdf') {
   const result = {
     contract: { _id: id, title: 'Test', updatedAt: 'version-1', currentVersion: { mimeType } },
     clauses: [{ _id: 'clause-1', index: 0, startOffset: 0, endOffset: raw.length }],
-    findings: [{ _id: 'finding-1', clauseId: 'clause-1', severity: 'high', title: 'Risk', problem: [], consequences: [] }],
+    findings: findings ?? [{ _id: 'finding-1', clauseId: 'clause-1', severity: 'high', title: 'Risk', problem: [], consequences: [] }],
   };
   function resolve(node) {
     if (Array.isArray(node)) return node.map(resolve);
@@ -115,13 +115,35 @@ function setup(mimeType = 'application/pdf') {
     return typeof node === 'object' && node ? text(node.props.children) : String(node ?? '');
   }
   function click(label) {
-    const button = find((node) => node.type === 'button' && text(node) === label)[0];
+    const button = find((node) => node.type === 'button' && (text(node) === label || node.props['aria-label'] === label))[0];
     assert.ok(button, `Missing button: ${label}`);
     button.props.onClick(); render();
   }
   render();
   return { click, text, find, queries: () => queries, setFull: (state) => { fullState = { ...fullState, ...state }; render(); }, retries: () => retries };
 }
+
+test('Risk cards sort by severity without changing input data and filters work without the AI-context panel', () => {
+  const findings = [
+    { _id: 'low', severity: 'low', title: 'Low risk', findingType: 'missing_clause' },
+    { _id: 'high', severity: 'high', title: 'High risk', clauseId: 'clause-1' },
+    { _id: 'medium', severity: 'medium', title: 'Medium risk', clauseId: 'clause-1' },
+  ];
+  const ctx = setup('application/pdf', findings);
+  const cards = () => ctx.find((node) => Boolean(node.props['data-risk-severity']));
+  assert.deepEqual(cards().map((node) => node.props['data-risk-severity']), ['high', 'medium', 'low']);
+  assert.deepEqual(findings.map((finding) => finding._id), ['low', 'high', 'medium']);
+  ctx.click('Rủi ro cao · 1');
+  assert.deepEqual(cards().map((node) => node.props['data-risk-severity']), ['high']);
+  ctx.click('Xem phân tích và đề xuất');
+  assert.equal(ctx.find((node) => node.type === 'button' && node.props['aria-expanded'] === true).length, 1);
+  ctx.click('Rủi ro thấp · 1');
+  assert.equal(ctx.find((node) => node.type === 'button' && node.props['aria-expanded'] === true).length, 0);
+  assert.equal(ctx.find((node) => node.type === 'button' && Boolean(node.props['aria-label']?.includes('Xem vị trí'))).length, 0);
+  assert.equal(ctx.queries()[1].enabled, false);
+  ctx.click('Tất cả · 3');
+  assert.equal(cards().length, 3);
+});
 
 test('Default and cancelled disclosure never enable full text or mount the original file', () => {
   const ctx = setup();
@@ -164,22 +186,35 @@ test('Full text errors/loading never render cached full text and have an indepen
 });
 
 test('Jumping from masked mode requires confirmation before showing or locating full text', () => {
-  const ctx = setup(); ctx.click('RiskXem vị trí trong văn bản đầy đủ →');
+  const ctx = setup(); ctx.click('Risk. Xem vị trí trong văn bản đầy đủ');
   assert.equal(ctx.queries()[1].enabled, false);
   ctx.click('Cancel'); assert.ok(!ctx.text().includes(raw));
-  ctx.click('RiskXem vị trí trong văn bản đầy đủ →'); ctx.click('Confirm text');
+  ctx.click('Risk. Xem vị trí trong văn bản đầy đủ'); ctx.click('Confirm text');
   assert.equal(ctx.queries()[1].enabled, true);
   assert.ok(ctx.text().includes(raw));
 });
 
 test('DOCX jump loads original matching text and mounts the file only after confirmation', () => {
   const ctx = setup('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-  ctx.click('RiskXem vị trí trong file gốc →');
+  assert.equal(ctx.find((node) => node.props['data-redacted-docx']).length, 1);
+  assert.equal(ctx.find((node) => node.type === 'iframe').length, 0);
+  assert.equal(ctx.queries()[1].enabled, false);
+  ctx.click('Risk. Xem vị trí trong file gốc');
   assert.equal(ctx.queries()[1].enabled, false);
   assert.equal(ctx.find((node) => node.type === 'iframe').length, 0);
   ctx.click('Confirm original');
   assert.equal(ctx.queries()[1].enabled, true);
   assert.equal(ctx.find((node) => node.type === 'iframe')[0].props.target.text, raw);
+});
+
+test('Unsupported DOCX can switch to the redacted text view without enabling full-text queries', () => {
+  const ctx = setup('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  ctx.find((node) => node.props['data-redacted-docx'])[0].props.onTextFallback();
+  ctx.setFull({});
+  assert.equal(ctx.find((node) => node.props['data-redacted-docx']).length, 0);
+  assert.equal(ctx.find((node) => node.type === 'iframe').length, 0);
+  assert.equal(ctx.queries()[1].enabled, false);
+  assert.ok(!ctx.text().includes(raw));
 });
 
 test('Opening the original file directly does not unnecessarily request full text', () => {

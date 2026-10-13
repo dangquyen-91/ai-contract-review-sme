@@ -1,4 +1,4 @@
-import { AdminOverview } from "@/components/admin/admin-panels";
+import { SystemOverview } from "@/components/overview/system-overview";
 export default function AdminPage() {
-  return <AdminOverview />;
+  return <SystemOverview />;
 }

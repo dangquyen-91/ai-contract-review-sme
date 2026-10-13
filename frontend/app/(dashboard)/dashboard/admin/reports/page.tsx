@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ReportsOverview } from "@/components/admin/reports-overview";
+import { ReportsOverview } from "@/components/reports/reports-overview";
 
 export const metadata: Metadata = {
   title: "Báo cáo & thống kê | LawScan",

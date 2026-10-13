@@ -62,6 +62,18 @@ export const getContractTextHandler = asyncHandler(async (req: Request, res: Res
 
 export const getContractFileHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
+  if (req.query.redacted === 'true') {
+    const file = await contractService.getRedactedContractDocx(user.orgId, req.params.id);
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Disposition': `inline; filename="contract-redacted.docx"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
+      'Cache-Control': 'private, no-store',
+      'X-LawScan-Redacted': 'partial',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    res.send(file.buffer);
+    return;
+  }
   const link = await contractService.getContractFileLink(user.orgId, req.params.id);
   ok(res, link);
 });

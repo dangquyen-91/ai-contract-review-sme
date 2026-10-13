@@ -1,5 +1,5 @@
-import { apiRequest } from "@/lib/api/client";
-import type { AuthSession, LoginInput, LogoutResult, RefreshTokenResult, RegisterInput } from "@/types/auth";
+import { apiRequest, refreshSession } from "@/lib/api/client";
+import type { AuthSession, LoginInput, LogoutResult, RegisterInput } from "@/types/auth";
 
 export const authApi = {
   login(input: LoginInput) {
@@ -19,10 +19,7 @@ export const authApi = {
   },
 
   refreshToken() {
-    return apiRequest<RefreshTokenResult>({
-      url: "/auth/refresh",
-      method: "POST",
-    });
+    return refreshSession();
   },
 
   completeOnboarding() {

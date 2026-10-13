@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+
 import { Icon } from "@/components/ui/icon";
 import type { ContractTextResult } from "@/types/contracts";
 
@@ -31,7 +33,7 @@ export function RedactedDocument({ data, isPending, isError, isFetching, onRetry
   if (isError || !data || data.redacted !== true || data.redactionMode !== "partial") return <div role="alert" className="rounded-xl border border-[#f0d5aa] bg-[#fffbf3] p-5 text-ui leading-6 text-[#79581b]">
     <p className="m-0 font-semibold">Chưa tải được bản ẩn một phần</p>
     <p className="mb-0 mt-1">Hãy thử tải lại. Nội dung đầy đủ không được tự động hiển thị trong chế độ này.</p>
-    <button type="button" disabled={isFetching} onClick={onRetry} className="mt-3 rounded-lg border border-[#dcc69f] bg-white px-3 py-2 font-semibold disabled:opacity-60">{isFetching ? "Đang tải lại…" : "Tải lại bản ẩn một phần"}</button>
+    <Button variant="outline" size="sm" type="button" disabled={isFetching} onClick={onRetry} className="mt-3">{isFetching ? "Đang tải lại…" : "Tải lại bản ẩn một phần"}</Button>
   </div>;
 
   if (!data.text.trim()) return <p role="status" className="m-0 text-ui leading-6 text-[#607087]">Chưa có văn bản trích xuất để hiển thị bản ẩn một phần.</p>;

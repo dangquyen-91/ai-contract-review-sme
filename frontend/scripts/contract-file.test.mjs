@@ -6,7 +6,7 @@ import ts from 'typescript';
 
 const id = '0123456789abcdef01234567';
 const signedUrl = 'https://api.cloudinary.com/v1_1/test-cloud/raw/download?signature=test';
-function setup(responses, token = 'test-session') {
+function setup(responses, token = 'test-session', redacted = false) {
   const calls = [];
   const exports = {};
   const source = ts.transpileModule(fs.readFileSync(new URL('../app/api/contracts/[id]/file/route.ts', import.meta.url), 'utf8'), {
@@ -21,9 +21,32 @@ function setup(responses, token = 'test-session') {
       return responses.shift();
     },
   });
-  return { calls, run: () => exports.GET({ cookies: { get: () => token ? { value: token } : undefined }, signal: new AbortController().signal }, { params: Promise.resolve({ id }) }) };
+  return { calls, run: () => exports.GET({ nextUrl: new URL(`http://localhost/api/contracts/${id}/file${redacted ? '?redacted=true' : ''}`), cookies: { get: () => token ? { value: token } : undefined }, signal: new AbortController().signal }, { params: Promise.resolve({ id }) }) };
 }
 const metadata = (url = signedUrl) => Response.json({ data: { url, fileName: 'hợp đồng.pdf', mimeType: 'application/pdf' } });
+
+test('Redacted DOCX streams only the marked backend copy without requesting the original file', async () => {
+  const ctx = setup([new Response('masked docx', { headers: {
+    'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'X-LawScan-Redacted': 'partial',
+  } })], 'session', true);
+  const response = await ctx.run();
+  assert.equal(response.status, 200);
+  assert.equal(await response.text(), 'masked docx');
+  assert.equal(response.headers.get('X-LawScan-Redacted'), 'partial');
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+  assert.equal(ctx.calls.length, 1);
+  assert.equal(ctx.calls[0].url, `http://backend.test/api/v1/contracts/${id}/file?redacted=true`);
+});
+
+test('An older backend or failed masking never falls back to downloading the original', async () => {
+  const old = setup([metadata()], 'session', true);
+  assert.equal((await old.run()).status, 502);
+  assert.equal(old.calls.length, 1);
+  const denied = setup([new Response(null, { status: 403 })], 'session', true);
+  assert.equal((await denied.run()).status, 403);
+  assert.equal(denied.calls.length, 1);
+});
 
 test('Uses the BE file endpoint and streams signed private downloads', async () => {
   const context = setup([metadata(), new Response('PDF bytes')]);

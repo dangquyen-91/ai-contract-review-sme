@@ -12,7 +12,7 @@ function load(path, dependencies) {
   const source = ts.transpileModule(fs.readFileSync(new URL(path, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? {}, URL });
+  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? (name === "@/components/ui/button" ? { Button: "button" } : {}), URL });
   return exports;
 }
 
@@ -92,7 +92,7 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
   let queryOptions;
   let requestOptions;
   const hooks = load('../hooks/use-contracts.ts', {
-    '@/lib/contract-query-keys': load('../lib/contract-query-keys.ts'),
+    '@/lib/query-keys/contracts': load('../lib/query-keys/contracts.ts'),
     'react': React,
     '@tanstack/react-query': { useQuery: (options) => {
       if (!options.queryKey.includes('redacted')) return { isPending: true, isError: false, isFetching: false };

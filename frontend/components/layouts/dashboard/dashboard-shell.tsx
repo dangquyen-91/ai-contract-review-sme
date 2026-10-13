@@ -3,8 +3,8 @@
 import type { ReactNode } from "react";
 import { DashboardHeader } from "./dashboard-header";
 import { DashboardNavigation, DashboardSidebar } from "./dashboard-sidebar";
-import { DashboardError } from "../../dashboard/dashboard-error";
-import { DashboardSkeleton } from "../../dashboard/dashboard-skeleton";
+import { DashboardError } from "@/components/layouts/dashboard/dashboard-error";
+import { DashboardSkeleton } from "@/components/layouts/dashboard/dashboard-skeleton";
 import { getDashboardNavigation } from "@/config/dashboard-navigation";
 import type { DashboardRole } from "@/config/dashboard-roles";
 import { useDashboardWorkspace } from "@/hooks/use-dashboard-workspace";

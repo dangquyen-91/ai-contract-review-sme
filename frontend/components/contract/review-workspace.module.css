@@ -8,8 +8,8 @@
 .analysisPane { overflow-y: auto; scroll-margin-top: 90px; }
 .workspace section[aria-label="Nội dung hợp đồng"] { scroll-margin-top: 90px; }
 .filters { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }
-.filters button { min-height: 40px; padding: 6px 10px; border: 1px solid #dce5f2; border-radius: 18px; color: #536881; background: white; font-size: var(--text-ui); font-weight: 600; cursor: pointer; }
-.filters button[aria-pressed=true] { color: #245bd6; background: #edf3ff; border-color: #a9c5f4; }
+.filters button:not([data-slot="button"]) { min-height: 40px; padding: 6px 10px; border: 1px solid #dce5f2; border-radius: 18px; color: #536881; background: white; font-size: var(--text-ui); font-weight: 600; cursor: pointer; }
+.filters button:not([data-slot="button"])[aria-pressed=true] { color: #245bd6; background: #edf3ff; border-color: #a9c5f4; }
 .workspace :is(a, button):focus-visible { outline: 3px solid #9bbcf8; outline-offset: 3px; }
 .resultColumns { min-width: 0; }
 .documentBody { min-height: 0; }

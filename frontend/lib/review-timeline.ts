@@ -1,4 +1,5 @@
 import type { ContractReviewResult, ContractReviewRun } from "@/types/contracts";
+import type { ReviewBlockReason } from "@/lib/review-failure";
 
 export type StepState = "pending" | "running" | "completed" | "failed";
 export type TimelineInput = {
@@ -10,6 +11,7 @@ export type TimelineInput = {
   reconnecting?: boolean;
   error?: string;
   failureKind?: "load" | "run";
+  blocked?: ReviewBlockReason | null;
 };
 
 export function buildReviewTimeline(input: TimelineInput) {
@@ -56,6 +58,7 @@ export function buildReviewTimeline(input: TimelineInput) {
   else if (summary === "running") message = "Đang tóm tắt hợp đồng…";
   else if (risk === "running") message = "Đang đánh giá rủi ro…";
   else if (reviewing) message = "Đang lấy trạng thái lượt rà soát…";
+  if (input.blocked && !review && !result) message = input.blocked === "quota" ? "Chưa bắt đầu — hết lượt rà soát AI." : input.blocked === "plan" ? "Chưa bắt đầu — chưa có gói AI hoạt động." : "Chưa bắt đầu — yêu cầu bị từ chối quyền truy cập.";
   return {
     message, interrupted, retrying,
     steps: [

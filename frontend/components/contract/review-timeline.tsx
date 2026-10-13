@@ -1,5 +1,8 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { ReviewBlockedNotice } from "@/components/review/review-blocked-notice";
+
 import { useEffect, useId, useState } from "react";
 import { Icon } from "@/components/ui/icon";
 import styles from "./review-timeline.module.css";
@@ -17,6 +20,7 @@ export function ReviewTimeline(props: TimelineInput & {
   roleLabel: string;
   access: { upload: boolean; review: boolean; administer: boolean };
   onRetry: () => void;
+  role?: string;
 }) {
   const id = useId();
   const [now, setNow] = useState(Date.now);
@@ -28,8 +32,9 @@ export function ReviewTimeline(props: TimelineInput & {
   }, [props.review?.startedAt, props.review?.status, props.reviewing, model.interrupted]);
   const elapsed = reviewElapsed(props.review, now);
   const busy = Boolean(props.uploading || props.reviewing || props.loadingResult);
-  const showError = Boolean(props.error && !busy);
-  const stateLabel = (state: StepState) => state === "failed" && model.retrying ? "Chờ thử lại"
+  const showError = Boolean(props.error && !busy && !props.blocked);
+  const stateLabel = (state: StepState) => state === "pending" && props.blocked ? "Chưa bắt đầu"
+    : state === "failed" && model.retrying ? "Chờ thử lại"
     : state === "running" && props.review?.status === "failed" ? "Chưa hoàn tất"
     : state === "running" && model.interrupted ? "Trạng thái lần cuối" : labels[state];
 
@@ -39,6 +44,7 @@ export function ReviewTimeline(props: TimelineInput & {
         <div className="min-w-0"><h2 id={`${id}-title`} className="m-0 text-ui-card font-semibold">Quy trình AI</h2><p className="mb-0 mt-1 text-ui-meta text-[#607087]" aria-live="off">{elapsed ? `Thời gian xử lý: ${elapsed}` : "Theo dõi trạng thái từ hệ thống"}</p></div>
       </header>
       <p role="status" className="mb-0 mt-4 rounded-lg bg-[#f6f8fc] p-3 text-ui leading-6 text-[#536881]">{model.message}</p>
+      {props.blocked && !busy && <ReviewBlockedNotice reason={props.blocked} role={props.role ?? "staff"} />}
       <ol className={styles.steps}>
         {model.steps.map((step, index) => <li key={step.key} data-review-step="true" aria-current={step.state === "running" && !model.interrupted ? "step" : undefined} className={styles.step}>
           {index < model.steps.length - 1 && <span aria-hidden="true" className={`${styles.connector} ${step.state === "completed" ? styles.connectorComplete : ""}`} />}
@@ -51,7 +57,7 @@ export function ReviewTimeline(props: TimelineInput & {
           </div>
         </li>)}
       </ol>
-      {showError && <div role="alert" className="mt-4 rounded-lg border border-[#edc4cd] bg-[#fff5f6] p-3 text-ui leading-6 text-[#a53348]"><p className="m-0">{props.error}</p><button type="button" onClick={props.onRetry} className="mt-3 min-h-10 rounded-lg border border-[#edc4cd] bg-white px-3 py-2 text-ui font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#9bbcf8]">{props.failureKind === "load" ? "Tải lại kết quả" : props.review?.status === "failed" ? "Thử rà soát lại" : "Tiếp tục theo dõi"}</button><p className="mb-0 mt-2 text-ui-meta">{props.failureKind === "load" ? "Tải lại kết quả không tạo lượt AI mới." : props.review?.status === "failed" ? "Thử lại một lượt thất bại có thể tạo lượt AI mới." : "Tiếp tục yêu cầu đã lưu, không cần tải lại tệp."}</p></div>}
+      {showError && <div role="alert" className="mt-4 rounded-lg border border-[#edc4cd] bg-[#fff5f6] p-3 text-ui leading-6 text-[#a53348]"><p className="m-0">{props.error}</p><Button variant="outline" size="sm" type="button" onClick={props.onRetry} className="mt-3">{props.failureKind === "load" ? "Tải lại kết quả" : props.review?.status === "failed" ? "Thử rà soát lại" : "Tiếp tục theo dõi"}</Button><p className="mb-0 mt-2 text-ui-meta">{props.failureKind === "load" ? "Tải lại kết quả không tạo lượt AI mới." : props.review?.status === "failed" ? "Thử lại một lượt thất bại có thể tạo lượt AI mới." : "Tiếp tục yêu cầu đã lưu, không cần tải lại tệp."}</p></div>}
     <footer className={styles.permissions} aria-label="Quyền hiện tại">
       <p className="m-0 text-ui-meta text-[#607087]">Quyền hiện tại · <strong className="font-semibold text-[#263750]">{props.roleLabel}</strong></p>
       <ul className="text-ui-meta">{[{ label: "Tải hợp đồng", allowed: props.access.upload }, { label: "Chạy AI review", allowed: props.access.review }, ...(props.access.administer ? [{ label: "Quản trị tổ chức", allowed: true }] : [])].map((permission) => <li key={permission.label} className="flex items-center gap-2 text-[#607087]"><Icon name={permission.allowed ? "check" : "lock"} className={`h-3.5 w-3.5 ${permission.allowed ? "text-[#23705a]" : "text-[#718096]"}`} />{permission.label}</li>)}</ul>

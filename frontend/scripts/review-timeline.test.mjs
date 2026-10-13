@@ -12,7 +12,7 @@ function load(file, dependencies = {}) {
   const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
-  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? {}, Date });
+  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? (name === "@/components/ui/button" ? { Button: "button" } : {}), Date });
   return exports;
 }
 const helpers = load('../lib/review-timeline.ts');
@@ -25,6 +25,13 @@ test('Idle, uploading and queued never imply extraction has completed', () => {
     const model = buildReviewTimeline(input);
     assert.ok(model.steps.every((item) => item.state === 'pending'));
   }
+});
+
+test('Quota rejection marks review as not started with no running or failed AI stages', () => {
+  const model = buildReviewTimeline({ blocked: 'quota', error: 'Quota exhausted' });
+  assert.match(model.message, /Chưa bắt đầu/);
+  assert.ok(!model.message.includes('Yêu cầu rà soát vẫn được lưu'));
+  assert.ok(model.steps.every((item) => item.state === 'pending'));
 });
 
 test('Reading remains running while backend is waiting for extraction', () => {

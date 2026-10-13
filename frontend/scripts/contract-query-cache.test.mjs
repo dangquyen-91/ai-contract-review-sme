@@ -13,7 +13,9 @@ function load(path, dependencies = {}) {
   vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? {}, AbortController, AbortSignal });
   return exports;
 }
-const keys = load('../lib/contract-query-keys.ts');
+const keys = load('../lib/query-keys/contracts.ts');
+const dashboard = load('../lib/query-keys/dashboard.ts');
+const invitationKeys = load('../lib/query-keys/invitations.ts').invitationKeys;
 function setup(overrides = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const calls = [];
@@ -21,7 +23,7 @@ function setup(overrides = {}) {
   const api = {
     getContract: async (id) => { calls.push({ type: 'detail', id }); return { _id: id }; },
     getReview: async (id, signal) => { calls.push({ type: 'result', id, signal }); return result; },
-    getFile: async (id, signal) => { calls.push({ type: 'file', id, signal }); return new Blob(['original']); },
+    getFile: async (id, signal, redacted) => { calls.push({ type: 'file', id, signal, redacted }); return new Blob([redacted ? 'masked' : 'original']); },
     ...overrides,
   };
   const hooks = load('../hooks/use-contracts.ts', {
@@ -31,7 +33,8 @@ function setup(overrides = {}) {
       useMutation: (options) => options,
       useQuery: (options) => ({ options, data: client.getQueryData(options.queryKey), isFetching: client.getQueryState(options.queryKey)?.fetchStatus === 'fetching' }),
     },
-    '@/lib/contract-query-keys': keys,
+    '@/lib/query-keys/contracts': keys,
+    '@/lib/query-keys/dashboard': dashboard,
     '@/lib/api/contracts': { contractsApi: api },
     '@/lib/review-session': { clearReviewSession: () => {}, executeReview: async () => result },
   });
@@ -102,5 +105,72 @@ test('File query uses a versioned key, forwards cancellation and releases unused
   await query.options.queryFn({ signal });
   assert.equal(ctx.calls[0].signal, signal);
   assert.equal(ctx.calls[0].type, 'file');
+  const redacted = ctx.hooks.useContractFile('contract-1', 'version-1', true);
+  assert.notDeepEqual(query.options.queryKey, redacted.options.queryKey);
+  await redacted.options.queryFn({ signal });
+  assert.equal(ctx.calls[1].redacted, true);
+  assert.equal(ctx.calls[0].redacted, false);
   ctx.client.clear();
+});
+
+test('Contract lists deduplicate equivalent views and separate role, organization, page and filter', async () => {
+  const ctx = setup({ list: async () => { ctx.calls.push({ type: 'list' }); return { items: [], total: 0 }; } });
+  const first = ctx.hooks.useContractsList({ status: 'reviewed' }, { scope: 'staff:org-1' });
+  const second = ctx.hooks.useContractsList({ status: 'reviewed', page: 1, search: '' }, { scope: 'staff:org-1' });
+  assert.deepEqual(first.options.queryKey, second.options.queryKey);
+  await Promise.all([ctx.client.fetchQuery(first.options), ctx.client.fetchQuery(second.options)]);
+  assert.equal(ctx.calls.length, 1);
+  for (const [filter, scope] of [[{ status: 'reviewed' }, 'staff:org-2'], [{ status: 'reviewed' }, 'reviewer:org-1'], [{ status: 'reviewed', page: 2 }, 'staff:org-1'], [{ status: 'uploaded' }, 'staff:org-1'], [{ search: 'sample' }, 'staff:org-1']]) {
+    assert.notDeepEqual(first.options.queryKey, ctx.hooks.useContractsList(filter, { scope }).options.queryKey);
+  }
+  ctx.client.clear();
+});
+
+test('Upload invalidates every contract list and dashboard without invalidating a saved review', async () => {
+  const ctx = setup();
+  const listKeys = [keys.contractKeys.list({ page: 1 }, 'staff:org-1'), keys.contractKeys.list({ status: 'reviewed', page: 2 }, 'reviewer:org-1')];
+  for (const key of listKeys) ctx.client.setQueryData(key, { items: [], total: 0 });
+  ctx.client.setQueryData(dashboard.dashboardKeys.overview, { totalContracts: 0 });
+  ctx.client.setQueryData(keys.contractKeys.result('contract-1'), ctx.result);
+  await ctx.hooks.useUploadContractMutation().onSuccess();
+  for (const key of [...listKeys, dashboard.dashboardKeys.overview]) assert.equal(ctx.client.getQueryState(key).isInvalidated, true);
+  assert.equal(ctx.client.getQueryState(keys.contractKeys.result('contract-1')).isInvalidated, false);
+  ctx.client.clear();
+});
+
+test('Review completion updates listings without refetching or invalidating its saved result', async () => {
+  const ctx = setup();
+  const listKey = keys.contractKeys.list({}, 'staff:org-1');
+  ctx.client.setQueryData(listKey, { items: [], total: 0 });
+  const mutation = ctx.hooks.useReviewContractMutation();
+  mutation.onSuccess(ctx.result, { contractId: 'contract-1' });
+  mutation.onSettled(ctx.result, null, { contractId: 'contract-1' });
+  assert.equal(ctx.client.getQueryState(listKey).isInvalidated, true);
+  assert.equal(ctx.client.getQueryState(keys.contractKeys.result('contract-1')).isInvalidated, false);
+  assert.equal(ctx.calls.length, 0);
+  ctx.client.clear();
+});
+
+test('Invitation changes invalidate every page and capacity only for their organization', async () => {
+  const client = new QueryClient();
+  const hooks = load('../hooks/use-invitations.ts', {
+    '@tanstack/react-query': { useQueryClient: () => client, useMutation: (options) => options },
+    '@/lib/query-keys/invitations': { invitationKeys },
+    '@/lib/api/client': { isApiClientError: (error) => error.status !== undefined },
+  });
+  const changed = [invitationKeys.invitations('org-1', 1), invitationKeys.invitations('org-1', 2), invitationKeys.subscription('org-1')];
+  const other = invitationKeys.invitations('org-2', 1);
+  for (const action of [hooks.useCreateInvitationMutation, hooks.useRevokeInvitationMutation]) {
+    for (const key of [...changed, other]) client.setQueryData(key, {});
+    await action('org-1').onSuccess();
+    for (const key of changed) assert.equal(client.getQueryState(key).isInvalidated, true);
+    assert.equal(client.getQueryState(other).isInvalidated, false);
+  }
+  client.setQueryData(invitationKeys.subscription('org-1'), {});
+  const create = hooks.useCreateInvitationMutation('org-1');
+  await create.onError({ status: 500, message: 'Offline' });
+  assert.equal(client.getQueryState(invitationKeys.subscription('org-1')).isInvalidated, false);
+  await create.onError({ status: 403, message: 'Member limit reached' });
+  assert.equal(client.getQueryState(invitationKeys.subscription('org-1')).isInvalidated, true);
+  client.clear();
 });

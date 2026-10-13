@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-function setup({ failResult = false, personal = false, initialType = 'service' } = {}) {
+function setup({ failResult = false, personal = false, initialType = 'service', failReview } = {}) {
   const values = [];
   let cursor = 0;
   const calls = [];
@@ -19,6 +19,10 @@ function setup({ failResult = false, personal = false, initialType = 'service' }
     },
   };
   const exports = {};
+  const failure = {};
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL('../lib/review-failure.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, { exports: failure, require: () => ({ isApiClientError: (error) => typeof error?.status === 'number' }) });
   const source = ts.transpileModule(fs.readFileSync(new URL('../hooks/use-review-workflow.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
@@ -28,13 +32,16 @@ function setup({ failResult = false, personal = false, initialType = 'service' }
     require: (name) => ({
       react,
       sonner: { toast: { success: () => {}, error: () => {} } },
-      '@/lib/api/client': { isApiClientError: () => false },
+      '@/lib/api/client': { isApiClientError: (error) => typeof error?.status === 'number' },
+      '@/lib/review-failure': failure,
       '@/lib/review-session': { readReviewSession: () => null, isReviewCancelled: (error) => error.name === 'AbortError' },
       '@/hooks/use-contracts': {
         useContractProfiles: () => ({ data: [] }),
         useUploadContractMutation: () => ({ isPending: false, mutateAsync: async (data) => { calls.push({ kind: 'upload', data }); return { _id: 'contract-1', title: 'Test' }; } }),
         useReviewContractMutation: () => ({ isPending: false, reconnecting: false, mutateAsync: async (args) => {
-          calls.push({ kind: 'run', args }); args.onProgress({ _id: 'run-1', status: 'completed' });
+          calls.push({ kind: 'run', args });
+          if (failReview) { const error = failReview; failReview = undefined; throw error; }
+          args.onProgress({ _id: 'run-1', status: 'completed' });
           if (failResult) { failResult = false; throw new Error('Cannot load result'); }
           return result;
         } }),
@@ -64,6 +71,7 @@ test('Merged workflow preserves explicit resume and writes the correct role revi
   assert.equal(ctx.calls.find((call) => call.kind === 'run').args.resumeOnly, true);
   assert.equal(ctx.calls.find((call) => call.kind === 'url').url, '/dashboard/user/review?contract=contract-1&reviewMode=resume');
   assert.equal(ctx.render().reviewProgress.status, 'completed');
+  assert.equal(ctx.render().timelineScrollRequest, 0);
 });
 
 test('Merged upload preserves the dev employee policy for personal labor contracts', async () => {
@@ -73,4 +81,23 @@ test('Merged upload preserves the dev employee policy for personal labor contrac
   file.name = 'test.pdf';
   assert.equal(await ctx.render().selectFile(file), true);
   assert.equal(ctx.calls.find((call) => call.kind === 'upload').data.get('ourParty'), 'employee');
+  assert.equal(ctx.render().timelineScrollRequest, 0);
+  await ctx.render().reviewUploadedContract('');
+  assert.equal(ctx.render().timelineScrollRequest, 1);
+});
+
+test('Quota rejection keeps the uploaded contract and prevents tracking retries, but permits a later explicit review', async () => {
+  const ctx = setup({ failReview: Object.assign(new Error('analysis quota exhausted. Upgrade your plan or wait for the next period.'), { status: 403 }) });
+  const file = new Blob(['test'], { type: 'application/pdf' }); file.name = 'test.pdf';
+  await ctx.render().selectFile(file);
+  await ctx.render().reviewUploadedContract('Payment');
+  assert.equal(ctx.render().reviewBlocked, 'quota');
+  assert.equal(ctx.render().pendingReviewId, 'contract-1');
+  assert.equal(ctx.render().reviewProgress, null);
+  assert.equal(ctx.calls.filter((call) => call.kind === 'upload').length, 1);
+  await ctx.render().retryReview();
+  assert.equal(ctx.calls.filter((call) => call.kind === 'run').length, 1);
+  await ctx.render().reviewExisting({ _id: 'contract-1', title: 'Test', status: 'uploaded' });
+  assert.equal(ctx.render().reviewBlocked, null);
+  assert.equal(ctx.render().workflowComplete, true);
 });
