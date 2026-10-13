@@ -68,6 +68,7 @@ function setup(mimeType = 'application/pdf') {
     useRef: () => ({ current: null }), useId: () => 'review', useMemo: (fn) => fn(), useEffect: () => {}, useLayoutEffect: () => {},
   };
   const hooks = load('../hooks/use-contracts.ts', {
+    '@/lib/contract-query-keys': load('../lib/contract-query-keys.ts'),
     react,
     '@tanstack/react-query': { useQuery: (options) => {
       queries.push(options);
@@ -83,7 +84,8 @@ function setup(mimeType = 'application/pdf') {
     react, 'react/jsx-runtime': jsx, '@/hooks/use-contracts': hooks,
     './review-workspace.module.css': { default: {} }, '@/components/ui/icon': { Icon: () => null },
     '@/components/contract/redacted-document': { RedactedDocument },
-    '@/components/contract/review-extras': { ContractChat: () => null, RiskDetails: () => null },
+    '@/components/contract/contract-chat': { ContractChat: () => null },
+    '@/components/contract/risk-details': { RiskDetails: () => null },
     '@/components/contract/key-terms': { KeyTerms: () => null },
     '@/components/contract/original-contract-preview': { OriginalContractPreview: (props) => jsx.jsx('iframe', { title: 'Original', ...props }) },
     '@/components/contract/document-disclosure-dialog': { DocumentDisclosureDialog: ({ mode, onConfirm, onCancel }) => jsx.jsxs('dialog', { children: [

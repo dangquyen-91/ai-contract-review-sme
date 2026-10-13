@@ -1,42 +1,43 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useContractFile } from "@/hooks/use-contracts";
 
 function normalizeText(value: string) {
   return value.normalize("NFKC").replace(/[\u00ad\u200b-\u200d\ufeff]/g, "").replace(/\s+/g, " ").trim();
 }
 
-export function OriginalContractPreview({ contractId, mimeType, fileName, target }: {
+export function OriginalContractPreview({ contractId, mimeType, fileName, target, version }: {
   contractId: string;
   mimeType: string;
   fileName?: string;
   target?: { text: string; requestId: number } | null;
+  version?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [error, setError] = useState(false);
+  const [renderError, setRenderError] = useState(false);
   const [rendered, setRendered] = useState(false);
   const [locationNotFound, setLocationNotFound] = useState(false);
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const isDocx = mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  const filePath = `/api/contracts/${contractId}/file`;
+  const fileQuery = useContractFile(contractId, version);
+  const blob = fileQuery.isError ? undefined : fileQuery.data;
+  const error = fileQuery.isError || renderError;
 
   useEffect(() => {
     const controller = new AbortController();
     const container = containerRef.current;
     let objectUrl: string | undefined;
     if (isDocx && !container) return;
-    setError(false);
+    setRenderError(false);
     setRendered(false);
     setLocationNotFound(false);
     setFileUrl(null);
     container?.replaceChildren();
 
     async function render() {
-      const response = await fetch(filePath, { signal: controller.signal, cache: "no-store" });
-      if (!response.ok) throw new Error("Cannot fetch original contract");
-      const blob = await response.blob();
-      if (controller.signal.aborted) return;
+      if (!blob || controller.signal.aborted) return;
       if (!isDocx) {
         objectUrl = URL.createObjectURL(new Blob([blob], { type: mimeType }));
         setFileUrl(objectUrl);
@@ -45,23 +46,27 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
       }
       const { renderAsync } = await import("docx-preview");
       if (controller.signal.aborted || !container) return;
-      await renderAsync(blob, container, container, {
+      const staging = document.createElement("div");
+      await renderAsync(blob, staging, staging, {
         breakPages: true,
         ignoreLastRenderedPageBreak: false,
         renderAltChunks: false,
       });
-      if (!controller.signal.aborted) setRendered(true);
+      if (!controller.signal.aborted) {
+        container.replaceChildren(...Array.from(staging.childNodes));
+        setRendered(true);
+      }
     }
 
     render().catch(() => {
-      if (!controller.signal.aborted) setError(true);
+      if (!controller.signal.aborted) setRenderError(true);
     });
     return () => {
       controller.abort();
       container?.replaceChildren();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [filePath, isDocx, mimeType, attempt]);
+  }, [blob, isDocx, mimeType, attempt]);
 
   useEffect(() => {
     if (!isDocx || !rendered || !target || !containerRef.current) return;
@@ -93,7 +98,7 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
 
   const errorMessage = error && <div role="alert" className="m-4 rounded-xl border border-[#e4e8ef] bg-white p-5 text-ui text-[#607087]">
     <p className="m-0">Không thể hiển thị file gốc. Bạn vẫn có thể chọn “Văn bản đầy đủ” để xem nội dung.</p>
-    <button type="button" onClick={() => setAttempt((value) => value + 1)} className="mt-3 rounded-lg border border-[#aac7fa] bg-[#eaf1ff] px-3 py-2 font-semibold text-[#1e53b8]">Thử tải lại file</button>
+    <button type="button" disabled={fileQuery.isFetching} onClick={() => { void fileQuery.refetch().then((response) => { if (!response.isError) setAttempt((value) => value + 1); }); }} className="mt-3 rounded-lg border border-[#aac7fa] bg-[#eaf1ff] px-3 py-2 font-semibold text-[#1e53b8] disabled:opacity-60">{fileQuery.isFetching ? "Đang tải lại…" : "Thử tải lại file"}</button>
   </div>;
   const loadingMessage = !error && !rendered && <p role="status" className="m-4 text-ui text-[#607087]">Đang tải file gốc…</p>;
 

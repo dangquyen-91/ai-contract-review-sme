@@ -31,6 +31,8 @@ export type DashboardContract = {
   createdAt: string;
 };
 
+export type ContractListResult = { items: DashboardContract[]; total: number };
+
 export type ContractTextResult = {
   text: string;
   redacted: boolean;

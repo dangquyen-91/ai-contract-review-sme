@@ -1,16 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/api/client";
-
-type Source = {
-  _id: string;
-  title: string;
-  citationLabel: string;
-  sourceType: "law" | "standard_template";
-  chunkCount: number;
-};
+import { useAdminHealth, useLegalSources } from "@/hooks/use-legal-sources";
 
 export function AvailableOverview({
   compact = false,
@@ -19,17 +10,8 @@ export function AvailableOverview({
   compact?: boolean;
   showLink?: boolean;
 }) {
-  const sources = useQuery({
-    queryKey: ["admin", "legal-sources"],
-    queryFn: () => apiRequest<Source[]>({ url: "/admin/legal-sources" }),
-    retry: false,
-  });
-  const health = useQuery({
-    queryKey: ["admin", "health"],
-    queryFn: () => apiRequest<{ status: string }>({ url: "/admin/health" }),
-    retry: false,
-    staleTime: 30000,
-  });
+  const sources = useLegalSources();
+  const health = useAdminHealth();
   const counts = sources.data
     ? [
         sources.data.length,

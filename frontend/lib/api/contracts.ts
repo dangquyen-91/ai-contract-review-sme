@@ -1,14 +1,14 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
 import { readContractStream } from "@/lib/api/contract-stream";
-import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyTerms, ContractProfile, ContractReviewResult, ContractReviewRun, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
+import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyTerms, ContractListResult, ContractProfile, ContractReviewResult, ContractReviewRun, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
 
 export const contractsApi = {
   listProfiles() {
     return apiRequest<ContractProfile[]>({ url: "/contract-profiles" });
   },
-  async list(filter: DashboardContractFilter & { page?: number; search?: string } = {}) {
+  async list(filter: DashboardContractFilter & { page?: number; search?: string } = {}): Promise<ContractListResult> {
     const response = await apiClient.get<{ data: DashboardContract[]; meta: { total: number; page: number; limit: number } }>("/contracts", {
       params: { ...filter, limit: 10, sortBy: "updatedAt", sortOrder: "desc" },
     });
@@ -16,6 +16,13 @@ export const contractsApi = {
   },
   getContract(contractId: string) {
     return apiRequest<DashboardContract>({ url: `/contracts/${contractId}` });
+  },
+
+  async getFile(contractId: string, signal?: AbortSignal) {
+    const response = await apiClient.get<Blob>(`/contracts/${contractId}/file`, {
+      responseType: "blob", signal, timeout: 60_000,
+    });
+    return response.data;
   },
 
   getText(contractId: string, options: { redacted?: boolean; redactionMode?: "token" | "partial"; signal?: AbortSignal } = {}) {

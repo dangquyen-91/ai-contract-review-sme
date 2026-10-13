@@ -1,10 +1,9 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { contractsApi } from "@/lib/api/contracts";
+import { useContractKeyTerms } from "@/hooks/use-contracts";
 
 export function KeyTerms({ contractId }: { contractId: string }) {
-  const { data } = useQuery({ queryKey: ["contracts", contractId, "key-terms"], queryFn: () => contractsApi.getKeyTerms(contractId) });
+  const { data } = useContractKeyTerms(contractId);
   if (!data?.terms.length) return null;
   return <section className="border-t border-[#e4e8ef] bg-[#fbfcff] px-[22px] py-5">
     <h3 className="m-0 text-ui-section">Thông tin chính</h3>

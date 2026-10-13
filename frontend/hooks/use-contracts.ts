@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clearReviewSession, executeReview } from "@/lib/review-session";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { contractsApi } from "@/lib/api/contracts";
 import { ApiClientError } from "@/lib/api/client";
-import type { ChatStreamEvent, ContractReviewResult, ContractReviewRun, DashboardContract, ProposedRevisionUpdate } from "@/types/contracts";
+import type { ChatStreamEvent, ContractListResult, ContractReviewResult, ContractReviewRun, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
+
+import { contractKeys, contractMutationKeys } from "@/lib/contract-query-keys";
+import type { DashboardContractFilter } from "@/types/dashboard";
 
 type ReviewContractVariables = {
   contractId: string;
@@ -14,22 +17,36 @@ type ReviewContractVariables = {
   onProgress?: (review: ContractReviewRun) => void;
 };
 
-export const contractMutationKeys = {
-  all: ["contracts"] as const,
-  upload: ["contracts", "upload"] as const,
-  review: ["contracts", "review"] as const,
-  getReview: ["contracts", "getReview"] as const,
-  findings: (contractId: string) => ["contracts", contractId, "findings"] as const,
-  chat: (contractId: string) => ["contracts", contractId, "chat"] as const,
-  detail: (contractId: string) => ["contracts", contractId, "detail"] as const,
-  text: (contractId: string) => ["contracts", contractId, "text"] as const,
-  clauses: (contractId: string) => ["contracts", contractId, "clauses"] as const,
-};
+export function useContractsList(
+  filter: DashboardContractFilter & { page?: number; search?: string },
+  options: { queryKey?: QueryKey; initialData?: ContractListResult; retry?: boolean; pollProcessing?: boolean } = {},
+) {
+  return useQuery({
+    queryKey: options.queryKey ?? contractKeys.list(filter),
+    queryFn: () => contractsApi.list(filter),
+    initialData: options.initialData,
+    retry: options.retry ?? false,
+    refetchInterval: options.pollProcessing
+      ? (query) => query.state.data?.items.some((item) => item.status === "processing") ? 30_000 : false
+      : false,
+  });
+}
+
+export function useContractProfiles() {
+  return useQuery({ queryKey: contractKeys.profiles, queryFn: contractsApi.listProfiles, staleTime: 5 * 60_000 });
+}
+
+export function useContractKeyTerms(contractId: string) {
+  return useQuery({
+    queryKey: contractKeys.keyTerms(contractId),
+    queryFn: () => contractsApi.getKeyTerms(contractId),
+    enabled: Boolean(contractId),
+  });
+}
 
 export function useContract(contractId: string) {
   return useQuery({
-    queryKey: contractMutationKeys.detail(contractId),
-    queryFn: () => contractsApi.getContract(contractId),
+    ...contractDetailQuery(contractId),
     enabled: Boolean(contractId),
   });
 }
@@ -42,9 +59,7 @@ export function useContractText(contractId: string, options: {
 } = {}) {
   const mode = options.redactionMode ?? "token";
   return useQuery({
-    queryKey: options.redacted
-      ? [...contractMutationKeys.text(contractId), "redacted", mode === "partial" ? "partial-email-preview" : mode, options.version]
-      : [...contractMutationKeys.text(contractId), "full", options.version],
+    queryKey: contractKeys.textView(contractId, Boolean(options.redacted), mode, options.version),
     queryFn: async ({ signal }) => {
       const response = await contractsApi.getText(contractId, { redacted: options.redacted, redactionMode: mode, signal });
       if (options.redacted && (response.redacted !== true || (mode === "partial" && response.redactionMode !== "partial") || typeof response.text !== "string")) {
@@ -64,7 +79,7 @@ export function useContractText(contractId: string, options: {
 
 export function useContractClauses(contractId: string) {
   return useQuery({
-    queryKey: contractMutationKeys.clauses(contractId),
+    queryKey: contractKeys.clauses(contractId),
     queryFn: () => contractsApi.listClauses(contractId),
     enabled: Boolean(contractId),
   });
@@ -77,7 +92,7 @@ export function useStreamChatMutation() {
       contractId: string; message: string; onEvent: (event: ChatStreamEvent) => void; signal?: AbortSignal;
     }) => contractsApi.streamChat(contractId, message, onEvent, signal),
     onSuccess: (_result, { contractId }) =>
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.chat(contractId) }),
+      queryClient.invalidateQueries({ queryKey: contractKeys.chat(contractId) }),
   });
 }
 
@@ -88,34 +103,68 @@ export function useUploadContractMutation() {
     mutationKey: contractMutationKeys.upload,
     mutationFn: (formData) => contractsApi.upload(formData),
     onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: contractKeys.lists }),
       queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
       queryClient.invalidateQueries({ queryKey: ["member-contracts"] }),
     ]),
   });
 }
 
-export function useGetContractReviewMutation() {
+export function useContractFile(contractId: string, version?: string) {
+  return useQuery({
+    queryKey: contractKeys.file(contractId, version),
+    queryFn: ({ signal }) => contractsApi.getFile(contractId, signal),
+    enabled: Boolean(contractId), retry: false, refetchOnWindowFocus: false, gcTime: 0,
+  });
+}
+
+const contractDetailQuery = (contractId: string) => ({
+  queryKey: contractKeys.detail(contractId),
+  queryFn: () => contractsApi.getContract(contractId),
+  staleTime: 30_000,
+});
+
+export function useLoadContract() {
+  const queryClient = useQueryClient();
+  return useCallback((contractId: string) => queryClient.fetchQuery(contractDetailQuery(contractId)), [queryClient]);
+}
+
+export function useContractReviewResult(contractId: string) {
+  const queryClient = useQueryClient();
   const controller = useRef<AbortController | null>(null);
   const cancel = useCallback(() => controller.current?.abort(), []);
   useEffect(() => () => controller.current?.abort(), []);
-  const mutation = useMutation<ContractReviewResult, Error, string>({
-    mutationKey: contractMutationKeys.getReview,
-    mutationFn: async (id) => {
-      controller.current?.abort();
-      const request = new AbortController();
-      controller.current = request;
-      try {
-        const result = await contractsApi.getReview(id, request.signal);
-        request.signal.throwIfAborted();
-        clearReviewSession(id);
-        return result;
-      } catch (error) {
-        if (request.signal.aborted) throw request.signal.reason;
-        throw error;
-      }
-    },
+  const query = useQuery({
+    queryKey: contractKeys.result(contractId),
+    queryFn: ({ signal }) => contractsApi.getReview(contractId, signal),
+    enabled: false, retry: false, staleTime: 0, refetchOnWindowFocus: false,
   });
-  return { ...mutation, cancel };
+  const load = useCallback(async (id: string) => {
+    controller.current?.abort();
+    const request = new AbortController();
+    controller.current = request;
+    try {
+      const result = await queryClient.fetchQuery({
+        queryKey: contractKeys.result(id),
+        queryFn: ({ signal }) => contractsApi.getReview(id, AbortSignal.any([signal, request.signal])),
+        retry: false, staleTime: 0,
+      });
+      request.signal.throwIfAborted();
+      clearReviewSession(id);
+      return result;
+    } catch (error) {
+      if (request.signal.aborted) throw request.signal.reason;
+      throw error;
+    }
+  }, [queryClient]);
+  return { ...query, load, cancel, isLoadingResult: query.isFetching };
+}
+
+function updateCachedFinding(queryClient: ReturnType<typeof useQueryClient>, contractId: string, finding: RiskFinding) {
+  queryClient.setQueryData<ContractReviewResult>(contractKeys.result(contractId), (result) => result ? {
+    ...result, findings: result.findings.map((item) => (item.id ?? item._id) === (finding.id ?? finding._id) ? finding : item),
+  } : result);
+  return queryClient.invalidateQueries({ queryKey: contractKeys.findings(contractId) });
 }
 
 export function useReviewContractMutation() {
@@ -134,15 +183,19 @@ export function useReviewContractMutation() {
       try { return await executeReview({ contractId, analysisFocus, resumeOnly, signal: request.signal, onProgress, onConnection: setReconnecting }); }
       finally { if (!request.signal.aborted) setReconnecting(false); }
     },
+    onSuccess: (result, { contractId }) => queryClient.setQueryData(contractKeys.result(contractId), result),
     // Segmentation may have succeeded even when summary or risk detection failed.
-    onSettled: (_result, _error, { contractId }) => {
+    onSettled: (_result, error, { contractId }) => {
+      queryClient.invalidateQueries({ queryKey: contractKeys.lists });
       queryClient.invalidateQueries({ queryKey: ["member-contracts"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.detail(contractId) });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.clauses(contractId) });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.text(contractId) });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.findings(contractId) });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.getReview });
+      queryClient.invalidateQueries({ queryKey: contractKeys.detail(contractId) });
+      queryClient.invalidateQueries({ queryKey: contractKeys.clauses(contractId) });
+      queryClient.invalidateQueries({ queryKey: contractKeys.keyTerms(contractId) });
+      queryClient.invalidateQueries({ queryKey: contractKeys.fileBase(contractId) });
+      queryClient.invalidateQueries({ queryKey: contractKeys.text(contractId) });
+      queryClient.invalidateQueries({ queryKey: contractKeys.findings(contractId) });
+      if (error) queryClient.invalidateQueries({ queryKey: contractKeys.result(contractId) });
     },
 
   });
@@ -151,7 +204,7 @@ export function useReviewContractMutation() {
 
 export function useContractFindings(contractId: string) {
   return useQuery({
-    queryKey: contractMutationKeys.findings(contractId),
+    queryKey: contractKeys.findings(contractId),
     queryFn: () => contractsApi.listFindings(contractId),
     enabled: Boolean(contractId),
   });
@@ -163,10 +216,7 @@ export function useUpdateProposedRevisionMutation() {
     mutationFn: ({ contractId, findingId, update }: {
       contractId: string; findingId: string; update: ProposedRevisionUpdate;
     }) => contractsApi.updateProposedRevision(contractId, findingId, update),
-    onSuccess: (_finding, { contractId }) => {
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.findings(contractId) });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.getReview });
-    },
+    onSuccess: (finding, { contractId }) => updateCachedFinding(queryClient, contractId, finding),
   });
 }
 
@@ -175,16 +225,13 @@ export function useRemoveProposedRevisionMutation() {
   return useMutation({
     mutationFn: ({ contractId, findingId }: { contractId: string; findingId: string }) =>
       contractsApi.removeProposedRevision(contractId, findingId),
-    onSuccess: (_finding, { contractId }) => {
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.findings(contractId) });
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.getReview });
-    },
+    onSuccess: (finding, { contractId }) => updateCachedFinding(queryClient, contractId, finding),
   });
 }
 
 export function useContractChatMessages(contractId: string) {
   return useQuery({
-    queryKey: contractMutationKeys.chat(contractId),
+    queryKey: contractKeys.chat(contractId),
     queryFn: () => contractsApi.listChatMessages(contractId),
     enabled: Boolean(contractId),
   });
@@ -196,6 +243,6 @@ export function useAskAboutContractMutation() {
     mutationFn: ({ contractId, message }: { contractId: string; message: string }) =>
       contractsApi.askAboutContract(contractId, message),
     onSuccess: (_reply, { contractId }) =>
-      queryClient.invalidateQueries({ queryKey: contractMutationKeys.chat(contractId) }),
+      queryClient.invalidateQueries({ queryKey: contractKeys.chat(contractId) }),
   });
 }

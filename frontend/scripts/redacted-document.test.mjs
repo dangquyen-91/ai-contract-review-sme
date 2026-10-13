@@ -92,6 +92,7 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
   let queryOptions;
   let requestOptions;
   const hooks = load('../hooks/use-contracts.ts', {
+    '@/lib/contract-query-keys': load('../lib/contract-query-keys.ts'),
     'react': React,
     '@tanstack/react-query': { useQuery: (options) => {
       if (!options.queryKey.includes('redacted')) return { isPending: true, isError: false, isFetching: false };
@@ -107,7 +108,8 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
     './review-workspace.module.css': { default: {} },
     '@/components/ui/icon': { Icon: () => null },
     '@/components/contract/redacted-document': { RedactedDocument },
-    '@/components/contract/review-extras': { ContractChat: () => null, RiskDetails: () => null },
+    '@/components/contract/contract-chat': { ContractChat: () => null },
+    '@/components/contract/risk-details': { RiskDetails: () => null },
     '@/components/contract/original-contract-preview': { OriginalContractPreview: () => jsx.jsx('iframe', { title: 'Original file' }) },
     '@/components/contract/key-terms': { KeyTerms: () => null },
   });

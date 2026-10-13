@@ -4,7 +4,8 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Reac
 import { useContractText } from "@/hooks/use-contracts";
 import workspaceStyles from "./review-workspace.module.css";
 import { Icon } from "@/components/ui/icon";
-import { ContractChat, RiskDetails } from "@/components/contract/review-extras";
+import { ContractChat } from "@/components/contract/contract-chat";
+import { RiskDetails } from "@/components/contract/risk-details";
 import { OriginalContractPreview } from "@/components/contract/original-contract-preview";
 import { KeyTerms } from "@/components/contract/key-terms";
 import { RedactedDocument } from "@/components/contract/redacted-document";
@@ -65,11 +66,10 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
   const [originalTarget, setOriginalTarget] = useState<{ index: number; requestId: number } | null>(null);
   const [viewMode, setViewMode] = useState<"original" | "text" | "redacted">("redacted");
   const [disclosure, setDisclosure] = useState<{ mode: "text" | "original"; clauseIndex?: number } | null>(null);
-  const [findingUpdates, setFindingUpdates] = useState<Record<string, RiskFinding>>({});
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<"all" | RiskFinding["severity"]>("all");
   const sectionId = useId();
-  const findings = result.findings.map((finding) => findingUpdates[finding.id ?? finding._id ?? ""] ?? finding);
+  const findings = result.findings;
   const visibleFindings = findings.filter((finding) => severityFilter === "all" || finding.severity === severityFilter);
   const contractBodyRef = useRef<HTMLDivElement>(null);
   const savedScroll = useRef(0);
@@ -142,11 +142,6 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
     scrollToClause(activeClause);
   }, [activeClause, viewMode, text]);
 
-  function replaceFinding(next: RiskFinding) {
-    const id = next.id ?? next._id;
-    if (id) setFindingUpdates((current) => ({ ...current, [id]: next }));
-  }
-
   function findingDescription(finding: RiskFinding) {
     return [...(finding.problem ?? []), ...(finding.consequences ?? [])].join(" ");
   }
@@ -214,7 +209,7 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
                   aria-label={`${finding.title}. ${isDocx ? "Xem vị trí trong file gốc" : "Xem vị trí trong văn bản đầy đủ"}`}
                 ><strong>{finding.title}</strong><span>{findingDescription(finding)}</span><em>{isDocx ? "Xem vị trí trong file gốc →" : "Xem vị trí trong văn bản đầy đủ →"}</em></button> : <div className="min-w-0 block text-left p-0 [&_strong]:block [&_strong]:text-ui-section [&_p]:block [&_p]:text-[#66758a] [&_p]:text-ui [&_p]:leading-[1.6] [&_p]:mt-[5px] [&_p]:mb-0 [&_p]:mx-0 [&_small]:block [&_small]:text-[#345e92] [&_small]:text-ui-meta [&_small]:leading-normal [&_small]:mt-1.5 [&_em]:block [&_em]:text-[#2864dc] [&_em]:text-ui [&_em]:not-italic [&_em]:font-bold [&_em]:mt-2 [&_em]:text-[#8a94a3]"><strong>{finding.title}</strong><p>{findingDescription(finding)}</p>{finding.findingType === "missing_clause" && <em>Điều khoản này chưa có trong hợp đồng.</em>}</div>}
                 <button className="text-[#2864dc] [background:none] [font:inherit] cursor-pointer mt-[9px] p-0 border-0 border-none border-current text-ui font-semibold focus-visible:[outline:2px_solid_#2864dc] focus-visible:outline-offset-[3px]" type="button" aria-expanded={expanded} onClick={() => setExpandedFinding(expanded ? null : findingKey)}>{expanded ? "Ẩn chi tiết" : "Xem phân tích và đề xuất"}</button>
-                {expanded && <RiskDetails contractId={contractId} finding={finding} onChange={replaceFinding} allowProposalEditing={isDocx && canJump} />}</div>
+                {expanded && <RiskDetails contractId={contractId} finding={finding} allowProposalEditing={isDocx && canJump} />}</div>
               </li>;
             })}</ul> : <p className="text-[#66758a] text-ui mt-3.5 mb-0 mx-0">{severityFilter !== "all" ? "Không có rủi ro trong nhóm đang chọn." : risksComplete ? "Chưa phát hiện điểm rủi ro đáng kể." : "Đánh giá rủi ro chưa hoàn tất."}</p>}
           </section>
@@ -237,7 +232,7 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
             <details className="mt-2 text-ui leading-6 text-[#607087]"><summary className="w-fit cursor-pointer font-semibold text-[#315eac]">Cách dữ liệu được bảo vệ</summary><p className="mb-0 mt-2">Việc nhận diện phụ thuộc cấu hình hợp đồng. Tên dùng nhãn Cá nhân 1 nhất quán trong bản xem. Email chỉ giữ ký tự đầu và tên miền, ví dụ m•••@gmail.com. Khi số cuối trùng nhau, nhãn Tài khoản hoặc Điện thoại giúp phân biệt các giá trị. Dấu chấm có độ dài cố định, không phản ánh số ký tự thật. Đây là bản đối chiếu nội bộ, không phải bản báo cáo chia sẻ đã che toàn bộ.</p></details>
           </div>
           <div className={`${workspaceStyles.documentBody} min-h-0 overflow-hidden [@media_(max-width:_1080px)]:h-[min(58vh,650px)] [@media_(max-width:_1080px)]:min-h-[390px]`}>
-            {showOriginal && contractId && mimeType ? originalTarget ? <FullDocument query={fullQuery}><OriginalContractPreview contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} target={previewTarget} /></FullDocument> : <OriginalContractPreview contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} /> :
+            {showOriginal && contractId && mimeType ? originalTarget ? <FullDocument query={fullQuery}><OriginalContractPreview version={result.contract.updatedAt} contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} target={previewTarget} /></FullDocument> : <OriginalContractPreview version={result.contract.updatedAt} contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} /> :
               <div ref={contractBodyRef} className="h-full overflow-y-auto scroll-smooth p-[26px] [@media_(max-width:_580px)]:p-[18px] motion-reduce:scroll-auto">
                 {viewMode === "redacted" ? <RedactedDocument data={redactedQuery.data} isPending={redactedQuery.isPending && Boolean(contractId)} isError={redactedQuery.isError} isFetching={redactedQuery.isFetching} onRetry={() => { void redactedQuery.refetch(); }} /> : <FullDocument query={fullQuery}><div className="text-[#263750] [font-family:Georgia,'Times_New_Roman',serif] text-ui-document leading-[1.85] [overflow-wrap:anywhere] whitespace-pre-wrap">{contractParts}</div></FullDocument>}
               </div>}

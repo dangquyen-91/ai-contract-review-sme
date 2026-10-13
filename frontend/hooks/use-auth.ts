@@ -25,3 +25,13 @@ export function useRefreshTokenMutation() {
     mutationFn: () => authApi.refreshToken(),
   });
 }
+
+export function useCompleteOnboardingMutation() {
+  return useMutation<AuthSession, ApiClientError, void>({
+    mutationFn: () => authApi.completeOnboarding(),
+  });
+}
+
+export function useLogoutMutation() {
+  return useMutation({ mutationFn: () => authApi.logout() });
+}
