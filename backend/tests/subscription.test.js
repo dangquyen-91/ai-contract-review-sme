@@ -84,6 +84,7 @@ async function user(role = 'user', orgId) {
       name: 'Test',
       email: `sub-${++serial}@example.com`,
       passwordHash: 'unused',
+      emailVerifiedAt: new Date(),
       roleId: roleDoc._id,
       orgId,
     })

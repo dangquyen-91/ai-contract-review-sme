@@ -3,7 +3,7 @@ import { encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { rememberedCookieAge, tokenMaxAge } from "@/lib/token-expiry";
 import type { AuthUser } from "@/types/auth";
 
-const allowedActions = new Set(["login", "register", "refresh", "logout"]);
+const allowedActions = new Set(["login", "register", "refresh", "logout", "verify-email", "resend-verification"]);
 
 function cookieOptions(secure: boolean) {
   return { httpOnly: true, sameSite: "lax" as const, secure, path: "/" };
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
   try {
     const isRefresh = action === "refresh";
     const requestBody = isRefresh ? {} : await request.json();
-    const remember = isRefresh
+    let remember = isRefresh
       ? request.cookies.get("lawscan_remember")?.value === "1"
       : action === "login" && requestBody.remember === true;
     const refreshToken = request.cookies.get("lawscan_refresh")?.value;
@@ -63,6 +63,15 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
       return response;
     }
 
+    if (payload.data?.verificationRequired === true) {
+      const response = NextResponse.json(payload, { status: upstream.status });
+      response.headers.set("Cache-Control", "no-store");
+      // A pending verification is not an authenticated session.
+      if (action !== "resend-verification") clearSessionCookies(response, secure);
+      return response;
+    }
+    if (action === "verify-email") remember = payload.data?.remember === true;
+
     const { accessToken, refreshToken: nextRefreshToken, user } = payload.data as {
       accessToken: string;
       refreshToken: string;
@@ -72,6 +81,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
       success: true,
       data: isRefresh ? { refreshed: true } : { user },
     });
+    response.headers.set("Cache-Control", "no-store");
     const options = cookieOptions(secure);
     response.cookies.set("lawscan_access", accessToken, { ...options, maxAge: tokenMaxAge(accessToken) });
     response.cookies.set("lawscan_refresh", nextRefreshToken, {

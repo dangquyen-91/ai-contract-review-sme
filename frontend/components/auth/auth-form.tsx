@@ -10,12 +10,13 @@ import { useQuery } from "@tanstack/react-query";
 import { get, useForm, useWatch, type FieldError as FormFieldError, type FieldErrors, type FieldPath, type SubmitHandler } from "react-hook-form";
 import { toast } from "sonner";
 import { Icon } from "@/components/ui/icon";
+import { EmailVerificationForm } from "@/components/auth/email-verification-form";
 import { useAuthMutation } from "@/hooks/use-auth";
 import { isApiClientError } from "@/lib/api/client";
 import { invitationsApi } from "@/lib/api/invitations";
 import { invitationError } from "@/lib/invitation-error";
 import { authFormSchema } from "@/schemas/auth.schema";
-import type { AuthFormValues, AuthMode, AuthMutationVariables } from "@/types/auth";
+import type { AuthFormValues, AuthMode, AuthMutationVariables, EmailVerificationChallenge } from "@/types/auth";
 
 const authFields = new Set<FieldPath<AuthFormValues>>([
   "name",
@@ -75,6 +76,7 @@ function ResolvedAuthForm({ mode, invitationToken, invitedEmail }: { mode: AuthM
   const authMutation = useAuthMutation();
   const [showPassword, setShowPassword] = useState(false);
   const [accountExists, setAccountExists] = useState(false);
+  const [verification, setVerification] = useState<EmailVerificationChallenge | null>(null);
   const {
     control,
     formState: { errors, isSubmitting },
@@ -116,6 +118,10 @@ function ResolvedAuthForm({ mode, invitationToken, invitedEmail }: { mode: AuthM
 
     try {
       const session = await authMutation.mutateAsync(request);
+      if ("verificationRequired" in session) {
+        setVerification(session);
+        return;
+      }
       toast.success(isRegister ? "Đăng ký thành công" : "Đăng nhập thành công", {
         description: isRegister
           ? "Tài khoản của bạn đã được tạo."
@@ -154,6 +160,8 @@ function ResolvedAuthForm({ mode, invitationToken, invitedEmail }: { mode: AuthM
   const passwordNotCommon = !["123456789012", "password1234", "admin12345678", "qwerty123456", "lawscan123456"].includes(password.toLowerCase());
   const passwordsMatch = Boolean(confirmPassword) && password === confirmPassword;
 
+  if (verification) return <EmailVerificationForm initialChallenge={verification} invitationToken={invited ? invitationToken : undefined} onBack={() => setVerification(null)} />;
+
   return (
     <div className={`${"w-[min(460px,100%)] [&:is(a,_button):focus-visible]:[outline:3px_solid_#8ab8fa] [&:is(a,_button):focus-visible]:outline-offset-[3px] motion-safe:animate-[auth-enter_0.45s_cubic-bezier(.22,1,0.36,1)_both] [@media_(max-width:_840px)]:border [@media_(max-width:_840px)]:[background:#fff] [@media_(max-width:_840px)]:shadow-[0_22px_55px_-40px_#153b7380] [@media_(max-width:_840px)]:pt-[27px] [@media_(max-width:_840px)]:pb-[25px] [@media_(max-width:_840px)]:px-6 [@media_(max-width:_840px)]:rounded-[18px] [@media_(max-width:_840px)]:border-solid [@media_(max-width:_840px)]:border-[#e1e7ef] [@media_(max-width:_480px)]:px-[18px] [@media_(max-width:_480px)]:py-[23px] [@media_(max-width:_480px)]:rounded-[15px] motion-reduce:[animation-duration:0.01ms] motion-reduce:[animation-iteration-count:1]"} ${isRegister ? "[padding-block:22px]" : ""}`}>
       <nav className="w-fit grid grid-cols-[1fr_1fr] gap-[3px] border [background:#f4f6f9] p-[3px] rounded-[11px] border-solid border-[#e0e6ef] [&_a]:min-w-[92px] [&_a]:text-[#718097] [&_a]:text-center [&_a]:[text-decoration:none] [&_a]:text-[length:11px] [&_a]:font-[650] [&_a]:px-[13px] [&_a]:py-2 [&_a]:rounded-lg [&_a]:aria-[current=page]:text-[#11203c] [&_a]:aria-[current=page]:[background:#fff] [&_a]:aria-[current=page]:shadow-[0_2px_7px_#19365f12] [@media_(max-width:_480px)]:w-full [&_a]:[@media_(max-width:_480px)]:min-w-0" aria-label="Chọn hình thức truy cập">
@@ -166,6 +174,7 @@ function ResolvedAuthForm({ mode, invitationToken, invitedEmail }: { mode: AuthM
         <h1>{isRegister ? "Tạo tài khoản LawScan" : "Đăng nhập vào LawScan"}</h1>
         <p>{invited ? "Dùng đúng email nhận lời mời để tiếp tục tham gia tổ chức." : isRegister ? "Đăng ký tài khoản để bắt đầu sử dụng LawScan." : "Tiếp tục công việc rà soát hợp đồng của bạn."}</p>
       </header>
+
 
       <form onSubmit={handleSubmit(submit)} className="grid gap-[15px] mt-[26px] [@media_(max-width:_480px)]:gap-[13px] [@media_(max-width:_480px)]:mt-[23px]" noValidate>
         <input type="hidden" {...register("mode")} />

@@ -160,7 +160,8 @@ components:
           format: email
         password:
           type: string
-          minLength: 8
+          minLength: 12
+          description: Maximum 72 UTF-8 bytes.
 
     LoginRequest:
       type: object
@@ -178,6 +179,77 @@ components:
         remember:
           type: boolean
           description: Keep the session across browser restarts with a longer refresh token lifetime.
+
+    EmailVerificationChallenge:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            verificationRequired:
+              type: boolean
+              example: true
+            challengeId:
+              type: string
+              description: Opaque challenge identifier; keep it for verification and resend.
+            email:
+              type: string
+              format: email
+            expiresAt:
+              type: string
+              format: date-time
+            resendAfterSeconds:
+              type: integer
+              example: 60
+
+    VerifyEmailRequest:
+      type: object
+      required: [challengeId, code]
+      properties:
+        challengeId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+          example: '012345'
+        invitationToken:
+          type: string
+          description: Required if register/login included an invitation token. Must be the same token.
+          pattern: '^[a-f0-9]{64}$'
+
+    ResendVerificationRequest:
+      type: object
+      required: [challengeId]
+      properties:
+        challengeId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        invitationToken:
+          type: string
+          description: Preserve the token from the original invitation flow.
+          pattern: '^[a-f0-9]{64}$'
+
+    AuthSessionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/AuthUser'
+            accessToken:
+              type: string
+            refreshToken:
+              type: string
+            remember:
+              type: boolean
 
     RefreshRequest:
       type: object
@@ -201,6 +273,8 @@ components:
     AuthUser:
       type: object
       properties:
+        emailVerified:
+          type: boolean
         id:
           type: string
         name:
@@ -1293,7 +1367,8 @@ paths:
   /auth/register:
     post:
       tags: [Auth]
-      summary: Register a new user
+      summary: Start registration and email verification
+      description: Sends a six-digit OTP through Brevo. No account or session is created until verification succeeds. Code expires in 10 minutes; five incorrect attempts lock the challenge. Maximum five sends per email per hour, at least 60 seconds apart.
       security: []
       requestBody:
         required: true
@@ -1302,23 +1377,23 @@ paths:
             schema:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
-        '201':
-          description: Created
+        '202':
+          description: Verification required; email accepted by Brevo, not a delivery guarantee
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthTokens'
-        '400':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/EmailVerificationChallenge'
+        '400': { description: Invalid input or invitation }
+        '409': { description: Email already registered; use login }
+        '429': { description: Cooldown or rate limit exceeded }
+        '502': { description: Email provider failed }
+        '503': { description: Email provider is not configured }
 
   /auth/login:
     post:
       tags: [Auth]
       summary: Login with email and password
+      description: Verified accounts receive tokens immediately. Existing unverified accounts must complete email verification after the password is validated.
       security: []
       requestBody:
         required: true
@@ -1328,17 +1403,71 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: OK
+          description: Authenticated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthTokens'
-        '401':
-          description: Invalid credentials
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '202':
+          description: Email verification required
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/EmailVerificationChallenge'
+        '400': { description: Invalid invitation or input }
+        '401': { description: Invalid credentials or inactive account }
+        '429': { description: Cooldown or rate limit exceeded }
+        '502': { description: Email provider failed }
+        '503': { description: Email provider is not configured }
+
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and receive a session
+      description: Submit the challengeId and six-digit code. Preserve invitationToken when present at register/login; after verification explicitly accept the invitation. A code can be consumed only once. Previously issued sessions for unverified users cannot access protected APIs.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+      responses:
+        '200':
+          description: Email verified and authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400': { description: Incorrect, expired, consumed code or invalid invitation }
+        '401': { description: Account changed or disabled; sign in again }
+        '409': { description: Email already registered }
+        '429': { description: Too many attempts }
+
+  /auth/resend-verification:
+    post:
+      tags: [Auth]
+      summary: Send a replacement verification code through Brevo
+      description: Requires the original challengeId and invitationToken when applicable. Invalidates the previous code. Minimum 60 seconds between sends; maximum five sends per email per hour. Returns the same challengeId with a fresh expiration.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendVerificationRequest'
+      responses:
+        '202':
+          description: Replacement code sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailVerificationChallenge'
+        '400': { description: Invalid challenge or invitation }
+        '409': { description: Superseded by another verification request }
+        '429': { description: Cooldown or rate limit exceeded }
+        '502': { description: Email provider failed }
+        '503': { description: Email provider is not configured }
 
   /auth/refresh:
     post:

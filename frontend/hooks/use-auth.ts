@@ -3,7 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { authApi } from "@/lib/api/auth";
 import type { ApiClientError } from "@/lib/api/client";
-import type { AuthMutationVariables, AuthSession, RefreshTokenResult } from "@/types/auth";
+import type { AuthMutationVariables, AuthResult, RefreshTokenResult } from "@/types/auth";
 
 export const authMutationKeys = {
   all: ["auth"] as const,
@@ -11,7 +11,7 @@ export const authMutationKeys = {
 };
 
 export function useAuthMutation() {
-  return useMutation<AuthSession, ApiClientError, AuthMutationVariables>({
+  return useMutation<AuthResult, ApiClientError, AuthMutationVariables>({
     mutationKey: authMutationKeys.all,
     mutationFn: ({ mode, data }) => (
       mode === "login" ? authApi.login(data) : authApi.register(data)

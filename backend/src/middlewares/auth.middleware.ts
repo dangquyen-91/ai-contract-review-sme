@@ -44,6 +44,8 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     const user = await UserModel.findOne({ _id: payload.sub, isActive: true }).populate('roleId');
     if (!user || !user.roleId)
       return next(AppError.unauthorized('User is inactive or no longer exists'));
+    if (!user.emailVerifiedAt)
+      return next(AppError.forbidden('Verify your email by signing in again'));
     const role = (user.roleId as unknown as Role).code;
     const orgId = user.orgId?.toString();
     // Stale tokens must not keep old organization access or silently switch context.
