@@ -101,6 +101,9 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
     } },
     '@/lib/api/contracts': { contractsApi: { getText: async (_id, options) => { requestOptions = options; return textResponse; } } },
   });
+  const { ReviewResultHeader } = load('../components/contract/review-result-header.tsx', {
+    'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
+  });
   const { ReviewResults } = load('../components/contract/review-results.tsx', {
     'react': React,
     'react/jsx-runtime': jsx,
@@ -110,6 +113,7 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
     '@/components/contract/redacted-document': { RedactedDocument },
     '@/components/contract/contract-chat': { ContractChat: () => null },
     '@/components/contract/risk-details': { RiskDetails: () => null },
+    '@/components/contract/review-result-header': { ReviewResultHeader },
     '@/components/contract/original-contract-preview': { OriginalContractPreview: () => jsx.jsx('iframe', { title: 'Original file' }) },
     '@/components/contract/key-terms': { KeyTerms: () => null },
   });

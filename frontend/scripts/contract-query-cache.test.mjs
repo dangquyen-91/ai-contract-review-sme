@@ -16,6 +16,26 @@ function load(path, dependencies = {}) {
 const keys = load('../lib/query-keys/contracts.ts');
 const dashboard = load('../lib/query-keys/dashboard.ts');
 const invitationKeys = load('../lib/query-keys/invitations.ts').invitationKeys;
+
+test('Share summary queries separate versions and reject an unmarked response without falling back to full results', async () => {
+  const calls = [];
+  let response = { text: 'Safe summary', redacted: true };
+  const { useContractShareSummary } = load('../hooks/use-contract-share-summary.ts', {
+    '@tanstack/react-query': { useQuery: (options) => options },
+    '@/lib/query-keys/contracts': keys,
+    '@/lib/api/contracts': { contractsApi: { getShareSummary: async (...args) => { calls.push(args); return response; } } },
+  });
+  const query = useContractShareSummary('contract', 'version-1');
+  const signal = new AbortController().signal;
+  assert.equal((await query.queryFn({ signal })).text, 'Safe summary');
+  assert.equal(calls[0][2], signal);
+  assert.equal(query.retry, false);
+  assert.equal(query.gcTime, 0);
+  assert.notDeepEqual(query.queryKey, useContractShareSummary('contract', 'version-2').queryKey);
+  response = { text: 'Unexpected full content', redacted: false };
+  await assert.rejects(query.queryFn({ signal }));
+  assert.equal(calls.length, 2);
+});
 function setup(overrides = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const calls = [];

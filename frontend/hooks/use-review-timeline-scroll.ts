@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 
 // A request comes from the user's review action, never from polling or recovery.
-export function useReviewTimelineScroll(request: number) {
-  const targetRef = useRef<HTMLDivElement>(null);
+export function useReviewTimelineScroll(request: number, sharedRef?: RefObject<HTMLDivElement | null>) {
+  const localRef = useRef<HTMLDivElement>(null);
+  const targetRef = sharedRef ?? localRef;
 
   useEffect(() => {
     if (!request) return;
@@ -16,7 +17,7 @@ export function useReviewTimelineScroll(request: number) {
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [request]);
+  }, [request, targetRef]);
 
   return targetRef;
 }

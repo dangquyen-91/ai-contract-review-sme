@@ -35,8 +35,10 @@ export function buildReviewTimeline(input: TimelineInput) {
   else if (review?.status === "running" && review.currentStage === "waiting_for_extraction") reading = "running";
 
   const analysis: StepState = summary === "completed" && risk === "completed" ? "completed"
-    : summary === "failed" || risk === "failed" ? "failed"
-    : summary === "running" || risk === "running" ? "running" : "pending";
+    : review?.status === "failed" && (summary === "failed" || risk === "failed") ? "failed"
+    : summary === "running" || risk === "running" ? "running"
+    : summary === "failed" || risk === "failed" ? "failed" : "pending";
+  const analysisComplete = reading === "completed" && segmentation === "completed" && analysis === "completed";
   const downloading = Boolean(loadingResult || (reviewing && review?.status === "completed"));
   const download: StepState = result ? "completed" : downloading ? "running" : error && failureKind === "load" ? "failed" : "pending";
   const interrupted = Boolean(input.reconnecting || review?.status === "failed" || (error && !reviewing && !loadingResult) || (review?.status === "running" && !reviewing));
@@ -44,7 +46,7 @@ export function buildReviewTimeline(input: TimelineInput) {
   const pages = review?.currentStage === "waiting_for_extraction" ? review.stageDetail?.match(/^(\d+)\/(\d+) pages$/) : null;
   let message = "Bắt đầu rà soát để theo dõi tiến trình.";
   if (uploading) message = "Đang tải tệp lên hệ thống…";
-  else if (result) message = "Kết quả đã được tải để xem.";
+  else if (result) message = analysisComplete ? "Kết quả đã được tải để xem." : "Kết quả đã tải. Phân tích chưa hoàn tất; kiểm tra trạng thái các bước bên dưới.";
   else if (downloading) message = review?.status === "completed" ? "AI đã xử lý xong. Đang tải kết quả…" : "Đang tải kết quả đã lưu…";
   else if (error && failureKind === "load") message = "Chưa tải được kết quả đã lưu.";
   else if (review?.status === "failed") message = "Lượt rà soát đã thất bại.";
@@ -66,7 +68,7 @@ export function buildReviewTimeline(input: TimelineInput) {
       { key: "segmentation", label: "Phân tách điều khoản", description: "Xác định các phần của hợp đồng", state: segmentation },
       { key: "analysis", label: "Phân tích hợp đồng", description: "Hai tác vụ có thể chạy song song", state: analysis },
       { key: "download", label: "Tải kết quả", description: "Lấy kết quả đã lưu, không chạy AI mới", state: download },
-      { key: "finished", label: "Hoàn thành", description: "Kết quả sẵn sàng để xem", state: result ? "completed" as const : "pending" as const },
+      { key: "finished", label: "Hoàn thành", description: "Kết quả sẵn sàng để xem", state: result && analysisComplete ? "completed" as const : "pending" as const },
     ],
     tasks: [{ label: "Tóm tắt", state: summary }, { label: "Đánh giá rủi ro", state: risk }],
   };

@@ -4,6 +4,7 @@ import { createContext, useContext, type ReactNode } from "react";
 import { useLogoutWorkflow } from "@/hooks/use-logout-workflow";
 import { useOrganizationWorkflow, type OrganizationWorkflow } from "@/hooks/use-organization-workflow";
 import type { OrganizationDashboardRole } from "@/lib/organization-dashboard-route";
+import { ReviewWorkflowProvider } from "@/providers/review-workflow-provider";
 
 export type DashboardSession = {
   logout: () => Promise<void>;
@@ -14,11 +15,11 @@ type DashboardContextValue = DashboardSession & { workspace: OrganizationWorkflo
 
 export const DashboardContext = createContext<DashboardContextValue | null>(null);
 
-export function DashboardProvider({ children, organizationRole }: { children: ReactNode; organizationRole?: OrganizationDashboardRole }) {
+export function DashboardProvider({ children, organizationRole, reviewRole = "user" }: { children: ReactNode; organizationRole?: OrganizationDashboardRole; reviewRole?: string }) {
   const session = useLogoutWorkflow();
-  return organizationRole
+  return <ReviewWorkflowProvider initialRole={organizationRole ?? reviewRole}>{organizationRole
     ? <OrganizationDashboardState key={organizationRole} role={organizationRole} session={session}>{children}</OrganizationDashboardState>
-    : <DashboardContext.Provider value={{ ...session, workspace: null }}>{children}</DashboardContext.Provider>;
+    : <DashboardContext.Provider value={{ ...session, workspace: null }}>{children}</DashboardContext.Provider>}</ReviewWorkflowProvider>;
 }
 
 function OrganizationDashboardState({ role, session, children }: { role: OrganizationDashboardRole; session: DashboardSession; children: ReactNode }) {

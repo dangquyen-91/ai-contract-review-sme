@@ -8,25 +8,17 @@ import workspaceStyles from "./review-workspace.module.css";
 import { Icon } from "@/components/ui/icon";
 import { ContractChat } from "@/components/contract/contract-chat";
 import { RiskDetails } from "@/components/contract/risk-details";
+import { RiskFindingCard } from "@/components/contract/risk-finding-card";
+import { ReviewResultHeader } from "@/components/contract/review-result-header";
 import { OriginalContractPreview } from "@/components/contract/original-contract-preview";
 import { KeyTerms } from "@/components/contract/key-terms";
 import { RedactedDocument } from "@/components/contract/redacted-document";
 import { DocumentDisclosureDialog } from "@/components/contract/document-disclosure-dialog";
+import { ShareSummaryDialog } from "@/components/contract/share-summary-dialog";
 import type { ContractReviewResult, RiskFinding } from "@/types/contracts";
 
 const severityLabels = { high: "Rủi ro cao", medium: "Rủi ro trung bình", low: "Rủi ro thấp" };
 
-const severityClasses: Record<RiskFinding["severity"], string> = {
-  high: "text-[#a83248] bg-[#fff0f2]",
-  medium: "text-[#875c08] bg-[#fff4dc]",
-  low: "text-[#245abf] bg-[#edf4ff]",
-};
-
-const severityCardClasses: Record<RiskFinding["severity"], string> = {
-  high: "border-[#f0c7cf] border-l-[#c33b52] bg-[#fff8f9]",
-  medium: "border-[#e4e8ef] border-l-[#c08720] bg-white",
-  low: "border-[#e4e8ef] border-l-[#83a9e9] bg-white",
-};
 const severityOrder = { high: 0, medium: 1, low: 2 };
 
 type ClausePosition = ContractReviewResult["clauses"][number];
@@ -78,6 +70,7 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<"all" | RiskFinding["severity"]>("all");
   const [docxTextFallback, setDocxTextFallback] = useState(false);
+  const [shareSummaryOpen, setShareSummaryOpen] = useState(false);
   const sectionId = useId();
   const findings = result.findings;
   const visibleFindings = findings
@@ -89,7 +82,6 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
   const savedScroll = useRef(0);
   const restoreScroll = useRef<number | null>(null);
   const clauses = useMemo(() => [...result.clauses].sort((a, b) => a.index - b.index), [result.clauses]);
-  const highCount = findings.filter((finding) => finding.severity === "high").length;
   const summaryComplete = result.contract.currentVersion?.summaryStatus === "completed";
   const risksComplete = result.contract.currentVersion?.riskDetectionStatus === "completed";
   const contractId = result.contract.id ?? result.contract._id;
@@ -157,10 +149,6 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
     scrollToClause(activeClause);
   }, [activeClause, viewMode, text]);
 
-  function findingDescription(finding: RiskFinding) {
-    return [...(finding.problem ?? []), ...(finding.consequences ?? [])].join(" ");
-  }
-
   function jumpToClause(index: number) {
     const mode = isDocx && canShowOriginal ? "original" : "text";
     if (viewMode !== mode) setDisclosure({ mode, clauseIndex: index });
@@ -190,13 +178,8 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
 
   return (
     <section className={`overflow-hidden border [background:#fff] shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)] rounded-[14px] border-solid border-[#e4e8ef] ${showAiContext ? workspaceStyles.workspace : ""}`}>
-      {showAiContext && <p className="m-0 border-b border-[#dce7f6] bg-[#f4f8ff] px-5 py-3 text-ui leading-6 text-[#536881]">Kết quả do AI phân tích, chưa thể hiện phê duyệt của chuyên viên. Cập nhật hợp đồng: {Number.isNaN(new Date(result.contract.updatedAt).getTime()) ? "chưa rõ" : new Date(result.contract.updatedAt).toLocaleString("vi-VN")}.</p>}
-      <header className="flex items-center justify-between gap-5 [border-bottom:1px_solid_#e4e8ef] px-[22px] py-5 [&_h2]:text-ui-dialog [&_h2]:font-semibold [&_h2]:mt-[5px] [&_h2]:mb-0 [&_h2]:mx-0 [@media_(max-width:_580px)]:items-start [@media_(max-width:_580px)]:flex-col">
-        <div><p className="text-[#2864dc] text-ui-caption font-semibold tracking-[1.1px] uppercase m-0">Kết quả AI review</p><h2>{result.contract.title}</h2></div>
-        <span className={!risksComplete ? "min-h-[30px] inline-flex items-center gap-[7px] flex-none text-ui-caption font-bold px-2.5 py-0 rounded-lg text-[#875c08] [background:#fff4dc] [&_svg]:w-[15px]" : highCount ? "min-h-[30px] inline-flex items-center gap-[7px] flex-none text-ui-caption font-bold px-2.5 py-0 rounded-lg text-[#a53348] [background:#fff0f2] [&_svg]:w-[15px]" : "min-h-[30px] inline-flex items-center gap-[7px] flex-none text-ui-caption font-bold px-2.5 py-0 rounded-lg text-[#24705d] [background:#eaf6f2] [&_svg]:w-[15px]"}>
-          <Icon name="shield" />{!risksComplete ? "Chưa hoàn tất đánh giá rủi ro" : highCount ? `${highCount} rủi ro cao` : "Không có rủi ro cao"}
-        </span>
-      </header>
+      {showAiContext && <p className="m-0 border-b border-[#dce7f6] bg-[#f4f8ff] px-5 py-3 text-ui leading-6 text-[#536881]">Kết quả do AI phân tích, chưa thể hiện phê duyệt của chuyên viên.</p>}
+      <ReviewResultHeader result={result} onShareSummary={() => setShareSummaryOpen(true)} />
       {showAiContext && <nav className={workspaceStyles.navigation} aria-label="Điều hướng kết quả"><a href={`#${sectionId}-analysis`}>Tóm tắt & rủi ro</a><a href={`#${sectionId}-document`}>Nội dung hợp đồng</a></nav>}
       <div className={`${workspaceStyles.resultColumns} grid grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] items-stretch [@media_(max-width:_1080px)]:grid-cols-[1fr] ${showAiContext ? workspaceStyles.splitPane : ""}`}>
         <div id={`${sectionId}-analysis`} className={`min-w-0 [border-right:1px_solid_#e4e8ef] [@media_(max-width:_1080px)]:[border-right:0] [@media_(max-width:_1080px)]:[border-bottom:1px_solid_#e4e8ef] ${showAiContext ? workspaceStyles.analysisPane : ""}`}>
@@ -209,29 +192,20 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
           </article>
           <section className="px-[22px] pb-[25px] pt-5" aria-labelledby="review-findings-heading">
             <div className="[&_h3]:text-ui-section [&_h3]:font-semibold [&_h3]:m-0 flex items-center gap-[7px] [&>_span]:grid [&>_span]:min-w-5 [&>_span]:h-5 [&>_span]:place-items-center [&>_span]:text-[#2859aa] [&>_span]:[background:#eaf1ff] [&>_span]:text-ui-caption [&>_span]:font-bold [&>_span]:rounded-[10px]"><h3 id="review-findings-heading">Điểm cần lưu ý</h3><span>{findings.length}</span></div>
+            {findings.length > 0 && <p className="mb-0 mt-2 text-ui-meta leading-5 text-muted-foreground">Sắp xếp theo mức độ: Cao → Trung bình → Thấp. Mỗi mục hiển thị ý chính; mở chi tiết để xem toàn bộ phân tích.</p>}
             <div role="group" className={workspaceStyles.filters} aria-label="Lọc mức rủi ro">{(["all", "high", "medium", "low"] as const).map((severity) => <Button variant={severityFilter === severity ? "default" : "outline"} size="sm" type="button" key={severity} aria-pressed={severityFilter === severity} onClick={() => { setSeverityFilter(severity); setExpandedFinding(null); }}>{severity === "all" ? "Tất cả" : severityLabels[severity]} · {severity === "all" ? findings.length : findings.filter((finding) => finding.severity === severity).length}</Button>)}</div>
             {visibleFindings.length ? <ul className="m-0 mt-4 grid list-none gap-3 p-0">{visibleFindings.map((finding) => {
               const clauseIndex = findingClauseIndex(finding, clauses);
               const canJump = clauseIndex !== null && clauses.some((clause) => clause.index === clauseIndex);
               const findingKey = finding.id ?? finding._id ?? `${finding.title}-${findings.indexOf(finding)}`;
               const expanded = expandedFinding === findingKey;
-              return <li key={findingKey} data-risk-severity={finding.severity}
-                className={`min-w-0 rounded-xl border border-l-[3px] p-4 ${severityCardClasses[finding.severity]}`}>
-                <span className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1 text-ui-caption font-semibold ${severityClasses[finding.severity]}`}>
-                  <Icon name="shield" className="h-3.5 w-3.5 shrink-0" />{severityLabels[finding.severity]}
-                </span>
-                <h4 className="mb-0 mt-3 break-words text-ui-section font-semibold leading-6 text-[#263750]">{finding.title}</h4>
-                <p className="mb-0 mt-2 whitespace-pre-wrap break-words text-ui leading-[1.65] text-[#52647e]">{findingDescription(finding)}</p>
-                {finding.findingType === "missing_clause" && <p className="mb-0 mt-2 text-ui-meta leading-5 text-[#607087]">Điều khoản này chưa có trong hợp đồng.</p>}
-                <div className="mt-3 flex min-w-0 flex-wrap items-start gap-2">
-                  <Button variant="outline" size="sm" className="h-auto min-h-9 max-w-full whitespace-normal text-left leading-5" type="button" aria-expanded={expanded} aria-controls={`${sectionId}-finding-${findings.indexOf(finding)}`} onClick={() => setExpandedFinding(expanded ? null : findingKey)}>{expanded ? "Ẩn chi tiết" : "Xem phân tích và đề xuất"}</Button>
-                  {canJump && <Button variant="ghost" size="sm" className="h-auto min-h-9 max-w-full whitespace-normal text-left leading-5 text-primary" type="button"
-                    onClick={() => jumpToClause(clauseIndex)}
-                    aria-label={`${finding.title}. ${isDocx ? "Xem vị trí trong file gốc" : "Xem vị trí trong văn bản đầy đủ"}`}
-                  >Xem vị trí <Icon name="arrow" className="h-4 w-4 shrink-0" /></Button>}
-                </div>
-                {expanded && <div id={`${sectionId}-finding-${findings.indexOf(finding)}`}><RiskDetails contractId={contractId} finding={finding} allowProposalEditing={isDocx && canJump} /></div>}
-              </li>;
+              return <RiskFindingCard key={findingKey} finding={finding} expanded={expanded}
+                detailId={`${sectionId}-finding-${findings.indexOf(finding)}`}
+                onToggle={() => setExpandedFinding(expanded ? null : findingKey)}
+                onJump={canJump ? () => jumpToClause(clauseIndex) : undefined}
+                jumpLabel={`${finding.title}. ${isDocx ? "Xem vị trí trong file gốc" : "Xem vị trí trong văn bản đầy đủ"}`}>
+                <RiskDetails contractId={contractId} finding={finding} allowProposalEditing={isDocx && canJump} />
+              </RiskFindingCard>;
             })}</ul> : <p className="text-[#66758a] text-ui mt-3.5 mb-0 mx-0">{severityFilter !== "all" ? "Không có rủi ro trong nhóm đang chọn." : risksComplete ? "Chưa phát hiện điểm rủi ro đáng kể." : "Đánh giá rủi ro chưa hoàn tất."}</p>}
           </section>
         </div>
@@ -261,6 +235,7 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
         </section>
       </div>
       {disclosure && <DocumentDisclosureDialog mode={disclosure.mode} onCancel={() => setDisclosure(null)} onConfirm={() => { applyDocumentMode(disclosure.mode, disclosure.clauseIndex); setDisclosure(null); }} />}
+      {shareSummaryOpen && contractId && <ShareSummaryDialog key={`${contractId}:${result.contract.updatedAt}`} contractId={contractId} version={result.contract.updatedAt} onClose={() => setShareSummaryOpen(false)} />}
       {contractId && <KeyTerms contractId={contractId} />}
       {contractId && <ContractChat key={contractId} contractId={contractId} canAsk={canAsk} />}
       <p className="text-[#8a94a3] [border-top:1px_solid_#edf0f4] [background:#fafbfc] text-ui-meta text-right m-0 px-[22px] py-[9px]">Kết quả do AI hỗ trợ, không thay thế ý kiến tư vấn pháp lý chuyên môn.</p>

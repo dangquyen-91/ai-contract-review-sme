@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useContractProfiles, useContractReviewResult, useReviewContractMutation, useUploadContractMutation } from "@/hooks/use-contracts";
 import { isApiClientError } from "@/lib/api/client";
@@ -32,6 +32,7 @@ export function useReviewWorkflow({ access, initialType, personal = false, revie
   const [selectedContractId, setSelectedContractId] = useState("");
   const [reviewProgress, setReviewProgress] = useState<ContractReviewRun | null>(null);
   const reviewResultRef = useRef<HTMLDivElement>(null);
+  const reviewTimelineRef = useRef<HTMLDivElement>(null);
   const activeReviewRequest = useRef<string | null>(null);
   const [pendingReviewId, setPendingReviewId] = useState<string | null>(null);
   const [pendingReviewFocus, setPendingReviewFocus] = useState("");
@@ -46,10 +47,6 @@ export function useReviewWorkflow({ access, initialType, personal = false, revie
   const selectedProfile = profiles?.find((profile) => profile.code === contractType);
   const stage: ReviewStage = uploadContractMutation.isPending ? "uploading" : reviewContractMutation.isPending ? "reviewing" : workflowComplete ? "done" : "idle";
   const isReviewing = stage === "reviewing" || resultQuery.isLoadingResult;
-
-  useEffect(() => {
-    if (workflowComplete) reviewResultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [workflowComplete, selectedContractId]);
 
   async function selectFile(nextFile?: File): Promise<boolean> {
     if (!nextFile || !access.upload || uploadContractMutation.isPending || isReviewing) return false;
@@ -99,8 +96,7 @@ export function useReviewWorkflow({ access, initialType, personal = false, revie
     setReviewProgress(null);
     activeReviewRequest.current = contractId;
     window.history.replaceState(window.history.state, "", `${reviewPath ?? window.location.pathname}?${new URLSearchParams({ contract: contractId, reviewMode: "resume" })}`);
-    let result;
-    try { result = await reviewContractMutation.mutateAsync({ contractId, analysisFocus: focus.trim() || undefined, resumeOnly, onProgress: (review) => {
+    try { await reviewContractMutation.mutateAsync({ contractId, analysisFocus: focus.trim() || undefined, resumeOnly, onProgress: (review) => {
       setReviewProgress(review);
       if (review.status === "completed") setRetryKind("load");
     } }); }
@@ -108,7 +104,6 @@ export function useReviewWorkflow({ access, initialType, personal = false, revie
     setPendingReviewId(null);
     setPendingReviewFocus("");
     setWorkflowComplete(true);
-    toast.success("AI đã hoàn tất rà soát", { description: `Đã phát hiện ${result.findings.length} điểm cần lưu ý.` });
   }
 
   async function reviewUploadedContract(focus: string) {
@@ -175,5 +170,5 @@ export function useReviewWorkflow({ access, initialType, personal = false, revie
     }
   }
 
-  return { file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, setUploadedContract, reviewResult, reviewProgress, reviewResultRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectedProfile, profiles, selectFile, runReview, reviewUploadedContract, reviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing: reviewContractMutation.isPending, loadingResult: resultQuery.isLoadingResult, reconnecting: reviewContractMutation.reconnecting };
+  return { file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, setUploadedContract, reviewResult, reviewProgress, reviewResultRef, reviewTimelineRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectedProfile, profiles, selectFile, runReview, reviewUploadedContract, reviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing: reviewContractMutation.isPending, loadingResult: resultQuery.isLoadingResult, reconnecting: reviewContractMutation.reconnecting };
 }

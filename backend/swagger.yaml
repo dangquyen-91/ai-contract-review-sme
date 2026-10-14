@@ -1930,6 +1930,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /contracts/{id}/share-summary:
+    get:
+      tags: [Contracts]
+      summary: Read a redacted internal summary from saved analysis without running AI
+      description: Uses existing organization-scoped contract access. Requires completed summary and risk detection. Recognized personal values are fully replaced. The response is not a public sharing link.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-f\d]{24}$'
+        - in: query
+          name: expectedUpdatedAt
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Redacted plain text and finding counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                      redacted:
+                        type: boolean
+                        enum: [true]
+                      findingCounts:
+                        type: object
+                        properties:
+                          high:
+                            type: integer
+                          medium:
+                            type: integer
+                          low:
+                            type: integer
+        '404':
+          description: Contract not accessible in the current organization
+        '409':
+          description: Analysis incomplete or contract updated since the displayed result
+
   /contracts/{id}/file:
     parameters:
       - in: path

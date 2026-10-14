@@ -80,12 +80,24 @@ function setup(mimeType = 'application/pdf', findings) {
   const { RedactedDocument } = load('../components/contract/redacted-document.tsx', {
     'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
   });
+  const { RiskFindingCard } = load('../components/contract/risk-finding-card.tsx', {
+    'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
+  });
+  const { ReviewResultHeader } = load('../components/contract/review-result-header.tsx', {
+    'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
+  });
+  const { RiskDetails } = load('../components/contract/risk-details.tsx', {
+    react, 'react/jsx-runtime': jsx,
+    '@/hooks/use-contracts': { useUpdateProposedRevisionMutation: () => ({}), useRemoveProposedRevisionMutation: () => ({}) },
+  });
   const { ReviewResults } = load('../components/contract/review-results.tsx', {
     react, 'react/jsx-runtime': jsx, '@/hooks/use-contracts': hooks,
     './review-workspace.module.css': { default: {} }, '@/components/ui/icon': { Icon: () => null },
     '@/components/contract/redacted-document': { RedactedDocument },
     '@/components/contract/contract-chat': { ContractChat: () => null },
-    '@/components/contract/risk-details': { RiskDetails: () => null },
+    '@/components/contract/risk-details': { RiskDetails },
+    '@/components/contract/risk-finding-card': { RiskFindingCard },
+    '@/components/contract/review-result-header': { ReviewResultHeader },
     '@/components/contract/key-terms': { KeyTerms: () => null },
     '@/components/contract/original-contract-preview': { OriginalContractPreview: (props) => props.redacted ? jsx.jsx('div', { 'data-redacted-docx': true, ...props }) : jsx.jsx('iframe', { title: 'Original', ...props }) },
     '@/components/contract/document-disclosure-dialog': { DocumentDisclosureDialog: ({ mode, onConfirm, onCancel }) => jsx.jsxs('dialog', { children: [
@@ -105,12 +117,14 @@ function setup(mimeType = 'application/pdf', findings) {
   }
   let tree;
   function render() { cursor = 0; queries = []; tree = resolve(jsx.jsx(ReviewResults, { result })); }
-  function find(predicate, node = tree) {
+  function find(predicate, node) {
+    if (arguments.length < 2) node = tree;
     if (Array.isArray(node)) return node.flatMap((child) => find(predicate, child));
     if (!node || typeof node !== 'object') return [];
     return [...(predicate(node) ? [node] : []), ...(node.props.children === undefined ? [] : find(predicate, node.props.children))];
   }
-  function text(node = tree) {
+  function text(node) {
+    if (arguments.length === 0) node = tree;
     if (Array.isArray(node)) return node.map(text).join('');
     return typeof node === 'object' && node ? text(node.props.children) : String(node ?? '');
   }
@@ -143,6 +157,37 @@ test('Risk cards sort by severity without changing input data and filters work w
   assert.equal(ctx.queries()[1].enabled, false);
   ctx.click('Tất cả · 3');
   assert.equal(cards().length, 3);
+});
+
+test('Collapsed risks separate the first problem, impact and recommendation; expanding reveals all original points', () => {
+  const finding = {
+    _id: 'high', severity: 'high', title: 'High risk', clauseId: 'clause-1',
+    problem: [' ', 'Problem one', 'Problem two'], consequences: ['Impact one', 'Impact two'],
+    recommendations: ['Action one', 'Action two'], legalBasis: [], citations: [],
+  };
+  const ctx = setup('application/pdf', [finding]);
+  const card = () => ctx.find((node) => node.props['data-risk-severity'] === 'high')[0];
+  const preview = () => ctx.find((node) => node.type === 'dl', card());
+  assert.equal(preview().length, 1);
+  assert.deepEqual(ctx.find((node) => node.type === 'dt', card()).map((node) => ctx.text(node)), ['Vấn đề', 'Ảnh hưởng', 'Đề xuất']);
+  for (const value of ['Problem one', 'Impact one', 'Action one']) assert.ok(ctx.text().includes(value));
+  for (const value of ['Problem two', 'Impact two', 'Action two']) assert.ok(!ctx.text().includes(value));
+  ctx.click('Xem phân tích và đề xuất');
+  assert.equal(preview().length, 0);
+  for (const value of ['Problem two', 'Impact two', 'Action two']) assert.ok(ctx.text().includes(value));
+  const control = ctx.find((node) => node.type === 'button' && node.props['aria-expanded'] === true)[0];
+  assert.equal(ctx.find((node) => node.props.id === control.props['aria-controls']).length, 1);
+  ctx.click('Ẩn chi tiết');
+  assert.equal(preview().length, 1);
+  assert.ok(!ctx.text().includes('Action two'));
+  assert.equal(ctx.queries()[1].enabled, false);
+});
+
+test('A missing clause with empty analysis fields explains unavailable data and never offers a location', () => {
+  const ctx = setup('application/pdf', [{ _id: 'missing', severity: 'low', title: 'Missing clause', findingType: 'missing_clause' }]);
+  assert.ok(ctx.text().includes('Điều khoản này chưa có trong hợp đồng.'));
+  assert.ok(ctx.text().includes('Chưa có đề xuất xử lý trong kết quả phân tích.'));
+  assert.equal(ctx.find((node) => node.type === 'button' && Boolean(node.props['aria-label']?.includes('Xem vị trí'))).length, 0);
 });
 
 test('Default and cancelled disclosure never enable full text or mount the original file', () => {

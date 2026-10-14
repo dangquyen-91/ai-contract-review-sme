@@ -1,10 +1,16 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
+import type { ContractShareSummary } from "@/types/contracts";
 import { readContractStream } from "@/lib/api/contract-stream";
 import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyTerms, ContractListResult, ContractProfile, ContractReviewResult, ContractReviewRun, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
 
 export const contractsApi = {
+  getShareSummary(contractId: string, expectedUpdatedAt?: string, signal?: AbortSignal) {
+    return apiRequest<ContractShareSummary>({
+      url: `/contracts/${contractId}/share-summary`, params: { expectedUpdatedAt }, signal,
+    });
+  },
   listProfiles() {
     return apiRequest<ContractProfile[]>({ url: "/contract-profiles" });
   },

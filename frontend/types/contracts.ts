@@ -9,6 +9,7 @@ export type DashboardContract = {
   status: ContractStatus;
   overallRiskLevel: ContractRiskLevel;
   currentVersion?: {
+    updatedAt?: string;
     overallRiskLevel?: ContractRiskLevel;
     overallAssessment?: string[];
     summaryPoints?: string[];
@@ -32,6 +33,12 @@ export type DashboardContract = {
 };
 
 export type ContractListResult = { items: DashboardContract[]; total: number };
+
+export type ContractShareSummary = {
+  text: string;
+  redacted: true;
+  findingCounts: { high: number; medium: number; low: number };
+};
 
 export type ContractTextResult = {
   text: string;

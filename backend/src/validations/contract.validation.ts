@@ -45,6 +45,10 @@ export const contractFileQuerySchema = z.object({
   redacted: z.enum(['true', 'false']).optional(),
 });
 
+export const shareSummaryQuerySchema = z.object({
+  expectedUpdatedAt: z.string().datetime().optional(),
+});
+
 export const analysisFocusBodySchema = z.object({
   analysisFocus: z.string().trim().min(1).max(1000).optional(),
 });

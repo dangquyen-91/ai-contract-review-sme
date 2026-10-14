@@ -12,6 +12,7 @@ export const contractKeys = {
   redactedFile: (id: string, version?: string) => ["contracts", id, "file", "redacted", version] as const,
   fileBase: (id: string) => ["contracts", id, "file"] as const,
   result: (id: string) => ["contracts", id, "review-result"] as const,
+  shareSummary: (id: string, version?: string) => ["contracts", id, "share-summary", version] as const,
   clauses: (id: string) => ["contracts", id, "clauses"] as const,
   keyTerms: (id: string) => ["contracts", id, "key-terms"] as const,
   findings: (id: string) => ["contracts", id, "findings"] as const,
