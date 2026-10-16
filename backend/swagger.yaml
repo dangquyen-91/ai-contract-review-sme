@@ -1266,7 +1266,7 @@ paths:
                 email: { type: string, format: email }
                 role: { type: string, enum: [manager, staff, reviewer] }
       responses:
-        '201': { description: Invitation metadata after Brevo API acceptance; no token or tokenHash }
+        '201': { description: Invitation metadata after Brevo API acceptance (not proof of inbox delivery); no token or tokenHash }
         '400': { description: Invalid email or role }
         '401': { description: Missing, expired or stale bearer token }
         '403': { description: Not the owner of this organization }
