@@ -108,7 +108,7 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
     'react': React,
     'react/jsx-runtime': jsx,
     '@/hooks/use-contracts': hooks,
-    './review-workspace.module.css': { default: {} },
+    '@/styles/review/review-workspace.module.css': { default: {} },
     '@/components/ui/icon': { Icon: () => null },
     '@/components/contract/redacted-document': { RedactedDocument },
     '@/components/contract/contract-chat': { ContractChat: () => null },
