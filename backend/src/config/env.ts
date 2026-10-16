@@ -7,6 +7,11 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
+  DNS_SERVERS: z
+    .string()
+    .default('')
+    .transform((value) => value.split(',').map((server) => server.trim()).filter(Boolean))
+    .pipe(z.array(z.string().ip())),
   JWT_ACCESS_SECRET: z.string().min(1, 'JWT_ACCESS_SECRET is required'),
   JWT_REFRESH_SECRET: z.string().min(1, 'JWT_REFRESH_SECRET is required'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
