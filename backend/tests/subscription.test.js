@@ -99,7 +99,8 @@ async function workspace(personal = false) {
   const owner = await user(personal ? 'user' : 'owner', org._id);
   const contract = await ContractModel.create({
     title: 'Test contract',
-    type: 'service',
+    type: personal ? 'labor' : 'service',
+    ...(personal ? { ourParty: 'employee' } : {}),
     orgId: org._id,
     uploadedBy: owner._id,
   });

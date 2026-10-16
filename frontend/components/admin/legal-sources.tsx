@@ -1,24 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { apiClient, apiRequest } from "@/lib/api/client";
 import { toast } from "sonner";
+import { useLegalSources, useRemoveLegalSourceMutation } from "@/hooks/use-legal-sources";
+import type { LegalSource } from "@/types/legal-sources";
 import { LegalSourceForm } from "./legal-source-form";
 import { EmptyState, PageHeading } from "./admin-panels";
 import { Icon } from "@/components/ui/icon";
 import { AvailableOverview } from "./available-overview";
 import { usePaginationPage } from "@/hooks/use-pagination-page";
-
-type LegalSource = {
-  _id: string;
-  title: string;
-  citationLabel: string;
-  sourceType: "law" | "standard_template";
-  issuingBody?: string;
-  effectiveDate?: string;
-  chunkCount: number;
-};
 
 export function LegalSources() {
   const [search, setSearch] = useState("");
@@ -26,34 +16,24 @@ export function LegalSources() {
   const [page, setPage] = usePaginationPage();
   const [showForm, setShowForm] = useState(false);
   const [deleting, setDeleting] = useState<LegalSource | null>(null);
-  const [deletePending, setDeletePending] = useState(false);
+  const removeMutation = useRemoveLegalSourceMutation();
+  const deletePending = removeMutation.isPending;
   const [deleteError, setDeleteError] = useState("");
 
   async function removeSource() {
-    if (!deleting || deletePending) return;
-    setDeletePending(true);
+    if (!deleting || removeMutation.isPending) return;
     setDeleteError("");
     try {
-      await apiClient.delete(
-        `/admin/legal-sources/${encodeURIComponent(deleting._id)}`,
-        { timeout: 190000 },
-      );
+      await removeMutation.mutateAsync(deleting._id);
       setDeleting(null);
       toast.success("Đã xóa nguồn pháp lý");
-      await query.refetch();
     } catch (err) {
       setDeleteError(
         err instanceof Error ? err.message : "Không thể xóa nguồn pháp lý.",
       );
-    } finally {
-      setDeletePending(false);
     }
   }
-  const query = useQuery({
-    queryKey: ["admin", "legal-sources"],
-    queryFn: () => apiRequest<LegalSource[]>({ url: "/admin/legal-sources" }),
-    retry: false,
-  });
+  const query = useLegalSources();
   const filtered = (query.data ?? []).filter(
     (source) =>
       (type === "all" || source.sourceType === type) &&
@@ -102,7 +82,6 @@ export function LegalSources() {
             setType("all");
             setPage(1);
             toast.success("Đã thêm nguồn pháp lý");
-            void query.refetch();
           }}
         />
       )}

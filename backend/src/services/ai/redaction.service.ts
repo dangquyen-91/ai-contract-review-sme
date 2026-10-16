@@ -163,15 +163,42 @@ export interface Redactor {
   readonly size: number;
   readonly spans: SensitiveSpan[];
   mask(text: string): string;
+  maskForDisplay(text: string): DisplayMaskedText;
   maskWithOffsets(text: string): MaskedText;
   unmask(text: string): string;
   createStreamUnmasker(): StreamUnmasker;
+}
+
+export interface DisplayMaskedText {
+  text: string;
+  spans: { type: SensitiveDataType; start: number; end: number }[];
+}
+
+function displayValue(type: SensitiveDataType, value: string, number: number, ambiguous = false): string {
+  const digits = digitsOf(value);
+  if (type === 'bank_account') return `${ambiguous ? `Tài khoản ${number} · ` : ''}•••• •••• ${digits.slice(-4)}`;
+  if (type === 'phone') return `${ambiguous ? `Điện thoại ${number} · ` : ''}•••• ••• ${digits.slice(-3)}`;
+  if (type === 'email') {
+    const at = value.lastIndexOf('@');
+    return `${value[0]}•••${value.slice(at)}`;
+  }
+  if (type === 'person_name') return `Cá nhân ${number}`;
+  if (type === 'date_of_birth') return '••/••/••••';
+  if (type === 'national_id') return '•••• •••• ••••';
+  return '••••••••••';
+}
+
+function displayIdentity(type: SensitiveDataType, value: string) {
+  const normalized = type === 'phone' ? digitsOf(value).replace(/^84/, '0')
+    : type === 'bank_account' ? digitsOf(value) : value.replace(/\s+/g, ' ').trim();
+  return `${type}:${normalized}`;
 }
 
 export function createRedactor(sourceText: string, types: Iterable<SensitiveDataType>): Redactor {
   const spans = detectSensitiveData(sourceText, new Set(types));
   const tokenByValue = new Map<string, string>();
   const valueByToken = new Map<string, string>();
+  const typeByValue = new Map<string, SensitiveDataType>();
   const counters: Partial<Record<SensitiveDataType, number>> = {};
   for (const span of spans) {
     if (tokenByValue.has(span.value)) continue;
@@ -179,10 +206,23 @@ export function createRedactor(sourceText: string, types: Iterable<SensitiveData
     const token = `[${TOKEN_PREFIX[span.type]}_${n}]`;
     tokenByValue.set(span.value, token);
     valueByToken.set(token, span.value);
+    typeByValue.set(span.value, span.type);
   }
 
   const values = [...tokenByValue.keys()].sort((a, b) => b.length - a.length);
   const valuePattern = values.length > 0 ? new RegExp(values.map(boundedPattern).join('|'), 'gu') : null;
+  const sourceSpansByStart = new Map(spans.map((span) => [span.start, span]));
+  const displayNumbers = new Map<string, number>();
+  const displayCounters: Partial<Record<SensitiveDataType, number>> = {};
+  const suffixGroups = new Map<string, Set<string>>();
+  for (const { value, type } of spans) {
+    const identity = displayIdentity(type, value);
+    if (!displayNumbers.has(identity)) displayNumbers.set(identity, displayCounters[type] = (displayCounters[type] ?? 0) + 1);
+    if (type !== 'phone' && type !== 'bank_account') continue;
+    const group = `${type}:${digitsOf(value).slice(type === 'phone' ? -3 : -4)}`;
+    if (!suffixGroups.has(group)) suffixGroups.set(group, new Set());
+    suffixGroups.get(group)!.add(identity);
+  }
 
   const maskWithOffsets = (text: string): MaskedText => {
     if (!valuePattern) return { masked: text, toOriginalOffset: (offset) => offset };
@@ -218,10 +258,31 @@ export function createRedactor(sourceText: string, types: Iterable<SensitiveData
 
   const unmask = (text: string) => text.replace(TOKEN_PATTERN, (token) => valueByToken.get(token) ?? token);
 
+  // This is an internal reading view only. AI prompts keep using mask().
+  const maskForDisplay = (text: string): DisplayMaskedText => {
+    if (!valuePattern) return { text, spans: [] };
+    let shown = '';
+    let cursor = 0;
+    const positions: DisplayMaskedText['spans'] = [];
+    for (const match of text.matchAll(valuePattern)) {
+      const index = match.index ?? 0;
+      const type = (text === sourceText ? sourceSpansByStart.get(index)?.type : undefined) ?? typeByValue.get(match[0])!;
+      shown += text.slice(cursor, index);
+      const start = shown.length;
+      const identity = displayIdentity(type, match[0]);
+      const group = `${type}:${digitsOf(match[0]).slice(type === 'phone' ? -3 : -4)}`;
+      shown += displayValue(type, match[0], displayNumbers.get(identity)!, (suffixGroups.get(group)?.size ?? 0) > 1);
+      positions.push({ type, start, end: shown.length });
+      cursor = index + match[0].length;
+    }
+    return { text: shown + text.slice(cursor), spans: positions };
+  };
+
   return {
     size: tokenByValue.size,
     spans,
     mask: (text) => maskWithOffsets(text).masked,
+    maskForDisplay,
     maskWithOffsets,
     unmask,
     createStreamUnmasker() {

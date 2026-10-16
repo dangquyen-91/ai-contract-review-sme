@@ -1,5 +1,5 @@
 import { apiRequest } from "@/lib/api/client";
-import type { AuthResult, AuthSession, EmailVerificationChallenge, LoginInput, RefreshTokenResult, RegisterInput } from "@/types/auth";
+import type { AuthResult, AuthSession, EmailVerificationChallenge, LoginInput, LogoutResult, RefreshTokenResult, RegisterInput } from "@/types/auth";
 
 export const authApi = {
   google(input: { credential: string; nonce: string; remember?: boolean; invitationToken?: string }) {
@@ -44,7 +44,7 @@ export const authApi = {
   },
 
   logout() {
-    return apiRequest<{ loggedOut: true }>({
+    return apiRequest<LogoutResult>({
       url: "/auth/logout",
       method: "POST",
     });

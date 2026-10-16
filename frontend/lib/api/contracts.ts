@@ -1,14 +1,14 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
 import { readContractStream } from "@/lib/api/contract-stream";
-import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyTerms, ContractProfile, ContractReviewResult, ContractReviewRun, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
+import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyTerms, ContractListResult, ContractProfile, ContractReviewResult, ContractReviewRun, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
 
 export const contractsApi = {
   listProfiles() {
     return apiRequest<ContractProfile[]>({ url: "/contract-profiles" });
   },
-  async list(filter: DashboardContractFilter & { page?: number; search?: string } = {}) {
+  async list(filter: DashboardContractFilter & { page?: number; search?: string } = {}): Promise<ContractListResult> {
     const response = await apiClient.get<{ data: DashboardContract[]; meta: { total: number; page: number; limit: number } }>("/contracts", {
       params: { ...filter, limit: 10, sortBy: "updatedAt", sortOrder: "desc" },
     });
@@ -18,8 +18,19 @@ export const contractsApi = {
     return apiRequest<DashboardContract>({ url: `/contracts/${contractId}` });
   },
 
-  getText(contractId: string) {
-    return apiRequest<ContractTextResult>({ url: `/contracts/${contractId}/text` });
+  async getFile(contractId: string, signal?: AbortSignal) {
+    const response = await apiClient.get<Blob>(`/contracts/${contractId}/file`, {
+      responseType: "blob", signal, timeout: 60_000,
+    });
+    return response.data;
+  },
+
+  getText(contractId: string, options: { redacted?: boolean; redactionMode?: "token" | "partial"; signal?: AbortSignal } = {}) {
+    return apiRequest<ContractTextResult>({
+      url: `/contracts/${contractId}/text`,
+      params: options.redacted ? { redacted: true, redactionMode: options.redactionMode } : undefined,
+      signal: options.signal,
+    });
   },
 
   listClauses(contractId: string) {
@@ -32,11 +43,12 @@ export const contractsApi = {
     );
   },
 
-  getReview(contractId: string) {
+  getReview(contractId: string, signal?: AbortSignal) {
     return apiRequest<ContractReviewResult>({
       url: `/contracts/${contractId}/review`,
       method: "GET",
       timeout: 30_000,
+      signal,
     });
   },
 
@@ -50,21 +62,22 @@ export const contractsApi = {
     });
   },
 
-  startReview(contractId: string, idempotencyKey: string, analysisFocus?: string) {
+  startReview(contractId: string, idempotencyKey: string, analysisFocus?: string, signal?: AbortSignal) {
     return apiRequest<ContractReviewRun>({
       url: `/contracts/${contractId}/review`,
       method: "POST",
       data: analysisFocus ? { analysisFocus } : {},
       headers: { "Idempotency-Key": idempotencyKey },
+      signal,
     });
   },
 
-  getReviewRun(reviewId: string) {
-    return apiRequest<ContractReviewRun>({ url: `/reviews/${reviewId}` });
+  getReviewRun(reviewId: string, signal?: AbortSignal) {
+    return apiRequest<ContractReviewRun>({ url: `/reviews/${reviewId}`, signal });
   },
 
-  listReviewRuns(contractId: string) {
-    return apiRequest<ContractReviewRun[]>({ url: `/contracts/${contractId}/reviews` });
+  listReviewRuns(contractId: string, signal?: AbortSignal) {
+    return apiRequest<ContractReviewRun[]>({ url: `/contracts/${contractId}/reviews`, signal });
   },
 
   getKeyTerms(contractId: string) {

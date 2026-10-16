@@ -2071,7 +2071,8 @@ paths:
       summary: Get the extracted text of the contract (for the document view next to the analysis)
       description: |
         Clause.startOffset/endOffset and RiskFinding.clause.startOffset/endOffset index into the original text (redacted=false), so the UI can highlight the clause a finding refers to.
-        With `redacted=true` the personal data covered by the contract profile's redactionPolicy (names, ID numbers, phones, bank accounts...) is replaced by placeholders such as `[PERSON_1]` or `[PHONE_2]` - the same text the AI receives. Offsets do not apply to the redacted text.
+        With `redacted=true` the personal data covered by the contract profile's redactionPolicy is replaced by placeholders such as `[PERSON_1]` or `[PHONE_2]` by default. Clause offsets do not apply to the redacted text.
+        Use `redacted=true&redactionMode=partial` for an internal comparison view: bank accounts keep their last 4 digits, phones their last 3 digits, names use consistent numbered labels, emails keep only their first character and domain (for example m•••@gmail.com), and IDs, birth dates and personal addresses are fully concealed. Distinct accounts or phones sharing a visible suffix get numbered labels to prevent confusion. Phone/account format variants use the same display identity. This mode uses the existing contract-read permission and does not change AI prompts or sharing permissions. The returned redactionSpans refer to the displayed text and contain no original sensitive values.
       parameters:
         - in: query
           name: redacted
@@ -2080,6 +2081,13 @@ paths:
             type: string
             enum: ['true', 'false']
             default: 'false'
+        - in: query
+          name: redactionMode
+          required: false
+          schema:
+            type: string
+            enum: [token, partial]
+            default: token
       responses:
         '200':
           description: OK
@@ -2092,6 +2100,21 @@ paths:
                     type: string
                   redacted:
                     type: boolean
+                  redactionMode:
+                    type: string
+                    enum: [token, partial]
+                  redactionSpans:
+                    type: array
+                    description: Present for partial mode; offsets into the displayed text.
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        start:
+                          type: integer
+                        end:
+                          type: integer
                   extractionStatus:
                     type: string
                     enum: [pending, processing, completed, failed, unsupported]

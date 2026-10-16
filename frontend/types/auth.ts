@@ -4,6 +4,7 @@ import type { authFormSchema, loginFormSchema, registerFormSchema } from "@/sche
 export type AuthMode = "login" | "register";
 
 export type UserRole = "administrator" | "manager" | "staff" | "owner" | "reviewer" | "user";
+export type LogoutResult = { loggedOut: true };
 
 export type AuthUser = {
   id: string;

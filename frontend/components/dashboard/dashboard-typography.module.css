@@ -1,0 +1,59 @@
+.shell {
+  font-size: var(--text-ui);
+  line-height: 1.5;
+}
+
+.shell > aside nav p {
+  font-size: var(--text-ui-caption);
+  font-weight: 600;
+  letter-spacing: .06em;
+}
+
+.shell > aside nav :is(a, button),
+.shell > div > nav :is(a, button) {
+  min-height: 44px;
+  font-size: var(--text-ui);
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.shell nav :is(a, button)[aria-current="page"] {
+  color: #1e53b8;
+  background: #eaf1ff;
+  font-weight: 700;
+}
+
+.shell > aside nav :is(a, button) small {
+  font-size: var(--text-ui-caption);
+}
+
+.shell > aside > div strong {
+  font-size: var(--text-ui);
+  font-weight: 600;
+}
+
+.shell > aside > div small {
+  font-size: var(--text-ui-meta);
+  line-height: 1.5;
+}
+
+.shell > aside > div:last-child > span {
+  font-size: var(--text-ui);
+}
+
+.shell > aside > div:last-child button {
+  min-height: 42px;
+  font-size: var(--text-ui);
+  font-weight: 600;
+}
+
+.shell > div > header p {
+  min-width: 0;
+  font-size: var(--text-ui);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.shell > div > header p strong {
+  font-weight: 600;
+}

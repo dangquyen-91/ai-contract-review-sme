@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/ui/icon";
-import styles from "./admin-overview-charts.module.css";
+
 import {
   filterDemoActivity,
   getDemoDaily,
@@ -122,11 +122,11 @@ export function AdminOverviewCharts() {
                     className="flex h-full flex-1 items-end justify-center gap-1 focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
                   >
                     <span
-                      className={`${styles.dailyBar} w-2/5 rounded-t bg-blue-500`}
+                      className={`[transform-origin:bottom] [animation:growBar_550ms_ease-out_both] motion-reduce:[animation:none] w-2/5 rounded-t bg-blue-500`}
                       style={{ height: `${(item.success / maxDaily) * 100}%` }}
                     />
                     <span
-                      className={`${styles.dailyBar} w-2/5 rounded-t bg-rose-400`}
+                      className={`[transform-origin:bottom] [animation:growBar_550ms_ease-out_both] motion-reduce:[animation:none] w-2/5 rounded-t bg-rose-400`}
                       style={{ height: `${(item.failed / maxDaily) * 100}%` }}
                     />
                   </div>
@@ -202,7 +202,7 @@ export function AdminOverviewCharts() {
           </div>
           <div className="flex flex-1 flex-col p-5">
             <div className="mx-auto mb-5 grid w-full place-items-center">
-              <div className={`${styles.donut} relative size-44`}>
+              <div className={`[animation:revealDonut_550ms_ease-out_both] motion-reduce:[animation:none] relative size-44`}>
                 <svg
                   viewBox="0 0 40 40"
                   role="img"

@@ -1,18 +1,8 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
+import { ReviewDashboardPage } from "@/components/review/review-page";
 
-export const metadata: Metadata = { title: "Rà soát hợp đồng tổ chức | LawScan", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Rà soát hợp đồng | LawScan" };
 
-export default async function OwnerReviewPage() {
-  const cookieStore = await cookies();
-  const user = decodeSessionUser(cookieStore.get(userSessionCookie)?.value);
-  if (!user) redirect("/dang-nhap");
-  if (user.role === "administrator") redirect("/dashboard/admin");
-  if (user.role === "staff") redirect("/dashboard/staff?view=upload");
-  if (user.role === "reviewer") redirect("/dashboard/reviewer?view=review");
-  if (user.role === "manager") redirect("/dashboard/manager?view=upload");
-  if (!["owner", "manager"].includes(user.role)) redirect("/dashboard/user");
-  redirect("/dashboard/owner?view=upload");
+export default function ReviewPage() {
+  return <ReviewDashboardPage />;
 }

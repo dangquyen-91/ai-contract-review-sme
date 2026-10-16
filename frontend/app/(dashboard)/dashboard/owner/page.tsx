@@ -1,26 +1,5 @@
-import type { Metadata } from "next";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
-import { OwnerDashboard } from "@/components/dashboard/owner-dashboard";
-import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
-import { needsOnboarding } from "@/lib/workspace-path";
+import { OrganizationOverviewPage } from "@/components/dashboard/overview/organization-overview-page";
 
-export const metadata: Metadata = { title: "Dashboard owner | LawScan", robots: { index: false, follow: false } };
-
-export default async function OwnerPage({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
-  const cookieStore = await cookies();
-  const user = decodeSessionUser(cookieStore.get(userSessionCookie)?.value);
-  if (!user) redirect("/dang-nhap");
-  if (user.role === "administrator") redirect("/dashboard/admin");
-  if (user.role === "staff") redirect("/dashboard/staff");
-  if (user.role === "reviewer") redirect("/dashboard/reviewer");
-  if (user.role === "manager") {
-    const { view } = await searchParams;
-    redirect(view === "upload" || view === "contracts" ? `/dashboard/manager?view=${view}` : "/dashboard/manager");
-  }
-  if (needsOnboarding(user)) redirect("/chon-to-chuc");
-  if (!["owner", "manager"].includes(user.role)) redirect("/dashboard/user");
-  const { view } = await searchParams;
-  if (view === "members" && user.role !== "owner") redirect("/dashboard/owner");
-  return <OwnerDashboard />;
+export default function OwnerPage() {
+  return <OrganizationOverviewPage />;
 }

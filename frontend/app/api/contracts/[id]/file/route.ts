@@ -1,8 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 
-type ContractTextPayload = {
-  data?: { fileUrl?: string; fileName?: string; mimeType?: string };
+type ContractFilePayload = {
+  data?: { url?: string; fileName?: string; mimeType?: string };
 };
+
+function isStorageUrl(url: URL) {
+  if (url.protocol !== "https:" || url.username || url.password || url.port) return false;
+  if (url.hostname === "api.cloudinary.com") {
+    return /^\/v1_1\/[a-zA-Z0-9_-]+\/(?:image|raw|video)\/download$/.test(url.pathname);
+  }
+  return url.hostname === "res.cloudinary.com" &&
+    /^\/[a-zA-Z0-9_-]+\/(?:image|raw|video)\/(?:upload|private|authenticated)\//.test(url.pathname);
+}
 
 export async function GET(request: NextRequest, context: RouteContext<"/api/contracts/[id]/file">) {
   const accessToken = request.cookies.get("lawscan_access")?.value;
@@ -15,25 +24,36 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/cont
 
   try {
     const metadataResponse = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/text`,
+      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/file`,
       { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" },
     );
     if (!metadataResponse.ok) {
-      return NextResponse.json({ error: "Không thể mở file hợp đồng." }, { status: metadataResponse.status });
+      const error = metadataResponse.status === 404 ? "Hợp đồng không có file gốc." : "Không thể mở file hợp đồng.";
+      return NextResponse.json({ error }, { status: metadataResponse.status });
     }
 
-    const { data }: ContractTextPayload = await metadataResponse.json();
-    if (!data?.fileUrl || !data.mimeType) {
-      return NextResponse.json({ error: "Hợp đồng không có file gốc." }, { status: 404 });
+    const { data }: ContractFilePayload = await metadataResponse.json();
+    if (!data?.url || !data.mimeType) {
+      return NextResponse.json({ error: "Không thể lấy thông tin file gốc." }, { status: 502 });
     }
-    const fileUrl = new URL(data.fileUrl);
-    if (fileUrl.protocol !== "https:" || fileUrl.hostname !== "res.cloudinary.com" ||
-      !/^\/[a-zA-Z0-9_-]+\/(?:image|raw|video)\/upload\//.test(fileUrl.pathname)) {
-      return NextResponse.json({ error: "Đường dẫn file không hợp lệ." }, { status: 502 });
+    let fileUrl = new URL(data.url);
+    let fileResponse: Response | undefined;
+    // Cloudinary private download links can redirect to its delivery domain.
+    // Validate each destination and never forward the user's access token.
+    for (let redirects = 0; redirects <= 3; redirects++) {
+      if (!isStorageUrl(fileUrl)) {
+        return NextResponse.json({ error: "Đường dẫn file không hợp lệ." }, { status: 502 });
+      }
+      fileResponse = await fetch(fileUrl, { cache: "no-store", redirect: "manual", signal: request.signal });
+      if (![301, 302, 303, 307, 308].includes(fileResponse.status)) break;
+      const location = fileResponse.headers.get("location");
+      await fileResponse.body?.cancel();
+      if (!location || redirects === 3) {
+        return NextResponse.json({ error: "Không thể tải file gốc." }, { status: 502 });
+      }
+      fileUrl = new URL(location, fileUrl);
     }
-
-    const fileResponse = await fetch(fileUrl, { cache: "no-store", redirect: "error" });
-    if (!fileResponse.ok || !fileResponse.body) {
+    if (!fileResponse?.ok || !fileResponse.body) {
       return NextResponse.json({ error: "Không thể tải file gốc." }, { status: 502 });
     }
     const fileName = (data.fileName ?? "contract").replace(/[\r\n"\\]/g, "_");

@@ -2,15 +2,15 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
-import { authApi } from "@/lib/api/auth";
+import { useLogoutMutation } from "@/hooks/use-auth";
 import { isApiClientError } from "@/lib/api/client";
-import { invitationsApi } from "@/lib/api/invitations";
 import { invitationError } from "@/lib/invitation-error";
+import { useAcceptInvitationMutation, useInvitationPreview } from "@/hooks/use-invitations";
 import { workspacePath } from "@/lib/workspace-path";
 import type { AuthUser } from "@/types/auth";
 
@@ -20,10 +20,12 @@ const actionClass = "inline-flex min-h-11 items-center justify-center gap-2 roun
 export function InvitationPage({ token, user }: { token: string; user: AuthUser | null }) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const acceptInvitation = useAcceptInvitationMutation();
+  const logoutMutation = useLogoutMutation();
   const [accepting, setAccepting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const validToken = /^[a-f\d]{64}$/.test(token);
-  const preview = useQuery({ queryKey: ["invitation-preview", token], queryFn: () => invitationsApi.preview(token), enabled: validToken, retry: false });
+  const preview = useInvitationPreview(token, validToken);
   const invite = preview.data;
   const failure = invitationError(preview.error);
   const wrongEmail = Boolean(invite && user && user.email.toLowerCase() !== invite.email.toLowerCase());
@@ -34,7 +36,7 @@ export function InvitationPage({ token, user }: { token: string; user: AuthUser 
     if (!invite || !user || accepting || wrongEmail || existingOrg) return;
     setAccepting(true);
     try {
-      const session = await invitationsApi.accept(token);
+      const session = await acceptInvitation.mutateAsync(token);
       queryClient.clear();
       toast.success("Đã tham gia tổ chức", { description: `Chào mừng bạn đến ${invite.organizationName}.` });
       router.replace(workspacePath(session.user));
@@ -49,7 +51,7 @@ export function InvitationPage({ token, user }: { token: string; user: AuthUser 
   async function switchAccount() {
     setLoggingOut(true);
     try {
-      await authApi.logout();
+      await logoutMutation.mutateAsync();
       queryClient.clear();
       router.replace(`/dang-nhap${inviteQuery}`);
       router.refresh();
