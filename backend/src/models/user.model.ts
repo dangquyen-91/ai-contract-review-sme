@@ -9,6 +9,7 @@ const userSchema = new Schema(
     passwordHash: { type: String, required: true, select: false },
     isActive: { type: Boolean, default: true },
     hasCompletedOnboarding: { type: Boolean, default: false },
+    permissionsVersion: { type: Number, default: 0 },
     emailVerifiedAt: { type: Date, default: null },
     googleSubject: { type: String, unique: true, sparse: true, select: false },
   },

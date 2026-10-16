@@ -61,6 +61,7 @@ export function tokensForUser(user: HydratedDocument<User>, remember = false) {
       sub: user.id,
       role: roleCodeOf(user),
       orgId: user.orgId?.toString(),
+      permissionsVersion: user.permissionsVersion ?? 0,
     },
     remember,
   );
@@ -119,6 +120,7 @@ export async function login(input: LoginInput) {
       sub: user.id,
       role: roleCodeOf(user),
       orgId: user.orgId?.toString(),
+      permissionsVersion: user.permissionsVersion ?? 0,
     },
     input.remember === true,
   );
@@ -157,6 +159,7 @@ export async function refresh(refreshToken: string, invitationToken?: string) {
       sub: user.id,
       role: roleCodeOf(user),
       orgId: user.orgId?.toString(),
+      permissionsVersion: user.permissionsVersion ?? 0,
     },
     payload.remember === true,
   );

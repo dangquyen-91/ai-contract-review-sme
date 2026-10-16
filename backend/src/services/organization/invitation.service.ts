@@ -8,7 +8,11 @@ import { Role } from '../../models/role.model';
 import { getRoleByCode } from '../identity/role.service';
 import { ensureInvitationEmailConfigured, sendInvitationEmail } from './invitationEmail.service';
 import { CreateInvitationInput } from '../../validations/invitation.validation';
-import { assertInvitationCapacity, assertMemberCapacity, lockSubscriptionOrganization } from '../billing/subscription.service';
+import {
+  assertInvitationCapacity,
+  assertMemberCapacity,
+  lockSubscriptionOrganization,
+} from '../billing/subscription.service';
 
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
@@ -82,14 +86,19 @@ export async function createInvitation(
         { session },
       );
       await assertInvitationCapacity(orgId, session);
-      const [created] = await OrganizationInvitationModel.create([{
-        orgId,
-        email: input.email,
-        role: input.role,
-        invitedBy: userId,
-        tokenHash: hashToken(token),
-        expiresAt,
-      }], { session });
+      const [created] = await OrganizationInvitationModel.create(
+        [
+          {
+            orgId,
+            email: input.email,
+            role: input.role,
+            invitedBy: userId,
+            tokenHash: hashToken(token),
+            expiresAt,
+          },
+        ],
+        { session },
+      );
       return created;
     });
   } catch (error) {
@@ -178,6 +187,38 @@ export async function listMembers(userId: string, orgId: string, page: number, l
     })),
     total,
   };
+}
+
+export async function removeMember(ownerId: string, orgId: string, memberId: string) {
+  await mongoose.connection.transaction(async (session) => {
+    await requireOwner(ownerId, orgId, session);
+    await lockSubscriptionOrganization(orgId, session);
+    const member = await UserModel.findOne({ _id: memberId, orgId })
+      .populate('roleId')
+      .session(session);
+    if (!member) throw AppError.notFound('Organization member not found');
+    if (member.id === ownerId || (member.roleId as unknown as Role).code === 'owner') {
+      throw AppError.conflict('The organization owner cannot be removed');
+    }
+    const userRole = await getRoleByCode('user');
+    // Keep the account available for another invitation; do not auto-create a personal workspace.
+    await UserModel.updateOne(
+      { _id: member._id, orgId },
+      {
+        $unset: { orgId: 1 },
+        $set: { roleId: userRole._id, hasCompletedOnboarding: false },
+        $inc: { permissionsVersion: 1 },
+      },
+      { session },
+    );
+    // A previous pending link must not silently restore access after removal.
+    await OrganizationInvitationModel.updateMany(
+      { orgId, email: member.email, status: 'pending' },
+      { $set: { status: 'revoked' } },
+      { session },
+    );
+    // Contracts, reviews, chat, subscriptions and already consumed quota belong to the organization.
+  });
 }
 
 export async function acceptInvitation(userId: string, token: string) {

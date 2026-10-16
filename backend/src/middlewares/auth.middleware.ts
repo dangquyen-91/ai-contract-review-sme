@@ -12,6 +12,7 @@ export interface AccessTokenPayload {
   sub: string; // user id
   role: UserRole;
   orgId?: string;
+  permissionsVersion?: number;
 }
 
 export type OrganizationAccessTokenPayload = AccessTokenPayload & { orgId: string };
@@ -49,7 +50,11 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     const role = (user.roleId as unknown as Role).code;
     const orgId = user.orgId?.toString();
     // Stale tokens must not keep old organization access or silently switch context.
-    if (payload.role !== role || payload.orgId !== orgId) {
+    if (
+      payload.role !== role ||
+      payload.orgId !== orgId ||
+      (payload.permissionsVersion ?? 0) !== (user.permissionsVersion ?? 0)
+    ) {
       return next(AppError.unauthorized('Account permissions changed. Refresh your access token.'));
     }
     req.user = { sub: user.id, role, orgId };

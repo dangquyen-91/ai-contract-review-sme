@@ -1325,6 +1325,36 @@ paths:
         '200': { description: Paginated members with id, name, email, role and isActive }
         '403': { description: Not the owner of this organization }
 
+  /organizations/{id}/members/{userId}:
+    delete:
+      tags: [Organizations]
+      summary: Owner removes a member and frees their seat
+      description: >-
+        Only an active owner of this organization may remove a member. Owners cannot
+        be removed. Keeps the user account, organization contracts, reviews, chat,
+        purchased plan and consumed quota. Clears the member organization, resets
+        their role to user and onboarding to incomplete, and invalidates old access
+        tokens even if they later rejoin. Pending invitations for this email in this
+        organization are revoked. The user may accept a new invitation or complete
+        personal onboarding. Repeated removal returns 404. Requests already running
+        and previously issued file download links are not cancelled by this endpoint.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      responses:
+        '204': { description: Member removed; no response body }
+        '400': { description: Invalid organization or user id }
+        '401': { description: Missing, stale or invalid authentication }
+        '403': { description: Caller is not the active owner of this organization }
+        '404': { description: Member does not belong to this organization or was already removed }
+        '409': { description: Cannot remove an owner }
+
   /invitations/preview:
     post:
       tags: [Invitations]
