@@ -2,6 +2,9 @@ import { apiRequest } from "@/lib/api/client";
 import type { AuthResult, AuthSession, EmailVerificationChallenge, LoginInput, RefreshTokenResult, RegisterInput } from "@/types/auth";
 
 export const authApi = {
+  google(input: { credential: string; nonce: string; remember?: boolean; invitationToken?: string }) {
+    return apiRequest<AuthSession>({ url: "/auth/google", method: "POST", data: input });
+  },
   login(input: LoginInput) {
     return apiRequest<AuthResult>({
       url: "/auth/login",

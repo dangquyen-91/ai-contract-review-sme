@@ -19,7 +19,7 @@ function roleCodeOf(user: { roleId: unknown }) {
   return role.code as AccessTokenPayload['role'];
 }
 
-async function ensurePersonalWorkspace(
+export async function ensurePersonalWorkspace(
   user: HydratedDocument<User>,
 ): Promise<HydratedDocument<User>> {
   if (user.orgId || !user.hasCompletedOnboarding) return user;

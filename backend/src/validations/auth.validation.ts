@@ -25,6 +25,12 @@ export const refreshSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export const googleLoginSchema = z.object({
+  credential: z.string().min(1).max(10000),
+  nonce: z.string().regex(/^[a-f0-9]{64}$/),
+  remember: z.boolean().optional(),
+  invitationToken: invitationTokenSchema.optional(),
+});
 export const resendVerificationSchema = z.object({
   challengeId: z.string().regex(/^[a-f0-9]{64}$/, 'Invalid verification request'),
   invitationToken: invitationTokenSchema.optional(),

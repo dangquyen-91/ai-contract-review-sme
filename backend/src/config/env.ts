@@ -15,6 +15,7 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   INVITATION_ACCEPT_URL: z.string().url().default('http://localhost:3000/loi-moi'),
   BREVO_API_KEY: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().trim().default(''),
   BREVO_SENDER_EMAIL: z.union([z.string().trim().email(), z.literal('')]).optional(),
   BREVO_SENDER_NAME: z.string().trim().min(1).default('AI Contract Review'),
 

@@ -11,6 +11,7 @@ import { get, useForm, useWatch, type FieldError as FormFieldError, type FieldEr
 import { toast } from "sonner";
 import { Icon } from "@/components/ui/icon";
 import { EmailVerificationForm } from "@/components/auth/email-verification-form";
+import { GoogleSignIn } from "@/components/auth/google-sign-in";
 import { useAuthMutation } from "@/hooks/use-auth";
 import { isApiClientError } from "@/lib/api/client";
 import { invitationsApi } from "@/lib/api/invitations";
@@ -75,6 +76,7 @@ function ResolvedAuthForm({ mode, invitationToken, invitedEmail }: { mode: AuthM
   const router = useRouter();
   const authMutation = useAuthMutation();
   const [showPassword, setShowPassword] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [accountExists, setAccountExists] = useState(false);
   const [verification, setVerification] = useState<EmailVerificationChallenge | null>(null);
   const {
@@ -97,11 +99,13 @@ function ResolvedAuthForm({ mode, invitationToken, invitedEmail }: { mode: AuthM
   });
 
   const password = useWatch({ control, name: "password" }) ?? "";
+  const remember = useWatch({ control, name: "remember" }) ?? false;
   const confirmPassword = useWatch({ control, name: "confirmPassword" }) ?? "";
   const nameError = getFieldError(errors, "name");
   const confirmPasswordError = getFieldError(errors, "confirmPassword");
 
   const submit: SubmitHandler<AuthFormValues> = async (values) => {
+    if (googleBusy) return;
     setAccountExists(false);
     let request: AuthMutationVariables;
 
@@ -175,8 +179,10 @@ function ResolvedAuthForm({ mode, invitationToken, invitedEmail }: { mode: AuthM
         <p>{invited ? "Dùng đúng email nhận lời mời để tiếp tục tham gia tổ chức." : isRegister ? "Đăng ký tài khoản để bắt đầu sử dụng LawScan." : "Tiếp tục công việc rà soát hợp đồng của bạn."}</p>
       </header>
 
+      <GoogleSignIn invitationToken={invitationToken} invitedEmail={invitedEmail} remember={remember} disabled={isSubmitting} onBusyChange={setGoogleBusy} />
 
       <form onSubmit={handleSubmit(submit)} className="grid gap-[15px] mt-[26px] [@media_(max-width:_480px)]:gap-[13px] [@media_(max-width:_480px)]:mt-[23px]" noValidate>
+        <fieldset disabled={googleBusy} className="contents">
         <input type="hidden" {...register("mode")} />
 
         {isRegister && (
@@ -230,6 +236,7 @@ function ResolvedAuthForm({ mode, invitationToken, invitedEmail }: { mode: AuthM
           <span>{isSubmitting ? "Đang xử lý…" : isRegister ? "Tạo tài khoản" : "Đăng nhập"}</span>
           {isSubmitting ? <i className="w-[17px] h-[17px] [animation:spin_0.7s_linear_infinite] rounded-[50%] border-t-white border-2 border-solid border-[#ffffff66] motion-reduce:[animation-duration:0.01ms] motion-reduce:[animation-iteration-count:1]" aria-hidden="true" /> : <Icon name="arrow" />}
         </button>
+        </fieldset>
       </form>
 
       <p className="text-[#748196] text-center text-[length:11px] mt-5 [&_a]:text-[#0868ed] [&_a]:font-bold [&_a]:[text-decoration:none] [&_a]:hover:[text-decoration:underline] [&_a]:hover:underline-offset-[3px]">{isRegister ? "Đã có tài khoản?" : "Chưa có tài khoản?"} <Link href={`${isRegister ? "/dang-nhap" : "/dang-ky"}${inviteQuery}`}>{isRegister ? "Đăng nhập" : "Tạo tài khoản"}</Link></p>

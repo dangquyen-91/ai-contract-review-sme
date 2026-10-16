@@ -32,6 +32,7 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 let refreshPromise: Promise<unknown> | null = null;
 
 function isAuthRequest(url?: string) {
+  if (url?.endsWith("/auth/google")) return true;
   return ["/auth/login", "/auth/register", "/auth/verify-email", "/auth/resend-verification", "/auth/refresh", "/auth/logout", "/auth/onboarding", "/invitations/accept", "/invitations/preview"].some((path) => url?.endsWith(path));
 }
 

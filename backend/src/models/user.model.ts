@@ -10,6 +10,7 @@ const userSchema = new Schema(
     isActive: { type: Boolean, default: true },
     hasCompletedOnboarding: { type: Boolean, default: false },
     emailVerifiedAt: { type: Date, default: null },
+    googleSubject: { type: String, unique: true, sparse: true, select: false },
   },
   { timestamps: true },
 );

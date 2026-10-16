@@ -7,6 +7,13 @@ import { Role } from '../models/role.model';
 import { HydratedDocument } from 'mongoose';
 import { AppError } from '../errors/AppError';
 import { resendEmailVerification } from '../services/identity/emailVerification.service';
+import { googleLogin } from '../services/identity/googleAuth.service';
+
+export const googleLoginHandler = asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  const { user, ...tokens } = await googleLogin(req.body);
+  ok(res, { user: toPublicUser(user), ...tokens });
+});
 
 export function toPublicUser(user: HydratedDocument<User>) {
   return {

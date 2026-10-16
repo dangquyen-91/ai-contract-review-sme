@@ -1364,6 +1364,46 @@ paths:
         '403': { description: Signed-in email does not match invitation }
         '409': { description: User already belongs to an organization }
 
+  /auth/google:
+    post:
+      tags: [Auth]
+      summary: Register or sign in with Google Identity Services
+      description: Verifies Google's signed ID token (audience, issuer, expiry) and nonce. Supports Gmail and verified Google Workspace email. Uses Google's subject as the stable identity. Existing verified accounts with the same authoritative email are linked without changing roles or organization. Unverified existing accounts must first sign in with password and verify OTP. Invitation email must match; joining still requires explicit acceptance. The frontend obtains a nonce from GET /api/auth/google and binds it to an HttpOnly cookie before invoking Google's button. Google-only accounts do not have a user-known password.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credential, nonce]
+              properties:
+                credential:
+                  type: string
+                  description: Signed Google ID token returned by Google Identity Services.
+                nonce:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+                  description: Must match the nonce used when initializing the Google button.
+                invitationToken:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+                remember:
+                  type: boolean
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400': { description: Invalid input or invitation }
+        '401': { description: Invalid Google credential, nonce, or inactive account }
+        '403': { description: Invitation email mismatch or email requires password verification }
+        '409': { description: Unverified existing account or identity conflict }
+        '429': { description: Authentication rate limit exceeded }
+        '503': { description: Google client ID is not configured }
+
   /auth/register:
     post:
       tags: [Auth]

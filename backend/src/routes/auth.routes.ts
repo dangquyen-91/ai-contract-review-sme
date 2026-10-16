@@ -7,6 +7,7 @@ import {
   registerHandler,
   verifyEmailHandler,
   resendVerificationHandler,
+  googleLoginHandler,
 } from '../controllers/auth.controller';
 import {
   loginSchema,
@@ -14,6 +15,7 @@ import {
   registerSchema,
   verifyEmailSchema,
   resendVerificationSchema,
+  googleLoginSchema,
 } from '../validations/auth.validation';
 import rateLimit from 'express-rate-limit';
 import { requireAuth } from '../middlewares/auth.middleware';
@@ -43,6 +45,7 @@ const verificationLimiter = rateLimit({
 router.post('/register', authLimiter, validate({ body: registerSchema }), registerHandler);
 
 router.post('/login', authLimiter, validate({ body: loginSchema }), loginHandler);
+router.post('/google', authLimiter, validate({ body: googleLoginSchema }), googleLoginHandler);
 router.post(
   '/verify-email',
   verificationLimiter,
