@@ -19,9 +19,9 @@ export function DashboardNavigation({ items, activeKey, onNavigate, contractCoun
       {items.filter((item) => !mobile || item.mobile).map((item) => {
         const active = item.key === activeKey;
         const className = mobile
-          ? `inline-flex min-h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-xs font-semibold ${active ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`
-          : `relative flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-xs font-medium transition-colors ${active ? "bg-blue-50 font-bold text-blue-700 before:absolute before:left-0 before:h-6 before:w-[3px] before:rounded-r before:bg-blue-600" : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"}`;
-        const content = <><Icon name={item.icon} className={mobile ? "size-4 shrink-0" : "size-[18px] shrink-0"} /><span>{item.label}</span>{item.count && !mobile && <small className="ml-auto rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px]">{contractCount ?? 0}</small>}{item.pending && !mobile && <span className="ml-auto size-1.5 rounded-full bg-slate-300" title="Chờ API" aria-label="Chờ API" />}</>;
+          ? `inline-flex min-h-9 shrink-0 items-center gap-2 rounded-lg px-3 font-sans text-ui font-medium ${active ? "bg-accent font-semibold text-primary" : "text-sidebar-foreground hover:bg-sidebar-hover"}`
+          : `relative flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left font-sans text-ui font-medium transition-colors ${active ? "bg-accent font-semibold text-primary before:absolute before:left-0 before:h-6 before:w-[3px] before:rounded-r before:bg-primary" : "text-sidebar-foreground hover:bg-sidebar-hover hover:text-accent-foreground"}`;
+        const content = <><Icon name={item.icon} className={mobile ? "size-4 shrink-0" : "size-[18px] shrink-0"} /><span className="text-[#171717]">{item.label}</span>{item.count && !mobile && (contractCount ?? 0) > 0 && <small className="ml-auto rounded-full bg-accent px-1.5 py-0.5 text-ui-caption text-primary">{contractCount}</small>}{item.pending && !mobile && <span className="ml-auto size-1.5 rounded-full bg-slate-300" title="Chờ API" aria-label="Chờ API" />}</>;
         return (
           <div key={item.key} className={mobile ? "shrink-0" : undefined}>
             {!mobile && item.group && <p className="mb-2 mt-4 px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-400 first:mt-0">{item.group}</p>}

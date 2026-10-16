@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
 import { Fragment, useState } from "react";
@@ -46,8 +48,8 @@ function ContractSearchForm({ search, onSearch }: { search: string; onSearch: (v
       <span className="sr-only">Tìm kiếm hợp đồng</span>
       <input type="search" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Tìm theo tên hợp đồng..." className="min-w-0 flex-1 bg-transparent text-xs text-[#263750] outline-none focus-visible:!outline-none placeholder:text-[#9aa6b7]" />
     </label>
-    <button type="submit" className="min-h-10 rounded-lg bg-[#2864dc] px-3 text-xs font-semibold text-white hover:bg-[#1f4fb2]">Tìm kiếm</button>
-    {search && <button type="button" onClick={() => { setDraft(""); onSearch(""); }} className="min-h-10 rounded-lg px-2 text-xs font-semibold text-[#526987] hover:bg-[#f1f5fb]">Xóa</button>}
+    <Button variant="default" size="sm" type="submit" >Tìm kiếm</Button>
+    {search && <Button variant="outline" size="sm" type="button" onClick={() => { setDraft(""); onSearch(""); }} >Xóa</Button>}
   </form>;
 }
 
@@ -65,7 +67,7 @@ function ContractsView({ contracts, totalContracts, scope, canReview, onReview, 
   const requestedPage = filtered ? page : Math.min(page, Math.max(1, Math.ceil(totalContracts / 10)));
   const { data: pageData, error, isLoading, refetch } = useContractsList(
     { ...filter, page: requestedPage, search: search || undefined },
-    { queryKey: ["dashboard", "contracts", scope, requestedPage, search, filter], initialData: requestedPage === 1 && !filtered ? { items: contracts, total: totalContracts } : undefined, pollProcessing: true },
+    { scope, initialData: requestedPage === 1 && !filtered ? { items: contracts, total: totalContracts } : undefined, pollProcessing: true },
   );
   const uploaded = highlightId && pageData?.items.find((contract) => (contract.id ?? contract._id) === highlightId);
   const total = pageData?.total ?? (filtered ? 0 : totalContracts);
@@ -85,10 +87,10 @@ function ContractsView({ contracts, totalContracts, scope, canReview, onReview, 
         <ContractSearchForm key={search} search={search} onSearch={(value) => void setListState({ page: 1, search: value })} />
       </header>
       <div className="flex flex-wrap gap-2 border-b border-[color:var(--line)] px-[21px] py-3" aria-label="Lọc hợp đồng">
-        {contractFilterChoices.map((choice) => <button key={choice.label} type="button" aria-pressed={filter.status === choice.filter.status && filter.riskLevel === choice.filter.riskLevel} onClick={() => void setListState({ page: 1, status: choice.filter.status ?? "", riskLevel: choice.filter.riskLevel ?? "" })} className="min-h-9 rounded-full border border-[#dce5f2] bg-white px-3 text-xs font-semibold text-[#536881] hover:bg-[#eaf2ff] aria-pressed:border-[#a9c5f4] aria-pressed:bg-[#eaf2ff] aria-pressed:text-[#245bd6]">{choice.label}</button>)}
+        {contractFilterChoices.map((choice) => <Button className="border border-border bg-white font-medium text-[#52647e] shadow-none hover:bg-[#f5f8fc] hover:text-[#263750] aria-pressed:border-[#c6d7f5] aria-pressed:bg-accent aria-pressed:font-semibold aria-pressed:text-accent-foreground" variant="ghost" size="sm" key={choice.label} type="button" aria-pressed={filter.status === choice.filter.status && filter.riskLevel === choice.filter.riskLevel} onClick={() => void setListState({ page: 1, status: choice.filter.status ?? "", riskLevel: choice.filter.riskLevel ?? "" })} >{choice.label}</Button>)}
       </div>
-      {uploaded && <div className="mx-5 mt-4 flex items-start justify-between gap-3 rounded-xl border border-[#bde4d1] bg-[#effaf5] p-4 text-sm text-[#176747]" role="status"><div><strong>Hợp đồng vừa tải lên</strong><p className="mt-1">{uploaded.title} · Đã lưu tài liệu. Bạn có thể bắt đầu rà soát từ danh sách bên dưới.</p></div><button type="button" aria-label="Ẩn thông báo tải lên" className="min-h-9 min-w-9 rounded-lg text-xl hover:bg-[#dff3e8]" onClick={() => { const params = new URLSearchParams(searchParams.toString()); params.delete("uploaded"); router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false }); }}>×</button></div>}
-      {error ? <div role="alert" className="p-8 text-center text-sm text-[#5e6d82]">Không thể tải danh sách hợp đồng. <button type="button" onClick={() => refetch()} className="font-semibold text-[#2256b6] underline">Thử lại</button></div>
+      {uploaded && <div className="mx-5 mt-4 flex items-start justify-between gap-3 rounded-xl border border-[#bde4d1] bg-[#effaf5] p-4 text-sm text-[#176747]" role="status"><div><strong>Hợp đồng vừa tải lên</strong><p className="mt-1">{uploaded.title} · Đã lưu tài liệu. Bạn có thể bắt đầu rà soát từ danh sách bên dưới.</p></div><Button variant="outline" size="sm" type="button" aria-label="Ẩn thông báo tải lên"  onClick={() => { const params = new URLSearchParams(searchParams.toString()); params.delete("uploaded"); router.replace(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false }); }}>×</Button></div>}
+      {error ? <div role="alert" className="p-8 text-center text-sm text-[#5e6d82]">Không thể tải danh sách hợp đồng. <Button variant="link" size="sm" type="button" onClick={() => refetch()} >Thử lại</Button></div>
         : isLoading ? <div className="p-8 text-center text-sm text-[#6b778c]" aria-busy="true">Đang tải hợp đồng...</div>
         : pageData?.items.length === 0 && filtered ? <p className="p-8 text-center text-sm text-[#6b778c]">{search ? `Không tìm thấy hợp đồng phù hợp với “${search}”.` : "Không có hợp đồng phù hợp với bộ lọc."}</p>
         : <ContractTable contracts={pageData?.items ?? []} highlightId={highlightId} canReview={canReview} onReview={onReview} isReviewing={isReviewing} />}

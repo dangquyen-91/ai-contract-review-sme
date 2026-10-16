@@ -17,7 +17,7 @@ function PaginationLink({ className = "", isActive = false, type = "button", ...
     type={type}
     data-slot="pagination-link"
     aria-current={isActive ? "page" : undefined}
-    className={`inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-2 text-sm transition-colors disabled:pointer-events-none disabled:opacity-50 ${isActive ? "border-[#d1def5] bg-[#eaf1ff] font-semibold text-[#2256b6]" : "border-transparent text-[#526178] hover:border-[#dbe3ed] hover:bg-[#f8fafc]"} ${className}`}
+    className={`inline-flex h-9 min-w-9 items-center justify-center rounded-md border px-2 font-sans text-ui font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:pointer-events-none disabled:opacity-50 ${isActive ? "border-primary bg-primary text-primary-foreground" : "border-primary/25 bg-card text-primary hover:border-primary/50 hover:bg-accent"} ${className}`}
     {...props}
   />;
 }

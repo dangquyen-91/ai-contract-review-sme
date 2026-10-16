@@ -9,7 +9,7 @@ const contractId = 'contract-1';
 const storageKey = `lawscan_review_${contractId}`;
 const completed = { _id: 'review-1', status: 'completed' };
 class ApiClientError extends Error {
-  constructor(status) { super(`HTTP ${status}`); this.status = status; }
+  constructor(status, options) { super(typeof status === 'number' || status === undefined ? `HTTP ${status}` : status); this.status = options?.status ?? status; }
 }
 function setup(overrides = {}, saved) {
   const storage = new Map(saved ? [[storageKey, typeof saved === 'string' ? saved : JSON.stringify(saved)]] : []);
@@ -40,6 +40,19 @@ function setup(overrides = {}, saved) {
   };
 }
 const posts = (context) => context.calls.filter((call) => call.method === 'startReview');
+
+test('A rejected quota request preserves focus and F5 does not resubmit; an explicit action can try the saved contract later', async () => {
+  const context = setup({ startReview: () => { throw new ApiClientError('analysis quota exhausted', { status: 403 }); } });
+  await assert.rejects(context.run({ analysisFocus: 'Payment' }), /quota exhausted/);
+  assert.equal(context.read().analysisFocus, 'Payment');
+  assert.equal(posts(context).length, 1);
+  const resumed = setup({}, context.read());
+  await assert.rejects(resumed.run({ resumeOnly: true }), /quota exhausted/);
+  assert.equal(resumed.calls.length, 0);
+  await resumed.run();
+  assert.equal(posts(resumed).length, 1);
+  assert.equal(posts(resumed)[0].args[2], 'Payment');
+});
 
 test('Lost POST response retries the persisted key and original body', async () => {
   let context;

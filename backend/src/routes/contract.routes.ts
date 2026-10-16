@@ -18,6 +18,7 @@ import {
   listContractsHandler,
 } from '../controllers/contract.controller';
 import { listClausesHandler } from '../controllers/clause.controller';
+import { getShareSummaryHandler } from '../controllers/shareSummary.controller';
 import {
   removeProposedRevisionHandler,
   updateProposedRevisionHandler,
@@ -35,6 +36,8 @@ import {
   chatMessageBodySchema,
   contractIdParamSchema,
   contractTextQuerySchema,
+  contractFileQuerySchema,
+  shareSummaryQuerySchema,
   createContractSchema,
   findingParamSchema,
   listContractsQuerySchema,
@@ -63,7 +66,9 @@ router.get(
   getContractTextHandler,
 );
 
-router.get('/:id/file', validate({ params: contractIdParamSchema }), getContractFileHandler);
+router.get('/:id/file', validate({ params: contractIdParamSchema, query: contractFileQuerySchema }), getContractFileHandler);
+
+router.get('/:id/share-summary', validate({ params: contractIdParamSchema, query: shareSummaryQuerySchema }), getShareSummaryHandler);
 
 router.post(
   '/:id/reviews',

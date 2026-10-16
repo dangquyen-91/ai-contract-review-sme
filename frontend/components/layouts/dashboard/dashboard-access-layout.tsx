@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { StaffOrganizationRequired } from "@/components/dashboard/overview/staff-organization-required";
+import { StaffOrganizationRequired } from "@/components/organizations/staff-organization-required";
 import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { needsOnboarding, workspacePath } from "@/lib/workspace-path";
 import type { OrganizationDashboardRole } from "@/lib/organization-dashboard-route";
-import { OrganizationDashboardFrame } from "@/components/dashboard/organization-workspace";
+import { OrganizationDashboardFrame } from "@/components/layouts/dashboard/organization-workspace";
 
 export async function DashboardAccessLayout({ role, children }: { role: "user" | OrganizationDashboardRole; children: ReactNode }) {
   const cookieStore = await cookies();

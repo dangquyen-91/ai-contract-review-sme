@@ -9,5 +9,5 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   const cookieStore = await cookies();
   const user = decodeSessionUser(cookieStore.get(userSessionCookie)?.value);
   const organizationRole = user?.orgId && isOrganizationDashboardRole(user.role) ? user.role : undefined;
-  return <DashboardProvider organizationRole={organizationRole}><SessionKeeper />{children}</DashboardProvider>;
+  return <DashboardProvider organizationRole={organizationRole} reviewRole={user?.role ?? "user"}><SessionKeeper />{children}</DashboardProvider>;
 }

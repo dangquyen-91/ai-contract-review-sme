@@ -12,6 +12,7 @@ import { CreateContractInput, ListContractsQuery } from '../../validations/contr
 import { logger } from '../../config/logger';
 import {
   createFileDownloadLink,
+  downloadContractFile,
   deleteContractFile,
   storedFileOf,
   uploadContractFile,
@@ -20,6 +21,7 @@ import { enqueueExtraction, waitForExtraction } from './extractionWorker.service
 import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
 import { resolveContractProfile, validateContractContext } from './contractProfile.service';
 import { createRedactor, SensitiveDataType } from '../ai/redaction.service';
+import { DOCX_MIME, redactDocx } from './docxRedaction.service';
 
 interface CreateContractParams {
   orgId: string;
@@ -229,6 +231,20 @@ export async function getContractText(orgId: string, id: string, redacted = fals
     extractionStatus: version.extractionStatus,
     fileName: version.fileName,
     mimeType: version.mimeType,
+  };
+}
+
+export async function getRedactedContractDocx(orgId: string, id: string) {
+  const contract = await ContractModel.findOne({ _id: id, orgId });
+  if (!contract) throw AppError.notFound('Contract not found');
+  const version = await getCurrentVersionWithText(id);
+  if (version.mimeType !== DOCX_MIME) throw AppError.badRequest('Redacted file preview is supported only for DOCX');
+  const file = storedFileOf(version);
+  if (!file) throw AppError.notFound('This contract has no uploaded file');
+  const profile = await resolveContractProfile(contract.type);
+  return {
+    buffer: await redactDocx(await downloadContractFile(file), version.extractedText ?? '', profile.redactionPolicy as SensitiveDataType[]),
+    fileName: `${(version.fileName ?? 'contract.docx').replace(/\.docx$/i, '')}-redacted.docx`,
   };
 }
 

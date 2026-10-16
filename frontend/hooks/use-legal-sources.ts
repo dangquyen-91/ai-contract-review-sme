@@ -3,10 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { legalSourcesApi } from "@/lib/api/legal-sources";
 
-export const legalSourceKeys = {
-  list: ["admin", "legal-sources"] as const,
-  health: ["admin", "health"] as const,
-};
+import { legalSourceKeys } from "@/lib/query-keys/legal-sources";
+
 
 export function useLegalSources() {
   return useQuery({ queryKey: legalSourceKeys.list, queryFn: legalSourcesApi.list, retry: false });

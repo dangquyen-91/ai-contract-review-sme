@@ -4,12 +4,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invitationsApi } from "@/lib/api/invitations";
 import type { CreateInvitationInput } from "@/types/invitations";
 
-export const invitationKeys = {
-  members: (orgId: string, page: number) => ["org-members", orgId, page] as const,
-  invitations: (orgId: string, page: number) => ["org-invitations", orgId, page] as const,
-  subscription: (orgId: string) => ["org-subscription", orgId] as const,
-  preview: (token: string) => ["invitation-preview", token] as const,
-};
+import { invitationKeys } from "@/lib/query-keys/invitations";
+import { isApiClientError } from "@/lib/api/client";
+
 
 export function useOrganizationMembers(orgId: string, page: number) {
   return useQuery({ queryKey: invitationKeys.members(orgId, page), queryFn: () => invitationsApi.members(orgId, page), retry: false });
@@ -32,9 +29,14 @@ export function useCreateInvitationMutation(orgId: string) {
   return useMutation({
     mutationFn: (input: CreateInvitationInput) => invitationsApi.create(orgId, input),
     onSuccess: () => Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["org-invitations", orgId] }),
+      queryClient.invalidateQueries({ queryKey: invitationKeys.invitationsBase(orgId) }),
       queryClient.invalidateQueries({ queryKey: invitationKeys.subscription(orgId) }),
     ]),
+    onError: (error) => {
+      if (isApiClientError(error) && error.status === 403 && /^Member limit reached\b/i.test(error.message)) {
+        return queryClient.invalidateQueries({ queryKey: invitationKeys.subscription(orgId) });
+      }
+    },
   });
 }
 
@@ -43,7 +45,7 @@ export function useRevokeInvitationMutation(orgId: string) {
   return useMutation({
     mutationFn: (invitationId: string) => invitationsApi.revoke(orgId, invitationId),
     onSuccess: () => Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["org-invitations", orgId] }),
+      queryClient.invalidateQueries({ queryKey: invitationKeys.invitationsBase(orgId) }),
       queryClient.invalidateQueries({ queryKey: invitationKeys.subscription(orgId) }),
     ]),
   });

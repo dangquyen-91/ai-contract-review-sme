@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminSession } from "@/lib/admin-session";
-import { AdminShell } from "@/components/admin/admin-shell";
+import { SystemDashboardShell } from "@/components/layouts/dashboard/system-dashboard-shell";
 
 export const metadata: Metadata = {
   title: "Quản trị hệ thống | LawScan",
@@ -54,5 +54,5 @@ export default async function AdminLayout({
       </main>
     );
   }
-  return <AdminShell name={session.name}>{children}</AdminShell>;
+  return <SystemDashboardShell name={session.name}>{children}</SystemDashboardShell>;
 }

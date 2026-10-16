@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+
 import { useEffect, useId, useRef } from "react";
 import { Icon } from "@/components/ui/icon";
 
@@ -24,8 +26,8 @@ export function DocumentDisclosureDialog({ mode, onConfirm, onCancel }: {
     <h2 id={`${id}-title`} className="mb-0 mt-4 text-ui-dialog font-semibold">Xem {label}?</h2>
     <p id={`${id}-description`} className="mb-0 mt-2 text-ui leading-6 text-[#607087]">{mode === "original" ? "File gốc chưa được che thông tin nhạy cảm." : "Văn bản đầy đủ có thể chứa thông tin cá nhân."} Nội dung sẽ được tải sau khi bạn xác nhận. Bạn muốn tiếp tục?</p>
     <div className="mt-5 flex flex-wrap justify-end gap-3">
-      <button type="button" autoFocus onClick={onCancel} className="min-h-11 rounded-lg border border-[#d8e0ea] bg-white px-4 text-ui font-semibold text-[#526178] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2864dc]">Hủy</button>
-      <button type="button" onClick={onConfirm} className="min-h-11 rounded-lg bg-[#2864dc] px-4 text-ui font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2864dc]">Xem {label}</button>
+      <Button variant="outline" size="default" type="button" autoFocus onClick={onCancel} >Hủy</Button>
+      <Button variant="default" size="default" type="button" onClick={onConfirm} >Xem {label}</Button>
     </div>
   </dialog>;
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+
 import { useEffect, useRef, useState } from "react";
 import { useContractFile } from "@/hooks/use-contracts";
 
@@ -7,12 +9,14 @@ function normalizeText(value: string) {
   return value.normalize("NFKC").replace(/[\u00ad\u200b-\u200d\ufeff]/g, "").replace(/\s+/g, " ").trim();
 }
 
-export function OriginalContractPreview({ contractId, mimeType, fileName, target, version }: {
+export function OriginalContractPreview({ contractId, mimeType, fileName, target, version, redacted = false, onTextFallback }: {
   contractId: string;
   mimeType: string;
   fileName?: string;
   target?: { text: string; requestId: number } | null;
   version?: string;
+  redacted?: boolean;
+  onTextFallback?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [renderError, setRenderError] = useState(false);
@@ -21,7 +25,7 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const isDocx = mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  const fileQuery = useContractFile(contractId, version);
+  const fileQuery = useContractFile(contractId, version, redacted);
   const blob = fileQuery.isError ? undefined : fileQuery.data;
   const error = fileQuery.isError || renderError;
 
@@ -69,7 +73,7 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
   }, [blob, isDocx, mimeType, attempt]);
 
   useEffect(() => {
-    if (!isDocx || !rendered || !target || !containerRef.current) return;
+    if (redacted || !isDocx || !rendered || !target || !containerRef.current) return;
     const container = containerRef.current;
     const paragraphs = Array.from(container.querySelectorAll<HTMLElement>("p"));
     const lines = target.text.split(/\r?\n/).map(normalizeText).filter((line) => line.length >= 8).slice(0, 8);
@@ -94,20 +98,21 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
       paragraph.style.outline = previousOutline;
       paragraph.style.scrollMarginBlock = previousScrollMargin;
     };
-  }, [isDocx, rendered, target]);
+  }, [redacted, isDocx, rendered, target]);
 
   const errorMessage = error && <div role="alert" className="m-4 rounded-xl border border-[#e4e8ef] bg-white p-5 text-ui text-[#607087]">
-    <p className="m-0">Không thể hiển thị file gốc. Bạn vẫn có thể chọn “Văn bản đầy đủ” để xem nội dung.</p>
-    <button type="button" disabled={fileQuery.isFetching} onClick={() => { void fileQuery.refetch().then((response) => { if (!response.isError) setAttempt((value) => value + 1); }); }} className="mt-3 rounded-lg border border-[#aac7fa] bg-[#eaf1ff] px-3 py-2 font-semibold text-[#1e53b8] disabled:opacity-60">{fileQuery.isFetching ? "Đang tải lại…" : "Thử tải lại file"}</button>
+    <p className="m-0">{redacted ? "Chưa thể hiển thị bản DOCX đã che. Tài liệu chứa ảnh hoặc nội dung nhúng có thể chưa được hỗ trợ. Bạn có thể xem văn bản đã che." : "Không thể hiển thị file gốc. Bạn vẫn có thể chọn “Văn bản đầy đủ” để xem nội dung."}</p>
+    {redacted && onTextFallback && <Button variant="outline" size="sm" type="button" onClick={onTextFallback} className="mt-3 mr-2">Xem văn bản đã che</Button>}
+    <Button variant="outline" size="sm" type="button" disabled={fileQuery.isFetching} onClick={() => { void fileQuery.refetch().then((response) => { if (!response.isError) setAttempt((value) => value + 1); }); }} className="mt-3">{fileQuery.isFetching ? "Đang tải lại…" : "Thử tải lại file"}</Button>
   </div>;
-  const loadingMessage = !error && !rendered && <p role="status" className="m-4 text-ui text-[#607087]">Đang tải file gốc…</p>;
+  const loadingMessage = !error && !rendered && <p role="status" className="m-4 text-ui text-[#607087]">{redacted ? "Đang chuẩn bị bản DOCX đã che…" : "Đang tải file gốc…"}</p>;
 
   if (isDocx) {
     return <div className="h-full overflow-auto [background:#eef1f5] p-4 [@media_(max-width:_580px)]:p-2 [&_.docx-wrapper]:!p-0 [&_.docx-wrapper]:!bg-transparent [&_.docx]:shadow-[0_3px_18px_#17243d24]">
       {errorMessage}
       {loadingMessage}
       {locationNotFound && !error && <p className="text-[#875c08] text-ui m-3">Không tìm thấy vị trí điều khoản trong file gốc. Bạn có thể xem trong “Văn bản đầy đủ”.</p>}
-      <div ref={containerRef} aria-label={fileName ?? "File hợp đồng gốc"} />
+      <div ref={containerRef} aria-label={redacted ? "Bản DOCX đã che thông tin" : fileName ?? "File hợp đồng gốc"} />
     </div>;
   }
 

@@ -1,23 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Icon } from "@/components/ui/icon";
-import { useLogoutMutation } from "@/hooks/use-auth";
+import { useLogoutWorkflow } from "@/hooks/use-logout-workflow";
 import { getUserInitials } from "@/lib/user-display";
 import type { AuthUser } from "@/types/auth";
 
 export function AccountMenu({ user, accountHref }: { user: AuthUser; accountHref: string }) {
   const [open, setOpen] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const { logout, loggingOut: isLoggingOut } = useLogoutWorkflow({ onSuccess: () => setOpen(false), successMessage: "Đăng xuất thành công" });
   const container = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const router = useRouter();
-  const queryClient = useQueryClient();
-  const logoutMutation = useLogoutMutation();
 
   useEffect(() => {
     if (!open) return;
@@ -39,23 +33,6 @@ export function AccountMenu({ user, accountHref }: { user: AuthUser; accountHref
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [open]);
-
-  async function logout() {
-    if (isLoggingOut) return;
-    setIsLoggingOut(true);
-
-    try {
-      await logoutMutation.mutateAsync();
-      queryClient.clear();
-      setOpen(false);
-      toast.success("Đăng xuất thành công");
-      router.replace("/dang-nhap");
-      router.refresh();
-    } catch {
-      setIsLoggingOut(false);
-      toast.error("Không thể đăng xuất. Vui lòng thử lại.");
-    }
-  }
 
   return (
     <div className="relative" ref={container}>
