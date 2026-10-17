@@ -35,7 +35,7 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
     { key: "review", href: "/dashboard/user/review", label: "Tải & rà soát", icon: "upload", group: "Không gian làm việc", mobile: true },
     { key: "contract", href: "/dashboard/user/contract", label: "Hợp đồng", icon: "document", count: true, mobile: true },
     { key: "create-organization", href: "/chon-to-chuc", label: "Tạo tổ chức", icon: "building", group: "Hỗ trợ", mobile: true },
-    ...supportNavigation.map((item) => ({ ...item, group: undefined })),
+    ...supportNavigation.map((item) => ({ ...item, ...(item.key === "plans" ? { key: "subscription", href: "/dashboard/user/subscription" } : {}), group: undefined })),
   ];
 
   return [

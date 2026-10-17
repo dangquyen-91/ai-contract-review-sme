@@ -1,0 +1,58 @@
+/* Separate tokens keep shadcn surfaces independent from legacy text colors. */
+@theme inline {
+  --color-card: var(--ui-card);
+  --color-card-foreground: var(--ui-foreground);
+  --color-popover: var(--ui-card);
+  --color-popover-foreground: var(--ui-foreground);
+  --color-primary: var(--ui-primary);
+  --color-primary-hover: var(--ui-primary-hover);
+  --color-primary-foreground: var(--ui-primary-foreground);
+  --color-secondary: var(--ui-secondary);
+  --color-secondary-foreground: var(--ui-accent-foreground);
+  --color-muted: var(--ui-muted);
+  --color-muted-foreground: var(--ui-muted-foreground);
+  --color-accent: var(--ui-accent);
+  --color-accent-foreground: var(--ui-accent-foreground);
+  --color-destructive: var(--ui-destructive);
+  --color-destructive-foreground: var(--ui-primary-foreground);
+  --color-border: var(--ui-border);
+  --color-input: var(--ui-border);
+  --color-ring: var(--ui-primary);
+  --radius-sm: calc(var(--ui-radius) - 4px);
+  --radius-md: calc(var(--ui-radius) - 2px);
+  --radius-lg: var(--ui-radius);
+  --radius-xl: calc(var(--ui-radius) + 4px);
+  --color-chart-1: var(--ui-primary);
+  --color-chart-2: #176747;
+  --color-chart-3: #a86413;
+  --color-chart-4: #b43f55;
+  --color-chart-5: #7259c7;
+  --color-sidebar: var(--ui-card);
+  --color-sidebar-foreground: var(--ui-navigation);
+  --color-sidebar-hover: #f5f8ff;
+  --color-sidebar-primary: var(--ui-primary);
+  --color-sidebar-primary-foreground: var(--ui-primary-foreground);
+  --color-sidebar-accent: var(--ui-accent);
+  --color-sidebar-accent-foreground: var(--ui-accent-foreground);
+  --color-sidebar-border: var(--ui-border);
+  --color-sidebar-ring: var(--ui-primary);
+}
+
+:root {
+  --ui-radius: 0.625rem;
+  --ui-card: #ffffff;
+  --ui-foreground: #14213d;
+  --ui-navigation: #315eac;
+  --ui-primary: #2864dc;
+  --ui-primary-hover: #1f4fb2;
+  --ui-primary-foreground: #ffffff;
+  --ui-secondary: #eef3fb;
+  --ui-muted: #f5f8fc;
+  --ui-muted-foreground: #607087;
+  --ui-accent: #eaf1ff;
+  --ui-accent-foreground: #1f4fb2;
+  --ui-destructive: #b43f55;
+  --ui-border: #dce4ee;
+}
+
+/* Keep UI tokens light until the complete dashboard supports a dark theme. */

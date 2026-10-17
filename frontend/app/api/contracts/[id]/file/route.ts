@@ -23,13 +23,30 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/cont
   }
 
   try {
+    const redacted = request.nextUrl?.searchParams.get("redacted") === "true";
     const metadataResponse = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/file`,
-      { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store" },
+      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/file${redacted ? "?redacted=true" : ""}`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal: request.signal },
     );
     if (!metadataResponse.ok) {
       const error = metadataResponse.status === 404 ? "Hợp đồng không có file gốc." : "Không thể mở file hợp đồng.";
       return NextResponse.json({ error }, { status: metadataResponse.status });
+    }
+
+    if (redacted) {
+      if (metadataResponse.headers.get("X-LawScan-Redacted") !== "partial"
+        || metadataResponse.headers.get("Content-Type")?.split(";")[0] !== "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        || !metadataResponse.body) {
+        await metadataResponse.body?.cancel();
+        return NextResponse.json({ error: "Chưa có bản DOCX đã che hợp lệ. Vui lòng xem văn bản đã che." }, { status: 502 });
+      }
+      return new Response(metadataResponse.body, { headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Content-Disposition": "inline; filename=contract-redacted.docx",
+        "Cache-Control": "private, no-store",
+        "X-LawScan-Redacted": "partial",
+        "X-Content-Type-Options": "nosniff",
+      } });
     }
 
     const { data }: ContractFilePayload = await metadataResponse.json();

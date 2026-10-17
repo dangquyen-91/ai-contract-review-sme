@@ -3,7 +3,8 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { toast } from "sonner";
-import { reviewErrorMessage, useReviewWorkflow } from "@/hooks/use-review-workflow";
+import { reviewErrorMessage } from "@/hooks/use-review-workflow";
+import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider";
 import { useDashboardWorkspace } from "@/hooks/use-dashboard-workspace";
 import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
 import type { DashboardContractFilter } from "@/types/dashboard";
@@ -33,7 +34,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
   const returnScroll = useRef<number | null>(null);
   const openedReviewRequest = useRef<string | null>(null);
   const { data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel } = useDashboardWorkspace();
-  const { file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, setUploadedContract, reviewResult, reviewProgress, reviewResultRef, pendingReviewId, retryKind, reviewError, stage, isReviewing, selectedProfile, selectFile, reviewUploadedContract, reviewExisting: performReviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing, loadingResult, reconnecting } = useReviewWorkflow({ access, initialType: "service", reviewPath: organizationDashboardPath(role, "upload") });
+  const { file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, setUploadedContract, reviewResult, reviewProgress, reviewResultRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectedProfile, selectFile, reviewUploadedContract, reviewExisting: performReviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing, loadingResult, reconnecting } = useDashboardReviewWorkflow();
   const openReview = useEffectEvent(performReviewExisting);
   const loadContract = useLoadContract();
 
@@ -117,7 +118,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
     selectTab("upload");
     void performReviewExisting(contract, rerun);
   }
-  return { activeTab, searchParams, contractFilter, data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel, selectTab, backToWork, skipUploadedReview, reviewExisting, file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, reviewResult, reviewProgress, reviewResultRef, pendingReviewId, retryKind, reviewError, stage, isReviewing, selectedProfile, selectFile, reviewUploadedContract, retryReview, workflowComplete, reviewing, loadingResult, reconnecting };
+  return { activeTab, searchParams, contractFilter, data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel, selectTab, backToWork, skipUploadedReview, reviewExisting, file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, reviewResult, reviewProgress, reviewResultRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectedProfile, selectFile, reviewUploadedContract, retryReview, workflowComplete, reviewing, loadingResult, reconnecting };
 }
 
 export type OrganizationWorkflow = ReturnType<typeof useOrganizationWorkflow>;

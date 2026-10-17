@@ -1,5 +1,6 @@
 import axios, { AxiosError, type AxiosRequestConfig, type InternalAxiosRequestConfig } from "axios";
 import type { ApiErrorResponse, ApiFieldErrors, ApiSuccessResponse } from "@/types/api";
+import type { RefreshTokenResult } from "@/types/auth";
 
 export class ApiClientError extends Error {
   readonly status?: number;
@@ -29,16 +30,16 @@ export const apiClient = axios.create({
 
 type RetryableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 
-let refreshPromise: Promise<unknown> | null = null;
+let refreshPromise: Promise<RefreshTokenResult> | null = null;
 
 function isAuthRequest(url?: string) {
   if (url?.endsWith("/auth/google")) return true;
   return ["/auth/login", "/auth/register", "/auth/verify-email", "/auth/resend-verification", "/auth/refresh", "/auth/logout", "/auth/onboarding", "/invitations/accept", "/invitations/preview"].some((path) => url?.endsWith(path));
 }
 
-function refreshSession() {
+export function refreshSession() {
   if (!refreshPromise) {
-    refreshPromise = apiClient.post("/auth/refresh").finally(() => {
+    refreshPromise = apiClient.post<ApiSuccessResponse<RefreshTokenResult>>("/auth/refresh").then((response) => response.data.data).finally(() => {
       refreshPromise = null;
     });
   }

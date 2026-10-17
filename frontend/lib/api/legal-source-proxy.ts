@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin-session";
 
-export async function mutateLegalSource(request: Request, id?: string) {
+type LegalSourceAction = "create" | "delete" | "detail" | "preview" | "parts" | "resume";
+
+export async function proxyLegalSource(request: Request, action: LegalSourceAction, id?: string) {
   try {
     const session = await getAdminSession();
     if (!session)
@@ -22,11 +24,14 @@ export async function mutateLegalSource(request: Request, id?: string) {
         },
         { status: 400 },
       );
-    const body = id === undefined ? await request.formData() : undefined;
+    const needsId = ["delete", "detail", "parts", "resume"].includes(action);
+    if (needsId && !id) return NextResponse.json({ success: false, error: { message: "Thiếu mã nguồn pháp lý." } }, { status: 400 });
+    const body = ["create", "preview", "parts"].includes(action) ? await request.formData() : undefined;
+    const suffix = action === "preview" ? "/preview" : id ? `/${id}${action === "parts" || action === "resume" ? `/${action}` : ""}` : "";
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/kb/legal-sources${id ? `/${id}` : ""}`,
+      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/kb/legal-sources${suffix}`,
       {
-        method: id ? "DELETE" : "POST",
+        method: action === "detail" ? "GET" : action === "delete" ? "DELETE" : "POST",
         headers: { Authorization: `Bearer ${session.accessToken}` },
         body,
         cache: "no-store",
@@ -49,4 +54,8 @@ export async function mutateLegalSource(request: Request, id?: string) {
       { status: 503 },
     );
   }
+}
+
+export function mutateLegalSource(request: Request, id?: string) {
+  return proxyLegalSource(request, id ? "delete" : "create", id);
 }

@@ -1,18 +1,50 @@
-import { ApiClientError } from "@/lib/api/client";
+import { ApiClientError, refreshSession } from "@/lib/api/client";
 
 export async function readContractStream<TEvent>(
   url: string,
-  body: object,
+  body: object | undefined,
   onEvent: (event: TEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(url, {
-    method: "POST",
+  if (body !== undefined) return consumeStream(url, body, onEvent, signal);
+  // Backend heartbeats arrive every 15 seconds; a silent connection should fall back to polling.
+  const controller = new AbortController();
+  let idle: ReturnType<typeof setTimeout>;
+  const touch = () => {
+    clearTimeout(idle);
+    idle = setTimeout(() => controller.abort(new DOMException("Luồng rà soát mất kết nối.", "TimeoutError")), 45_000);
+  };
+  touch();
+  try {
+    return await consumeStream(url, body, onEvent, AbortSignal.any([controller.signal, ...(signal ? [signal] : [])]), touch);
+  } finally {
+    clearTimeout(idle!);
+    controller.abort();
+  }
+}
+
+async function consumeStream<TEvent>(
+  url: string,
+  body: object | undefined,
+  onEvent: (event: TEvent) => void,
+  signal?: AbortSignal,
+  touch?: () => void,
+): Promise<void> {
+  const options: RequestInit = {
+    method: body === undefined ? "GET" : "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
-    body: JSON.stringify(body),
+    body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "same-origin",
     signal,
-  });
+  };
+  let response = await fetch(url, options);
+  touch?.();
+  if (response.status === 401 && body === undefined) {
+    await response.body?.cancel();
+    await refreshSession();
+    signal?.throwIfAborted();
+    response = await fetch(url, options);
+  }
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null);
     throw new ApiClientError(payload?.error?.message ?? "Không thể bắt đầu luồng AI.", { status: response.status });
@@ -37,17 +69,19 @@ export async function readContractStream<TEvent>(
   try {
     while (true) {
       const { done, value } = await reader.read();
+      touch?.();
       buffer += decoder.decode(value, { stream: !done });
       buffer = buffer.replace(/\r\n/g, "\n");
       let boundary = buffer.indexOf("\n\n");
-      while (boundary !== -1) {
+      while (boundary !== -1 && !completed) {
         handleFrame(buffer.slice(0, boundary));
         buffer = buffer.slice(boundary + 2);
         boundary = buffer.indexOf("\n\n");
       }
+      if (completed) { await reader.cancel(); break; }
       if (done) break;
     }
-    if (buffer.trim()) handleFrame(buffer);
+    if (!completed && buffer.trim()) handleFrame(buffer);
     if (!completed) throw new ApiClientError("Luồng AI kết thúc trước khi hoàn tất. Vui lòng thử lại.");
   } catch (error) {
     await reader.cancel().catch(() => undefined);

@@ -12,7 +12,7 @@ function load(path, dependencies) {
   const source = ts.transpileModule(fs.readFileSync(new URL(path, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? {}, URL });
+  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? (name === "@/components/ui/button" ? { Button: "button" } : {}), URL });
   return exports;
 }
 
@@ -92,7 +92,7 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
   let queryOptions;
   let requestOptions;
   const hooks = load('../hooks/use-contracts.ts', {
-    '@/lib/contract-query-keys': load('../lib/contract-query-keys.ts'),
+    '@/lib/query-keys/contracts': load('../lib/query-keys/contracts.ts'),
     'react': React,
     '@tanstack/react-query': { useQuery: (options) => {
       if (!options.queryKey.includes('redacted')) return { isPending: true, isError: false, isFetching: false };
@@ -100,6 +100,9 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
       return { data: textResponse, isPending: false, isError: false, isFetching: false, refetch: async () => {}, ...queryState };
     } },
     '@/lib/api/contracts': { contractsApi: { getText: async (_id, options) => { requestOptions = options; return textResponse; } } },
+  });
+  const { ReviewResultHeader } = load('../components/contract/review-result-header.tsx', {
+    'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
   });
   const { ReviewResults } = load('../components/contract/review-results.tsx', {
     'react': React,
@@ -110,6 +113,7 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
     '@/components/contract/redacted-document': { RedactedDocument },
     '@/components/contract/contract-chat': { ContractChat: () => null },
     '@/components/contract/risk-details': { RiskDetails: () => null },
+    '@/components/contract/review-result-header': { ReviewResultHeader },
     '@/components/contract/original-contract-preview': { OriginalContractPreview: () => jsx.jsx('iframe', { title: 'Original file' }) },
     '@/components/contract/key-terms': { KeyTerms: () => null },
   });

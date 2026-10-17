@@ -2,6 +2,8 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { clearSessionCache } from "@/lib/session-cache";
 import { authApi } from "@/lib/api/auth";
 import { isApiClientError } from "@/lib/api/client";
 import { workspacePath } from "@/lib/workspace-path";
@@ -24,6 +26,7 @@ export function EmailVerificationForm({ initialChallenge, invitationToken, onBac
   onBack: () => void;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [challenge, setChallenge] = useState(initialChallenge);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
@@ -43,6 +46,7 @@ export function EmailVerificationForm({ initialChallenge, invitationToken, onBac
     setError("");
     try {
       const session = await authApi.verifyEmail({ challengeId: challenge.challengeId, code, invitationToken });
+      await clearSessionCache(queryClient);
       router.replace(invitationToken ? `/loi-moi?token=${invitationToken}` : workspacePath(session.user));
       router.refresh();
     } catch (err) {

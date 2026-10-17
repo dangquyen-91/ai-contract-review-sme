@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clearReviewSession, executeReview } from "@/lib/review-session";
-import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { dashboardKeys } from "@/lib/query-keys/dashboard";
 import { contractsApi } from "@/lib/api/contracts";
 import { ApiClientError } from "@/lib/api/client";
 import type { ChatStreamEvent, ContractListResult, ContractReviewResult, ContractReviewRun, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
-import { contractKeys, contractMutationKeys } from "@/lib/contract-query-keys";
+import { contractKeys, contractMutationKeys } from "@/lib/query-keys/contracts";
 import type { DashboardContractFilter } from "@/types/dashboard";
 
 type ReviewContractVariables = {
@@ -17,12 +18,28 @@ type ReviewContractVariables = {
   onProgress?: (review: ContractReviewRun) => void;
 };
 
+export function useDeleteContract() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: contractsApi.remove,
+    onSuccess: async (_, id) => {
+      clearReviewSession(id);
+      await client.cancelQueries({ queryKey: ["contracts", id] });
+      client.removeQueries({ queryKey: ["contracts", id] });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: contractKeys.lists }),
+        client.invalidateQueries({ queryKey: dashboardKeys.all }),
+      ]);
+    },
+  });
+}
+
 export function useContractsList(
   filter: DashboardContractFilter & { page?: number; search?: string },
-  options: { queryKey?: QueryKey; initialData?: ContractListResult; retry?: boolean; pollProcessing?: boolean } = {},
+  options: { scope?: string; initialData?: ContractListResult; retry?: boolean; pollProcessing?: boolean } = {},
 ) {
   return useQuery({
-    queryKey: options.queryKey ?? contractKeys.list(filter),
+    queryKey: contractKeys.list(filter, options.scope),
     queryFn: () => contractsApi.list(filter),
     initialData: options.initialData,
     retry: options.retry ?? false,
@@ -104,16 +121,15 @@ export function useUploadContractMutation() {
     mutationFn: (formData) => contractsApi.upload(formData),
     onSuccess: () => Promise.all([
       queryClient.invalidateQueries({ queryKey: contractKeys.lists }),
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] }),
-      queryClient.invalidateQueries({ queryKey: ["member-contracts"] }),
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
     ]),
   });
 }
 
-export function useContractFile(contractId: string, version?: string) {
+export function useContractFile(contractId: string, version?: string, redacted = false) {
   return useQuery({
-    queryKey: contractKeys.file(contractId, version),
-    queryFn: ({ signal }) => contractsApi.getFile(contractId, signal),
+    queryKey: redacted ? contractKeys.redactedFile(contractId, version) : contractKeys.file(contractId, version),
+    queryFn: ({ signal }) => contractsApi.getFile(contractId, signal, redacted),
     enabled: Boolean(contractId), retry: false, refetchOnWindowFocus: false, gcTime: 0,
   });
 }
@@ -186,9 +202,9 @@ export function useReviewContractMutation() {
     onSuccess: (result, { contractId }) => queryClient.setQueryData(contractKeys.result(contractId), result),
     // Segmentation may have succeeded even when summary or risk detection failed.
     onSettled: (_result, error, { contractId }) => {
+      queryClient.invalidateQueries({ queryKey: ["org-subscription"] });
       queryClient.invalidateQueries({ queryKey: contractKeys.lists });
-      queryClient.invalidateQueries({ queryKey: ["member-contracts"] });
-      queryClient.invalidateQueries({ queryKey: ["dashboard"] });
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all });
       queryClient.invalidateQueries({ queryKey: contractKeys.detail(contractId) });
       queryClient.invalidateQueries({ queryKey: contractKeys.clauses(contractId) });
       queryClient.invalidateQueries({ queryKey: contractKeys.keyTerms(contractId) });

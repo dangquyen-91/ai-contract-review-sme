@@ -4,14 +4,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { toast } from "sonner";
 import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
-import { useReviewWorkflow, reviewErrorMessage } from "@/hooks/use-review-workflow";
+import { reviewErrorMessage } from "@/hooks/use-review-workflow";
+import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider";
 import { useLoadContract } from "@/hooks/use-contracts";
 import { isReviewCancelled } from "@/lib/review-session";
 
-export function usePersonalReviewWorkspace({ data, access }: DashboardWorkspaceContext) {
+export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const workflow = useReviewWorkflow({ access, initialType: data.role === "user" ? "life_insurance" : "service", personal: data.role === "user", reviewPath: `/dashboard/${data.role === "administrator" ? "admin" : data.role}/review` });
+  const workflow = useDashboardReviewWorkflow();
   const { reviewExisting, setUploadedContract } = workflow;
   const openedReviewRequest = useRef<string | null>(null);
   const loadContract = useLoadContract();

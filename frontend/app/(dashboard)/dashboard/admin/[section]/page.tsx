@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
-import { PageHeading, sections } from "@/components/admin/admin-panels";
-import { AdminSectionTable } from "@/components/admin/admin-section-table";
+import { PageHeading } from "@/components/ui/page-heading";
+import { sections } from "@/config/management-sections";
+import { ManagementSectionTable } from "@/components/management/management-section-table";
 export default async function AdminSectionPage({
   params,
   searchParams,
@@ -23,7 +24,7 @@ export default async function AdminSectionPage({
         title={config.title}
         description={config.description}
       />
-      <AdminSectionTable
+      <ManagementSectionTable
         key={`${section}-${query.status ?? ""}-${query.item ?? ""}`}
         section={section as keyof typeof sections}
         config={config}

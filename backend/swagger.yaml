@@ -2129,6 +2129,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /contracts/{id}/share-summary:
+    get:
+      tags: [Contracts]
+      summary: Read a redacted internal summary from saved analysis without running AI
+      description: Uses existing organization-scoped contract access. Requires completed summary and risk detection. Recognized personal values are fully replaced. The response is not a public sharing link.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-f\d]{24}$'
+        - in: query
+          name: expectedUpdatedAt
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Redacted plain text and finding counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                      redacted:
+                        type: boolean
+                        enum: [true]
+                      findingCounts:
+                        type: object
+                        properties:
+                          high:
+                            type: integer
+                          medium:
+                            type: integer
+                          low:
+                            type: integer
+        '404':
+          description: Contract not accessible in the current organization
+        '409':
+          description: Analysis incomplete or contract updated since the displayed result
+
   /contracts/{id}/file:
     parameters:
       - in: path
@@ -2139,26 +2186,47 @@ paths:
           pattern: '^[a-f\d]{24}$'
     get:
       tags: [Contracts]
-      summary: Get a short-lived download link for the original contract file
-      description: Contract files are stored as private Cloudinary assets and cannot be opened without a signed link. Each call returns a new signed link that expires after 5 minutes - request a fresh one each time the file is opened instead of storing it.
+      summary: Get the original file link or a separate redacted DOCX reading copy
+      description: Without redacted=true, returns a signed link to the original file. With redacted=true, streams a separate DOCX reading copy using partial masking. Both modes use existing organization-scoped contract access.
+      parameters:
+        - in: query
+          name: redacted
+          schema:
+            type: boolean
+            default: false
+          description: Supports DOCX text, tables, headers and footers. Images and embedded content require the redacted text view instead.
       responses:
         '200':
-          description: OK
+          description: Original file link or redacted DOCX bytes
+          headers:
+            X-LawScan-Redacted:
+              schema:
+                type: string
+                enum: [partial]
+              description: Present only on the redacted binary response.
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  url:
-                    type: string
-                    description: Signed Cloudinary download URL
-                  expiresAt:
-                    type: string
-                    format: date-time
-                  fileName:
-                    type: string
-                  mimeType:
-                    type: string
+                  data:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
+                      fileName:
+                        type: string
+                      mimeType:
+                        type: string
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Unsupported or invalid DOCX content
         '404':
           description: Contract not found, or the contract has no uploaded file
           content:

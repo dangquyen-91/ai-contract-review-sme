@@ -3,8 +3,8 @@
 import type { ReactNode } from "react";
 import { DashboardHeader } from "./dashboard-header";
 import { DashboardNavigation, DashboardSidebar } from "./dashboard-sidebar";
-import { DashboardError } from "../../dashboard/dashboard-error";
-import { DashboardSkeleton } from "../../dashboard/dashboard-skeleton";
+import { DashboardError } from "@/components/layouts/dashboard/dashboard-error";
+import { DashboardSkeleton } from "@/components/layouts/dashboard/dashboard-skeleton";
 import { getDashboardNavigation } from "@/config/dashboard-navigation";
 import type { DashboardRole } from "@/config/dashboard-roles";
 import { useDashboardWorkspace } from "@/hooks/use-dashboard-workspace";
@@ -36,7 +36,7 @@ type WorkspaceProps = {
 };
 
 type DataProps = {
-  view: "review" | "contract";
+  view: "review" | "contract" | "subscription";
   children: (context: DashboardWorkspaceContext) => ReactNode;
 };
 
@@ -59,7 +59,7 @@ function DashboardDataView({ view, children }: DataProps) {
   return <DashboardFrame
     role={role}
     activeKey={activeKey}
-    sectionLabel={view === "review" ? "Tải & rà soát" : "Hợp đồng"}
+    sectionLabel={view === "subscription" ? "Gói dịch vụ" : view === "review" ? "Tải & rà soát" : "Hợp đồng"}
     workspaceName={data.organization.name}
     workspaceLabel={role === "user" ? "Không gian cá nhân" : role === "administrator" ? "Không gian quản trị" : "Không gian tổ chức"}
     name={data.user?.name ?? "Tài khoản LawScan"}

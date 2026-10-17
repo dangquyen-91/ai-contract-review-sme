@@ -3,6 +3,8 @@
 import Script from "next/script";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { clearSessionCache } from "@/lib/session-cache";
 import { authApi } from "@/lib/api/auth";
 import { apiRequest, isApiClientError } from "@/lib/api/client";
 import { workspacePath } from "@/lib/workspace-path";
@@ -27,6 +29,7 @@ export function GoogleSignIn({ invitationToken, invitedEmail, remember = false, 
   onBusyChange: (busy: boolean) => void;
 }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const host = useRef<HTMLDivElement>(null);
   const inFlight = useRef(false);
   const [ready, setReady] = useState(false);
@@ -60,6 +63,7 @@ export function GoogleSignIn({ invitationToken, invitedEmail, remember = false, 
         setError("");
         try {
           const session = await authApi.google({ credential, nonce: config.nonce, invitationToken, remember });
+          await clearSessionCache(queryClient);
           router.replace(invitationToken ? `/loi-moi?token=${invitationToken}` : workspacePath(session.user));
           router.refresh();
         } catch (err) {
@@ -88,7 +92,7 @@ export function GoogleSignIn({ invitationToken, invitedEmail, remember = false, 
     element.replaceChildren();
     identity.renderButton(element, { theme: "outline", size: "large", text: "signin_with", width: Math.min(400, element.clientWidth || 300), locale: "vi" });
     return () => { active = false; element.replaceChildren(); };
-  }, [ready, config, invitedEmail, invitationToken, remember, disabled, router, onBusyChange]);
+  }, [ready, config, invitedEmail, invitationToken, remember, disabled, router, onBusyChange, queryClient]);
 
   return <div className="mt-6 grid gap-3">
     <Script src="https://accounts.google.com/gsi/client" onReady={() => setReady(true)} onError={() => setError("Không tải được Google. Hãy dùng email bên dưới hoặc tải lại trang.")} />

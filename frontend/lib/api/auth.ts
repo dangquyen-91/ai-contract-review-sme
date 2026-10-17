@@ -1,5 +1,5 @@
-import { apiRequest } from "@/lib/api/client";
-import type { AuthResult, AuthSession, EmailVerificationChallenge, LoginInput, LogoutResult, RefreshTokenResult, RegisterInput } from "@/types/auth";
+import { apiRequest, refreshSession } from "@/lib/api/client";
+import type { AuthResult, AuthSession, EmailVerificationChallenge, LoginInput, LogoutResult, RegisterInput } from "@/types/auth";
 
 export const authApi = {
   google(input: { credential: string; nonce: string; remember?: boolean; invitationToken?: string }) {
@@ -24,10 +24,7 @@ export const authApi = {
   },
 
   refreshToken() {
-    return apiRequest<RefreshTokenResult>({
-      url: "/auth/refresh",
-      method: "POST",
-    });
+    return refreshSession();
   },
   verifyEmail(input: { challengeId: string; code: string; invitationToken?: string }) {
     return apiRequest<AuthSession>({ url: "/auth/verify-email", method: "POST", data: input });

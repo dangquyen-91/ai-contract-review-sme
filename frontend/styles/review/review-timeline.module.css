@@ -1,3 +1,40 @@
+.panel { transition: border-color 300ms ease, box-shadow 300ms ease; }
+.panel[data-ai-motion="running"] { border-color: #b3caf0; box-shadow: 0 8px 28px -20px rgb(40 100 220 / 45%); }
+.panel[data-ai-motion="retrying"] { border-color: #e6c987; }
+.aiAvatar { position: relative; color: #2864dc; background: #eaf1ff; }
+.aiAvatar::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 17px;
+  border: 1px solid transparent;
+  pointer-events: none;
+}
+.aiTag {
+  position: absolute;
+  bottom: -3px;
+  right: -5px;
+  padding: 1px 4px;
+  border: 1px solid #d5e2f8;
+  border-radius: 5px;
+  background: white;
+  color: #245abf;
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 700;
+}
+.panel[data-ai-motion="running"] .aiAvatar {
+  color: white;
+  background: linear-gradient(145deg, #3479f0, #2154c4);
+  box-shadow: 0 5px 14px rgb(40 100 220 / 24%);
+  animation: ai-float 2s ease-in-out infinite;
+}
+.panel[data-ai-motion="running"] .aiAvatar::before { border-color: rgb(40 100 220 / 35%); animation: active-halo 2s ease-in-out infinite; }
+.panel[data-ai-motion="running"] .aiGlyph { animation: ai-tilt 2s ease-in-out infinite; }
+.panel[data-ai-motion="retrying"] .aiAvatar { color: #8a5108; background: #fff0c7; animation: retry-breathe 2.8s ease-in-out infinite; }
+.panel[data-ai-motion="retrying"] .aiTag { color: #8a5108; border-color: #e6c987; }
+.panel[data-ai-motion="running"] .message { color: #204e9f; background: #edf4ff; }
+.panel[data-ai-motion="retrying"] .message { color: #854d0e; background: #fff8e5; }
 .steps {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -12,10 +49,71 @@
   top: 15px;
   left: 44px;
   right: -8px;
-  height: 2px;
-  background: #e2e7ee;
+  height: 3px;
+  border-radius: 2px;
+  background: #dce3ed;
+  overflow: hidden;
 }
-.connectorComplete { background: #bfdfd3; }
+.connector::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #388b6b;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 350ms ease-out;
+}
+.connectorComplete::after { transform: scaleX(1); }
+.connectorFlow::before {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, #2864dc 35%, #a5cbff 50%, #2864dc 65%, transparent 100%);
+  animation: connector-travel 2s linear infinite;
+}
+.marker {
+  position: relative;
+  transition: background-color 250ms ease, border-color 250ms ease, color 250ms ease;
+}
+.markerActive {
+  border-color: #2864dc;
+  background: #2864dc;
+  color: white;
+  box-shadow: 0 3px 10px rgb(40 100 220 / 25%);
+}
+.markerActive::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border: 2px solid rgb(40 100 220 / 40%);
+  border-radius: inherit;
+  pointer-events: none;
+  animation: active-halo 2s ease-in-out infinite;
+}
+.markerRetrying { color: #854d0e; border-color: #d49b30; background: #fff0c7; }
+.markerRetrying::before { content: ""; position: absolute; inset: -5px; border: 1px solid #e6c987; border-radius: inherit; pointer-events: none; animation: retry-breathe 2.8s ease-in-out infinite; }
+.stepStatus { display: inline-flex; align-items: center; gap: 6px; width: fit-content; }
+.step[data-active="true"] .stepLabel { color: #204eae; font-weight: 700; }
+.step[data-active="true"] .stepStatus { color: #204eae; }
+.step[data-retrying="true"] .stepLabel, .step[data-retrying="true"] .stepStatus { color: #854d0e; }
+.statusDot { height: 6px; width: 6px; flex: none; border-radius: 50%; background: currentColor; animation: status-breathe 2s ease-in-out infinite; }
+.step[data-retrying="true"] .statusDot { animation-duration: 2.8s; }
+.completeMark { animation: check-enter 350ms ease-out both; }
+@keyframes ai-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes ai-tilt { 0%, 100% { transform: rotate(-8deg) scale(0.95); } 50% { transform: rotate(8deg) scale(1.08); } }
+@keyframes retry-breathe { 0%, 100% { opacity: 0.65; } 50% { opacity: 1; } }
+@keyframes status-breathe { 0%, 100% { opacity: 0.5; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.15); } }
+@keyframes connector-travel { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+@keyframes active-halo {
+  0%, 100% { opacity: 0.5; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.1); box-shadow: 0 0 0 4px rgb(40 100 220 / 6%); }
+}
+@keyframes check-enter {
+  0% { opacity: 0; transform: scale(0.65); }
+  70% { opacity: 1; transform: scale(1.18); }
+  100% { opacity: 1; transform: scale(1); }
+}
 .body { margin-top: 12px; }
 .heading { display: grid; gap: 4px; }
 .permissions {
@@ -34,5 +132,16 @@
   .step { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; }
   .body { margin-top: 0; }
   .heading { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
-  .connector { top: 40px; bottom: -12px; left: 15px; right: auto; width: 2px; height: auto; }
+  .connector { top: 40px; bottom: -12px; left: 15px; right: auto; width: 3px; height: auto; }
+  .connector::after { transform: scaleY(0); transform-origin: top; }
+  .connectorComplete::after { transform: scaleY(1); }
+  .connectorFlow::before { background: linear-gradient(180deg, transparent 0%, #2864dc 35%, #a5cbff 50%, #2864dc 65%, transparent 100%); animation-name: connector-travel-vertical; }
+}
+@keyframes connector-travel-vertical { from { transform: translateY(-100%); } to { transform: translateY(100%); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .panel, .marker, .connector::after { transition: none; }
+  .panel[data-ai-motion] .aiAvatar, .panel[data-ai-motion] .aiAvatar::before, .panel[data-ai-motion] .aiGlyph,
+  .markerActive::before, .markerRetrying::before, .statusDot, .completeMark, .connectorFlow::before { animation: none; }
+  .connectorFlow::before { display: none; }
 }

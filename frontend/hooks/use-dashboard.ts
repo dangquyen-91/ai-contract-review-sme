@@ -3,11 +3,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { authApi } from "@/lib/api/auth";
 import { isApiClientError } from "@/lib/api/client";
+import { dashboardKeys } from "@/lib/query-keys/dashboard";
 import { dashboardApi } from "@/lib/api/dashboard";
 
 export function useDashboardOverview() {
   return useQuery({
-    queryKey: ["dashboard"],
+    queryKey: dashboardKeys.overview,
     queryFn: async () => {
       try {
         return await dashboardApi.getOverview();

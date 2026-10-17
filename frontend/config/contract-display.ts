@@ -44,6 +44,14 @@ export const contractRiskClasses: Record<ContractRiskLevel, string> = {
   none: "text-[#75808e] bg-[#f0f2f5]",
 };
 
+export const contractStatusTones: Record<ContractStatus, "neutral" | "info" | "success"> = {
+  uploaded: "neutral", processing: "info", reviewed: "success", archived: "neutral",
+};
+
+export const contractRiskTones: Record<ContractRiskLevel, "danger" | "warning" | "success" | "neutral"> = {
+  high: "danger", medium: "warning", low: "success", none: "neutral",
+};
+
 export function formatContractDate(value: string) {
   return new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));
 }

@@ -2,7 +2,7 @@ import { contractsApi } from "@/lib/api/contracts";
 import { ApiClientError } from "@/lib/api/client";
 import type { ContractReviewRun } from "@/types/contracts";
 
-type Session = { key: string; reviewId?: string; analysisFocus?: string };
+type Session = { key: string; reviewId?: string; analysisFocus?: string; blockedError?: string };
 const storageKey = (id: string) => `lawscan_review_${id}`;
 export function clearReviewSession(id: string) { sessionStorage.removeItem(storageKey(id)); }
 export function isReviewCancelled(error: unknown) { return error instanceof Error && error.name === "AbortError"; }
@@ -58,6 +58,7 @@ export async function executeReview({ contractId, analysisFocus, resumeOnly = fa
     }
   }
   let session = readReviewSession(contractId);
+  if (resumeOnly && session?.blockedError) throw new ApiClientError(session.blockedError, { status: 403 });
   analysisFocus ??= session?.analysisFocus;
   let review: ContractReviewRun | undefined;
   if (session?.reviewId) {
@@ -79,10 +80,15 @@ export async function executeReview({ contractId, analysisFocus, resumeOnly = fa
   }
   if (!review) {
     session ??= { key: crypto.randomUUID(), analysisFocus };
+    delete session.blockedError;
     // Persist before POST: a lost response must not generate another key/body.
     sessionStorage.setItem(storageKey(contractId), JSON.stringify(session));
     try { review = await request(() => contractsApi.startReview(contractId, session!.key, session!.analysisFocus, signal)); }
     catch (error) {
+      if (error instanceof ApiClientError && error.status === 403) {
+        session.blockedError = error.message;
+        sessionStorage.setItem(storageKey(contractId), JSON.stringify(session));
+      }
       if (!(error instanceof ApiClientError) || error.status !== 409) throw error;
       const runs = await request(() => contractsApi.listReviewRuns(contractId, signal));
       review = runs.find((run) => run.status === "queued" || run.status === "running");
@@ -95,6 +101,22 @@ export async function executeReview({ contractId, analysisFocus, resumeOnly = fa
     }
     session.reviewId = review._id;
     sessionStorage.setItem(storageKey(contractId), JSON.stringify(session));
+  }
+  // Stream the existing run. A disconnected stream must never start another review.
+  onProgress?.(review);
+  signal.throwIfAborted();
+  if (review.status === "queued" || review.status === "running") {
+    const streamSignal = AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, deadline - Date.now()))]);
+    try {
+      await contractsApi.streamReview(review._id, ({ event, data }) => {
+        if (event === "review") { review = data; onProgress?.(data); onConnection?.(false); }
+      }, streamSignal);
+    } catch (error) {
+      if (signal.aborted) throw signal.reason;
+      if (error instanceof ApiClientError && (error.status === 401 || error.status === 403)) throw error;
+      onConnection?.(true);
+      // Polling remains available when a proxy does not support SSE or the connection drops.
+    }
   }
   for (;;) {
     signal.throwIfAborted();

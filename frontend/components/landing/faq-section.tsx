@@ -2,7 +2,7 @@ const questions = [
   { question: "Hỗ trợ loại hợp đồng nào?", answer: "Mua bán hàng hóa và cung cấp dịch vụ thông thường bằng tiếng Việt." },
   { question: "Có đọc được PDF scan không?", answer: "PDF scan cần được nhận dạng ký tự (OCR) để trích xuất văn bản. Khả năng đọc phụ thuộc chất lượng bản quét; bạn cần kiểm tra lại nội dung được trích xuất." },
   { question: "Kết quả AI có cần kiểm tra lại?", answer: "Có. AI hỗ trợ rà soát sơ bộ, giải thích và gợi ý chỉnh sửa. Bạn cần kiểm tra điều khoản, nguồn tham chiếu và tham khảo chuyên gia pháp lý khi cần trước khi quyết định." },
-  { question: "Hạn mức được chia sẻ thế nào?", answer: "Hạn mức dự kiến được dùng chung cho các thành viên trong doanh nghiệp theo gói dịch vụ. Chi tiết hạn mức sẽ được công bố khi mở đăng ký." },
+  { question: "Hạn mức được chia sẻ thế nào?", answer: "Gói cá nhân có hạn mức riêng cho một tài khoản. Gói tổ chức dùng chung hạn mức phân tích và chat cho các thành viên; số thành viên đã bao gồm Owner. Xem hạn mức hiện tại trong mục Gói dịch vụ." },
 ];
 
 export function FAQSection() {

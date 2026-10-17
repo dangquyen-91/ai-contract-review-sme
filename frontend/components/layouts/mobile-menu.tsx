@@ -8,10 +8,11 @@ import type { AuthUser } from "@/types/auth";
 
 const navigationItems = [
   ["/#tinh-nang", "Tính năng"],
-  ["/#quy-trinh", "Cách hoạt động"],
+  ["/#quy-trinh", "Quy trình"],
   ["/#phan-tich", "Phân tích mẫu"],
   ["/bao-cao-mau", "Báo cáo mẫu"],
-  ["/goi-dich-vu", "Bảng giá"],
+  ["/goi-dich-vu", "Gói dịch vụ"],
+  ["/#cau-hoi", "FAQ"],
 ] as const;
 
 export function MobileMenu({ user }: { user: AuthUser | null }) {
