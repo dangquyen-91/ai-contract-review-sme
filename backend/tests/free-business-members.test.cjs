@@ -3,8 +3,6 @@ process.env.MONGODB_URI = 'mongodb://127.0.0.1/unused';
 process.env.JWT_ACCESS_SECRET = 'free-business-test-access';
 process.env.JWT_REFRESH_SECRET = 'free-business-test-refresh';
 process.env.DATA_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
-process.env.SMTP_HOST = 'localhost';
-process.env.SMTP_FROM = 'test@example.com';
 process.env.MONGOMS_DOWNLOAD_DIR = require('path').join(__dirname, '../node_modules/.cache/mongodb-memory-server');
 
 jest.mock('../dist/services/organization/invitationEmail.service', () => ({
@@ -33,6 +31,7 @@ async function makeUser(email, orgId) {
     name: 'Test user',
     email: email ?? `free-member-${++serial}@example.com`,
     passwordHash: 'unused',
+      emailVerifiedAt: new Date(),
     roleId: role._id,
     orgId,
   });

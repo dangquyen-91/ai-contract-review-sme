@@ -13,6 +13,10 @@ jest.mock('../dist/services/organization/invitationEmail.service', () => ({
   ensureInvitationEmailConfigured: jest.fn(),
   sendInvitationEmail: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('../dist/services/review/reviewWorker.service', () => ({
+  enqueueReview: jest.fn().mockResolvedValue(undefined),
+  isReviewJobAlive: jest.fn().mockResolvedValue(true),
+}));
 jest.mock('../dist/services/analysis/clause.service', () => ({
   segmentClauses: jest.fn().mockResolvedValue([]),
   listClauses: jest.fn(),
@@ -70,9 +74,9 @@ const { vietnamCalendarMonth, addSubscriptionMonth } = require('../dist/utils/su
 const invitations = require('../dist/services/organization/invitation.service');
 const { sendInvitationEmail } = require('../dist/services/organization/invitationEmail.service');
 const { OrganizationInvitationModel } = require('../dist/models/organizationInvitation.model');
-const { generateContractSummary } = require('../dist/services/analysis/summary.service');
+const { ReviewModel } = require('../dist/models/review.model');
+const { enqueueReview } = require('../dist/services/review/reviewWorker.service');
 const { generateText, generateTextStream } = require('../dist/services/ai/llm.service');
-const { segmentClauses } = require('../dist/services/analysis/clause.service');
 
 let repl,
   app,
@@ -84,6 +88,7 @@ async function user(role = 'user', orgId) {
       name: 'Test',
       email: `sub-${++serial}@example.com`,
       passwordHash: 'unused',
+      emailVerifiedAt: new Date(),
       roleId: roleDoc._id,
       orgId,
     })
@@ -94,7 +99,8 @@ async function workspace(personal = false) {
   const owner = await user(personal ? 'user' : 'owner', org._id);
   const contract = await ContractModel.create({
     title: 'Test contract',
-    type: 'service',
+    type: personal ? 'labor' : 'service',
+    ...(personal ? { ourParty: 'employee' } : {}),
     orgId: org._id,
     uploadedBy: owner._id,
   });
@@ -144,6 +150,7 @@ beforeAll(async () => {
     ContractModel.init(),
     ContractVersionModel.init(),
     ChatMessageModel.init(),
+    ReviewModel.init(),
   ]);
   await seedPlans();
   app = createApp();
@@ -431,31 +438,36 @@ test('idempotency replays success without new charge and rejects mismatched inpu
   });
 });
 
-test('full analysis counts one credit, retry replays, failed summary refunds and old endpoints cannot bypass quota', async () => {
+test('review queues reserve one credit, retries replay, queue failures refund and retired endpoints cannot bypass quota', async () => {
   const w = await workspace(true);
   const key = randomUUID();
   const analyze = (k) =>
     request(app)
-      .post(`/api/v1/contracts/${w.contract.id}/analysis`)
+      .post(`/api/v1/contracts/${w.contract.id}/reviews`)
       .set('Authorization', bearer(w.owner))
       .set('Idempotency-Key', k)
       .send({ analysisFocus: 'payment' });
-  expect((await analyze(key)).status).toBe(200);
+  expect((await analyze(key)).status).toBe(202);
   expect((await analyze(key)).body.data.replayed).toBe(true);
-  expect(segmentClauses).toHaveBeenCalledTimes(1);
+  expect(enqueueReview).toHaveBeenCalledTimes(1);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 0, reserved: 1 });
+  const review = await ReviewModel.findOne({ contractId: w.contract._id });
+  // Simulate the worker settling a successful job; AI execution is outside this quota test.
+  await finishUsage(w.org.id, String(review.usageRunId), true);
+  await ReviewModel.updateOne({ _id: review._id }, { $set: { status: 'completed' }, $unset: { activeLock: '' } });
   expect((await getSubscription(w.owner.id, w.org.id)).analysis.used).toBe(1);
-  generateContractSummary.mockRejectedValueOnce(new Error('AI summary failed'));
+  enqueueReview.mockRejectedValueOnce(new Error('Queue unavailable'));
   expect((await analyze(randomUUID())).status).toBe(500);
   expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({
     used: 1,
     reserved: 0,
   });
-  for (const path of ['clauses/segment', 'summary', 'risks/detect', 'risks/detect/stream']) {
+  for (const path of ['analysis', 'analysis/stream', 'clauses/segment', 'summary', 'risks/detect', 'risks/detect/stream']) {
     const response = await request(app)
       .post(`/api/v1/contracts/${w.contract.id}/${path}`)
       .set('Authorization', bearer(w.owner))
       .send({});
-    expect([403, 410]).toContain(response.status);
+    expect(response.status).toBe(404);
   }
 });
 

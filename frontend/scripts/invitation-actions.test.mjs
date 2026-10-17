@@ -53,6 +53,7 @@ function harness(file, mutations) {
   return exports;
   }
   deps['@/lib/session-cache'] = load('../lib/session-cache.ts');
+  deps['@/lib/invitation-error'] = load('../lib/invitation-error.ts');
   deps['@/hooks/use-logout-workflow'] = load('../hooks/use-logout-workflow.ts');
   const exports = load(file);
   return { calls, render: (props) => { cursor = 0; return Object.values(exports)[0](props); } };

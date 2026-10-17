@@ -20,11 +20,13 @@ import {
   listInvitationsHandler,
   revokeInvitationHandler,
   listMembersHandler,
+  removeMemberHandler,
 } from '../controllers/invitation.controller';
 import {
   createInvitationSchema,
   invitationParamsSchema,
   invitationPaginationSchema,
+  memberParamsSchema,
 } from '../validations/invitation.validation';
 import {
   createOrganizationSchema,
@@ -75,6 +77,12 @@ router.get(
   requireRole('owner'),
   validate({ params: organizationIdParamSchema, query: invitationPaginationSchema }),
   listMembersHandler,
+);
+router.delete(
+  '/:id/members/:userId',
+  requireRole('owner'),
+  validate({ params: memberParamsSchema }),
+  removeMemberHandler,
 );
 router.post(
   '/',

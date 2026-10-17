@@ -30,6 +30,11 @@ export const previewInvitationHandler = asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   ok(res, await service.previewInvitation(req.body.token));
 });
+export const removeMemberHandler = asyncHandler(async (req, res) => {
+  if (!req.user) throw AppError.unauthorized();
+  await service.removeMember(req.user.sub, req.params.id, req.params.userId);
+  res.status(204).send();
+});
 export const acceptInvitationHandler = asyncHandler(async (req, res) => {
   if (!req.user) throw AppError.unauthorized();
   const user = await service.acceptInvitation(req.user.sub, req.body.token);

@@ -25,6 +25,14 @@ export type RegisterInput = Omit<RegisterFormValues, "confirmPassword"> & { invi
 export type AuthSession = {
   user: AuthUser;
 };
+export type EmailVerificationChallenge = {
+  verificationRequired: true;
+  challengeId: string;
+  email: string;
+  expiresAt: string;
+  resendAfterSeconds: number;
+};
+export type AuthResult = AuthSession | EmailVerificationChallenge;
 
 export type RefreshTokenResult = {
   refreshed: true;

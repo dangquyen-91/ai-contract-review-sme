@@ -1,8 +1,11 @@
 import mongoose from 'mongoose';
+import { setServers } from 'node:dns';
 import { env } from './env';
 import { logger } from './logger';
 
 export async function connectDB(): Promise<void> {
+  // Apply before MongoDB performs SRV/TXT lookups; shared by API and worker startup.
+  if (env.DNS_SERVERS.length > 0) setServers(env.DNS_SERVERS);
   mongoose.set('strictQuery', true);
 
   mongoose.connection.on('connected', () => logger.info('MongoDB connected'));

@@ -3,8 +3,6 @@ process.env.MONGODB_URI = 'mongodb://127.0.0.1/unused';
 process.env.JWT_ACCESS_SECRET = 'invitation-tests-access';
 process.env.DATA_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
 process.env.JWT_REFRESH_SECRET = 'invitation-tests-refresh';
-process.env.SMTP_HOST = 'localhost';
-process.env.SMTP_FROM = 'test@example.com';
 process.env.MONGOMS_DOWNLOAD_DIR = require('path').join(
   __dirname,
   '../node_modules/.cache/mongodb-memory-server',
@@ -15,6 +13,12 @@ jest.mock('../dist/services/organization/invitationEmail.service', () => ({
   sendInvitationEmail: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.mock('../dist/services/email/email.service', () => ({
+  ensureEmailConfigured: jest.fn(),
+  sendEmail: jest.fn().mockResolvedValue(undefined),
+}));
+const { sendEmail } = require('../dist/services/email/email.service');
+const { EmailVerificationModel } = require('../dist/models/emailVerification.model');
 const mongoose = require('mongoose');
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
 const request = require('supertest');
@@ -29,7 +33,10 @@ const {
 const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
 const { tokensForUser } = require('../dist/services/identity/auth.service');
 const { sendInvitationEmail } = require('../dist/services/organization/invitationEmail.service');
-const { seedPlans, activatePaidSubscription } = require('../dist/services/billing/subscription.service');
+const {
+  seedPlans,
+  activatePaidSubscription,
+} = require('../dist/services/billing/subscription.service');
 const {
   initializeSubscriptionModels,
   SubscriptionPeriodModel,
@@ -53,6 +60,7 @@ async function makeUser(role = 'user', orgId, email = `user${++sequence}@example
       name: 'Test user',
       email,
       passwordHash: 'unused',
+      emailVerifiedAt: new Date(),
       roleId: roleDoc._id,
       orgId,
     })
@@ -80,6 +88,7 @@ beforeAll(async () => {
   await seedDefaultRoles();
   await initializeSubscriptionModels();
   await seedPlans();
+  await EmailVerificationModel.init();
   await Promise.all([UserModel.init(), Invitations.init(), OrganizationModel.init()]);
   org = await OrganizationModel.create({ name: 'Test company' });
   owner = await makeUser('owner', org._id);
@@ -102,13 +111,21 @@ test('owner sends normalized email; registration, preview, acceptance and member
     .send({ token: invitation.token });
   expect(preview.status).toBe(200);
   expect(preview.body.data.organizationName).toBe(org.name);
-  const signup = await request(app).post('/api/v1/auth/register').send({
+  let signup = await request(app).post('/api/v1/auth/register').send({
     name: 'New member',
     email: invitation.email,
-    password: 'password123',
+    password: 'password123456',
     invitationToken: invitation.token,
   });
-  expect(signup.status).toBe(201);
+  expect(signup.status).toBe(202);
+  signup = await request(app)
+    .post('/api/v1/auth/verify-email')
+    .send({
+      challengeId: signup.body.data.challengeId,
+      code: sendEmail.mock.calls.at(-1)[0].text.match(/\b\d{6}\b/)[0],
+      invitationToken: invitation.token,
+    });
+  expect(signup.status).toBe(200);
   expect(signup.body.data.user.orgId).toBeNull();
   const result = await request(app)
     .post('/api/v1/invitations/accept')
@@ -202,7 +219,7 @@ test('duplicate pending invitations are blocked; email failure permits retry', a
     .send({ email: invitation.email, role: 'manager' });
   expect(duplicate.status).toBe(409);
   const { AppError } = require('../dist/errors/AppError');
-  sendInvitationEmail.mockRejectedValueOnce(new AppError('SMTP unavailable', 502));
+  sendInvitationEmail.mockRejectedValueOnce(new AppError('Email provider unavailable', 502));
   const failed = await request(app)
     .post(`/api/v1/organizations/${org.id}/invitations`)
     .set('Authorization', ownerToken)
@@ -228,23 +245,29 @@ test('concurrent acceptance consumes an invitation only once', async () => {
 
 test('invitation login and refresh skip automatic personal workspace creation', async () => {
   const invitation = await invite();
-  const registration = await request(app).post('/api/v1/auth/register').send({
+  let registration = await request(app).post('/api/v1/auth/register').send({
     name: 'Existing user',
     email: invitation.email,
-    password: 'password123',
+    password: 'password123456',
   });
+  expect(registration.status).toBe(202);
+  registration = await request(app)
+    .post('/api/v1/auth/verify-email')
+    .send({
+      challengeId: registration.body.data.challengeId,
+      code: sendEmail.mock.calls.at(-1)[0].text.match(/\b\d{6}\b/)[0],
+    });
+  expect(registration.status).toBe(200);
   await UserModel.updateOne(
     { _id: registration.body.data.user.id },
     { $set: { hasCompletedOnboarding: true } },
   );
-  const login = await request(app)
-    .post('/api/v1/auth/login')
-    .send({
-      email: invitation.email,
-      password: 'password123',
-      invitationToken: invitation.token,
-      remember: true,
-    });
+  const login = await request(app).post('/api/v1/auth/login').send({
+    email: invitation.email,
+    password: 'password123456',
+    invitationToken: invitation.token,
+    remember: true,
+  });
   expect(login.status).toBe(200);
   expect(login.body.data.user.orgId).toBeNull();
   const refresh = await request(app).post('/api/v1/auth/refresh').send({

@@ -4,14 +4,14 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { clearSessionCache } from "@/lib/session-cache";
 import { authApi } from "@/lib/api/auth";
 import type { ApiClientError } from "@/lib/api/client";
-import type { AuthMutationVariables, AuthSession, RefreshTokenResult } from "@/types/auth";
+import type { AuthMutationVariables, AuthResult, AuthSession, RefreshTokenResult } from "@/types/auth";
 
 import { authMutationKeys } from "@/lib/query-keys/auth";
 
 
 export function useAuthMutation() {
   const queryClient = useQueryClient();
-  return useMutation<AuthSession, ApiClientError, AuthMutationVariables>({
+  return useMutation<AuthResult, ApiClientError, AuthMutationVariables>({
     mutationKey: authMutationKeys.all,
     mutationFn: ({ mode, data }) => (
       mode === "login" ? authApi.login(data) : authApi.register(data)

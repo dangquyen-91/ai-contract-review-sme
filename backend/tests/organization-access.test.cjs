@@ -46,7 +46,7 @@ async function createOrganization(role, orgId) {
   if (role) {
     const userId = '507f1f77bcf86cd799439011';
     UserModel.findOne.mockReturnValue({
-      populate: jest.fn().mockResolvedValue({ id: userId, roleId: { code: role }, orgId }),
+      populate: jest.fn().mockResolvedValue({ id: userId, emailVerifiedAt: new Date(), roleId: { code: role }, orgId }),
     });
     const token = jwt.sign({ sub: userId, role, orgId }, 'organization-access-test-only', { expiresIn: '1m' });
     headers.Authorization = `Bearer ${token}`;

@@ -6,7 +6,7 @@ import { AppError } from '../../errors/AppError';
 import { User, UserModel } from '../../models/user.model';
 import { OrganizationModel } from '../../models/organization.model';
 import { Role } from '../../models/role.model';
-import { getRoleByCode } from './role.service';
+import { startEmailVerification, completeEmailVerification } from './emailVerification.service';
 import { AccessTokenPayload } from '../../middlewares/auth.middleware';
 import { LoginInput, RegisterInput } from '../../validations/auth.validation';
 import { getPendingInvitation } from '../organization/invitation.service';
@@ -19,7 +19,7 @@ function roleCodeOf(user: { roleId: unknown }) {
   return role.code as AccessTokenPayload['role'];
 }
 
-async function ensurePersonalWorkspace(
+export async function ensurePersonalWorkspace(
   user: HydratedDocument<User>,
 ): Promise<HydratedDocument<User>> {
   if (user.orgId || !user.hasCompletedOnboarding) return user;
@@ -55,8 +55,16 @@ function signTokens(payload: AccessTokenPayload, remember = false) {
   return { accessToken, refreshToken };
 }
 
-export function tokensForUser(user: HydratedDocument<User>) {
-  return signTokens({ sub: user.id, role: roleCodeOf(user), orgId: user.orgId?.toString() });
+export function tokensForUser(user: HydratedDocument<User>, remember = false) {
+  return signTokens(
+    {
+      sub: user.id,
+      role: roleCodeOf(user),
+      orgId: user.orgId?.toString(),
+      permissionsVersion: user.permissionsVersion ?? 0,
+    },
+    remember,
+  );
 }
 
 export async function register(input: RegisterInput) {
@@ -66,19 +74,12 @@ export async function register(input: RegisterInput) {
     throw AppError.conflict('Email already registered');
   }
 
-  const passwordHash = await bcrypt.hash(input.password, 10);
-  const userRole = await getRoleByCode('user');
-
-  const created = await UserModel.create({
-    roleId: userRole._id,
-    name: input.name,
+  return startEmailVerification({
     email: input.email,
-    passwordHash,
+    name: input.name,
+    passwordHash: await bcrypt.hash(input.password, 10),
+    invitationToken: input.invitationToken,
   });
-  const user = await created.populate('roleId');
-
-  const tokens = signTokens({ sub: user.id, role: roleCodeOf(user) });
-  return { user, ...tokens };
 }
 
 export async function login(input: LoginInput) {
@@ -95,6 +96,16 @@ export async function login(input: LoginInput) {
   }
 
   if (input.invitationToken) await getPendingInvitation(input.invitationToken, user.email);
+  if (!user.emailVerifiedAt) {
+    return startEmailVerification({
+      email: user.email,
+      name: user.name,
+      passwordHash: user.passwordHash,
+      userId: user.id,
+      remember: input.remember,
+      invitationToken: input.invitationToken,
+    });
+  }
   if (
     !input.invitationToken &&
     roleCodeOf(user) === 'user' &&
@@ -104,18 +115,25 @@ export async function login(input: LoginInput) {
     user = (await ensurePersonalWorkspace(user)) as typeof user;
   }
 
-  const tokens = signTokens({
-    sub: user.id,
-    role: roleCodeOf(user),
-    orgId: user.orgId?.toString(),
-  }, input.remember === true);
+  const tokens = signTokens(
+    {
+      sub: user.id,
+      role: roleCodeOf(user),
+      orgId: user.orgId?.toString(),
+      permissionsVersion: user.permissionsVersion ?? 0,
+    },
+    input.remember === true,
+  );
   return { user, ...tokens };
 }
 
 export async function refresh(refreshToken: string, invitationToken?: string) {
   let payload: { sub: string; remember?: boolean };
   try {
-    payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as { sub: string; remember?: boolean };
+    payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as {
+      sub: string;
+      remember?: boolean;
+    };
   } catch {
     throw AppError.unauthorized('Invalid or expired refresh token');
   }
@@ -124,6 +142,7 @@ export async function refresh(refreshToken: string, invitationToken?: string) {
   if (!user || !user.isActive) {
     throw AppError.unauthorized('Invalid refresh token');
   }
+  if (!user.emailVerifiedAt) throw AppError.unauthorized('Verify your email by signing in again');
 
   if (invitationToken) await getPendingInvitation(invitationToken, user.email);
   if (
@@ -135,11 +154,15 @@ export async function refresh(refreshToken: string, invitationToken?: string) {
     user = (await ensurePersonalWorkspace(user)) as typeof user;
   }
 
-  const tokens = signTokens({
-    sub: user.id,
-    role: roleCodeOf(user),
-    orgId: user.orgId?.toString(),
-  }, payload.remember === true);
+  const tokens = signTokens(
+    {
+      sub: user.id,
+      role: roleCodeOf(user),
+      orgId: user.orgId?.toString(),
+      permissionsVersion: user.permissionsVersion ?? 0,
+    },
+    payload.remember === true,
+  );
   return { user, ...tokens };
 }
 
@@ -158,4 +181,11 @@ export async function completeOnboarding(userId: string) {
     return ensurePersonalWorkspace(user);
   }
   return user;
+}
+
+export async function verifyEmail(challengeId: string, code: string, invitationToken?: string) {
+  const result = await completeEmailVerification(challengeId, code, invitationToken);
+  let user = result.user;
+  if (!invitationToken && roleCodeOf(user) === 'user') user = await ensurePersonalWorkspace(user);
+  return { user, ...tokensForUser(user, result.remember), remember: result.remember };
 }

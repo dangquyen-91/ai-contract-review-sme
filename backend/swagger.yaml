@@ -160,7 +160,8 @@ components:
           format: email
         password:
           type: string
-          minLength: 8
+          minLength: 12
+          description: Maximum 72 UTF-8 bytes.
 
     LoginRequest:
       type: object
@@ -178,6 +179,77 @@ components:
         remember:
           type: boolean
           description: Keep the session across browser restarts with a longer refresh token lifetime.
+
+    EmailVerificationChallenge:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            verificationRequired:
+              type: boolean
+              example: true
+            challengeId:
+              type: string
+              description: Opaque challenge identifier; keep it for verification and resend.
+            email:
+              type: string
+              format: email
+            expiresAt:
+              type: string
+              format: date-time
+            resendAfterSeconds:
+              type: integer
+              example: 60
+
+    VerifyEmailRequest:
+      type: object
+      required: [challengeId, code]
+      properties:
+        challengeId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+          example: '012345'
+        invitationToken:
+          type: string
+          description: Required if register/login included an invitation token. Must be the same token.
+          pattern: '^[a-f0-9]{64}$'
+
+    ResendVerificationRequest:
+      type: object
+      required: [challengeId]
+      properties:
+        challengeId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        invitationToken:
+          type: string
+          description: Preserve the token from the original invitation flow.
+          pattern: '^[a-f0-9]{64}$'
+
+    AuthSessionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/AuthUser'
+            accessToken:
+              type: string
+            refreshToken:
+              type: string
+            remember:
+              type: boolean
 
     RefreshRequest:
       type: object
@@ -201,6 +273,8 @@ components:
     AuthUser:
       type: object
       properties:
+        emailVerified:
+          type: boolean
         id:
           type: string
         name:
@@ -1180,7 +1254,7 @@ paths:
     post:
       tags: [Invitations]
       summary: Owner sends an invitation email
-      description: One organization per user. Expires in 7 days. A free business has three seats including Owner; active paid plans use their member limit. Unexpired pending invitations reserve seats, and scheduled downgrade limits apply. SMTP must be configured. Maximum 20 requests per owner per hour. Token is only sent by email.
+      description: One organization per user. Expires in 7 days. A free business has three seats including Owner; active paid plans use their member limit. Unexpired pending invitations reserve seats, and scheduled downgrade limits apply. Brevo API key and verified sender must be configured. Maximum 20 requests per owner per hour. Token is only sent by email.
       requestBody:
         required: true
         content:
@@ -1192,14 +1266,14 @@ paths:
                 email: { type: string, format: email }
                 role: { type: string, enum: [manager, staff, reviewer] }
       responses:
-        '201': { description: Invitation metadata after SMTP acceptance; no token or tokenHash }
+        '201': { description: Invitation metadata after Brevo API acceptance (not proof of inbox delivery); no token or tokenHash }
         '400': { description: Invalid email or role }
         '401': { description: Missing, expired or stale bearer token }
         '403': { description: Not the owner of this organization }
         '409': { description: Pending invitation exists or recipient already belongs to an organization }
         '429': { description: Invitation request limit exceeded }
-        '502': { description: SMTP delivery request failed; invitation marked delivery_failed }
-        '503': { description: SMTP is not configured }
+        '502': { description: Brevo API delivery request failed; invitation marked delivery_failed }
+        '503': { description: Brevo API key or sender is not configured }
     get:
       tags: [Invitations]
       summary: Owner lists organization invitations
@@ -1251,6 +1325,36 @@ paths:
         '200': { description: Paginated members with id, name, email, role and isActive }
         '403': { description: Not the owner of this organization }
 
+  /organizations/{id}/members/{userId}:
+    delete:
+      tags: [Organizations]
+      summary: Owner removes a member and frees their seat
+      description: >-
+        Only an active owner of this organization may remove a member. Owners cannot
+        be removed. Keeps the user account, organization contracts, reviews, chat,
+        purchased plan and consumed quota. Clears the member organization, resets
+        their role to user and onboarding to incomplete, and invalidates old access
+        tokens even if they later rejoin. Pending invitations for this email in this
+        organization are revoked. The user may accept a new invitation or complete
+        personal onboarding. Repeated removal returns 404. Requests already running
+        and previously issued file download links are not cancelled by this endpoint.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      responses:
+        '204': { description: Member removed; no response body }
+        '400': { description: Invalid organization or user id }
+        '401': { description: Missing, stale or invalid authentication }
+        '403': { description: Caller is not the active owner of this organization }
+        '404': { description: Member does not belong to this organization or was already removed }
+        '409': { description: Cannot remove an owner }
+
   /invitations/preview:
     post:
       tags: [Invitations]
@@ -1290,10 +1394,51 @@ paths:
         '403': { description: Signed-in email does not match invitation }
         '409': { description: User already belongs to an organization }
 
+  /auth/google:
+    post:
+      tags: [Auth]
+      summary: Register or sign in with Google Identity Services
+      description: Verifies Google's signed ID token (audience, issuer, expiry) and nonce. Supports Gmail and verified Google Workspace email. Uses Google's subject as the stable identity. Existing verified accounts with the same authoritative email are linked without changing roles or organization. Unverified existing accounts must first sign in with password and verify OTP. Invitation email must match; joining still requires explicit acceptance. The frontend obtains a nonce from GET /api/auth/google and binds it to an HttpOnly cookie before invoking Google's button. Google-only accounts do not have a user-known password.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credential, nonce]
+              properties:
+                credential:
+                  type: string
+                  description: Signed Google ID token returned by Google Identity Services.
+                nonce:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+                  description: Must match the nonce used when initializing the Google button.
+                invitationToken:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+                remember:
+                  type: boolean
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400': { description: Invalid input or invitation }
+        '401': { description: Invalid Google credential, nonce, or inactive account }
+        '403': { description: Invitation email mismatch or email requires password verification }
+        '409': { description: Unverified existing account or identity conflict }
+        '429': { description: Authentication rate limit exceeded }
+        '503': { description: Google client ID is not configured }
+
   /auth/register:
     post:
       tags: [Auth]
-      summary: Register a new user
+      summary: Start registration and email verification
+      description: Sends a six-digit OTP through Brevo. No account or session is created until verification succeeds. Code expires in 10 minutes; five incorrect attempts lock the challenge. Maximum five sends per email per hour, at least 60 seconds apart.
       security: []
       requestBody:
         required: true
@@ -1302,23 +1447,23 @@ paths:
             schema:
               $ref: '#/components/schemas/RegisterRequest'
       responses:
-        '201':
-          description: Created
+        '202':
+          description: Verification required; email accepted by Brevo, not a delivery guarantee
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthTokens'
-        '400':
-          description: Validation error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/EmailVerificationChallenge'
+        '400': { description: Invalid input or invitation }
+        '409': { description: Email already registered; use login }
+        '429': { description: Cooldown or rate limit exceeded }
+        '502': { description: Email provider failed }
+        '503': { description: Email provider is not configured }
 
   /auth/login:
     post:
       tags: [Auth]
       summary: Login with email and password
+      description: Verified accounts receive tokens immediately. Existing unverified accounts must complete email verification after the password is validated.
       security: []
       requestBody:
         required: true
@@ -1328,17 +1473,71 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         '200':
-          description: OK
+          description: Authenticated
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AuthTokens'
-        '401':
-          description: Invalid credentials
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '202':
+          description: Email verification required
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Error'
+                $ref: '#/components/schemas/EmailVerificationChallenge'
+        '400': { description: Invalid invitation or input }
+        '401': { description: Invalid credentials or inactive account }
+        '429': { description: Cooldown or rate limit exceeded }
+        '502': { description: Email provider failed }
+        '503': { description: Email provider is not configured }
+
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and receive a session
+      description: Submit the challengeId and six-digit code. Preserve invitationToken when present at register/login; after verification explicitly accept the invitation. A code can be consumed only once. Previously issued sessions for unverified users cannot access protected APIs.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+      responses:
+        '200':
+          description: Email verified and authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400': { description: Incorrect, expired, consumed code or invalid invitation }
+        '401': { description: Account changed or disabled; sign in again }
+        '409': { description: Email already registered }
+        '429': { description: Too many attempts }
+
+  /auth/resend-verification:
+    post:
+      tags: [Auth]
+      summary: Send a replacement verification code through Brevo
+      description: Requires the original challengeId and invitationToken when applicable. Invalidates the previous code. Minimum 60 seconds between sends; maximum five sends per email per hour. Returns the same challengeId with a fresh expiration.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendVerificationRequest'
+      responses:
+        '202':
+          description: Replacement code sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailVerificationChallenge'
+        '400': { description: Invalid challenge or invitation }
+        '409': { description: Superseded by another verification request }
+        '429': { description: Cooldown or rate limit exceeded }
+        '502': { description: Email provider failed }
+        '503': { description: Email provider is not configured }
 
   /auth/refresh:
     post:

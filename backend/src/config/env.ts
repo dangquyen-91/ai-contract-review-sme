@@ -7,6 +7,11 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
+  DNS_SERVERS: z
+    .string()
+    .default('')
+    .transform((value) => value.split(',').map((server) => server.trim()).filter(Boolean))
+    .pipe(z.array(z.string().ip())),
   JWT_ACCESS_SECRET: z.string().min(1, 'JWT_ACCESS_SECRET is required'),
   JWT_REFRESH_SECRET: z.string().min(1, 'JWT_REFRESH_SECRET is required'),
   JWT_ACCESS_EXPIRES_IN: z.string().default('15m'),
@@ -14,15 +19,10 @@ const envSchema = z.object({
   JWT_REFRESH_REMEMBER_EXPIRES_IN: z.string().default('30d'),
   CORS_ORIGIN: z.string().default('http://localhost:3000'),
   INVITATION_ACCEPT_URL: z.string().url().default('http://localhost:3000/loi-moi'),
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.coerce.number().int().positive().default(587),
-  SMTP_SECURE: z
-    .enum(['true', 'false'])
-    .default('false')
-    .transform((value) => value === 'true'),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASSWORD: z.string().optional(),
-  SMTP_FROM: z.string().optional(),
+  BREVO_API_KEY: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().trim().default(''),
+  BREVO_SENDER_EMAIL: z.union([z.string().trim().email(), z.literal('')]).optional(),
+  BREVO_SENDER_NAME: z.string().trim().min(1).default('AI Contract Review'),
 
   DATA_ENCRYPTION_KEY: z
     .string()

@@ -4,18 +4,23 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import { assertRedisReachable } from './config/queue';
 import { seedDefaultRoles } from './services/identity/role.service';
-import { ensureLegalTextIndex, ensureLegalVectorIndex } from './services/legal/legalKnowledgeIngest.service';
+import {
+  ensureLegalTextIndex,
+  ensureLegalVectorIndex,
+} from './services/legal/legalKnowledgeIngest.service';
 import { seedDefaultClauseTaxonomy } from './services/analysis/clauseTypeTaxonomy.service';
 import { seedDefaultContractProfiles } from './services/contract/contractProfile.service';
 import { startBackgroundWorkers, stopBackgroundWork } from './services/workers.service';
 import { OrganizationInvitationModel } from './models/organizationInvitation.model';
 import { initializeSubscriptionModels } from './models/subscription.model';
 import { seedPlans } from './services/billing/subscription.service';
+import { EmailVerificationModel } from './models/emailVerification.model';
 
 async function bootstrap() {
   await connectDB();
   await assertRedisReachable();
   await OrganizationInvitationModel.init();
+  await EmailVerificationModel.init();
   await initializeSubscriptionModels();
   await seedPlans();
   await seedDefaultRoles();
