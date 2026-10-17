@@ -1,19 +1,35 @@
-import { Icon } from "@/components/ui/icon";
+import Link from "next/link";
+import { ArrowUpRight, FileSearch, Languages, Sparkles } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ContractDemo } from "./contract-demo";
+import { HeroBackground } from "./hero-background";
+import styles from "./hero-slogan.module.css";
 
 export function HeroSection() {
-  return (
-    <section className="relative [background:radial-gradient(ellipse_at_82%_35%,#dceaff_0,transparent_57%),linear-gradient(110deg,#f7f9fd_8%,#eef4fc_100%)] [border-block:1px_solid_#e5edf8]" aria-labelledby="hero-heading">
-      <div className="grid-cols-[0.83fr_1.17fr] gap-11 pt-[30px] pb-[42px] [&_h1]:[font-family:var(--font-geist-sans),sans-serif] [&_h1]:text-[length:clamp(56px,6.1vw,90px)] [&_h1]:font-[770] [&_h1]:leading-[1.02] [&_h1]:tracking-[-0.057em] [@media_(max-width:_1199px)]:gap-[26px] [@media_(max-width:_1199px)]:grid-cols-[0.9fr_1.1fr] [&_h1]:[@media_(max-width:_1199px)]:text-[length:65px] [&_h1]:[@media_(max-width:_1199px)]:tracking-[-3px] [@media_(max-width:_900px)]:grid-cols-[1fr] [@media_(max-width:_900px)]:gap-4 [@media_(max-width:_900px)]:pt-2.5 [&_h1]:[@media_(max-width:_900px)]:text-[length:80px] [&_h1]:[@media_(max-width:_600px)]:text-[length:clamp(45px,11vw,66px)] [&_h1]:[@media_(max-width:_600px)]:tracking-[-2.5px] [&_h1]:[@media_(max-width:_600px)]:leading-[1.1] [@media_(max-width:_600px)]:pb-7 w-[min(1380px,calc(100%_-_112px))] [margin-inline:auto] [@media_(max-width:_1199px)]:w-[calc(100%_-_64px)] [@media_(max-width:_600px)]:w-[calc(100%_-_40px)] grid items-center">
-      <div className="[padding-block:36px_24px] [@media_(max-width:_900px)]:max-w-screen-sm [@media_(max-width:_600px)]:pt-5">
-        <p className="inline-flex items-center gap-[9px] text-[#075bd6] [background:#e6efff] border [font-family:var(--font-geist-mono),var(--font-geist-sans),sans-serif] uppercase font-[590] tracking-[1.45px] text-[length:11px] mb-[22px] px-3 py-[7px] rounded-[30px] border-solid border-[#ccdfff] before:content-[''] before:w-1.5 before:h-1.5 before:shrink-0 before:[background:#0066ff] before:shadow-[0_0_0_3px_#0066ff0d] before:rounded-[50%] [@media_(max-width:_1199px)]:text-[length:11px] [@media_(max-width:_600px)]:text-[length:10px] [@media_(max-width:_600px)]:tracking-[0.8px] [@media_(max-width:_600px)]:mb-[18px]">Trợ lý rà soát hợp đồng.</p>
-        <h1 id="hero-heading">Nhìn rõ rủi ro.<br />Trước khi<br /><span className="relative inline-block text-[color:var(--ls-blue)] [font-family:var(--font-lora),Georgia,serif] text-[length:1.07em] italic font-[650] tracking-[-0.065em] pl-[0.01em] pr-[0.1em] pt-[0.03em] pb-[0.11em] after:content-[''] after:absolute after:h-[0.11em] after:[border-top:0.045em_solid_#1477ff] after:[transform:rotate(-2deg)] after:opacity-[0.88] after:rounded-[50%] after:left-[4%] after:right-[1%] after:bottom-[0.04em]">bạn ký.</span></h1>
-        <p className="text-[length:clamp(19px,1.65vw,25px)] leading-normal text-[#3d4b70] max-w-[530px] mt-[30px] [@media_(max-width:_1199px)]:text-[length:20px] [@media_(max-width:_900px)]:max-w-[560px] [@media_(max-width:_600px)]:text-[length:18px] [@media_(max-width:_600px)]:mt-[22px]">Mỗi cảnh báo quay về đúng điều khoản, kèm lý do và nguồn cần đối chiếu để bạn chủ động quyết định.</p>
-        <div className="mt-8 [@media_(max-width:_1199px)]:gap-[18px] [@media_(max-width:_600px)]:gap-[17px] [@media_(max-width:_600px)]:mt-6 flex flex-wrap items-center gap-6"><a className="inline-flex justify-center items-center gap-[15px] min-h-[52px] [background:var(--ls-blue)] text-[white] border border-[color:var(--ls-blue)] font-[550] text-center [text-decoration:none] [transition:background-color_0.2s,color_0.2s,border-color_0.2s,box-shadow_0.25s,transform_0.25s] px-[25px] py-3 rounded-[9px] border-solid hover:text-[white] hover:[background:#0054d4] hover:[transform:translateY(-1px)] hover:border-[#0054d4] min-w-[124px] rounded-[13px] min-h-16 text-[length:19px] py-4 rounded-xl [@media_(hover:_hover)_and_(pointer:_fine)]:hover:[transform:translateY(-3px)] [@media_(hover:_hover)_and_(pointer:_fine)]:hover:shadow-[0_10px_24px_-10px_#0066ff80] [@media_(max-width:_1199px)]:text-[length:16px] [@media_(max-width:_1199px)]:[padding-inline:18px] [@media_(max-width:_1199px)]:min-h-[54px] [@media_(max-width:_600px)]:text-[length:16px] [@media_(max-width:_600px)]:text-[length:14px] [@media_(max-width:_600px)]:mt-2 motion-reduce:hover:transform-none" href="#kiem-tra-dieu-khoan">Thử một điều khoản <Icon name="arrow" /></a><a className="text-[color:var(--ls-blue)] text-[length:17px] [@media_(max-width:_600px)]:text-[length:14px]" href="#quy-trinh">Khám phá LawScan.</a></div>
-        <ul className="mt-[30px] [&_li]:[background:#ffffffb3] [&_li]:border [&_li]:text-[length:13px] [&_li]:px-[17px] [&_li]:py-[7px] [&_li]:rounded-[30px] [&_li]:border-solid [&_li]:border-[#dce6f2] [@media_(max-width:_600px)]:gap-2 [@media_(max-width:_600px)]:mt-[23px] [&_li]:[@media_(max-width:_600px)]:text-[length:12px] [&_li]:[@media_(max-width:_600px)]:px-3.5 [&_li]:[@media_(max-width:_600px)]:py-1.5 flex flex-wrap gap-3" aria-label="Phạm vi hỗ trợ"><li>Tiếng Việt</li><li>Mua bán</li><li>Dịch vụ</li></ul>
+  return <section className="relative isolate pb-10 pt-5 [--ls-blue:#2864dc] sm:pb-12 lg:pt-7 xl:pb-14" aria-labelledby="hero-heading">
+    <HeroBackground />
+    <div className="mx-auto grid w-[calc(100%_-_40px)] max-w-[1380px] min-w-0 items-center gap-8 sm:w-[calc(100%_-_64px)] lg:w-[calc(100%_-_112px)] lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:gap-9 xl:gap-14">
+      <div className="min-w-0 pb-3 pt-2 lg:pb-10 lg:pt-5">
+        <p className="mb-6 inline-flex max-w-full items-center gap-2 rounded-full border border-[#dce4ee] bg-white/80 px-3.5 py-2 text-xs font-medium text-[#315b96]"><Sparkles className="size-3.5 shrink-0" aria-hidden="true" />Trợ lý rà soát hợp đồng</p>
+        <h1 id="hero-heading" className="font-[family-name:var(--font-be-vietnam-pro)] text-[clamp(43px,7.4vw,76px)] font-bold leading-[1.14] tracking-[-0.035em] text-[#14213d] sm:text-[clamp(56px,7.8vw,86px)] lg:text-[clamp(50px,5.15vw,78px)]">
+          <span className={`${styles.firstLine} block`}>Nhìn rõ rủi ro.</span>
+          <span className={`${styles.secondLine} block`}>Trước khi <em className={`${styles.accent} relative inline-block pb-2 pr-1 font-[family-name:var(--font-lora)] font-semibold text-[#2864dc] after:absolute after:inset-x-1 after:bottom-1 after:h-1.5 after:-rotate-2 after:rounded-[50%] after:border-t after:border-[#2864dc]/50`}>bạn ký.</em></span>
+        </h1>
+        <p className="mt-6 max-w-[490px] text-base font-normal leading-7 text-[#52647d] sm:text-lg sm:leading-[1.8]">Mỗi cảnh báo quay về đúng điều khoản, kèm lý do và nguồn cần đối chiếu để bạn chủ động quyết định.</p>
+        <div className="mt-8 flex flex-wrap items-center gap-3 max-sm:flex-col max-sm:items-stretch">
+          <Button asChild className="min-h-12 rounded-full bg-[#2864dc] px-5 text-sm text-white shadow-[0_5px_14px_-8px_#2864dc70] hover:bg-[#1f4fb2] hover:!text-white"><Link href="/dashboard"><FileSearch aria-hidden="true" />Bắt đầu rà soát</Link></Button>
+          <Button asChild variant="outline" className="min-h-12 rounded-full border-[#c9d8ed] bg-white px-5 text-sm text-[#14213d] shadow-none hover:border-[#a9c3e8] hover:bg-[#f6f9ff]"><Link href="/bao-cao-mau">Xem báo cáo mẫu<ArrowUpRight aria-hidden="true" /></Link></Button>
+        </div>
+        <ul className="mt-6 flex list-none flex-wrap items-center gap-x-4 gap-y-2 p-0 text-xs text-[#526987]" aria-label="Phạm vi hỗ trợ">
+          <li className="flex items-center gap-1.5"><Languages className="size-3.5" aria-hidden="true" />Tiếng Việt</li>
+          <li className="flex items-center gap-1.5"><span className="size-1 rounded-full bg-[#7995b8]" aria-hidden="true" />Mua bán</li>
+          <li className="flex items-center gap-1.5"><span className="size-1 rounded-full bg-[#7995b8]" aria-hidden="true" />Dịch vụ</li>
+        </ul>
+        <a href="#kiem-tra-dieu-khoan" className="mt-5 inline-flex items-center gap-1.5 text-xs font-medium text-[#315b96] underline decoration-[#315b96]/30 underline-offset-4 hover:decoration-[#315b96]">Hoặc thử nhanh một điều khoản<ArrowUpRight className="size-3.5" aria-hidden="true" /></a>
       </div>
-      <ContractDemo />
+      <div className="relative min-w-0 lg:pt-4">
+        <ContractDemo />
       </div>
-    </section>
-  );
+    </div>
+  </section>;
 }

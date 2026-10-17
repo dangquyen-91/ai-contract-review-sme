@@ -66,10 +66,77 @@ try {
   await call('Page.enable');
   for (const width of [1440, 1024, 820, 390, 320]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: false });
-    await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
     for (const route of ['/', '/goi-dich-vu']) {
       await call('Page.navigate', { url: `http://127.0.0.1:${port}${route}` });
       await waitFor('document.querySelectorAll("[data-plan-code]").length === 2');
+      if (route === '/') {
+        await evaluate('document.fonts.ready');
+        const hero = await evaluate(`(() => {
+          const heading = document.querySelector('#hero-heading');
+          const section = heading.closest('section');
+          const figure = section.querySelector('[data-hero-contract]');
+          const r = figure.getBoundingClientRect();
+          return { text: heading.textContent, figure: {left:r.left,right:r.right,height:r.height}, viewport:innerWidth,
+            primary: section.querySelector('a[href="/dashboard"]')?.textContent,
+            sample: section.querySelector('a[href="/bao-cao-mau"]')?.textContent,
+            height: section.getBoundingClientRect().bottom + scrollY };
+        })()`);
+        assert.match(hero.text, /Nhìn rõ rủi ro\./); assert.match(hero.text, /Trước khi bạn ký\./);
+        const typography = await evaluate(`(() => {
+          const heading = document.querySelector('#hero-heading');
+          const family = getComputedStyle(heading).fontFamily;
+          return { family, loaded:document.fonts.check('700 32px '+family.split(',')[0], 'Nhìn rõ rủi ro'),
+            accent:getComputedStyle(heading.querySelector('em')).fontFamily,
+            button:getComputedStyle(heading.closest('section').querySelector('a[href="/dashboard"]')).fontFamily,
+            navigation:getComputedStyle(document.querySelector('nav[aria-label="Điều hướng chính"]')).fontFamily };
+        })()`);
+        for (const family of [typography.family, typography.button, typography.navigation]) {
+          assert.ok(family.replace(/[ _]/g, '').toLowerCase().includes('bevietnampro'), 'Marketing titles, buttons and navigation use Be Vietnam Pro');
+        }
+        assert.ok(typography.loaded, 'Vietnamese font subset is loaded');
+        assert.match(typography.accent, /Lora/i, 'Slogan accent preserves Lora');
+        assert.match(hero.primary, /Bắt đầu rà soát/); assert.match(hero.sample, /Xem báo cáo mẫu/);
+        assert.ok(hero.figure.left >= 0 && hero.figure.right <= hero.viewport, 'Original contract illustration stays inside the viewport');
+        if (width <= 600) assert.ok(hero.figure.height <= 400, 'Mobile contract uses its compact breakpoint instead of tablet sizing');
+        const appearance = await evaluate(`(() => {
+          const stage = getComputedStyle(document.querySelector('[data-hero-contract]'));
+          const heading = document.querySelector('#hero-heading');
+          return { border: stage.borderTopWidth, background: stage.backgroundImage, shadow: stage.boxShadow,
+            lines: [...heading.children].map(line => getComputedStyle(line).animationName),
+            accentAnimation: getComputedStyle(heading.querySelector('em')).animationName,
+            accentColor: getComputedStyle(heading.querySelector('em')).color };
+        })()`);
+        assert.equal(appearance.border, '0px'); assert.equal(appearance.background, 'none'); assert.equal(appearance.shadow, 'none');
+        assert.ok(appearance.lines.every(name => name === 'none'), 'Reduced-motion keeps slogan lines static');
+        assert.equal(appearance.accentAnimation, 'none');
+        assert.equal(appearance.accentColor, 'rgb(40, 100, 220)', 'Static accent stays readable without a gradient');
+        if (width === 1440) {
+          await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
+          const motion = await evaluate(`(() => {
+            const heading = document.querySelector('#hero-heading');
+            const accent = heading.querySelector('em');
+            return {lines:[...heading.children].map(line=>getComputedStyle(line).animationName), sweep:getComputedStyle(accent).animationName,
+              duration:getComputedStyle(accent).animationDuration, underline:getComputedStyle(accent,'::after').animationName};
+          })()`);
+          assert.ok(motion.lines.every(name => name !== 'none'), 'Both slogan lines have entrance animations');
+          assert.notEqual(motion.sweep, 'none'); assert.equal(motion.duration, '9s'); assert.notEqual(motion.underline, 'none');
+          await waitFor(`getComputedStyle(document.querySelector('#hero-heading').children[1]).opacity === '1'`);
+          await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }, { name: 'prefers-reduced-motion', value: 'reduce' }] });
+        }
+        await evaluate(`document.querySelector('[aria-label="Chọn điều khoản minh họa"] button:nth-child(2)').click()`);
+        assert.match(await evaluate('document.querySelector("#clause-preview").textContent'), /Tiêu chí chưa rõ ràng/);
+        await evaluate(`document.querySelector('[aria-label="Chọn điều khoản minh họa"] button:first-child').click()`);
+        if (width < 1024) {
+          await evaluate(`document.querySelector('button[aria-controls="mobile-navigation"]').click()`);
+          assert.equal(await evaluate('document.querySelector("#mobile-navigation").hidden'), false);
+          await evaluate(`document.querySelector('button[aria-controls="mobile-navigation"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))`);
+          assert.equal(await evaluate('document.querySelector("#mobile-navigation").hidden'), true);
+        }
+        const shot = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: { x:0,y:0,width,height:Math.ceil(hero.height),scale:1 } });
+        await fs.writeFile(path.join(artifactDir, `hero-${width}.png`), Buffer.from(shot.data, 'base64'));
+        console.log(`PASS hero ${width}px: slogan, contract illustration, actions and mobile navigation`);
+      }
       for (const audience of ['business', 'personal']) {
         await evaluate(`document.querySelector('input[value="${audience}"]').click()`);
         await waitFor(`!!document.querySelector('[data-plan-code="${audience === 'business' ? 'business_starter' : 'personal_free'}"]')`);
