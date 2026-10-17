@@ -102,6 +102,22 @@ export async function executeReview({ contractId, analysisFocus, resumeOnly = fa
     session.reviewId = review._id;
     sessionStorage.setItem(storageKey(contractId), JSON.stringify(session));
   }
+  // Stream the existing run. A disconnected stream must never start another review.
+  onProgress?.(review);
+  signal.throwIfAborted();
+  if (review.status === "queued" || review.status === "running") {
+    const streamSignal = AbortSignal.any([signal, AbortSignal.timeout(Math.max(1, deadline - Date.now()))]);
+    try {
+      await contractsApi.streamReview(review._id, ({ event, data }) => {
+        if (event === "review") { review = data; onProgress?.(data); onConnection?.(false); }
+      }, streamSignal);
+    } catch (error) {
+      if (signal.aborted) throw signal.reason;
+      if (error instanceof ApiClientError && (error.status === 401 || error.status === 403)) throw error;
+      onConnection?.(true);
+      // Polling remains available when a proxy does not support SSE or the connection drops.
+    }
+  }
   for (;;) {
     signal.throwIfAborted();
     onProgress?.(review);

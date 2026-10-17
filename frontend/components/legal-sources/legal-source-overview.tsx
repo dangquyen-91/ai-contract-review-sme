@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAdminHealth, useLegalSources } from "@/hooks/use-legal-sources";
+import { LegalSourceMetrics } from "./legal-source-metrics";
 
 export function AvailableOverview({
   compact = false,
@@ -15,7 +16,7 @@ export function AvailableOverview({
   const counts = sources.data
     ? [
         sources.data.length,
-        sources.data.filter((source) => source.sourceType === "law").length,
+        sources.data.filter((source) => source.sourceType !== "standard_template").length,
         sources.data.filter(
           (source) => source.sourceType === "standard_template",
         ).length,
@@ -50,9 +51,6 @@ export function AvailableOverview({
             <h2 id="available-overview-title" className="font-semibold">
               Kho dữ liệu pháp lý
             </h2>
-            <span className="mt-2 inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/15">
-              Dữ liệu từ API hiện có
-            </span>
             <p className="mt-1 text-sm text-slate-500">
               Số liệu từ các nguồn tham chiếu hiện có trên hệ thống.
             </p>
@@ -78,24 +76,7 @@ export function AvailableOverview({
           mới.
         </div>
       ) : (
-        <dl className="grid grid-cols-2 bg-gradient-to-r from-white via-white to-blue-50/30 xl:grid-cols-4">
-          {[
-            "Tổng nguồn",
-            "Văn bản pháp luật",
-            "Mẫu hợp đồng",
-            "Đoạn tham chiếu",
-          ].map((label, index) => (
-            <div key={label} className="border-b border-r border-slate-100 p-6">
-              <dt className="text-sm text-slate-500">{label}</dt>
-              <dd
-                aria-label={sources.isPending ? "Đang tải" : undefined}
-                className={`mt-3 text-3xl font-semibold tabular-nums ${sources.isPending ? "text-slate-300 motion-safe:animate-pulse" : "text-slate-800"}`}
-              >
-                {counts ? counts[index].toLocaleString("vi-VN") : "—"}
-              </dd>
-            </div>
-          ))}
-        </dl>
+        <div className="px-5 sm:px-6"><LegalSourceMetrics counts={counts} pending={sources.isPending} /></div>
       )}
       {!compact && sources.isSuccess && sources.data.length > 0 && (
         <div className="grid border-t border-slate-100 lg:grid-cols-[0.8fr_1.2fr]">

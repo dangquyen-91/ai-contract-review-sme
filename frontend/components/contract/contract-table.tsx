@@ -1,6 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
+import { ContractRowActions } from "./contract-row-actions";
 
 import { Icon } from "@/components/ui/icon";
 import { Badge } from "@/components/ui/badge";
@@ -8,17 +8,17 @@ import { contractTypeLabels, contractStatusLabels, contractRiskLabels, contractS
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { DashboardContract } from "@/types/contracts";
 
-export function ContractTable({ contracts, canReview, onReview, isReviewing, highlightId }: { contracts: DashboardContract[]; canReview: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean; highlightId?: string }) {
+export function ContractTable({ contracts, canReview, onReview, isReviewing, highlightId, canDelete = false, onDeleted }: { contracts: DashboardContract[]; canReview: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean; highlightId?: string; canDelete?: boolean; onDeleted?: () => void }) {
   if (!contracts.length) return <div className="min-h-[220px] flex flex-col items-center justify-center p-9 text-center"><span className="grid h-12 w-12 place-items-center rounded-xl bg-[#eaf1ff] text-[#2864dc]"><Icon name="document" /></span><h3 className="mt-3 text-sm font-semibold">Chưa có hợp đồng</h3><p className="mt-1 text-ui-meta text-[#6b778c]">Hợp đồng đầu tiên bạn tải lên sẽ xuất hiện tại đây.</p></div>;
 
-  return <Table className="min-w-[1020px] table-fixed">
+  return <Table className="min-w-[1100px] table-fixed">
     <TableHeader className="bg-[#f9fafc]">
       <TableRow className="hover:bg-transparent">
-        <TableHead className="w-[34%] text-ui-caption tracking-[0.02em]">Hợp đồng</TableHead>
+        <TableHead className="w-[31%] text-ui-caption tracking-[0.02em]">Hợp đồng</TableHead>
         <TableHead className="w-[12%] text-ui-caption tracking-[0.02em]">Trạng thái</TableHead>
-        <TableHead className="w-[14%] text-ui-caption tracking-[0.02em]">Rủi ro</TableHead>
-        <TableHead className="w-[13%] text-ui-caption tracking-[0.02em]">Cập nhật</TableHead>
-        <TableHead className="w-[27%] text-ui-caption tracking-[0.02em]">Thao tác</TableHead>
+        <TableHead className="w-[11%] text-ui-caption tracking-[0.02em]">Rủi ro</TableHead>
+        <TableHead className="w-[12%] text-ui-caption tracking-[0.02em]">Cập nhật</TableHead>
+        <TableHead className="w-[34%] text-ui-caption tracking-[0.02em]">Thao tác</TableHead>
       </TableRow>
     </TableHeader>
     <TableBody>
@@ -27,10 +27,7 @@ export function ContractTable({ contracts, canReview, onReview, isReviewing, hig
         <TableCell><Badge variant={contractStatusTones[contract.status]}>{contractStatusLabels[contract.status]}</Badge></TableCell>
         <TableCell><Badge variant={contractRiskTones[contract.overallRiskLevel]}>{contractRiskLabels[contract.overallRiskLevel]}</Badge></TableCell>
         <TableCell className="whitespace-nowrap text-ui-meta tabular-nums text-[#6b7a90]"><time dateTime={contract.updatedAt}>{formatContractDate(contract.updatedAt)}</time></TableCell>
-        <TableCell>{canReview && <div className="flex items-center gap-3 whitespace-nowrap">
-          <Button variant="outline" size="sm" type="button" onClick={() => onReview(contract)} disabled={isReviewing || contract.status === "archived"} ><Icon name={contract.status === "reviewed" ? "document" : "sparkle"} />{contract.status === "reviewed" ? "Xem kết quả" : contract.status === "processing" ? "Theo dõi xử lý" : "AI review"}</Button>
-          {contract.status === "reviewed" && <Button variant="outline" size="sm" type="button" onClick={() => onReview(contract, true)} disabled={isReviewing} ><Icon name="sparkle" />Rà soát lại</Button>}
-        </div>}</TableCell>
+        <TableCell><ContractRowActions contract={contract} canReview={canReview} canDelete={canDelete} isReviewing={isReviewing} onReview={onReview} onDeleted={onDeleted} /></TableCell>
       </TableRow>)}
     </TableBody>
   </Table>;

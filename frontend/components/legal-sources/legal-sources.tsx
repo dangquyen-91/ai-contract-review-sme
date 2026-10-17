@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
 import { useLegalSourcesWorkspace } from "@/hooks/use-legal-sources-workspace";
 import { LegalSourceDeleteConfirmation } from "./legal-source-delete-confirmation";
 import { LegalSourceFilters } from "./legal-source-filters";
@@ -8,14 +9,30 @@ import { LegalSourceTable } from "./legal-source-table";
 import { LegalSourcePagination } from "./legal-source-pagination";
 import { LegalSourceToolbar } from "./legal-source-toolbar";
 
-import { LegalSourceForm } from "@/components/legal-sources/legal-source-form";
+import { LegalSourceCreateDialog } from "./legal-source-create-dialog";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeading } from "@/components/ui/page-heading";
-import { AvailableOverview } from "@/components/legal-sources/legal-source-overview";
+import { LegalSourceMetrics } from "./legal-source-metrics";
+import { LegalSourceStatusFilters } from "./legal-source-status-filters";
+import { LegalSourceCharts } from "./legal-source-charts";
+import { LegalSourceAttentionList } from "./legal-source-attention-list";
+import { getLegalSourceAnalytics } from "@/lib/legal-source-analytics";
+import type { SourceGroup } from "@/lib/legal-source-filtering";
+import { LegalSourceDetailDialog } from "./legal-source-detail-dialog";
+import type { LegalSource } from "@/types/legal-sources";
 
 export function LegalSources() {
   const workspace = useLegalSourcesWorkspace();
+  const [detailId, setDetailId] = useState<string | null>(null);
+  function openDetail(source: LegalSource) { setDetailId(source._id); }
   const { query, search, type, filtered, sources, currentPage, totalPages, showForm, deleting, deletePending, deleteError } = workspace;
+  const analytics = getLegalSourceAnalytics(query.data ?? []);
+  function showSources(group: SourceGroup, sourceType = "all") {
+    workspace.clearFilters();
+    workspace.changeType(sourceType);
+    workspace.changeGroup(group);
+    document.getElementById("legal-source-list")?.scrollIntoView({ block: "start", behavior: "instant" });
+  }
 
   return (
     <>
@@ -25,20 +42,28 @@ export function LegalSources() {
           title="Kho dữ liệu pháp lý"
           description="Tra cứu văn bản pháp luật và mẫu hợp đồng được sử dụng làm nguồn tham chiếu."
         />
-        <LegalSourceToolbar showForm={showForm} fetching={query.isFetching} onAdd={workspace.openForm} onRefresh={() => { void query.refetch(); }} />
+        <LegalSourceToolbar showForm={showForm} fetching={query.isFetching} onAdd={workspace.openForm} onRefresh={() => query.refetch()} />
       </div>
-      <AvailableOverview showLink={false} />
+      <LegalSourceMetrics pending={query.isPending} counts={query.data ? [query.data.length, query.data.filter((source) => source.sourceType !== "standard_template").length, query.data.filter((source) => source.sourceType === "standard_template").length, query.data.reduce((sum, source) => sum + source.chunkCount, 0)] : null} />
+      <LegalSourceCharts analytics={analytics} total={query.data?.length ?? 0} pending={query.isPending} unavailable={query.isError && !query.data} onSelectType={(sourceType) => showSources("all", sourceType)} onSelectGroup={(group) => showSources(group)} />
+      <LegalSourceAttentionList sources={analytics.attention} pending={query.isPending} unavailable={query.isError && !query.data} onDetail={openDetail} />
       {showForm && (
-        <LegalSourceForm
-          onCancel={workspace.closeForm}
-          onSaved={workspace.sourceSaved}
+        <LegalSourceCreateDialog
+          onClose={workspace.closeForm}
+          onSaved={(source) => { workspace.sourceSaved(); openDetail(source); }}
         />
       )}
+      {detailId && <LegalSourceDetailDialog key={detailId} id={detailId} onClose={() => setDetailId(null)} />}
       {deleting && (
         <LegalSourceDeleteConfirmation source={deleting} pending={deletePending} error={deleteError} onConfirm={workspace.removeSource} onCancel={workspace.cancelDeletion} />
       )}
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-        <LegalSourceFilters search={search} type={type} onSearchChange={workspace.changeSearch} onTypeChange={workspace.changeType} />
+      <section id="legal-source-list" aria-label="Danh sách nguồn pháp lý" className="scroll-mt-6 overflow-hidden rounded-2xl border border-border bg-card text-card-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-4">
+          <div><h2 className="text-ui-section font-semibold">Danh sách nguồn pháp lý</h2><p className="mt-1 text-ui-meta text-muted-foreground">Tra cứu hiệu lực, theo dõi xử lý và kiểm tra tài liệu.</p></div>
+          <p role="status" aria-live="polite" className="text-ui-meta text-muted-foreground">{query.data ? `${filtered.length} / ${query.data.length} nguồn phù hợp` : query.isError ? "Chưa tải được danh sách" : "Đang tải danh sách…"}</p>
+        </div>
+        <LegalSourceFilters search={search} type={type} filters={workspace.filters} hasFilters={workspace.hasFilters} dateError={workspace.dateError} onSearchChange={workspace.changeSearch} onTypeChange={workspace.changeType} onFilterChange={workspace.changeFilter} onClear={workspace.clearFilters} />
+        <LegalSourceStatusFilters value={workspace.group} counts={workspace.groupCounts} loaded={Boolean(query.data)} onChange={workspace.changeGroup} />
         {query.isLoading ? (
           <div
             role="status"
@@ -81,7 +106,8 @@ export function LegalSources() {
           />
         ) : (
           <>
-            <LegalSourceTable sources={sources} deletePending={deletePending} onDelete={(source) => { workspace.selectForDeletion(source); window.scrollTo({ top: 0, behavior: "instant" }); }} />
+            <p className="px-5 pt-3 text-ui-meta text-muted-foreground sm:hidden">Vuốt ngang bảng để xem tiến trình và thao tác.</p>
+            <LegalSourceTable sources={sources} deletePending={deletePending} onDelete={workspace.selectForDeletion} onDetail={openDetail} />
             <LegalSourcePagination total={filtered.length} currentPage={currentPage} totalPages={totalPages} onPage={workspace.setPage} />
           </>
         )}

@@ -15,10 +15,11 @@ function setup(overrides = {}, saved) {
   const storage = new Map(saved ? [[storageKey, typeof saved === 'string' ? saved : JSON.stringify(saved)]] : []);
   const calls = [];
   const api = {};
-  for (const method of ['startReview', 'getReviewRun', 'listReviewRuns', 'getReview']) {
+  for (const method of ['startReview', 'getReviewRun', 'listReviewRuns', 'getReview', 'streamReview']) {
     api[method] = async (...args) => {
       calls.push({ method, args });
       if (overrides[method]) return overrides[method](...args);
+      if (method === 'streamReview') throw new ApiClientError(503);
       if (method === 'getReview') return { contractId, summary: 'Result' };
       if (method === 'listReviewRuns') return [completed];
       return completed;
@@ -31,7 +32,7 @@ function setup(overrides = {}, saved) {
   vm.runInNewContext(source, {
     exports, require: (name) => name.endsWith('/contracts') ? { contractsApi: api } : { ApiClientError },
     sessionStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value), removeItem: (key) => storage.delete(key) },
-    crypto: { randomUUID }, Date, Error, JSON,
+    crypto: { randomUUID }, Date, Error, JSON, AbortSignal,
     setTimeout: (fn) => setTimeout(fn, 0), clearTimeout,
   });
   return {
@@ -40,6 +41,35 @@ function setup(overrides = {}, saved) {
   };
 }
 const posts = (context) => context.calls.filter((call) => call.method === 'startReview');
+
+test('SSE completes the saved run without polling or creating another review', async () => {
+  const progress = [];
+  const context = setup({
+    getReviewRun: () => ({ ...completed, status: 'running' }),
+    streamReview: async (id, onEvent) => { assert.equal(id, completed._id); onEvent({ event: 'review', data: completed }); },
+  }, { key: 'saved', reviewId: completed._id });
+  await context.run({ onProgress: (run) => progress.push(run.status) });
+  assert.equal(posts(context).length, 0);
+  assert.equal(context.calls.filter((call) => call.method === 'getReviewRun').length, 1);
+  assert.ok(progress.includes('completed'));
+  assert.equal(context.storage.size, 0);
+});
+
+test('SSE disconnect falls back to polling the same run, preserving its idempotency key', async () => {
+  const context = setup({ startReview: () => ({ ...completed, status: 'running' }) });
+  await context.run();
+  assert.equal(posts(context).length, 1);
+  assert.equal(context.calls.find((call) => call.method === 'streamReview').args[0], completed._id);
+  assert.equal(context.calls.find((call) => call.method === 'getReviewRun').args[0], completed._id);
+});
+
+test('SSE permission failure does not silently poll or restart the AI run', async () => {
+  const context = setup({ startReview: () => ({ ...completed, status: 'running' }), streamReview: () => { throw new ApiClientError(403); } });
+  await assert.rejects(context.run(), /403/);
+  assert.equal(posts(context).length, 1);
+  assert.equal(context.calls.filter((call) => call.method === 'getReviewRun').length, 0);
+  assert.equal(context.read().reviewId, completed._id);
+});
 
 test('A rejected quota request preserves focus and F5 does not resubmit; an explicit action can try the saved contract later', async () => {
   const context = setup({ startReview: () => { throw new ApiClientError('analysis quota exhausted', { status: 403 }); } });

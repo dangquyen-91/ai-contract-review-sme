@@ -30,6 +30,7 @@ export async function proxyContractRequest(
         cache: "no-store",
       },
     );
+    if (upstream.status === 204) return new Response(null, { status: 204 });
     const payload = await upstream.json().catch(() => ({
       success: false,
       error: { message: "Máy chủ trả về dữ liệu không hợp lệ." },

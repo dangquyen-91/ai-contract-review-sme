@@ -6,6 +6,12 @@ import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyT
 
 
 export const contractsApi = {
+  streamReview(reviewId: string, onEvent: (event: { event: string; data: ContractReviewRun }) => void, signal?: AbortSignal) {
+    return readContractStream(`/api/reviews/${reviewId}/events`, undefined, onEvent, signal);
+  },
+  remove(contractId: string) {
+    return apiRequest<void>({ url: `/contracts/${contractId}`, method: "DELETE" });
+  },
   getShareSummary(contractId: string, expectedUpdatedAt?: string, signal?: AbortSignal) {
     return apiRequest<ContractShareSummary>({
       url: `/contracts/${contractId}/share-summary`, params: { expectedUpdatedAt }, signal,

@@ -58,6 +58,7 @@ function harness(file, mutations = {}, overrides = {}) {
   Object.assign(deps, overrides);
   deps['@/hooks/use-pagination-page'] ??= { usePaginationPage: () => react.useState(1) };
   deps['@/lib/session-cache'] = load('../lib/session-cache.ts', deps);
+  deps['@/lib/legal-source-filtering'] = load('../lib/legal-source-filtering.ts', {});
   const hook = Object.values(load(file, deps))[0];
   return { client, calls, render: () => { cursor = 0; return hook(); } };
 }
@@ -167,6 +168,39 @@ test('Legal source filters reset pagination and shrinking data clamps the displa
   assert.equal(ctx.render().sources.length, 1);
   ctx.render().changeSearch('missing');
   assert.equal(ctx.render().sources.length, 0);
+});
+
+test('Legal search combines Vietnamese text, document numbers, dates, status and overlapping processing groups', () => {
+  const query = { data: [
+    { _id: 'a', title: 'Luật Đất đai', documentNumber: '31/2024/QH15', issuingBody: 'Quốc hội', sourceType: 'law', status: 'in_force', issuedDate: '2024-01-18T00:00:00.000Z', ingestion: { status: 'failed' }, coverage: { complete: false, structured: true } },
+    { _id: 'b', title: 'Nghị định', issuingBody: 'Chính phủ', sourceType: 'decree', status: 'repealed', ingestion: { status: 'paused' } },
+    { _id: 'c', title: 'Luật khác', issuingBody: 'Quốc hội', sourceType: 'law', status: 'in_force', issuedDate: '2024-01-19', ingestion: { status: 'completed' }, coverage: { complete: true, structured: true } },
+  ] };
+  const ctx = harness('../hooks/use-legal-sources-workspace.ts', {}, {
+    '@/hooks/use-legal-sources': { useLegalSources: () => query, useRemoveLegalSourceMutation: () => ({ isPending: false }) },
+  });
+  ctx.render().changeSearch('  LUAT DAT DAI  ');
+  assert.equal(ctx.render().sources[0]._id, 'a');
+  ctx.render().changeSearch('31/2024');
+  assert.equal(ctx.render().sources.length, 1);
+  ctx.render().clearFilters();
+  ctx.render().changeFilter('issuingBody', 'quoc hoi');
+  ctx.render().changeFilter('status', 'in_force');
+  ctx.render().changeFilter('issuedFrom', '2024-01-18');
+  ctx.render().changeFilter('issuedTo', '2024-01-18');
+  assert.equal(ctx.render().sources.length, 1);
+  assert.equal(ctx.render().groupCounts.failed, 1);
+  assert.equal(ctx.render().groupCounts.coverage, 1);
+  ctx.render().changeGroup('coverage');
+  assert.equal(ctx.render().sources[0]._id, 'a');
+  ctx.render().changeFilter('issuedFrom', '2024-02-01');
+  assert.equal(ctx.render().dateError, true);
+  assert.equal(ctx.render().sources.length, 0);
+  ctx.render().clearFilters();
+  assert.equal(ctx.render().hasFilters, false);
+  assert.equal(ctx.render().sources.length, 3);
+  ctx.render().changeGroup('processing');
+  assert.equal(ctx.render().sources[0]._id, 'b');
 });
 
 test('Legal source deletion blocks concurrent actions and keeps the selection after failure for retry', async () => {
