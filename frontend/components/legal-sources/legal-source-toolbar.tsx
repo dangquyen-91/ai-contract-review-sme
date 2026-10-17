@@ -1,24 +1,21 @@
 "use client";
 
+import { useState } from "react";
+import { Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function LegalSourceToolbar({ showForm, fetching, onAdd, onRefresh }: { showForm: boolean; fetching: boolean; onAdd: () => void; onRefresh: () => void }) {
-  return (<div className="flex gap-2">
-          <Button variant="outline" size="default"
-            type="button"
-            disabled={showForm}
-            onClick={onAdd}
-            
-          >
-            Thêm nguồn
-          </Button>
-          <Button variant="outline" size="default"
-            type="button"
-            onClick={onRefresh}
-            disabled={fetching}
-            
-          >
-            {fetching ? "Đang tải…" : "Làm mới"}
-          </Button>
-        </div>);
+export function LegalSourceToolbar({ showForm, fetching, onAdd, onRefresh }: {
+  showForm: boolean; fetching: boolean; onAdd: () => void; onRefresh: () => Promise<unknown>;
+}) {
+  const [refreshing, setRefreshing] = useState(false);
+  async function refresh() {
+    setRefreshing(true);
+    try { await onRefresh(); } finally { setRefreshing(false); }
+  }
+  return <div className="grid w-full grid-cols-2 gap-3 sm:flex sm:w-auto">
+    <Button variant="outline" loading={refreshing} disabled={fetching} onClick={() => void refresh()} className="min-w-32">
+      {!refreshing && <RefreshCw aria-hidden="true" />}Làm mới
+    </Button>
+    <Button disabled={showForm} onClick={onAdd}><Plus aria-hidden="true" />Thêm nguồn</Button>
+  </div>;
 }

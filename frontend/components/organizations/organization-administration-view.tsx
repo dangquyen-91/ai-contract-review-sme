@@ -1,6 +1,33 @@
 import Link from "next/link";
-import { Icon } from "@/components/ui/icon";
+import { ArrowRight, Sparkles, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { OrganizationInformationCard } from "./organization-information-card";
 
-export function OrganizationAdministrationView({ organization, roleLabel, onMembers }: { organization: { name: string; taxCode: string | null; address: string | null }; roleLabel: string; onMembers: () => void }) {
-  return <><section className="flex [align-items:end] justify-between gap-7 [&_h1]:text-[length:clamp(30px,3vw,42px)] [&_h1]:leading-[1.12] [&_h1]:tracking-[-1.5px] [&_h1]:mt-[7px] [&_h1]:mb-0 [&_h1]:mx-0 [&_div_>_p]:last:max-w-[660px] [&_div_>_p]:last:text-[color:var(--muted)] [&_div_>_p]:last:text-[length:13px] [&_div_>_p]:last:leading-[1.6] [&_div_>_p]:last:mt-[9px] [&_div_>_p]:last:mb-0 [&_div_>_p]:last:mx-0 [@media_(max-width:_580px)]:items-start [@media_(max-width:_580px)]:flex-col [&_h1]:[@media_(max-width:_580px)]:text-[length:31px]"><div><p className="text-[color:var(--accent)] text-[length:10px] font-[780] tracking-[1.1px] uppercase m-0">Role-based access</p><h1>Quản trị tổ chức</h1><p>Thông tin và công cụ quản trị chỉ hiển thị cho vai trò có quyền.</p></div></section><div className="[&>_section]:border [&>_section]:border-[color:var(--line)] [&>_section]:[background:white] [&>_section]:shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)] [&>_section]:rounded-[14px] [&>_section]:border-solid grid grid-cols-[repeat(3,1fr)] gap-[18px] mt-7 [&>_section]:p-[22px] [&>_section_>_span]:w-[42px] [&>_section_>_span]:h-[42px] [&>_section_>_span]:grid [&>_section_>_span]:place-items-center [&>_section_>_span]:text-[color:var(--accent)] [&>_section_>_span]:[background:#eaf1ff] [&>_section_>_span]:rounded-[10px] [&_svg]:w-5 [&_h2]:text-[length:14px] [&_h2]:mt-[15px] [&_h2]:mb-0 [&_h2]:mx-0 [&_p]:min-h-12 [&_p]:text-[color:var(--muted)] [&_p]:text-[length:10px] [&_p]:leading-[1.55] [&_p]:mt-[7px] [&_p]:mb-0 [&_p]:mx-0 [&_dl]:grid [&_dl]:gap-[9px] [&_dl]:[border-top:1px_solid_var(--line)] [&_dl]:mt-[17px] [&_dl]:mb-0 [&_dl]:mx-0 [&_dl]:pt-3.5 [&_dl_div]:grid [&_dl_div]:grid-cols-[85px_minmax(0,1fr)] [&_dl_div]:gap-2 [&_dl_div]:text-[length:9px] [&_dt]:text-[color:var(--muted)] [&_dd]:font-[650] [&_dd]:[overflow-wrap:anywhere] [&_dd]:m-0 [&_:is(a,_button)]:min-h-[35px] [&_:is(a,_button)]:inline-flex [&_:is(a,_button)]:items-center [&_:is(a,_button)]:gap-[9px] [&_:is(a,_button)]:text-[color:var(--accent)] [&_:is(a,_button)]:border [&_:is(a,_button)]:[background:#f4f8ff] [&_:is(a,_button)]:[font:inherit] [&_:is(a,_button)]:mt-[17px] [&_:is(a,_button)]:px-[11px] [&_:is(a,_button)]:py-0 [&_:is(a,_button)]:rounded-lg [&_:is(a,_button)]:border-solid [&_:is(a,_button)]:border-[#d6e1f4] [&_:is(a,_button)]:[font-size:9px] [&_:is(a,_button)]:[font-weight:700] [&_button]:disabled:text-[#8b94a1] [&_button]:disabled:border-[color:var(--line)] [&_button]:disabled:[background:#f4f5f7] [&_a_svg]:w-3.5 [@media_(max-width:_1100px)]:grid-cols-[1fr_1fr] [@media_(max-width:_820px)]:grid-cols-[1fr]"><section><span><Icon name="building" /></span><h2>{organization.name}</h2><dl><div><dt>Mã số thuế</dt><dd>{organization.taxCode ?? "Chưa cập nhật"}</dd></div><div><dt>Địa chỉ</dt><dd>{organization.address ?? "Chưa cập nhật"}</dd></div><div><dt>Vai trò của bạn</dt><dd>{roleLabel}</dd></div></dl></section><section><span><Icon name="team" /></span><h2>Thành viên & phân quyền</h2><p>Mời thành viên, gán vai trò và kiểm soát phạm vi truy cập của đội ngũ.</p><button type="button" onClick={onMembers}>Quản lý thành viên <Icon name="arrow" /></button></section><section><span><Icon name="sparkle" /></span><h2>Gói dịch vụ</h2><p>Xem hạn mức AI review và quyền lợi hiện tại của tổ chức.</p><Link href="/goi-dich-vu">Quản lý gói <Icon name="arrow" /></Link></section></div></>;
+export function OrganizationAdministrationView({ organization, roleLabel, onMembers }: {
+  organization: { id: string; name: string; taxCode: string | null; address: string | null };
+  roleLabel: string;
+  onMembers: () => void;
+}) {
+  return <>
+    <header>
+      <p className="text-xs font-bold uppercase tracking-wider text-primary">Không gian quản trị</p>
+      <h1 className="mt-2 text-[clamp(30px,3vw,42px)] font-bold leading-tight tracking-tight">Quản trị tổ chức</h1>
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">Quản lý thông tin tổ chức, thành viên và gói dịch vụ của đội ngũ.</p>
+    </header>
+    <div className="mt-7 grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)]">
+      <OrganizationInformationCard organization={organization} roleLabel={roleLabel} />
+      <section className="flex min-w-0 flex-col items-start rounded-[14px] border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
+        <span className="grid size-10 place-items-center rounded-xl bg-accent text-primary"><Users className="size-5" aria-hidden="true" /></span>
+        <h2 className="mt-4 text-sm font-semibold">Thành viên & phân quyền</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">Mời thành viên, gán vai trò và kiểm soát phạm vi truy cập của đội ngũ.</p>
+        <div className="mt-auto pt-5"><Button variant="outline" size="sm" onClick={onMembers}>Quản lý thành viên<ArrowRight aria-hidden="true" /></Button></div>
+      </section>
+      <section className="flex min-w-0 flex-col items-start rounded-[14px] border border-border bg-card p-5 text-card-foreground shadow-sm sm:p-6">
+        <span className="grid size-10 place-items-center rounded-xl bg-accent text-primary"><Sparkles className="size-5" aria-hidden="true" /></span>
+        <h2 className="mt-4 text-sm font-semibold">Gói dịch vụ</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">So sánh hạn mức rà soát, lượt chat và số thành viên giữa các gói.</p>
+        <div className="mt-auto pt-5"><Button variant="outline" size="sm" asChild><Link href="/goi-dich-vu">Xem các gói<ArrowRight aria-hidden="true" /></Link></Button></div>
+      </section>
+    </div>
+  </>;
 }

@@ -10,7 +10,8 @@ const navigation = getDashboardNavigation("administrator");
 
 export function SystemDashboardShell({ name, children }: { name: string; children: ReactNode }) {
   const pathname = usePathname();
-  const current = navigation.find((item) => item.href === pathname);
+  const current = navigation.find((item) => item.href === pathname)
+    ?? navigation.find((item) => item.href && item.href !== "/dashboard/admin" && pathname.startsWith(`${item.href}/`));
   const activeKey = current?.key ?? "overview";
 
   return <DashboardShell

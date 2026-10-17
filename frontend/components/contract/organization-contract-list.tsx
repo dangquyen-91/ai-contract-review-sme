@@ -11,5 +11,5 @@ export function OrganizationContractList({ workspace, reviewerMode = false, mana
 }) {
   const { data, contractFilter, searchParams, selectTab, access, reviewExisting, isReviewing } = workspace;
   if (!data) return null;
-  return <OrganizationContractsView key={JSON.stringify(contractFilter) + (searchParams.get("search") ?? "")} orgId={data.organization.id} filter={contractFilter} reviewerMode={reviewerMode} managerMode={managerMode} onFilter={(filter) => selectTab("contracts", filter)} renderContracts={(contracts) => <ContractTable highlightId={searchParams.get("uploaded") ?? undefined} contracts={contracts} canReview={access.review} onReview={reviewExisting} isReviewing={isReviewing}/>} />;
+  return <OrganizationContractsView key={JSON.stringify(contractFilter) + (searchParams.get("search") ?? "")} orgId={data.organization.id} filter={contractFilter} reviewerMode={reviewerMode} managerMode={managerMode} onFilter={(filter) => selectTab("contracts", filter)} renderContracts={(contracts, onDeleted) => <ContractTable highlightId={searchParams.get("uploaded") ?? undefined} contracts={contracts} onDeleted={onDeleted} canDelete={["administrator", "owner", "manager"].includes(data.role)} canReview={access.review} onReview={reviewExisting} isReviewing={isReviewing}/>} />;
 }

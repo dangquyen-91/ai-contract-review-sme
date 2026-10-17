@@ -17,6 +17,48 @@ const keys = load('../lib/query-keys/contracts.ts');
 const dashboard = load('../lib/query-keys/dashboard.ts');
 const invitationKeys = load('../lib/query-keys/invitations.ts').invitationKeys;
 
+test('Scheduling and cancelling a downgrade refresh the shared quota and member-capacity cache', async () => {
+  const client = new QueryClient();
+  const calls = [];
+  const { useSubscriptionManagement } = load('../hooks/use-subscription-management.ts', {
+    '@tanstack/react-query': { useQuery: (options) => options, useMutation: (options) => options, useQueryClient: () => client },
+    '@/lib/query-keys/invitations': { invitationKeys },
+    '@/lib/api/billing': { billingApi: {
+      subscription: async (id) => { calls.push(['get', id]); return {}; },
+      scheduleDowngrade: async (...args) => calls.push(['schedule', ...args]),
+      cancelDowngrade: async (...args) => calls.push(['cancel', ...args]),
+    } },
+  });
+  const key = invitationKeys.subscription('org-1');
+  const hooks = useSubscriptionManagement('org-1');
+  client.setQueryData(key, {});
+  await hooks.subscription.queryFn(); await hooks.schedule.mutationFn('business_starter'); await hooks.schedule.onSuccess();
+  assert.equal(client.getQueryState(key).isInvalidated, true);
+  client.setQueryData(key, {});
+  await hooks.cancel.mutationFn(); await hooks.cancel.onSuccess();
+  assert.equal(client.getQueryState(key).isInvalidated, true);
+  assert.deepEqual(calls, [['get', 'org-1'], ['schedule', 'org-1', 'business_starter'], ['cancel', 'org-1']]);
+  client.clear();
+});
+
+test('Deleting a contract removes its private cache and invalidates lists and overview only after success', async () => {
+  const ctx = setup({ remove: async (id) => { assert.equal(id, 'contract-1'); } });
+  ctx.client.setQueryData(keys.contractKeys.detail('contract-1'), { title: 'private' });
+  ctx.client.setQueryData(keys.contractKeys.chat('contract-1'), ['private chat']);
+  ctx.client.setQueryData(keys.contractKeys.detail('contract-2'), { title: 'keep' });
+  ctx.client.setQueryData(keys.contractKeys.list({}), { items: [] });
+  ctx.client.setQueryData(dashboard.dashboardKeys.overview, {});
+  const mutation = ctx.hooks.useDeleteContract();
+  await mutation.mutationFn('contract-1');
+  await mutation.onSuccess(undefined, 'contract-1');
+  assert.equal(ctx.client.getQueryData(keys.contractKeys.detail('contract-1')), undefined);
+  assert.equal(ctx.client.getQueryData(keys.contractKeys.chat('contract-1')), undefined);
+  assert.ok(ctx.client.getQueryData(keys.contractKeys.detail('contract-2')));
+  assert.equal(ctx.client.getQueryState(keys.contractKeys.list({})).isInvalidated, true);
+  assert.equal(ctx.client.getQueryState(dashboard.dashboardKeys.overview).isInvalidated, true);
+  ctx.client.clear();
+});
+
 test('Share summary queries separate versions and reject an unmarked response without falling back to full results', async () => {
   const calls = [];
   let response = { text: 'Safe summary', redacted: true };

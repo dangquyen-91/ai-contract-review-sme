@@ -1,0 +1,15 @@
+"use client";
+
+import { Eye, CircleAlert, ShieldCheck } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { matchesSourceGroup } from "@/lib/legal-source-filtering";
+import type { LegalSource } from "@/types/legal-sources";
+
+export function LegalSourceAttentionList({ sources, pending, unavailable, onDetail }: { sources: LegalSource[]; pending: boolean; unavailable: boolean; onDetail: (source: LegalSource) => void }) {
+  return <section aria-label="Nguồn cần chú ý" className="mb-7 overflow-hidden rounded-2xl border border-amber-200 bg-card text-card-foreground">
+    <header className="flex items-center gap-3 border-b border-amber-100 bg-amber-50/60 px-5 py-4"><span className="grid size-9 shrink-0 place-items-center rounded-lg bg-amber-100 text-amber-800"><CircleAlert aria-hidden="true" className="size-5" /></span><div className="min-w-0"><h2 className="text-ui-section font-semibold">Nguồn cần chú ý <span className="ml-1 rounded-md bg-amber-100 px-2 py-0.5 text-ui-meta text-amber-900">{pending || unavailable ? "—" : sources.length}</span></h2><p className="mt-1 text-ui-meta text-muted-foreground">Ưu tiên nguồn xử lý lỗi, tạm dừng hoặc có cảnh báo độ đầy đủ.</p></div></header>
+    {pending || unavailable ? <p role="status" className="p-5 text-ui text-muted-foreground">{unavailable ? "Chưa thể kiểm tra các nguồn cần chú ý." : "Đang kiểm tra nguồn pháp lý…"}</p> : !sources.length ? <div className="flex items-start gap-3 p-5 text-ui text-muted-foreground"><ShieldCheck aria-hidden="true" className="size-5 shrink-0 text-emerald-700" /><p>Chưa ghi nhận nguồn xử lý lỗi, tạm dừng hoặc cảnh báo độ đầy đủ trong dữ liệu hiện có.</p></div> : <ul className="divide-y divide-border">{sources.slice(0, 3).map((source) => <li key={source._id} className="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><div className="mb-2 flex flex-wrap gap-2">{source.ingestion?.status === "failed" && <Badge variant="danger">Xử lý lỗi</Badge>}{source.ingestion?.status === "paused" && <Badge variant="warning">Tạm dừng</Badge>}{matchesSourceGroup(source, "coverage") && <Badge variant="warning">Kiểm tra độ đầy đủ</Badge>}</div><button type="button" aria-haspopup="dialog" onClick={() => onDetail(source)} className="text-left break-words text-ui font-semibold text-slate-900 hover:underline">{source.title}</button><p className="mt-1 line-clamp-2 break-words text-ui-meta text-muted-foreground">{source.ingestion?.error || (matchesSourceGroup(source, "coverage") ? "Đối chiếu tài liệu gốc và bổ sung phần còn thiếu nếu cần." : "Kiểm tra tiến trình trước khi tiếp tục xử lý.")}</p></div><Button aria-haspopup="dialog" onClick={() => onDetail(source)} variant="outline" size="sm" className="h-10 self-start sm:self-center">Kiểm tra nguồn<Eye aria-hidden="true" /></Button></li>)}</ul>}
+    {!pending && !unavailable && sources.length > 3 && <p className="border-t border-border px-5 py-3 text-ui-meta text-muted-foreground">Hiển thị 3 / {sources.length} nguồn cần chú ý. Dùng bộ lọc trạng thái bên dưới để xem thêm.</p>}
+  </section>;
+}

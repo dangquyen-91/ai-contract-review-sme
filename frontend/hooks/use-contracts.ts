@@ -18,6 +18,22 @@ type ReviewContractVariables = {
   onProgress?: (review: ContractReviewRun) => void;
 };
 
+export function useDeleteContract() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: contractsApi.remove,
+    onSuccess: async (_, id) => {
+      clearReviewSession(id);
+      await client.cancelQueries({ queryKey: ["contracts", id] });
+      client.removeQueries({ queryKey: ["contracts", id] });
+      await Promise.all([
+        client.invalidateQueries({ queryKey: contractKeys.lists }),
+        client.invalidateQueries({ queryKey: dashboardKeys.all }),
+      ]);
+    },
+  });
+}
+
 export function useContractsList(
   filter: DashboardContractFilter & { page?: number; search?: string },
   options: { scope?: string; initialData?: ContractListResult; retry?: boolean; pollProcessing?: boolean } = {},

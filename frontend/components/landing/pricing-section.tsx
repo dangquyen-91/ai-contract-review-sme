@@ -8,11 +8,11 @@ export function PricingSection() {
         <div className="text-center [&_h2]:text-[length:clamp(34px,3.4vw,49px)] [&_h2]:font-[720] [&_h2]:leading-[1.16] [&_h2]:tracking-[-1.8px] [&_h2_span]:text-slate-500 [&>_p]:last:text-[#61708b] [&>_p]:last:text-[length:16px] [&>_p]:last:mt-5 [&_h2]:[@media_(max-width:_800px)]:text-[length:38px] [&>_p]:[@media_(max-width:_800px)]:last:max-w-[400px] [&>_p]:[@media_(max-width:_800px)]:last:[margin-inline:auto] [&>_p]:[@media_(max-width:_800px)]:last:text-[length:15px] [&_h2]:[@media_(max-width:_420px)]:text-[length:32px] [&_h2]:[@media_(max-width:_420px)]:tracking-[-1.1px]" data-reveal>
           <p className={`flex items-center gap-[11px] mb-4 text-[11px] font-semibold tracking-[1.8px] text-[#7382a5] uppercase before:h-0.5 before:w-5 before:bg-[var(--ls-blue)] before:content-[''] max-[600px]:text-[10px] max-[600px]:tracking-[1.2px] ${"justify-center text-[#52688b] mb-[18px]"}`}>07 / Gói dịch vụ</p>
           <h2 id="pricing-heading">Chọn gói phù hợp.<br /><span>Chủ động mỗi lần ký.</span></h2>
-          <p>Bắt đầu với bản mẫu, mở rộng khi đội ngũ của bạn cần thêm.</p>
+          <p>Bắt đầu miễn phí cho cá nhân, mở rộng khi đội ngũ của bạn cần thêm.</p>
         </div>
         <PricingPlans />
         <p className="text-center text-[length:12px] text-[#6c7a91] mt-7">
-          Giá và hạn mức minh họa. LawScan chưa mở đăng ký gói hoặc thanh toán.
+          Giá và hạn mức theo tháng. Thanh toán gói trả phí chưa được kết nối trên giao diện này.
           {" "}<Link href="/goi-dich-vu" className="text-[color:var(--ls-blue)] text-[length:17px] [@media_(max-width:_600px)]:text-[length:14px]">Xem trang gói dịch vụ →</Link>
         </p>
       </div>

@@ -22,7 +22,7 @@ export function OrganizationContractsView({ orgId, filter, reviewerMode, manager
   reviewerMode: boolean;
   managerMode?: boolean;
   onFilter: (filter?: DashboardContractFilter) => void;
-  renderContracts: (contracts: DashboardContract[]) => ReactNode;
+  renderContracts: (contracts: DashboardContract[], onDeleted: () => void) => ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -60,7 +60,7 @@ export function OrganizationContractsView({ orgId, filter, reviewerMode, manager
       {search && <Button variant="outline" size="sm" type="button" onClick={() => { setDraft(""); updateList({ page: 1, search: "" }); }}>Xóa tìm kiếm</Button>}
     </form>
     <div aria-live="polite">
-      {query.isLoading ? <p className={"grid min-h-[220px] content-center text-[#708099] text-[13px] leading-[1.7] text-center"} aria-busy="true">Đang tải hợp đồng…</p> : query.error ? <div className={"text-[#a23a4d] text-[13px] leading-[1.7]"}><p>{isApiClientError(query.error) ? query.error.message : "Không thể tải hợp đồng."}</p><Button variant="outline" size="sm" type="button" onClick={() => query.refetch()}>Thử lại</Button></div> : !query.data?.items.length ? <p className={"grid min-h-[220px] content-center text-[#708099] text-[13px] leading-[1.7] text-center"}>Không có hợp đồng phù hợp. Thử nhóm khác hoặc xóa tìm kiếm.</p> : renderContracts(query.data.items)}
+      {query.isLoading ? <p className={"grid min-h-[220px] content-center text-[#708099] text-[13px] leading-[1.7] text-center"} aria-busy="true">Đang tải hợp đồng…</p> : query.error ? <div className={"text-[#a23a4d] text-[13px] leading-[1.7]"}><p>{isApiClientError(query.error) ? query.error.message : "Không thể tải hợp đồng."}</p><Button variant="outline" size="sm" type="button" onClick={() => query.refetch()}>Thử lại</Button></div> : !query.data?.items.length ? <p className={"grid min-h-[220px] content-center text-[#708099] text-[13px] leading-[1.7] text-center"}>Không có hợp đồng phù hợp. Thử nhóm khác hoặc xóa tìm kiếm.</p> : renderContracts(query.data.items, () => { if (query.data?.items.length === 1 && page > 1) updateList({ page: page - 1 }); })}
     </div>
     {query.data && <div className={"[&_button:not([data-slot=button])]:[border:1px_solid_#dce5f2] [&_button:not([data-slot=button])]:rounded-[9px] [&_button:not([data-slot=button])]:[background:white] [&_button:not([data-slot=button])]:p-[9px_14px] [&_button:not([data-slot=button])]:text-[#245bd6] [&_button:not([data-slot=button])]:text-[13px] [&_button:not([data-slot=button])]:font-semibold [&_button:not([data-slot=button])]:cursor-pointer flex flex-wrap items-center justify-between gap-[12px] mt-[20px] text-[13px] text-[#708099] [&_>_div]:flex [&_>_div]:gap-[8px] [&_button:not([data-slot=button]):disabled]:opacity-[.45] [&_button:not([data-slot=button]):disabled]:cursor-default"}><span>Trang {page}/{pages} · {query.data.total} hợp đồng</span><div><Button variant="outline" size="sm" type="button" disabled={page <= 1 || query.isFetching} onClick={() => updateList({ page: page - 1 })}>Trước</Button><Button variant="outline" size="sm" type="button" disabled={page >= pages || query.isFetching} onClick={() => updateList({ page: page + 1 })}>Sau</Button></div></div>}
   </section>;

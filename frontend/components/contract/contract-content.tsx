@@ -26,7 +26,7 @@ export function ContractContent({ data, access, onReview, isReviewing = false }:
     if (!contractId) return;
     router.push(`/dashboard/${data.role}/review?contract=${encodeURIComponent(contractId)}${rerun ? "&rerun=1" : ""}`);
   }
-  return <ContractsView contracts={data.contracts} totalContracts={data.totalContracts} scope={`${data.role}:${data.organization.id}`} canReview={access.review} onReview={onReview ?? openReview} isReviewing={isReviewing} />;
+  return <ContractsView contracts={data.contracts} totalContracts={data.totalContracts} scope={`${data.role}:${data.organization.id}`} canDelete={["administrator", "owner", "manager", "user"].includes(data.role)} canReview={access.review} onReview={onReview ?? openReview} isReviewing={isReviewing} />;
 }
 
 const contractListParams = { page: paginationPageParser, search: parseAsString.withDefault(""), status: parseAsString.withDefault(""), riskLevel: parseAsString.withDefault("") };
@@ -53,7 +53,7 @@ function ContractSearchForm({ search, onSearch }: { search: string; onSearch: (v
   </form>;
 }
 
-function ContractsView({ contracts, totalContracts, scope, canReview, onReview, isReviewing }: { contracts: DashboardContract[]; totalContracts: number; scope: string; canReview: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean }) {
+function ContractsView({ contracts, totalContracts, scope, canReview, onReview, isReviewing, canDelete }: { contracts: DashboardContract[]; totalContracts: number; scope: string; canReview: boolean; canDelete: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -93,7 +93,7 @@ function ContractsView({ contracts, totalContracts, scope, canReview, onReview, 
       {error ? <div role="alert" className="p-8 text-center text-sm text-[#5e6d82]">Không thể tải danh sách hợp đồng. <Button variant="link" size="sm" type="button" onClick={() => refetch()} >Thử lại</Button></div>
         : isLoading ? <div className="p-8 text-center text-sm text-[#6b778c]" aria-busy="true">Đang tải hợp đồng...</div>
         : pageData?.items.length === 0 && filtered ? <p className="p-8 text-center text-sm text-[#6b778c]">{search ? `Không tìm thấy hợp đồng phù hợp với “${search}”.` : "Không có hợp đồng phù hợp với bộ lọc."}</p>
-        : <ContractTable contracts={pageData?.items ?? []} highlightId={highlightId} canReview={canReview} onReview={onReview} isReviewing={isReviewing} />}
+        : <ContractTable contracts={pageData?.items ?? []} highlightId={highlightId} canReview={canReview} canDelete={canDelete} onDeleted={() => { if (pageData?.items.length === 1 && currentPage > 1) void setListState({ page: currentPage - 1 }); }} onReview={onReview} isReviewing={isReviewing} />}
       {!error && !isLoading && totalPages > 1 && <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[color:var(--line)] px-4 py-3">
         <p className="text-xs text-[#6b778c]">{(currentPage - 1) * 10 + 1}–{Math.min(currentPage * 10, total)} / {total} hợp đồng</p>
         <Pagination className="w-auto justify-end">
