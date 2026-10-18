@@ -151,7 +151,8 @@ export async function resolveSubscription(orgId: string, session: ClientSession,
   }
   // An unpaid organization can collaborate with two invitees plus its owner.
   // Personal workspaces remain single-user until converted to an organization.
-  let memberLimit = period?.plan.memberLimit ?? (organization.isPersonal ? 1 : FREE_BUSINESS_MEMBER_LIMIT);
+  let memberLimit =
+    period?.plan.memberLimit ?? (organization.isPersonal ? 1 : FREE_BUSINESS_MEMBER_LIMIT);
   if (subscription.scheduledDowngrade) {
     const target = await PlanModel.findOne({
       code: subscription.scheduledDowngrade.planCode,
@@ -310,16 +311,28 @@ export async function cancelDowngrade(userId: string, orgId: string) {
   });
 }
 
+export interface PaidSubscriptionInput {
+  orgId: string;
+  planCode: PlanCode;
+  amount: number;
+  paymentReference: string;
+  action: 'purchase' | 'renew' | 'upgrade' | 'downgrade';
+}
+
+// The same validation runs before checkout and again after verified settlement.
+export async function validatePaidSubscriptionPurchase(input: PaidSubscriptionInput) {
+  await applyPaidSubscription(input, new Date(), true);
+}
+
 /** INTERNAL ONLY: a verified payment adapter must call this; never expose as an owner activation API. */
-export async function activatePaidSubscription(
-  input: {
-    orgId: string;
-    planCode: PlanCode;
-    amount: number;
-    paymentReference: string;
-    action: 'purchase' | 'renew' | 'upgrade' | 'downgrade';
-  },
+export async function activatePaidSubscription(input: PaidSubscriptionInput, now = new Date()) {
+  return (await applyPaidSubscription(input, now, false))!;
+}
+
+async function applyPaidSubscription(
+  input: PaidSubscriptionInput,
   now = new Date(),
+  validateOnly = false,
 ) {
   if (!input.paymentReference.trim()) throw AppError.badRequest('Payment reference is required');
   return mongoose.connection.transaction(async (session) => {
@@ -371,13 +384,6 @@ export async function activatePaidSubscription(
     } else if (input.action === 'upgrade') {
       if (!current || plan.price <= current.plan.price)
         throw AppError.conflict('This is not an upgrade');
-      await SubscriptionPeriodModel.updateMany(
-        { orgId: input.orgId, cancelledAt: null, endsAt: { $gt: now } },
-        { $set: { cancelledAt: now } },
-        { session },
-      );
-      subscription.scheduledDowngrade = undefined;
-      await subscription.save({ session });
     } else {
       const scheduled = subscription.scheduledDowngrade;
       if (
@@ -400,6 +406,16 @@ export async function activatePaidSubscription(
     const members = await UserModel.countDocuments({ orgId: input.orgId }).session(session);
     if (members > plan.memberLimit)
       throw AppError.conflict('Organization exceeds the target member limit');
+    if (validateOnly) return null;
+    if (input.action === 'upgrade') {
+      await SubscriptionPeriodModel.updateMany(
+        { orgId: input.orgId, cancelledAt: null, endsAt: { $gt: now } },
+        { $set: { cancelledAt: now } },
+        { session },
+      );
+      subscription.scheduledDowngrade = undefined;
+      await subscription.save({ session });
+    }
     const [period] = await SubscriptionPeriodModel.create(
       [
         {

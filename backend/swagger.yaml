@@ -12,6 +12,7 @@ tags:
   - name: Organizations
   - name: Invitations
   - name: Subscriptions
+  - name: Payments
   - name: Contracts
   - name: ContractProfiles
   - name: Reviews
@@ -19,11 +20,22 @@ tags:
 
 components:
   parameters:
+    PaymentOrganizationId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+      description: Organization or personal workspace ID owned by the caller.
+    PaymentOrderCode:
+      in: path
+      name: orderCode
+      required: true
+      schema: { type: integer, minimum: 1 }
     IdempotencyKey:
       in: header
       name: Idempotency-Key
       required: true
-      description: Reuse for retries of the same request; use a new key for a new analysis or chat message.
+      description: Reuse for retries of the same request; use a new key for a new review, chat message or purchase.
       schema: { type: string, minLength: 8, maxLength: 128, pattern: '^[a-zA-Z0-9_-]+$' }
       example: review-request-0001
   securitySchemes:
@@ -33,6 +45,23 @@ components:
       bearerFormat: JWT
 
   schemas:
+    Payment:
+      type: object
+      properties:
+        orderCode: { type: integer }
+        orgId: { type: string }
+        planCode: { type: string, enum: [personal_pro, business_starter, business_pro] }
+        action: { type: string, enum: [purchase, renew, upgrade, downgrade] }
+        amount: { type: integer, description: Full plan price in VND determined by the server }
+        currency: { type: string, enum: [VND] }
+        status: { type: string, enum: [creating, pending, paid, cancelled, expired, failed] }
+        checkoutUrl: { type: string, nullable: true }
+        qrCode: { type: string, nullable: true }
+        expiresAt: { type: string, format: date-time }
+        paidAt: { type: string, format: date-time, nullable: true }
+        fulfilledAt: { type: string, format: date-time, nullable: true, description: Non-null only after the subscription has been activated }
+        fulfillmentError: { type: string, nullable: true }
+        providerError: { type: string, nullable: true }
     SubscriptionPlan:
       type: object
       properties:
@@ -1148,6 +1177,116 @@ components:
           description: Legal document to chunk and embed (pdf, docx, doc, or txt)
 
 paths:
+  /organizations/{id}/payments:
+    parameters:
+      - $ref: '#/components/parameters/PaymentOrganizationId'
+    post:
+      tags: [Payments]
+      summary: Create a payOS subscription checkout
+      description: >-
+        Owner only, or the user owning a personal workspace. Price, currency and return URLs
+        come from the server. One unfinished checkout per workspace. Retry with the same
+        Idempotency-Key to recover an existing order. No subscription is granted here.
+        Upgrade charges the full new price and starts a new cycle after payment;
+        renewal appends a period; downgrade must be scheduled first.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [planCode, action]
+              properties:
+                planCode: { type: string, enum: [personal_pro, business_starter, business_pro] }
+                action: { type: string, enum: [purchase, renew, upgrade, downgrade] }
+      responses:
+        '201':
+          description: Stored order and checkout URL (or the original order on retry)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Payment' }
+        '400': { description: Invalid plan, action, body or missing idempotency key }
+        '403': { description: Caller cannot manage this workspace }
+        '409': { description: Unfinished checkout or subscription state conflict }
+        '502': { description: Creation unconfirmed; recover order from history and synchronize before retrying }
+        '503': { description: payOS is not configured }
+    get:
+      tags: [Payments]
+      summary: List the workspace payment history (owner only)
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+      responses:
+        '200': { description: Paginated items, page and pageSize (20) }
+        '403': { description: Caller cannot manage this workspace }
+  /organizations/{id}/payments/{orderCode}:
+    parameters:
+      - $ref: '#/components/parameters/PaymentOrganizationId'
+      - $ref: '#/components/parameters/PaymentOrderCode'
+    get:
+      tags: [Payments]
+      summary: Read stored payment and activation status (owner only)
+      description: Read-only. Browser return/cancel query parameters never grant paid rights.
+      responses:
+        '200': { description: Payment in the standard success/data envelope }
+        '403': { description: Caller cannot manage this workspace }
+        '404': { description: Order does not exist in this workspace }
+  /organizations/{id}/payments/{orderCode}/sync:
+    parameters:
+      - $ref: '#/components/parameters/PaymentOrganizationId'
+      - $ref: '#/components/parameters/PaymentOrderCode'
+    post:
+      tags: [Payments]
+      summary: Synchronize authoritative payOS status and retry subscription activation
+      description: Owner only. Recovers missed webhooks or an interrupted activation without granting another period.
+      responses:
+        '200': { description: Current payment in the standard success/data envelope }
+        '403': { description: Caller cannot manage this workspace }
+        '409': { description: Payment mismatch; manual review required }
+        '502': { description: payOS unavailable; stored state retained }
+        '503': { description: Payment received but activation pending; read order for details }
+  /organizations/{id}/payments/{orderCode}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/PaymentOrganizationId'
+      - $ref: '#/components/parameters/PaymentOrderCode'
+    post:
+      tags: [Payments]
+      summary: Cancel an unpaid checkout through payOS (owner only)
+      description: If payment wins the cancellation race, the confirmed paid order is activated instead. No automatic refund.
+      responses:
+        '200': { description: Current payment in the standard success/data envelope }
+        '403': { description: Caller cannot manage this workspace }
+        '409': { description: Already paid; cannot cancel here }
+        '502': { description: payOS unavailable; order remains open }
+  /payments/payos/webhook:
+    post:
+      tags: [Payments]
+      security: []
+      summary: Receive a payOS signed payment webhook
+      description: >-
+        Validates the checksum signature with the official SDK, then reconciles the stored
+        order with signed payOS API information before activation. Duplicate events are
+        idempotent. Signed unknown-order probes are acknowledged without creating orders.
+        Invalid signatures are rejected. Paid activation failures return 503 to allow retry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Original payOS webhook including data and signature }
+      responses:
+        '200': { description: Event acknowledged }
+        '400': { description: Invalid signature or mismatched event }
+        '409': { description: Provider order or amount mismatch }
+        '502': { description: payOS reconciliation unavailable; retry later }
+        '503': { description: Activation pending; retry later }
   /plans:
     get:
       tags: [Subscriptions]
