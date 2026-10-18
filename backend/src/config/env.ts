@@ -10,7 +10,12 @@ const envSchema = z.object({
   DNS_SERVERS: z
     .string()
     .default('')
-    .transform((value) => value.split(',').map((server) => server.trim()).filter(Boolean))
+    .transform((value) =>
+      value
+        .split(',')
+        .map((server) => server.trim())
+        .filter(Boolean),
+    )
     .pipe(z.array(z.string().ip())),
   JWT_ACCESS_SECRET: z.string().min(1, 'JWT_ACCESS_SECRET is required'),
   JWT_REFRESH_SECRET: z.string().min(1, 'JWT_REFRESH_SECRET is required'),
@@ -23,6 +28,11 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().trim().default(''),
   BREVO_SENDER_EMAIL: z.union([z.string().trim().email(), z.literal('')]).optional(),
   BREVO_SENDER_NAME: z.string().trim().min(1).default('AI Contract Review'),
+  PAYOS_CLIENT_ID: z.string().trim().default(''),
+  PAYOS_API_KEY: z.string().trim().default(''),
+  PAYOS_CHECKSUM_KEY: z.string().trim().default(''),
+  PAYOS_RETURN_URL: z.string().url().default('http://localhost:3000/thanh-toan/ket-qua'),
+  PAYOS_CANCEL_URL: z.string().url().default('http://localhost:3000/thanh-toan/huy'),
 
   DATA_ENCRYPTION_KEY: z
     .string()

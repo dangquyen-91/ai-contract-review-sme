@@ -9,6 +9,7 @@ import { swaggerSpec } from './config/swagger';
 import { apiLimiter } from './middlewares/rateLimit.middleware';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
 import apiRoutes from './routes';
+import { payosWebhookHandler } from './controllers/payment.controller';
 
 export function createApp() {
   const app = express();
@@ -27,6 +28,8 @@ export function createApp() {
     }),
   );
 
+  // Provider callbacks are authenticated by signature, not JWT or the shared browser IP limiter.
+  app.post('/api/v1/payments/payos/webhook', payosWebhookHandler);
   app.use('/api/v1', apiLimiter, apiRoutes);
   app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 

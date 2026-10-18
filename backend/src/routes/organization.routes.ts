@@ -1,4 +1,17 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
+import {
+  createPaymentHandler,
+  listPaymentsHandler,
+  getPaymentHandler,
+  syncPaymentHandler,
+  cancelPaymentHandler,
+} from '../controllers/payment.controller';
+import {
+  createPaymentSchema,
+  paymentParamsSchema,
+  paymentListSchema,
+} from '../validations/payment.validation';
 import {
   getSubscriptionHandler,
   scheduleDowngradeHandler,
@@ -37,6 +50,41 @@ import {
 const router = Router();
 
 router.use(requireAuth);
+const paymentLimiter = rateLimit({
+  windowMs: 60_000,
+  limit: 20,
+  keyGenerator: (req) => req.user!.sub,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+router.post(
+  '/:id/payments',
+  paymentLimiter,
+  validate({ params: organizationIdParamSchema, body: createPaymentSchema }),
+  createPaymentHandler,
+);
+router.get(
+  '/:id/payments',
+  validate({ params: organizationIdParamSchema, query: paymentListSchema }),
+  listPaymentsHandler,
+);
+router.get(
+  '/:id/payments/:orderCode',
+  validate({ params: paymentParamsSchema }),
+  getPaymentHandler,
+);
+router.post(
+  '/:id/payments/:orderCode/sync',
+  paymentLimiter,
+  validate({ params: paymentParamsSchema }),
+  syncPaymentHandler,
+);
+router.post(
+  '/:id/payments/:orderCode/cancel',
+  paymentLimiter,
+  validate({ params: paymentParamsSchema }),
+  cancelPaymentHandler,
+);
 router.get(
   '/:id/subscription',
   validate({ params: organizationIdParamSchema }),

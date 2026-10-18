@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.23.0",
+    "@payos/node": "^2.0.5",
     "@xmldom/xmldom": "^0.8.15",
     "bcryptjs": "^2.4.3",
     "bullmq": "^6.3.12",
