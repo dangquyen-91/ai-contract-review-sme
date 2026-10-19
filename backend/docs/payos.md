@@ -7,8 +7,10 @@ environment. Rotate any credentials shared in chat, screenshots or source contro
 
 Set `PAYOS_CLIENT_ID`, `PAYOS_API_KEY`, `PAYOS_CHECKSUM_KEY`, `PAYOS_RETURN_URL`
 and `PAYOS_CANCEL_URL` in `backend/.env`, then run `npm run dev`.
-The two redirect URLs are frontend integration points; this change does not create
-the frontend pages or a checkout button.
+The frontend now provides checkout on `/goi-dich-vu/xac-nhan?plan=PLAN_CODE`,
+payment history, and the `/thanh-toan/ket-qua` and `/thanh-toan/huy` pages.
+The redirect URLs must point to the running frontend origin. For local testing,
+run the frontend on port 3000 and keep the backend webhook tunnel open.
 
 Expose the backend through an HTTPS deployment or development tunnel and configure
 this callback in the payOS channel:
@@ -59,10 +61,14 @@ The standard response is `{ "success": true, "data": ... }`.
 | POST | `/organizations/{id}/payments/{orderCode}/sync` | Reconcile with payOS; retry activation |
 | POST | `/organizations/{id}/payments/{orderCode}/cancel` | Cancel through payOS; not a refund |
 
-The browser must use `checkoutUrl` returned by the backend. It must never send a
-price or decide that payment succeeded using redirect query parameters. Return
-and cancel pages should retrieve/synchronize the stored order. Check `fulfilledAt`
-to determine whether rights were granted; `status: paid` alone is insufficient.
+The frontend uses the backend `checkoutUrl` and only navigates to HTTPS payOS
+checkout URLs. It does not send a price or use redirect status parameters as proof
+of payment. Return/cancel pages read the stored order and synchronize once; polling
+then reads backend status briefly, with a manual retry option. `fulfilledAt`
+determines whether rights were granted; `status: paid` alone is insufficient.
+Password login, Google login, registration and OTP preserve validated checkout or
+order-detail return paths. Invitation acceptance takes precedence over that path.
+An account without a workspace must finish onboarding before purchasing.
 
 There is one open payment per workspace. Reuse the same Idempotency-Key to retry
 the same checkout. Use payment history to recover the order after losing a response.
@@ -94,5 +100,11 @@ signature verification with test-only keys. It covers authorization, amount chec
 idempotency, concurrent webhooks, cancellation, missed events, activation recovery,
 renewal, upgrade and scheduled downgrade. Real channel delivery requires a separate
 manual test using the configured public callback.
+
+Frontend verification: run `node --test scripts/*.test.mjs` from `frontend` for
+automated tests. After `npm run build`, run `npm run test:payments:browser` for
+Chrome checks against an isolated API fixture. Google and hosted payOS checkout
+are intercepted locally in this script. It does not send OTP emails or create real
+payments. Use `CHROME_PATH` if Chrome is not installed at the default Windows path.
 
 References: https://github.com/payOSHQ/payos-lib-node and https://payos.vn/docs/api/
