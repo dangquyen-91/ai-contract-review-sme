@@ -8,7 +8,7 @@ export const metadata: Metadata = {
   description: "Đăng nhập vào không gian rà soát hợp đồng LawScan.",
 };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ invitationToken?: string }> }) {
-  const { invitationToken } = await searchParams;
-  return <AuthShell panel={<AuthBrandPanel />}><AuthForm mode="login" invitationToken={invitationToken} /></AuthShell>;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ invitationToken?: string; returnTo?: string }> }) {
+  const { invitationToken, returnTo } = await searchParams;
+  return <AuthShell panel={<AuthBrandPanel />}><AuthForm mode="login" invitationToken={invitationToken} returnTo={returnTo} /></AuthShell>;
 }
