@@ -584,6 +584,7 @@ test('Subscription management confirms downgrades, exposes the effective date an
   const subscription = { data: { status: 'active', plan: pro, endsAt: '2026-11-01T00:00:00Z', scheduledDowngrade: { planCode: starter.code, effectiveAt: '2026-11-01T00:00:00Z' }, members: { count: 2, limit: 15 }, analysis: { available: 100, limit: 600 }, chat: { available: 200, limit: 1500 } } };
   modules.set('hooks/use-subscription-management.ts', { exports: { useSubscriptionManagement: () => ({ subscription, schedule: { reset() {}, mutateAsync: async (code) => calls.push(['schedule', code]) }, cancel: { reset() {}, mutateAsync: async () => calls.push(['cancel']) } }) } });
   modules.set('hooks/use-subscription-plans.ts', { exports: { useSubscriptionPlans: () => ({ data: [starter, pro] }) } });
+  modules.set('components/subscription/payment-history.tsx', { exports: { PaymentHistory: () => null } });
   const { SubscriptionManagement } = load('components/subscription/subscription-management.tsx');
   const host = document.createElement('div'); document.body.append(host);
   const root = createRoot(host);

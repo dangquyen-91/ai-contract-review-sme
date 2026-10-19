@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "test:ui": "node --test scripts/shadcn-ui.test.mjs scripts/invitation-actions.test.mjs",
-    "test:workflows": "node --test scripts/session-workflows.test.mjs"
+    "test:workflows": "node --test scripts/session-workflows.test.mjs",
+    "test:payments": "node --test scripts/payment-workflow.test.mjs",
+    "test:payments:browser": "node scripts/payment-browser-check.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
