@@ -5,7 +5,7 @@ const faqs = [
   ["Gói miễn phí có những hạn mức nào?", "Chọn mục Cá nhân để xem giá và hạn mức Personal Free hiện tại. Hạn mức miễn phí được cấp theo tháng, không phải bản mẫu hợp đồng."],
   ["Hạn mức phân tích và chat được tính thế nào?", "Phân tích hợp đồng và chat là hai hạn mức riêng. Hạn mức áp dụng trong mỗi kỳ gói; chi tiết số lượt được hiển thị trên từng thẻ gói."],
   ["Tổ chức chưa mua gói có được mời thành viên không?", "Tổ chức chưa mua gói có thể có tối đa 3 thành viên, bao gồm Owner. Đây là giới hạn thành viên mặc định, không phải gói phân tích miễn phí cho tổ chức."],
-  ["Chọn gói ở đây có bị thu tiền không?", "Trang này cung cấp thông tin gói và hạn mức. Thanh toán và kích hoạt gói trả phí chưa được kết nối trên giao diện này."],
+  ["Chọn gói ở đây có bị thu tiền không?", "Bạn có thể xem và xác nhận gói trước khi chuyển sang payOS. Chỉ giao dịch được hệ thống xác nhận mới cấp quyền lợi. Gia hạn nối tiếp kỳ hiện tại; nâng cấp thu đủ giá và bắt đầu kỳ mới, không bảo lưu quyền lợi gói cũ."],
 ];
 
 export function SubscriptionCatalog() {

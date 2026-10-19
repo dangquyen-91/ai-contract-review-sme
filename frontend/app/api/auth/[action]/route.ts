@@ -3,6 +3,7 @@ import { randomBytes } from "node:crypto";
 import { encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { rememberedCookieAge, tokenMaxAge } from "@/lib/token-expiry";
 import type { AuthUser } from "@/types/auth";
+import { isSameOriginRequest } from "@/lib/request-origin";
 
 const allowedActions = new Set(["login", "register", "refresh", "logout", "verify-email", "resend-verification", "google"]);
 
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
     const requestBody = isRefresh ? {} : await request.json();
     if (action === "google") {
       const nonce = request.cookies.get("lawscan_google_nonce")?.value;
-      if (request.headers.get("origin") !== request.nextUrl.origin || !nonce || requestBody.nonce !== nonce) {
+      if (!isSameOriginRequest(request) || !nonce || requestBody.nonce !== nonce) {
         return NextResponse.json({ success: false, error: { message: "Google sign-in session expired. Reload this page." } }, { status: 403 });
       }
     }
