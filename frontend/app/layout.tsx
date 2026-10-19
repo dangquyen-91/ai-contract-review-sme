@@ -32,9 +32,10 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="vi"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${lora.variable} h-full antialiased [--background:#ffffff] [--foreground:#171717] dark:[--background:#0a0a0a] dark:[--foreground:#ededed]`}
     >
-      <body className="min-h-full flex flex-col bg-background text-foreground [font-family:Arial,Helvetica,sans-serif]">
+      <body suppressHydrationWarning className="min-h-full flex flex-col bg-background text-foreground [font-family:Arial,Helvetica,sans-serif]">
         <NuqsAdapter>
           <QueryProvider>{children}</QueryProvider>
         </NuqsAdapter>
