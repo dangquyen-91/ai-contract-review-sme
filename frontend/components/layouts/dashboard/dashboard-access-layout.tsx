@@ -15,6 +15,7 @@ export async function DashboardAccessLayout({ role, children }: { role: "user" |
 
   if (role === "user") {
     if (needsOnboarding(user)) redirect("/chon-to-chuc");
+    if (!user.orgId) return <StaffOrganizationRequired email={user.email} role="user" />;
     return children;
   }
 

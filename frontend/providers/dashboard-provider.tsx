@@ -15,8 +15,9 @@ type DashboardContextValue = DashboardSession & { workspace: OrganizationWorkflo
 
 export const DashboardContext = createContext<DashboardContextValue | null>(null);
 
-export function DashboardProvider({ children, organizationRole, reviewRole = "user" }: { children: ReactNode; organizationRole?: OrganizationDashboardRole; reviewRole?: string }) {
+export function DashboardProvider({ children, organizationRole, reviewRole = "user", hasWorkspace = true }: { children: ReactNode; organizationRole?: OrganizationDashboardRole; reviewRole?: string; hasWorkspace?: boolean }) {
   const session = useLogoutWorkflow();
+  if (!hasWorkspace) return <DashboardContext.Provider value={{ ...session, workspace: null }}>{children}</DashboardContext.Provider>;
   return <ReviewWorkflowProvider initialRole={organizationRole ?? reviewRole}>{organizationRole
     ? <OrganizationDashboardState key={organizationRole} role={organizationRole} session={session}>{children}</OrganizationDashboardState>
     : <DashboardContext.Provider value={{ ...session, workspace: null }}>{children}</DashboardContext.Provider>}</ReviewWorkflowProvider>;
