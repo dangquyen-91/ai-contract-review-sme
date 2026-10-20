@@ -235,11 +235,50 @@ export async function removeMember(ownerId: string, orgId: string, memberId: str
   });
 }
 
-export async function acceptInvitation(userId: string, token: string) {
+export async function listReceivedInvitations(userId: string) {
+  const user = await UserModel.findOne({ _id: userId, isActive: true });
+  if (!user) throw AppError.unauthorized();
+  const invitations = await OrganizationInvitationModel.find({
+    email: user.email,
+    status: 'pending',
+    expiresAt: { $gt: new Date() },
+  })
+    .sort({ createdAt: -1 })
+    .populate('orgId', 'name')
+    .lean();
+  return invitations
+    .filter((item) => item.orgId)
+    .map((item) => ({
+      id: item._id.toString(),
+      organizationName: (item.orgId as unknown as { name: string }).name,
+      role: item.role,
+      expiresAt: item.expiresAt,
+    }));
+}
+
+export async function declineReceivedInvitation(userId: string, invitationId: string) {
+  const user = await UserModel.findOne({ _id: userId, isActive: true });
+  if (!user) throw AppError.unauthorized();
+  const result = await OrganizationInvitationModel.updateOne(
+    { _id: invitationId, email: user.email, status: 'pending', expiresAt: { $gt: new Date() } },
+    { $set: { status: 'declined' } },
+  );
+  if (result.modifiedCount !== 1) throw AppError.badRequest('Invitation is no longer available');
+}
+
+export async function acceptInvitation(userId: string, token?: string, invitationId?: string) {
   return mongoose.connection.transaction(async (session) => {
     const user = await UserModel.findOne({ _id: userId, isActive: true }).session(session);
     if (!user) throw AppError.unauthorized();
-    const { invitation } = await getPendingInvitation(token, user.email, session);
+    const invitation = invitationId
+      ? await OrganizationInvitationModel.findOne({
+          _id: invitationId,
+          email: user.email,
+          status: 'pending',
+          expiresAt: { $gt: new Date() },
+        }).session(session)
+      : (await getPendingInvitation(token ?? '', user.email, session)).invitation;
+    if (!invitation) throw AppError.badRequest('Invitation is no longer available');
     await assertCanJoinOrganization(user.orgId?.toString(), invitation.orgId.toString(), session);
     const role = await getRoleByCode(invitation.role);
     // Writing the organization serializes acceptance against organization deletion.

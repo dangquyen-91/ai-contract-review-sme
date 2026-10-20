@@ -23,7 +23,7 @@ const mongoose = require('mongoose');
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
-const { createHash } = require('crypto');
+const { createHash, randomBytes } = require('crypto');
 const { createApp } = require('../dist/app');
 const { UserModel } = require('../dist/models/user.model');
 const { OrganizationModel } = require('../dist/models/organization.model');
@@ -80,6 +80,20 @@ function accept(user, token) {
     .post('/api/v1/invitations/accept')
     .set('Authorization', bearer(user))
     .send({ token });
+}
+
+// Inbox tests seed delivery records directly so they do not exhaust the owner's send limiter.
+async function seedReceivedInvitation(email, role = 'staff') {
+  const token = randomBytes(32).toString('hex');
+  const invitation = await Invitations.create({
+    orgId: org._id,
+    email,
+    role,
+    invitedBy: owner._id,
+    tokenHash: createHash('sha256').update(token).digest('hex'),
+    expiresAt: new Date(Date.now() + 86400000),
+  });
+  return { token, data: { id: invitation.id } };
 }
 
 beforeAll(async () => {
@@ -347,6 +361,74 @@ test.each([false, true])(
     );
   },
 );
+
+test('received invitations are scoped to the authenticated email and never expose token hashes', async () => {
+  const user = await makeUser();
+  const own = await seedReceivedInvitation(user.email);
+  const stranger = await makeUser();
+  const response = await request(app)
+    .get('/api/v1/invitations/received')
+    .set('Authorization', bearer(user));
+  expect(response.status).toBe(200);
+  expect(response.body.data).toEqual([
+    expect.objectContaining({ id: own.data.id, organizationName: org.name, role: 'staff' }),
+  ]);
+  expect(JSON.stringify(response.body)).not.toContain('tokenHash');
+  expect(JSON.stringify(response.body)).not.toContain(own.token);
+  const others = await request(app)
+    .get('/api/v1/invitations/received')
+    .set('Authorization', bearer(stranger));
+  expect(others.body.data).toEqual([]);
+  const stolen = await request(app)
+    .post(`/api/v1/invitations/received/${own.data.id}/accept`)
+    .set('Authorization', bearer(stranger));
+  expect(stolen.status).toBe(400);
+  const declined = await request(app)
+    .post(`/api/v1/invitations/received/${own.data.id}/decline`)
+    .set('Authorization', bearer(stranger));
+  expect(declined.status).toBe(400);
+  expect((await Invitations.findById(own.data.id)).status).toBe('pending');
+});
+
+test('dashboard acceptance assigns orgId and role without needing the email token', async () => {
+  const user = await makeUser();
+  const invitation = await seedReceivedInvitation(user.email, 'reviewer');
+  const response = await request(app)
+    .post(`/api/v1/invitations/received/${invitation.data.id}/accept`)
+    .set('Authorization', bearer(user));
+  expect(response.status).toBe(200);
+  expect(response.body.data.user).toMatchObject({ orgId: org.id, role: 'reviewer' });
+  expect(jwt.verify(response.body.data.accessToken, process.env.JWT_ACCESS_SECRET)).toMatchObject({
+    orgId: org.id,
+    role: 'reviewer',
+  });
+  expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
+});
+
+test('declining removes the notification and expired invitations cannot be acted on', async () => {
+  const user = await makeUser();
+  const invitation = await seedReceivedInvitation(user.email);
+  const response = await request(app)
+    .post(`/api/v1/invitations/received/${invitation.data.id}/decline`)
+    .set('Authorization', bearer(user));
+  expect(response.status).toBe(200);
+  expect((await Invitations.findById(invitation.data.id)).status).toBe('declined');
+  expect((await UserModel.findById(user.id)).orgId).toBeUndefined();
+  expect((await accept(user, invitation.token)).status).toBe(400);
+  const expired = await seedReceivedInvitation(user.email);
+  await Invitations.updateOne({ _id: expired.data.id }, { $set: { expiresAt: new Date(0) } });
+  const inbox = await request(app)
+    .get('/api/v1/invitations/received')
+    .set('Authorization', bearer(user));
+  expect(inbox.body.data).toEqual([]);
+  expect(
+    (
+      await request(app)
+        .post(`/api/v1/invitations/received/${expired.data.id}/accept`)
+        .set('Authorization', bearer(user))
+    ).status,
+  ).toBe(400);
+});
 
 test('acceptance racing organization deletion never leaves an orphan member', async () => {
   const otherOrg = await OrganizationModel.create({ name: 'Deletable company' });

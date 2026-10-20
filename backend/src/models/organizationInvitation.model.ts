@@ -12,7 +12,7 @@ const schema = new Schema(
     expiresAt: { type: Date, required: true },
     status: {
       type: String,
-      enum: ['pending', 'accepted', 'revoked', 'expired', 'delivery_failed'],
+      enum: ['pending', 'accepted', 'revoked', 'expired', 'delivery_failed', 'declined'],
       default: 'pending',
       required: true,
     },
