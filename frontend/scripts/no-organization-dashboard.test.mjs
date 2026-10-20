@@ -23,6 +23,7 @@ const children = 'dashboard content';
 const account = { role: 'user', orgId: null, email: 'user@example.com', hasCompletedOnboarding: true };
 const OrganizationRequired = () => null;
 const OrganizationFrame = () => null;
+const PersonalDashboard = () => null;
 function accessLayout(user) {
   return load('../components/layouts/dashboard/dashboard-access-layout.tsx', {
     'next/headers': { cookies: async () => ({ get: () => ({ value: 'session' }) }) },
@@ -31,19 +32,22 @@ function accessLayout(user) {
     '@/lib/workspace-path': navigation,
     '@/components/organizations/staff-organization-required': { StaffOrganizationRequired: OrganizationRequired },
     '@/components/layouts/dashboard/organization-workspace': { OrganizationDashboardFrame: OrganizationFrame },
+    './personal-account-dashboard': { PersonalAccountDashboard: PersonalDashboard },
   }).DashboardAccessLayout;
 }
 
-test('completed personal account without orgId renders the account state instead of dashboard queries', async () => {
+test('personal account without orgId opens its dashboard instead of an organization-required screen', async () => {
   const result = await accessLayout(account)({ role: 'user', children });
-  assert.equal(result.type, OrganizationRequired);
-  assert.equal(result.props.email, account.email);
-  assert.equal(result.props.role, 'user');
+  assert.equal(result.type, PersonalDashboard);
+  assert.equal(result.props.user.email, account.email);
   assert.equal(navigation.workspacePath(account), '/dashboard/user');
 });
 
-test('incomplete personal accounts still go through onboarding', async () => {
-  await assert.rejects(accessLayout({ ...account, hasCompletedOnboarding: false })({ role: 'user', children }), /redirect:\/chon-to-chuc/);
+test('new personal accounts can log straight into their dashboard without creating an organization', async () => {
+  const user = { ...account, hasCompletedOnboarding: false };
+  const result = await accessLayout(user)({ role: 'user', children });
+  assert.equal(result.type, PersonalDashboard);
+  assert.equal(navigation.workspacePath(user), '/dashboard/user');
 });
 
 test('accounts with a workspace keep dashboard access and organization framing', async () => {

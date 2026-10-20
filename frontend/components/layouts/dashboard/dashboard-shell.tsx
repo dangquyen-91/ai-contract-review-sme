@@ -10,6 +10,7 @@ import type { DashboardRole } from "@/config/dashboard-roles";
 import { useDashboardWorkspace } from "@/hooks/use-dashboard-workspace";
 import { useDashboardSession } from "@/hooks/use-dashboard-session";
 import type { DashboardData } from "@/types/dashboard";
+import { ReceivedInvitations } from "@/components/invitations/received-invitations";
 
 export type DashboardWorkspaceContext = {
   data: DashboardData;
@@ -79,7 +80,7 @@ function DashboardFrame({ role, activeKey, sectionLabel, workspaceName, workspac
       <div className="min-w-0 flex-1">
         <DashboardHeader workspaceName={workspaceName} sectionLabel={sectionLabel} name={name} roleLabel={roleLabel} onLogout={onLogout} loggingOut={loggingOut} />
         <DashboardNavigation mobile items={navigation} activeKey={activeKey} onNavigate={onNavigate} contractCount={contractCount} />
-        <main id={mainId} className={`w-[min(1420px,100%)] [margin-inline:auto] pt-[38px] pb-16 px-[clamp(24px,4vw,52px)] [@media_(max-width:_820px)]:pt-[30px] [@media_(max-width:_820px)]:pb-12 [@media_(max-width:_820px)]:px-[18px] ${mainClassName}`}>{children}</main>
+        <main id={mainId} className={`w-[min(1420px,100%)] [margin-inline:auto] pt-[38px] pb-16 px-[clamp(24px,4vw,52px)] [@media_(max-width:_820px)]:pt-[30px] [@media_(max-width:_820px)]:pb-12 [@media_(max-width:_820px)]:px-[18px] ${mainClassName}`}>{role === "user" && <ReceivedInvitations />}{children}</main>
         {footer}
       </div>
     </div>

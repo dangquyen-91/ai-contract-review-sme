@@ -1,6 +1,8 @@
 export type InvitationRole = "manager" | "staff" | "reviewer";
 export type CreateInvitationInput = { email: string; role: InvitationRole };
-export type InvitationStatus = "pending" | "accepted" | "revoked" | "expired" | "delivery_failed";
+export type InvitationStatus = "pending" | "accepted" | "revoked" | "expired" | "delivery_failed" | "declined";
+
+export type ReceivedInvitation = { id: string; organizationName: string; role: InvitationRole; expiresAt: string };
 
 export type OrganizationMember = {
   id: string;

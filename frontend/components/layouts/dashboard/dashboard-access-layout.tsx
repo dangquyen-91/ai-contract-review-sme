@@ -2,8 +2,9 @@ import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { StaffOrganizationRequired } from "@/components/organizations/staff-organization-required";
+import { PersonalAccountDashboard } from "./personal-account-dashboard";
 import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
-import { needsOnboarding, workspacePath } from "@/lib/workspace-path";
+import { workspacePath } from "@/lib/workspace-path";
 import type { OrganizationDashboardRole } from "@/lib/organization-dashboard-route";
 import { OrganizationDashboardFrame } from "@/components/layouts/dashboard/organization-workspace";
 
@@ -14,8 +15,7 @@ export async function DashboardAccessLayout({ role, children }: { role: "user" |
   if (user.role !== role) redirect(workspacePath(user));
 
   if (role === "user") {
-    if (needsOnboarding(user)) redirect("/chon-to-chuc");
-    if (!user.orgId) return <StaffOrganizationRequired email={user.email} role="user" />;
+    if (!user.orgId) return <PersonalAccountDashboard user={user} />;
     return children;
   }
 

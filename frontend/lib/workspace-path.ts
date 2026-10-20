@@ -1,6 +1,7 @@
 import type { AuthUser } from "@/types/auth";
 
 export function needsOnboarding(user: AuthUser) {
+  if (user.role === "user") return false;
   const isOrganizationMember = Boolean(user.orgId)
     && ["owner", "manager", "staff", "reviewer"].includes(user.role);
   return !user.hasCompletedOnboarding && !isOrganizationMember;
