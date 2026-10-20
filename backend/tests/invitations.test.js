@@ -197,12 +197,49 @@ test('wrong email, expired invitation and revoked invitation cannot be accepted'
   expect((await UserModel.findById(intended.id)).orgId).toBeUndefined();
 });
 
-test('existing personal/company organization blocks acceptance without consuming invitation', async () => {
+test('personal workspace user can be invited and joins only after acceptance', async () => {
+  const personal = await OrganizationModel.create({ name: 'Personal', isPersonal: true });
+  const user = await makeUser('user', personal._id);
+  await UserModel.updateOne({ _id: user.id }, { $set: { hasCompletedOnboarding: true } });
+  const oldToken = bearer(user);
+  const invitation = await invite(user.email, 'reviewer');
+  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(personal.id);
+  const result = await accept(user, invitation.token);
+  expect(result.status).toBe(200);
+  expect(result.body.data.user).toMatchObject({ orgId: org.id, role: 'reviewer' });
+  expect((await UserModel.findById(user.id)).permissionsVersion).toBe(1);
+  expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
+  expect(await OrganizationModel.exists({ _id: personal._id, isPersonal: true })).toBeTruthy();
+  const stale = await request(app).get('/api/v1/contracts').set('Authorization', oldToken);
+  expect(stale.status).toBe(401);
+});
+
+test('personal workspace created after sending an invitation can still join', async () => {
   const invitation = await invite();
   const personal = await OrganizationModel.create({ name: 'Personal', isPersonal: true });
   const user = await makeUser('user', personal._id, invitation.email);
+  expect((await accept(user, invitation.token)).status).toBe(200);
+  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(org.id);
+});
+
+test('a dangling orgId allows invitation and is replaced only on acceptance', async () => {
+  const missingOrgId = new mongoose.Types.ObjectId();
+  const user = await makeUser('user', missingOrgId);
+  const invitation = await invite(user.email);
+  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(missingOrgId.toString());
+  const response = await accept(user, invitation.token);
+  expect(response.status).toBe(200);
+  expect(response.body.data.user).toMatchObject({ orgId: org.id, role: 'staff' });
+  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(org.id);
+  expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
+});
+
+test('company membership blocks acceptance without consuming invitation', async () => {
+  const invitation = await invite();
+  const company = await OrganizationModel.create({ name: 'Other company' });
+  const user = await makeUser('staff', company._id, invitation.email);
   expect((await accept(user, invitation.token)).status).toBe(409);
-  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(personal.id);
+  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(company.id);
   expect((await Invitations.findById(invitation.data.id)).status).toBe('pending');
   const blocked = await request(app)
     .post(`/api/v1/organizations/${org.id}/invitations`)
@@ -282,28 +319,34 @@ test('invitation login and refresh skip automatic personal workspace creation', 
   expect((await UserModel.findById(registration.body.data.user.id)).orgId).toBeUndefined();
 });
 
-test('simultaneous invitations from two organizations can only assign one organization', async () => {
-  const first = await invite();
-  const otherOrg = await OrganizationModel.create({ name: 'Competing company' });
-  const otherOwner = await makeUser('owner', otherOrg._id);
-  const second = await request(app)
-    .post(`/api/v1/organizations/${otherOrg.id}/invitations`)
-    .set('Authorization', bearer(otherOwner))
-    .send({ email: first.email, role: 'manager' });
-  expect(second.status).toBe(201);
-  const secondToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
-  const user = await makeUser('user', undefined, first.email);
-  const responses = await Promise.all([accept(user, first.token), accept(user, secondToken)]);
-  expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
-  expect(responses.every((response) => [200, 401, 409].includes(response.status))).toBe(true);
-  const invitations = await Invitations.find({ email: first.email });
-  expect(invitations.filter((item) => item.status === 'accepted')).toHaveLength(1);
-  expect(invitations.filter((item) => item.status === 'pending')).toHaveLength(1);
-  const updated = await UserModel.findById(user.id);
-  expect(updated.orgId.toString()).toBe(
-    invitations.find((item) => item.status === 'accepted').orgId.toString(),
-  );
-});
+test.each([false, true])(
+  'simultaneous invitations assign only one organization (personal: %s)',
+  async (hasPersonal) => {
+    const first = await invite();
+    const otherOrg = await OrganizationModel.create({ name: 'Competing company' });
+    const otherOwner = await makeUser('owner', otherOrg._id);
+    const second = await request(app)
+      .post(`/api/v1/organizations/${otherOrg.id}/invitations`)
+      .set('Authorization', bearer(otherOwner))
+      .send({ email: first.email, role: 'manager' });
+    expect(second.status).toBe(201);
+    const secondToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
+    const personal = hasPersonal
+      ? await OrganizationModel.create({ name: 'Personal race', isPersonal: true })
+      : undefined;
+    const user = await makeUser('user', personal?._id, first.email);
+    const responses = await Promise.all([accept(user, first.token), accept(user, secondToken)]);
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
+    expect(responses.every((response) => [200, 401, 409].includes(response.status))).toBe(true);
+    const invitations = await Invitations.find({ email: first.email });
+    expect(invitations.filter((item) => item.status === 'accepted')).toHaveLength(1);
+    expect(invitations.filter((item) => item.status === 'pending')).toHaveLength(1);
+    const updated = await UserModel.findById(user.id);
+    expect(updated.orgId.toString()).toBe(
+      invitations.find((item) => item.status === 'accepted').orgId.toString(),
+    );
+  },
+);
 
 test('acceptance racing organization deletion never leaves an orphan member', async () => {
   const otherOrg = await OrganizationModel.create({ name: 'Deletable company' });
