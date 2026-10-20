@@ -8,7 +8,7 @@ import { UserModel } from '../../models/user.model';
 import { googleLoginSchema } from '../../validations/auth.validation';
 import { getPendingInvitation } from '../organization/invitation.service';
 import { getRoleByCode } from './role.service';
-import { ensurePersonalWorkspace, tokensForUser } from './auth.service';
+import { tokensForUser } from './auth.service';
 
 const client = new OAuth2Client();
 
@@ -88,7 +88,5 @@ export async function googleLogin(input: z.infer<typeof googleLoginSchema>) {
     }
   }
   if (!user.isActive || !user.emailVerifiedAt) throw AppError.unauthorized('Invalid credentials');
-  const role = (user.roleId as unknown as { code: string }).code;
-  if (!input.invitationToken && role === 'user') user = await ensurePersonalWorkspace(user);
   return { user, ...tokensForUser(user, input.remember === true) };
 }

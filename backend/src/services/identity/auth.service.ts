@@ -4,7 +4,6 @@ import { HydratedDocument } from 'mongoose';
 import { env } from '../../config/env';
 import { AppError } from '../../errors/AppError';
 import { User, UserModel } from '../../models/user.model';
-import { OrganizationModel } from '../../models/organization.model';
 import { Role } from '../../models/role.model';
 import { startEmailVerification, completeEmailVerification } from './emailVerification.service';
 import { AccessTokenPayload } from '../../middlewares/auth.middleware';
@@ -17,30 +16,6 @@ function roleCodeOf(user: { roleId: unknown }) {
     throw AppError.internal('User role reference is invalid or unpopulated');
   }
   return role.code as AccessTokenPayload['role'];
-}
-
-export async function ensurePersonalWorkspace(
-  user: HydratedDocument<User>,
-): Promise<HydratedDocument<User>> {
-  if (user.orgId || !user.hasCompletedOnboarding) return user;
-
-  const organization = await OrganizationModel.create({
-    name: `Không gian cá nhân của ${user.name}`,
-    isPersonal: true,
-  });
-  const updated = await UserModel.findOneAndUpdate(
-    { _id: user._id, orgId: null },
-    { $set: { orgId: organization._id } },
-    { new: true },
-  ).populate('roleId');
-
-  if (!updated) {
-    await OrganizationModel.deleteOne({ _id: organization._id });
-    const existing = await UserModel.findById(user._id).populate('roleId');
-    if (!existing) throw AppError.notFound('User not found');
-    return existing;
-  }
-  return updated;
 }
 
 const ACCESS_TOKEN_TTL = env.JWT_ACCESS_EXPIRES_IN as SignOptions['expiresIn'];
@@ -83,7 +58,7 @@ export async function register(input: RegisterInput) {
 }
 
 export async function login(input: LoginInput) {
-  let user = await UserModel.findOne({ email: input.email })
+  const user = await UserModel.findOne({ email: input.email })
     .select('+passwordHash')
     .populate('roleId');
   if (!user || !user.isActive) {
@@ -105,14 +80,6 @@ export async function login(input: LoginInput) {
       remember: input.remember,
       invitationToken: input.invitationToken,
     });
-  }
-  if (
-    !input.invitationToken &&
-    roleCodeOf(user) === 'user' &&
-    user.hasCompletedOnboarding &&
-    !user.orgId
-  ) {
-    user = (await ensurePersonalWorkspace(user)) as typeof user;
   }
 
   const tokens = signTokens(
@@ -138,21 +105,13 @@ export async function refresh(refreshToken: string, invitationToken?: string) {
     throw AppError.unauthorized('Invalid or expired refresh token');
   }
 
-  let user = await UserModel.findById(payload.sub).populate('roleId');
+  const user = await UserModel.findById(payload.sub).populate('roleId');
   if (!user || !user.isActive) {
     throw AppError.unauthorized('Invalid refresh token');
   }
   if (!user.emailVerifiedAt) throw AppError.unauthorized('Verify your email by signing in again');
 
   if (invitationToken) await getPendingInvitation(invitationToken, user.email);
-  if (
-    !invitationToken &&
-    roleCodeOf(user) === 'user' &&
-    user.hasCompletedOnboarding &&
-    !user.orgId
-  ) {
-    user = (await ensurePersonalWorkspace(user)) as typeof user;
-  }
 
   const tokens = signTokens(
     {
@@ -177,15 +136,11 @@ export async function completeOnboarding(userId: string) {
     throw AppError.unauthorized('User is inactive or no longer exists');
   }
 
-  if (roleCodeOf(user) === 'user' && !user.orgId) {
-    return ensurePersonalWorkspace(user);
-  }
   return user;
 }
 
 export async function verifyEmail(challengeId: string, code: string, invitationToken?: string) {
   const result = await completeEmailVerification(challengeId, code, invitationToken);
-  let user = result.user;
-  if (!invitationToken && roleCodeOf(user) === 'user') user = await ensurePersonalWorkspace(user);
+  const user = result.user;
   return { user, ...tokensForUser(user, result.remember), remember: result.remember };
 }

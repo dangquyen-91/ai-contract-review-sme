@@ -111,6 +111,48 @@ test('registration creates no user/session before OTP and verified users log in 
   ).toBe(409);
 });
 
+test('normal registration, onboarding, password login and refresh leave orgId unset', async () => {
+  const organizationsBefore = await OrganizationModel.countDocuments();
+  const flow = await register();
+  const verified = await verify(flow.challenge, flow.code);
+  expect(verified.status).toBe(200);
+  expect(verified.body.data.user.orgId).toBeNull();
+  const onboarding = await request(app)
+    .post('/api/v1/auth/onboarding/complete')
+    .set('Authorization', `Bearer ${verified.body.data.accessToken}`)
+    .send({});
+  expect(onboarding.status).toBe(200);
+  expect(onboarding.body.data.user).toMatchObject({ orgId: null, hasCompletedOnboarding: true });
+  const login = await request(app).post('/api/v1/auth/login').send({ email: flow.email, password });
+  expect(login.status).toBe(200);
+  expect(login.body.data.user.orgId).toBeNull();
+  const refreshed = await request(app)
+    .post('/api/v1/auth/refresh')
+    .send({ refreshToken: login.body.data.refreshToken });
+  expect(refreshed.status).toBe(200);
+  expect(refreshed.body.data.user.orgId).toBeNull();
+  // Verifying an older account that already completed onboarding must also stay organization-free.
+  const role = await getRoleByCode('user');
+  const old = await UserModel.create({
+    email: `old-${flow.email}`,
+    name: 'Existing personal user',
+    passwordHash: await bcrypt.hash(password, 10),
+    roleId: role._id,
+    hasCompletedOnboarding: true,
+  });
+  const challenge = await startEmailVerification({
+    email: old.email,
+    name: old.name,
+    passwordHash: old.passwordHash,
+    userId: old.id,
+  });
+  const existingVerified = await verify(challenge, lastCode());
+  expect(existingVerified.status).toBe(200);
+  expect(existingVerified.body.data.user.orgId).toBeNull();
+  expect((await UserModel.findOne({ email: flow.email })).orgId).toBeUndefined();
+  expect(await OrganizationModel.countDocuments()).toBe(organizationsBefore);
+});
+
 test('wrong codes are counted persistently and the fifth failure blocks even the correct code', async () => {
   const flow = await register();
   const wrong = flow.code === '000000' ? '111111' : '000000';
