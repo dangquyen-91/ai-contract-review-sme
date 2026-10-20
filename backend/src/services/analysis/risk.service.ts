@@ -1,0 +1,532 @@
+import { Types } from 'mongoose';
+import { AppError } from '../../errors/AppError';
+import { ClauseModel } from '../../models/clause.model';
+import { ContractModel } from '../../models/contract.model';
+import { ContractVersionModel, RISK_LEVELS } from '../../models/contractVersion.model';
+import { RiskFindingModel } from '../../models/riskFinding.model';
+import { RiskCitationModel } from '../../models/riskCitation.model';
+import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model';
+import { LegalSourceModel } from '../../models/legalSource.model';
+import {
+  detectContractRisks,
+  LegalExcerptInput,
+  LlmFinding,
+  LlmProposedRevision,
+} from './riskDetection.service';
+import { searchLegalChunks, LegalChunkMatch, verifyLegalBasis } from '../legal/legalRetrieval.service';
+import {
+  claimStage,
+  getCurrentVersion,
+  getCurrentVersionWithText,
+  setContractStatus,
+  settledStatus,
+} from '../contract/contractVersion.service';
+import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
+import { buildReviewContext } from '../contract/contractProfile.service';
+import { createRedactor, Redactor } from '../ai/redaction.service';
+import { ExtractedKeyTerm, extractKeyTerms } from './keyTermExtraction.service';
+import { evaluateLegalRules, resolveRuleCitations } from '../legal/legalRules.service';
+import { ReviewContext } from '../contract/contractProfile.service';
+import { logger } from '../../config/logger';
+
+const SEVERITY_RANK: Record<(typeof RISK_LEVELS)[number], number> = {
+  high: 3,
+  medium: 2,
+  low: 1,
+  none: 0,
+};
+
+const MISSING_CLAUSE_SEVERITY: (typeof RISK_LEVELS)[number] = 'medium';
+
+const LEGAL_EXCERPTS_PER_CLAUSE = 3;
+
+const MAX_LEGAL_EXCERPTS = 15;
+
+interface LegalExcerptMeta {
+  chunkId: string;
+  score: number;
+}
+
+interface PopulatedClauseType {
+  _id: Types.ObjectId;
+  code: string;
+  name: string;
+  description: string;
+}
+
+async function buildLegalExcerpts(
+  clauses: { text: string }[],
+  redactor: Redactor,
+  legalSourceCodes: string[],
+  signal?: AbortSignal,
+): Promise<{ excerpts: LegalExcerptInput[]; metaByNumber: Map<number, LegalExcerptMeta> }> {
+  const perClauseMatches = await searchLegalChunks(
+    clauses.map((c) => redactor.mask(c.text)),
+    LEGAL_EXCERPTS_PER_CLAUSE,
+    { legalSourceCodes, signal },
+  );
+
+  const candidates = perClauseMatches
+    .flatMap((matches) => matches.map((match, rank) => ({ match, rank })))
+    .sort((a, b) => a.rank - b.rank || b.match.score - a.match.score);
+
+  const matchByChunkId = new Map<string, LegalChunkMatch>();
+  for (const { match } of candidates) {
+    if (matchByChunkId.size >= MAX_LEGAL_EXCERPTS) break;
+    if (!matchByChunkId.has(match.chunkId)) matchByChunkId.set(match.chunkId, match);
+  }
+
+  const excerpts: LegalExcerptInput[] = [];
+  const metaByNumber = new Map<number, LegalExcerptMeta>();
+  let number = 1;
+  for (const match of matchByChunkId.values()) {
+    excerpts.push({
+      number,
+      citationLabel: match.citationLabel,
+      articleRef: match.articleRef,
+      text: match.chunkText,
+    });
+    metaByNumber.set(number, { chunkId: match.chunkId, score: match.score });
+    number++;
+  }
+
+  return { excerpts, metaByNumber };
+}
+
+async function extractKeyTermsSafely(
+  context: ReviewContext,
+  clauses: { index: number; text: string }[],
+  redactor: Redactor,
+  signal?: AbortSignal,
+): Promise<ExtractedKeyTerm[]> {
+  try {
+    return await extractKeyTerms(context, clauses, redactor, signal);
+  } catch (err) {
+    if (signal?.aborted) throw err;
+    logger.warn('Key term extraction failed, continuing without legal rule checks', {
+      profile: context.profileCode,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return [];
+  }
+}
+
+async function attachCitations<T extends { _id: unknown; toObject: () => Record<string, unknown> }>(
+  findings: T[],
+) {
+  const findingIds = findings.map((f) => f._id);
+  const citations = await RiskCitationModel.find({ riskFindingId: { $in: findingIds } });
+
+  const clauseIds = findings
+    .map((f) => (f.toObject() as { clauseId?: Types.ObjectId | null }).clauseId)
+    .filter((id): id is Types.ObjectId => Boolean(id));
+  const clauseDocs =
+    clauseIds.length > 0
+      ? await ClauseModel.find({ _id: { $in: clauseIds } }).select('index title startOffset endOffset')
+      : [];
+  const clauseById = new Map(
+    clauseDocs.map((c) => [
+      c._id.toString(),
+      { index: c.index, title: c.title, startOffset: c.startOffset, endOffset: c.endOffset },
+    ]),
+  );
+  const withClause = (f: T) => {
+    const obj = f.toObject() as { clauseId?: Types.ObjectId | null };
+    return { ...obj, clause: obj.clauseId ? (clauseById.get(obj.clauseId.toString()) ?? null) : null };
+  };
+
+  if (citations.length === 0) {
+    return findings.map((f) => ({ ...withClause(f), citations: [] }));
+  }
+
+  const chunkIds = [...new Set(citations.map((c) => c.legalKnowledgeChunkId.toString()))];
+  const chunks = await LegalKnowledgeChunkModel.find({ _id: { $in: chunkIds } });
+  const sourceIds = [...new Set(chunks.map((c) => c.legalSourceId.toString()))];
+  const sources = await LegalSourceModel.find({ _id: { $in: sourceIds } });
+
+  const chunkById = new Map(chunks.map((c) => [c._id.toString(), c]));
+  const sourceById = new Map(sources.map((s) => [s._id.toString(), s]));
+
+  const citationsByFindingId = new Map<string, Record<string, unknown>[]>();
+  for (const citation of citations) {
+    const chunk = chunkById.get(citation.legalKnowledgeChunkId.toString());
+    if (!chunk) continue;
+    const source = sourceById.get(chunk.legalSourceId.toString());
+
+    const key = citation.riskFindingId.toString();
+    const list = citationsByFindingId.get(key) ?? [];
+    list.push({
+      legalKnowledgeChunkId: chunk._id.toString(),
+      citationLabel: source?.citationLabel ?? 'Unknown',
+      sourceTitle: source?.title ?? 'Unknown',
+      articleRef: chunk.articleRef,
+      chunkText: chunk.chunkText,
+      relevanceScore: citation.relevanceScore,
+    });
+    citationsByFindingId.set(key, list);
+  }
+
+  return findings.map((f) => ({
+    ...withClause(f),
+    citations: citationsByFindingId.get((f._id as { toString(): string }).toString()) ?? [],
+  }));
+}
+
+export type RiskDetectionStage = 'retrieving_legal_sources' | 'analyzing_clauses' | 'saving_findings';
+
+const normalizeWhitespace = (value: string) => value.replace(/\s+/g, ' ').trim();
+
+// The LLM must quote the sentence to replace verbatim; if it did not (or omitted it), fall back
+// to the whole clause so the original/revised diff stays truthful.
+function resolveProposedRevision(
+  revision: LlmProposedRevision | undefined,
+  clauseText?: string,
+) {
+  if (!revision) return undefined;
+  const quoted = revision.originalText?.trim();
+  let originalText: string | undefined;
+  if (clauseText) {
+    originalText =
+      quoted && normalizeWhitespace(clauseText).includes(normalizeWhitespace(quoted))
+        ? quoted
+        : clauseText;
+  }
+  return { originalText, revisedText: revision.revisedText.trim(), reason: revision.reason };
+}
+
+function sortFindings<T extends { severity: (typeof RISK_LEVELS)[number]; createdAt?: Date }>(
+  findings: T[],
+) {
+  return [...findings].sort(
+    (a, b) =>
+      SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] ||
+      (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0),
+  );
+}
+
+export async function detectRisks(
+  orgId: string,
+  contractId: string,
+  analysisFocus?: string,
+  onProgress?: (stage: RiskDetectionStage) => void,
+  signal?: AbortSignal,
+) {
+  const contract = await ContractModel.findOne({ _id: contractId, orgId });
+  if (!contract) {
+    throw AppError.notFound('Contract not found');
+  }
+
+  const currentVersion = await getCurrentVersionWithText(contractId);
+  if (currentVersion.segmentationStatus !== 'completed') {
+    throw AppError.badRequest('Contract clauses have not been segmented yet');
+  }
+  const reviewContext = await buildReviewContext(contract);
+  const redactor = createRedactor(currentVersion.extractedText ?? '', reviewContext.redactionPolicy);
+
+  // Atomically claim the run so two concurrent requests cannot both rewrite the findings.
+  const version = await claimStage(currentVersion._id, 'riskDetection', {
+    requireSegmented: true,
+    set: analysisFocus ? { analysisFocus } : {},
+  });
+  if (!version) {
+    throw AppError.conflict('Risk detection is already running or clauses are being re-segmented');
+  }
+  await setContractStatus(contractId, orgId, 'processing');
+
+  try {
+    const clauses = await ClauseModel.find({ contractVersionId: version._id })
+      .sort({ index: 1 })
+      .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
+    if (clauses.length === 0) {
+      throw AppError.badRequest('Contract has no clauses to analyze');
+    }
+
+    const presentTaxonomyIds = new Set(clauses.map((c) => c.clauseTypeId._id.toString()));
+    const mandatoryTaxonomy = await getTaxonomyByCodes(reviewContext.mandatoryClauses);
+    const missingTaxonomy = mandatoryTaxonomy.filter(
+      (t) => !presentTaxonomyIds.has(t._id.toString()),
+    );
+    const missingByCode = new Map<string, (typeof missingTaxonomy)[number]>(
+      missingTaxonomy.map((t) => [t.code, t]),
+    );
+
+    onProgress?.('retrieving_legal_sources');
+    const [{ excerpts, metaByNumber }, keyTerms] = await Promise.all([
+      buildLegalExcerpts(clauses, redactor, reviewContext.legalSourceCodes, signal),
+      extractKeyTermsSafely(
+        reviewContext,
+        clauses.map((c) => ({ index: c.index, text: c.text })),
+        redactor,
+        signal,
+      ),
+    ]);
+    const ruleFindings = evaluateLegalRules(reviewContext, keyTerms);
+    const ruleChunkIds = await resolveRuleCitations(ruleFindings);
+
+    signal?.throwIfAborted();
+    onProgress?.('analyzing_clauses');
+    const { overallAssessment, findings: llmFindings, ruleRevisions } = await detectContractRisks(
+      reviewContext,
+      clauses.map((c) => ({ index: c.index, category: c.clauseTypeId.code, text: c.text })),
+      excerpts,
+      missingTaxonomy.map((t) => ({ code: t.code, name: t.name, description: t.description })),
+      ruleFindings.map((r) => ({ ruleCode: r.rule.code, clauseIndex: r.clauseIndex, title: r.title, problem: r.problem })),
+      version.analysisFocus ?? undefined,
+      redactor,
+      signal,
+    );
+
+    const clauseByIndex = new Map(clauses.map((c) => [c.index, c]));
+
+    const basisCounts = llmFindings.map((f) => f.legalBasis.length);
+    const verifiedBasis = await verifyLegalBasis(
+      llmFindings.flatMap((f) =>
+        f.legalBasis.map((b) => ({
+          text: b.text,
+          chunkIds: [
+            ...new Set(
+              b.citedExcerptNumbers
+                .map((n) => metaByNumber.get(n)?.chunkId)
+                .filter((id): id is string => Boolean(id)),
+            ),
+          ],
+        })),
+      ),
+    );
+    const legalBasisByFinding = new Map<LlmFinding, typeof verifiedBasis>();
+    let basisCursor = 0;
+    llmFindings.forEach((f, i) => {
+      legalBasisByFinding.set(f, verifiedBasis.slice(basisCursor, basisCursor + basisCounts[i]));
+      basisCursor += basisCounts[i];
+    });
+    const toLegalBasis = (finding: LlmFinding) => legalBasisByFinding.get(finding) ?? [];
+
+    const pending: { doc: Record<string, unknown>; chunkIds: string[] }[] = [];
+    const coveredMissingCodes = new Set<string>();
+
+    const revisionByRule = new Map(ruleRevisions.map((r) => [r.ruleCode, r]));
+    for (const finding of ruleFindings) {
+      const clause = finding.clauseIndex === undefined ? undefined : clauseByIndex.get(finding.clauseIndex);
+      const resolvedCitations = ruleChunkIds.get(finding.rule.code);
+      const chunkIds = resolvedCitations?.chunkIds ?? [];
+      pending.push({
+        doc: {
+          contractVersionId: version._id,
+          orgId,
+          clauseId: clause?._id ?? null,
+          findingType: 'clause_risk' as const,
+          severity: finding.severity,
+          title: finding.title,
+          problem: finding.problem,
+          consequences: finding.consequences,
+          recommendations: finding.recommendations,
+          legalBasis: [
+            {
+              text: finding.rule.legalBasis,
+              legalKnowledgeChunkIds: chunkIds,
+              verification: resolvedCitations?.verification ?? 'not_in_knowledge_base',
+            },
+          ],
+          proposedRevision: resolveProposedRevision(revisionByRule.get(finding.rule.code), clause?.text),
+          detectedBy: 'rule' as const,
+          ruleCode: finding.rule.code,
+          ruleVersion: finding.rule.version,
+        },
+        chunkIds,
+      });
+    }
+
+    for (const finding of llmFindings) {
+      const base = {
+        contractVersionId: version._id,
+        orgId,
+        severity: finding.severity,
+        title: finding.title,
+        problem: finding.problem,
+        consequences: finding.consequences,
+        recommendations: finding.recommendations,
+      };
+      const legalBasis = toLegalBasis(finding);
+      const chunkIds = [...new Set(legalBasis.flatMap((b) => b.legalKnowledgeChunkIds))];
+
+      if (finding.missingClauseCode) {
+        const taxonomy = missingByCode.get(finding.missingClauseCode);
+        if (!taxonomy || coveredMissingCodes.has(taxonomy.code)) continue;
+        coveredMissingCodes.add(taxonomy.code);
+        pending.push({
+          doc: {
+            ...base,
+            expectedClauseTypeId: taxonomy._id,
+            findingType: 'missing_clause' as const,
+            legalBasis,
+            proposedRevision: resolveProposedRevision(finding.proposedRevision),
+            detectedBy: 'hybrid' as const,
+          },
+          chunkIds,
+        });
+        continue;
+      }
+
+      const clause = finding.clauseIndex === undefined ? undefined : clauseByIndex.get(finding.clauseIndex);
+      if (!clause) continue; // LLM referenced a clause index that doesn't exist; skip it
+      pending.push({
+        doc: {
+          ...base,
+          clauseId: clause._id,
+          findingType: 'clause_risk' as const,
+          legalBasis,
+          proposedRevision: resolveProposedRevision(finding.proposedRevision, clause.text),
+          detectedBy: 'llm' as const,
+        },
+        chunkIds,
+      });
+    }
+
+    // Fallback: a missing clause the LLM skipped is still reported, with a generic template.
+    for (const taxonomy of missingTaxonomy) {
+      if (coveredMissingCodes.has(taxonomy.code)) continue;
+      pending.push({
+        doc: {
+          contractVersionId: version._id,
+          orgId,
+          expectedClauseTypeId: taxonomy._id,
+          findingType: 'missing_clause' as const,
+          severity: MISSING_CLAUSE_SEVERITY,
+          title: `Thiếu điều khoản ${taxonomy.name}`,
+          problem: [
+            `Hợp đồng loại này thường cần có điều khoản về "${taxonomy.name}" (${taxonomy.description}), nhưng không tìm thấy điều khoản nào thuộc loại này trong hợp đồng.`,
+          ],
+          detectedBy: 'rule' as const,
+        },
+        chunkIds: [],
+      });
+    }
+
+    let overallRiskLevel: (typeof RISK_LEVELS)[number] = 'none';
+    for (const { doc } of pending) {
+      const severity = doc.severity as (typeof RISK_LEVELS)[number];
+      if (SEVERITY_RANK[severity] > SEVERITY_RANK[overallRiskLevel]) overallRiskLevel = severity;
+    }
+
+    // Insert the new findings before removing the old ones, so a failure leaves the old result intact.
+    onProgress?.('saving_findings');
+    const oldFindingIds = await RiskFindingModel.find({
+      contractVersionId: version._id,
+    }).distinct('_id');
+
+    const inserted = pending.length > 0 ? await RiskFindingModel.insertMany(pending.map((p) => p.doc)) : [];
+
+    const scoreByChunkId = new Map<string, number>();
+    for (const meta of metaByNumber.values()) scoreByChunkId.set(meta.chunkId, meta.score);
+    for (const { chunkIds } of ruleChunkIds.values()) for (const id of chunkIds) scoreByChunkId.set(id, 1);
+
+    const citationDocs = inserted.flatMap((finding, i) =>
+      pending[i].chunkIds.map((chunkId) => ({
+        riskFindingId: finding._id,
+        legalKnowledgeChunkId: chunkId,
+        relevanceScore: scoreByChunkId.get(chunkId) ?? 1,
+      })),
+    );
+    if (citationDocs.length > 0) {
+      await RiskCitationModel.insertMany(citationDocs);
+    }
+
+    await RiskCitationModel.deleteMany({ riskFindingId: { $in: oldFindingIds } });
+    await RiskFindingModel.deleteMany({ _id: { $in: oldFindingIds } });
+
+    // Atomic update: summary generation writes to the same version document concurrently.
+    await ContractVersionModel.updateOne(
+      { _id: version._id },
+      {
+        $set: {
+          overallRiskLevel,
+          overallAssessment,
+          riskDetectionStatus: 'completed',
+          keyTerms: keyTerms.map((t) => ({
+            key: t.key,
+            numberValue: t.numberValue,
+            booleanValue: t.booleanValue,
+            clauseId: t.clauseIndex === undefined ? undefined : clauseByIndex.get(t.clauseIndex)?._id,
+            quote: t.quote,
+          })),
+          keyTermsExtractedAt: new Date(),
+        },
+        $unset: { riskDetectionError: '' },
+      },
+    );
+    await setContractStatus(contractId, orgId, 'reviewed');
+  } catch (err) {
+    await ContractVersionModel.updateOne(
+      { _id: version._id },
+      {
+        $set: {
+          riskDetectionStatus: 'failed',
+          riskDetectionError: err instanceof Error ? err.message : 'Risk detection failed',
+        },
+      },
+    );
+    await setContractStatus(contractId, orgId, settledStatus(contract.status));
+    throw err;
+  }
+
+  const savedFindings = await RiskFindingModel.find({ contractVersionId: version._id }).populate(
+    'expectedClauseTypeId',
+  );
+  return attachCitations(sortFindings(savedFindings));
+}
+
+export async function listRiskFindings(orgId: string, contractId: string) {
+  const contract = await ContractModel.findOne({ _id: contractId, orgId });
+  if (!contract) {
+    throw AppError.notFound('Contract not found');
+  }
+  const version = await getCurrentVersion(contractId);
+  const findings = await RiskFindingModel.find({ contractVersionId: version._id }).populate(
+    'expectedClauseTypeId',
+  );
+  return attachCitations(sortFindings(findings));
+}
+
+async function loadFindingOfCurrentVersion(orgId: string, contractId: string, findingId: string) {
+  const contract = await ContractModel.findOne({ _id: contractId, orgId });
+  if (!contract) {
+    throw AppError.notFound('Contract not found');
+  }
+  const version = await getCurrentVersion(contractId);
+  const finding = await RiskFindingModel.findOne({
+    _id: findingId,
+    orgId,
+    contractVersionId: version._id,
+  }).populate('expectedClauseTypeId');
+  if (!finding) {
+    throw AppError.notFound('Risk finding not found');
+  }
+  return finding;
+}
+
+export async function updateProposedRevision(
+  orgId: string,
+  contractId: string,
+  findingId: string,
+  input: { revisedText?: string; reason?: string },
+) {
+  const finding = await loadFindingOfCurrentVersion(orgId, contractId, findingId);
+  if (!finding.proposedRevision) {
+    throw AppError.notFound('This finding has no proposed revision');
+  }
+
+  if (input.revisedText !== undefined) finding.proposedRevision.revisedText = input.revisedText;
+  if (input.reason !== undefined) finding.proposedRevision.reason = input.reason;
+  finding.proposedRevision.isEdited = true;
+  await finding.save();
+
+  return (await attachCitations([finding]))[0];
+}
+
+export async function removeProposedRevision(orgId: string, contractId: string, findingId: string) {
+  const finding = await loadFindingOfCurrentVersion(orgId, contractId, findingId);
+  finding.proposedRevision = undefined;
+  await finding.save();
+
+  return (await attachCitations([finding]))[0];
+}

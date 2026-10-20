@@ -1,0 +1,286 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "./ui/shadcn.css";
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@theme {
+  --text-ui-caption: 0.75rem;
+  --text-ui-meta: 0.8125rem;
+  --text-ui: 0.875rem;
+  --text-ui-document: 1rem;
+  --text-ui-section: 1rem;
+  --text-ui-card: 1.125rem;
+  --text-ui-dialog: 1.25rem;
+  --text-ui-title: 2rem;
+}
+@media (max-width: 580px) {
+  :root { --text-ui-title: 1.75rem; }
+}
+
+/* Migrated keyframes */
+@keyframes spin {
+ to {
+  transform: rotate(360deg);
+ }
+}
+
+@keyframes auth-enter {
+ from {
+  opacity: 0;
+  transform: translateY(10px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes scan {
+ 0% {
+  left: -22%;
+  opacity: 0;
+ }
+ 20% {
+  opacity: 1;
+ }
+ 100% {
+  left: 108%;
+  opacity: 0;
+ }
+}
+
+@keyframes layerIn {
+ from {
+  opacity: 0;
+  transform: translateY(9px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes shimmer {
+ to {
+  background-position: -200% 0;
+ }
+}
+
+@keyframes content-swap {
+ from {
+  opacity: .3;
+  transform: translateY(6px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes card-swap {
+ from {
+  opacity: 0;
+  transform: translateY(12px) scale(.985);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+ }
+}
+
+@keyframes document-swap {
+ from {
+  opacity: .45;
+  transform: translateY(4px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes finding-swap {
+ from {
+  opacity: 0;
+  transform: translateY(5px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes account-dropdown-in {
+ from {
+  opacity: 0;
+  transform: translateY(-5px) scale(.98);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+ }
+}
+
+@keyframes ls-stage-bounce {
+ 0%, 34%, 100% {
+  transform: translateY(0);
+ }
+ 8% {
+  transform: translateY(-11px);
+ }
+ 16% {
+  transform: translateY(0);
+ }
+ 23% {
+  transform: translateY(-4px);
+ }
+}
+
+@keyframes ls-scan {
+ 0% {
+  transform: translateY(-100%);
+  opacity: 0;
+ }
+ 15%, 70% {
+  opacity: 1;
+ }
+ 100% {
+  transform: translateY(0);
+  opacity: 0;
+ }
+}
+
+@keyframes ls-clause-in {
+ from {
+  opacity: .35;
+  transform: translateY(4px);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0);
+ }
+}
+
+@keyframes ls-highlight {
+ from {
+  background-color: transparent;
+  border-color: transparent;
+ }
+ to {
+  background-color: #ffedc5;
+  border-color: #0875ff;
+ }
+}
+
+@keyframes ls-connect {
+ from {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+ }
+ to {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+ }
+}
+
+@keyframes ls-note-in {
+ from {
+  opacity: 0;
+  transform: translateY(12px) scale(.98);
+ }
+ to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+ }
+}
+
+@keyframes ls-paper-hop {
+ 0%, 34%, 100% {
+  transform: rotate(-5deg) translateY(0);
+ }
+ 8% {
+  transform: rotate(-5deg) translateY(-10px);
+ }
+ 15% {
+  transform: rotate(-5deg) translateY(0);
+ }
+ 23% {
+  transform: rotate(-5deg) translateY(-4px);
+ }
+}
+
+@keyframes ls-note-hop {
+ 0%, 28%, 100% {
+  translate: 0 0;
+ }
+ 9% {
+  translate: 0 -6px;
+ }
+ 17% {
+  translate: 0 0;
+ }
+ 22% {
+  translate: 0 -2px;
+ }
+}
+
+@keyframes price-in {
+  from {
+    opacity: .3;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes growBar {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes revealDonut {
+  from {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes reveal { from { opacity: .2; } to { opacity: 1; } }

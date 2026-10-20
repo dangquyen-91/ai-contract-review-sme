@@ -1,0 +1,79 @@
+.page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  color: #14213d;
+  background: #f8fafc;
+  font-family: var(--font-geist-sans, Arial), sans-serif;
+}
+
+.header, .footer {
+  width: min(100% - 4rem, 76rem);
+  margin-inline: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.header { min-height: 6.5rem; border-bottom: 1px solid #dce4ee; }
+.header > span { color: #607087; font-size: .8125rem; }
+.header a { border-radius: .5rem; }
+.header a:focus-visible, .secondary:focus-visible { outline: 3px solid #2864dc; outline-offset: 5px; }
+.main {
+  width: min(100% - 4rem, 68rem);
+  margin: auto;
+  padding-block: 5rem 6rem;
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  align-items: center;
+  gap: 4rem;
+}
+
+.copy { position: relative; z-index: 1; }
+.eyebrow { display: flex; align-items: center; gap: .625rem; color: #2864dc; font-size: .8125rem; font-weight: 600; }
+.eyebrow > span { width: .45rem; height: .45rem; background: currentColor; border-radius: 50%; }
+.copy h1 { margin: 1.5rem 0; font-size: clamp(2.25rem, 3.6vw, 3.25rem); font-weight: 600; line-height: 1.16; letter-spacing: -.045em; white-space: pre-line; text-wrap: balance; }
+.description { max-width: 28rem; color: #607087; font-size: 1rem; line-height: 1.8; text-wrap: pretty; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1.5rem; margin-top: 2rem; }
+.actions > button, .actions > a { transition: background-color 180ms, transform 180ms; }
+.actions > button:active, .actions > a:active { transform: translateY(1px); }
+.secondary { display: inline-flex; align-items: center; gap: .5rem; color: #315eac; font-size: .8125rem; font-weight: 600; text-decoration: none; }
+.secondary:hover { text-decoration: underline; text-underline-offset: 4px; }
+.secondary svg { width: 1rem; height: 1rem; }
+.note { margin-top: 2rem; padding-top: 1.25rem; border-top: 1px solid #dce4ee; max-width: 28rem; color: #607087; font-size: .75rem; line-height: 1.8; }
+.art { position: relative; display: grid; place-items: center; min-height: 27rem; background-image: radial-gradient(#dce4ee 1px, transparent 1px); background-size: 18px 18px; }
+.code { position: absolute; top: -.5rem; font-family: var(--font-geist-mono, monospace); font-size: clamp(7rem, 13vw, 11rem); font-weight: 500; line-height: 1; letter-spacing: -.09em; color: #e1e9f5; }
+.document { position: relative; width: min(75%, 17rem); margin-top: 4rem; padding: 1.5rem; border: 1px solid #dce4ee; border-radius: .75rem; background: #fff; box-shadow: 0 24px 48px -24px #315eac40; transform: rotate(-6deg); }
+.documentTop { display: flex; align-items: center; gap: .625rem; color: #607087; }
+.documentTop svg { color: #2864dc; width: 1.5rem; }
+.documentTop span { font-size: .625rem; letter-spacing: .08em; font-family: var(--font-geist-mono, monospace); }
+.lines { display: grid; gap: .625rem; margin-block: 1.5rem; }
+.lines i { height: .375rem; background: #edf1f6; border-radius: 2px; }
+.lines i:last-child { width: 65%; }
+.documentState { padding: 1.25rem .5rem; display: grid; justify-items: center; gap: .75rem; border: 1px dashed #bed0ed; border-radius: .5rem; background: #f5f8fc; color: #315eac; font-size: .6875rem; }
+.documentState svg { width: 2rem; height: 2rem; }
+.artCaption { align-self: end; margin-top: 2rem; font-size: .625rem; letter-spacing: .03em; color: #607087; }
+.footer { min-height: 4.5rem; border-top: 1px solid #dce4ee; color: #607087; font-size: .75rem; }
+.footer > span:first-child { color: #315eac; font-weight: 600; }
+
+@media (max-width: 760px) {
+  .header, .footer, .main { width: calc(100% - 2.5rem); }
+  .header { min-height: 5.5rem; }
+  .header > span { display: none; }
+  .main { grid-template-columns: 1fr; gap: 2.5rem; padding-block: 3rem; }
+  .art { grid-row: 1; min-height: 16rem; }
+  .code { font-size: 8rem; }
+  .document { width: 11.5rem; padding: 1rem; margin-top: 2rem; }
+  .documentTop span { font-size: .5rem; }
+  .lines { margin-block: .75rem; gap: .375rem; }
+  .documentState { padding: .75rem .25rem; font-size: .5625rem; }
+  .documentState svg { width: 1.5rem; height: 1.5rem; }
+  .artCaption { margin-top: 1.5rem; }
+  .copy h1 { font-size: 2.25rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .actions > button, .actions > a { transition: none; }
+  .actions > button:active, .actions > a:active { transform: none; }
+}

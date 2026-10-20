@@ -1,0 +1,2948 @@
+openapi: 3.0.0
+info:
+  title: AI Contract Review Assistant API
+  version: 0.1.0
+  description: REST API for the FPT Capstone AI Contract Review Assistant
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Organizations
+  - name: Invitations
+  - name: Subscriptions
+  - name: Payments
+  - name: Contracts
+  - name: ContractProfiles
+  - name: Reviews
+  - name: LegalKB
+
+components:
+  parameters:
+    PaymentOrganizationId:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+      description: Organization or personal workspace ID owned by the caller.
+    PaymentOrderCode:
+      in: path
+      name: orderCode
+      required: true
+      schema: { type: integer, minimum: 1 }
+    IdempotencyKey:
+      in: header
+      name: Idempotency-Key
+      required: true
+      description: Reuse for retries of the same request; use a new key for a new review, chat message or purchase.
+      schema: { type: string, minLength: 8, maxLength: 128, pattern: '^[a-zA-Z0-9_-]+$' }
+      example: review-request-0001
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Payment:
+      type: object
+      properties:
+        orderCode: { type: integer }
+        orgId: { type: string }
+        planCode: { type: string, enum: [personal_pro, business_starter, business_pro] }
+        action: { type: string, enum: [purchase, renew, upgrade, downgrade] }
+        amount: { type: integer, description: Full plan price in VND determined by the server }
+        currency: { type: string, enum: [VND] }
+        status: { type: string, enum: [creating, pending, paid, cancelled, expired, failed] }
+        checkoutUrl: { type: string, nullable: true }
+        qrCode: { type: string, nullable: true }
+        expiresAt: { type: string, format: date-time }
+        paidAt: { type: string, format: date-time, nullable: true }
+        fulfilledAt: { type: string, format: date-time, nullable: true, description: Non-null only after the subscription has been activated }
+        fulfillmentError: { type: string, nullable: true }
+        providerError: { type: string, nullable: true }
+    SubscriptionPlan:
+      type: object
+      properties:
+        code: { type: string, enum: [personal_free, personal_pro, business_starter, business_pro] }
+        name: { type: string }
+        audience: { type: string, enum: [personal, business] }
+        price: { type: integer, description: Full monthly price in VND }
+        currency: { type: string, enum: [VND] }
+        analysisLimit: { type: integer }
+        chatLimit: { type: integer }
+        memberLimit: { type: integer, description: Includes Owner }
+    UsageCounter:
+      type: object
+      properties:
+        used: { type: integer }
+        reserved: { type: integer }
+        limit: { type: integer }
+        available: { type: integer }
+    SubscriptionState:
+      type: object
+      properties:
+        orgId: { type: string }
+        status: { type: string, enum: [active, expired, unsubscribed] }
+        plan:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/SubscriptionPlan'
+        periodId: { type: string, nullable: true }
+        startsAt: { type: string, format: date-time, nullable: true }
+        endsAt: { type: string, format: date-time, nullable: true }
+        scheduledDowngrade:
+          type: object
+          nullable: true
+          properties:
+            planCode: { type: string }
+            effectiveAt: { type: string, format: date-time }
+        futurePeriods:
+          type: array
+          items: { type: object }
+        members:
+          type: object
+          properties:
+            count: { type: integer }
+            pending: { type: integer, description: Unexpired invitations reserving seats }
+            limit: { type: integer }
+            available: { type: integer, description: Limit minus members and pending invitations }
+        analysis:
+          $ref: '#/components/schemas/UsageCounter'
+        chat:
+          $ref: '#/components/schemas/UsageCounter'
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+        details:
+          type: object
+
+    Organization:
+      type: object
+      required: [id, name, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        taxCode:
+          type: string
+          nullable: true
+        address:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateOrganizationRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+        taxCode:
+          type: string
+          maxLength: 50
+        address:
+          type: string
+          maxLength: 500
+
+    UpdateOrganizationRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 200
+        taxCode:
+          type: string
+          nullable: true
+          maxLength: 50
+        address:
+          type: string
+          nullable: true
+          maxLength: 500
+
+    RegisterRequest:
+      type: object
+      required: [name, email, password]
+      properties:
+        invitationToken:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Optional token from invitation email. Register, then explicitly accept before onboarding.
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 12
+          description: Maximum 72 UTF-8 bytes.
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        invitationToken:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Validates the invitation email and skips automatic personal workspace creation.
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+        remember:
+          type: boolean
+          description: Keep the session across browser restarts with a longer refresh token lifetime.
+
+    EmailVerificationChallenge:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            verificationRequired:
+              type: boolean
+              example: true
+            challengeId:
+              type: string
+              description: Opaque challenge identifier; keep it for verification and resend.
+            email:
+              type: string
+              format: email
+            expiresAt:
+              type: string
+              format: date-time
+            resendAfterSeconds:
+              type: integer
+              example: 60
+
+    VerifyEmailRequest:
+      type: object
+      required: [challengeId, code]
+      properties:
+        challengeId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+          example: '012345'
+        invitationToken:
+          type: string
+          description: Required if register/login included an invitation token. Must be the same token.
+          pattern: '^[a-f0-9]{64}$'
+
+    ResendVerificationRequest:
+      type: object
+      required: [challengeId]
+      properties:
+        challengeId:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        invitationToken:
+          type: string
+          description: Preserve the token from the original invitation flow.
+          pattern: '^[a-f0-9]{64}$'
+
+    AuthSessionResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/AuthUser'
+            accessToken:
+              type: string
+            refreshToken:
+              type: string
+            remember:
+              type: boolean
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        invitationToken:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: Preserve invitation flow and skip automatic personal workspace creation.
+        refreshToken:
+          type: string
+
+    AuthTokens:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+
+    AuthUser:
+      type: object
+      properties:
+        emailVerified:
+          type: boolean
+        id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [administrator, manager, staff, owner, reviewer, user]
+        orgId:
+          type: string
+          nullable: true
+        hasCompletedOnboarding:
+          type: boolean
+
+    Contract:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          description: Contract profile code (see GET /contract-profiles), e.g. sales, service, office_lease, labor, housing_purchase, life_insurance
+        ourParty:
+          type: string
+          description: Party code the user represents in this contract (one of the profile's parties); absent if not specified
+        industry:
+          type: string
+          description: Industry code of the user's business (see GET /contract-profiles); absent if not specified
+        status:
+          type: string
+        currentVersion:
+          $ref: '#/components/schemas/ContractVersion'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ContractVersion:
+      type: object
+      description: All per-upload state for a contract (currently only version 1 is ever created - no re-upload/version-compare UI yet).
+      properties:
+        id:
+          type: string
+        contractId:
+          type: string
+        versionNumber:
+          type: integer
+        fileName:
+          type: string
+          description: Original file name. The file itself is stored privately - get a short-lived download link from GET /contracts/{id}/file
+        mimeType:
+          type: string
+        extractionStatus:
+          type: string
+          enum: [pending, processing, completed, failed, unsupported]
+          description: Status of text extraction (OCR/parsing) from the uploaded file. Extraction runs in a background worker; "processing" means the job is queued or running.
+        extractionError:
+          type: string
+          description: Error message when extractionStatus is "failed"
+        extractionStartedAt:
+          type: string
+          format: date-time
+        extractionProgress:
+          type: object
+          description: Present only while extraction is running
+          properties:
+            processedPages:
+              type: integer
+            totalPages:
+              type: integer
+        redactionSummary:
+          type: object
+          description: Personal data found in the extracted text under the contract profile's redactionPolicy; these values are replaced by placeholders before any AI call
+          properties:
+            total:
+              type: integer
+            counts:
+              type: object
+              additionalProperties:
+                type: integer
+              example: { person_name: 2, national_id: 1, phone: 2, bank_account: 1 }
+        extractionQuality:
+          type: object
+          description: How the text was extracted and how reliable it is. PDFs are read page by page - pages with a text layer use it, scanned pages are OCRed (Vietnamese + English).
+          properties:
+            method:
+              type: string
+              enum: [text_layer, ocr, mixed, docx]
+              description: mixed = some PDF pages had a text layer and the rest were OCRed
+            pageCount:
+              type: integer
+              description: Total pages in the file (absent for DOCX)
+            ocrPageCount:
+              type: integer
+            ocrConfidence:
+              type: integer
+              minimum: 0
+              maximum: 100
+              description: Average Tesseract confidence over OCRed pages, weighted by text length; absent when nothing was OCRed
+            lowConfidence:
+              type: boolean
+              description: True when OCR confidence is below 70 - the scan is likely blurry and the analysis may contain reading errors
+            truncatedAtPage:
+              type: integer
+              description: Set when the PDF has more than 100 pages; only the first 100 pages were extracted
+        segmentationStatus:
+          type: string
+          enum: [pending, processing, completed, failed]
+          description: Status of clause segmentation/classification (see /contracts/{id}/clauses)
+        segmentationError:
+          type: string
+          description: Error message when segmentationStatus is "failed"
+        segmentationStartedAt:
+          type: string
+          format: date-time
+          description: When the last segmentation run started; a "processing" run older than 10 minutes is treated as crashed and can be re-run
+        riskDetectionStatus:
+          type: string
+          enum: [pending, processing, completed, failed]
+          description: Status of risk detection (see /contracts/{id}/risks)
+        riskDetectionError:
+          type: string
+          description: Error message when riskDetectionStatus is "failed"
+        riskDetectionStartedAt:
+          type: string
+          format: date-time
+          description: When the last risk detection run started (same 10-minute stale rule as segmentation)
+        overallAssessment:
+          type: array
+          items:
+            type: string
+          description: '"Đánh giá tổng quan" bullets (Vietnamese), written together with the findings by a review (POST /contracts/{id}/reviews)'
+        overallRiskLevel:
+          type: string
+          enum: [high, medium, low, none]
+        analysisFocus:
+          type: string
+          description: Free-text analysis direction the user last requested (e.g. "phân tích theo hướng có lợi cho bên A"), sent with POST /contracts/{id}/reviews. Also used as context by chat.
+        summaryPoints:
+          type: array
+          items:
+            type: string
+          description: '"Tóm tắt nội dung" bullets - plain-language Vietnamese overview of the whole contract, generated by the LLM during a complete analysis'
+        summaryStatus:
+          type: string
+          enum: [pending, processing, completed, failed]
+          description: Status of whole-contract summarization
+        summaryError:
+          type: string
+          description: Error message when summaryStatus is "failed"
+        summaryStartedAt:
+          type: string
+          format: date-time
+          description: When the last summary run started (same 10-minute stale rule as segmentation)
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Review:
+      type: object
+      description: One review run of a contract (clause segmentation, then summary and risk detection in parallel), executed by a background worker. Results are written to the contract, and a snapshot is kept on the review so earlier runs stay visible.
+      properties:
+        _id:
+          type: string
+        contractId:
+          type: string
+        versionId:
+          type: string
+        requestedBy:
+          type: string
+        idempotencyKey:
+          type: string
+          description: Key the review was started with; reusing it returns this review
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        currentStage:
+          type: string
+          enum: [waiting_for_extraction, segmentation, summary, risk_detection]
+          description: Present while running. waiting_for_extraction means the upload is still being OCRed.
+        stageDetail:
+          type: string
+          description: Extra progress text, e.g. "7/12 pages" while waiting for extraction, or retrieving_legal_sources / analyzing_clauses / saving_findings during risk detection
+        stages:
+          type: object
+          description: A retry re-runs only the stages that are not completed
+          properties:
+            segmentation:
+              type: string
+              enum: [pending, running, completed, failed]
+            summary:
+              type: string
+              enum: [pending, running, completed, failed]
+            riskDetection:
+              type: string
+              enum: [pending, running, completed, failed]
+        analysisFocus:
+          type: string
+        error:
+          type: string
+          description: Last error; set while a retry is pending or when the review failed
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        result:
+          type: object
+          description: Snapshot of the outcome, present when status is completed
+          properties:
+            overallRiskLevel:
+              type: string
+              enum: [high, medium, low, none]
+            overallAssessment:
+              type: array
+              items:
+                type: string
+            summaryPoints:
+              type: array
+              items:
+                type: string
+            clauseCount:
+              type: integer
+            findingCounts:
+              type: object
+              properties:
+                high:
+                  type: integer
+                medium:
+                  type: integer
+                low:
+                  type: integer
+            findings:
+              type: array
+              items:
+                type: object
+                properties:
+                  findingType:
+                    type: string
+                    enum: [clause_risk, missing_clause]
+                  severity:
+                    type: string
+                    enum: [high, medium, low]
+                  title:
+                    type: string
+                  clauseIndex:
+                    type: integer
+                  clauseTitle:
+                    type: string
+                  detectedBy:
+                    type: string
+                    enum: [rule, llm, hybrid]
+                  ruleCode:
+                    type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ClauseTypeTaxonomy:
+      type: object
+      description: A clause category in the shared taxonomy, seeded on server boot. Which categories a contract is classified into, and which are mandatory, is decided by its contract profile.
+      properties:
+        id:
+          type: string
+        code:
+          type: string
+          enum:
+            [
+              subject_scope,
+              payment,
+              deposit,
+              term,
+              delivery_handover,
+              service_level,
+              warranty,
+              property_legal_status,
+              ownership_transfer,
+              maintenance_repair,
+              sublease_transfer,
+              probation,
+              wages,
+              working_time,
+              social_insurance,
+              insurance_benefits,
+              insurance_exclusions,
+              claims,
+              surrender_value,
+              confidentiality,
+              data_protection,
+              intellectual_property,
+              penalty,
+              indemnity,
+              liability,
+              renewal,
+              termination,
+              force_majeure,
+              dispute_resolution,
+              other,
+            ]
+        name:
+          type: string
+        description:
+          type: string
+
+    ContractProfile:
+      type: object
+      description: A contract type with its Vietnamese legal context. Decides how contracts of this type are classified and which clauses are mandatory.
+      properties:
+        code:
+          type: string
+          example: office_lease
+        aliases:
+          type: array
+          items:
+            type: string
+          description: Older codes still accepted as this profile (e.g. saas for service)
+        name:
+          type: string
+          example: Thuê văn phòng, mặt bằng
+        segment:
+          type: string
+          enum: [business, individual, both]
+        parties:
+          type: array
+          description: Valid values for Contract.ourParty
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                example: lessee
+              name:
+                type: string
+                example: Bên thuê
+        governingLaws:
+          type: array
+          items:
+            type: string
+          example: [Bộ luật Dân sự 2015, Luật Kinh doanh bất động sản 2023]
+        legalSources:
+          type: array
+          description: The governing laws as legal source codes. Risk detection only searches these sources for citations; when none of them is in the knowledge base yet it searches every source that is not repealed.
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                example: civil_code_2015
+              name:
+                type: string
+                example: Bộ luật Dân sự 2015
+              inKnowledgeBase:
+                type: boolean
+                description: A legal source with this code has been uploaded
+              searchable:
+                type: boolean
+                description: Uploaded, not repealed, and at least one chunk is embedded
+              ingestionStatus:
+                type: string
+                enum: [queued, running, paused, completed, failed]
+        redactionPolicy:
+          type: array
+          description: Kinds of personal data replaced by placeholders before any contract text is sent to the AI provider
+          items:
+            $ref: '#/components/schemas/SensitiveDataType'
+        mandatoryClauses:
+          type: array
+          description: Clause categories flagged as a "missing_clause" finding when absent
+          items:
+            $ref: '#/components/schemas/ClauseCategoryRef'
+        industries:
+          type: array
+          description: Every industry, with the extra checks and mandatory clauses this profile adds for it (empty when the profile has no rule for that industry)
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                example: fnb
+              name:
+                type: string
+                example: Ăn uống (F&B)
+              checks:
+                type: array
+                items:
+                  type: string
+              extraMandatoryClauses:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ClauseCategoryRef'
+
+    SensitiveDataType:
+      type: string
+      enum:
+        [
+          person_name,
+          national_id,
+          passport,
+          date_of_birth,
+          phone,
+          email,
+          bank_account,
+          personal_address,
+          tax_code,
+          land_certificate,
+        ]
+
+    ClauseCategoryRef:
+      type: object
+      properties:
+        code:
+          type: string
+        name:
+          type: string
+
+    Clause:
+      type: object
+      required: [index, text, startOffset, endOffset]
+      properties:
+        id:
+          type: string
+        contractVersionId:
+          type: string
+        index:
+          type: integer
+          description: Order of the clause within the contract
+        title:
+          type: string
+          description: 'Clause heading, if present in the contract (e.g. "Dieu 3: Thanh toan")'
+        text:
+          type: string
+          description: Verbatim clause text extracted from the contract
+        startOffset:
+          type: integer
+          description: Start position (inclusive) of this clause in the extracted text returned by GET /contracts/{id}/text. Clause text is always the exact slice text[startOffset, endOffset).
+        endOffset:
+          type: integer
+          description: End position (exclusive) of this clause in the extracted text
+        clauseTypeId:
+          $ref: '#/components/schemas/ClauseTypeTaxonomy'
+          description: Populated taxonomy entry for this clause's category
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ChatMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        contractVersionId:
+          type: string
+        userId:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    RiskFinding:
+      type: object
+      properties:
+        id:
+          type: string
+        contractVersionId:
+          type: string
+        clauseId:
+          type: string
+          nullable: true
+          description: Set when findingType is "clause_risk"; null for "missing_clause"
+        clause:
+          type: object
+          nullable: true
+          description: Position info of the clause this finding refers to (for highlighting in the document view); null for "missing_clause"
+          properties:
+            index:
+              type: integer
+            title:
+              type: string
+            startOffset:
+              type: integer
+              description: Offset into the text from GET /contracts/{id}/text
+            endOffset:
+              type: integer
+        expectedClauseTypeId:
+          $ref: '#/components/schemas/ClauseTypeTaxonomy'
+          description: Set when findingType is "missing_clause"; the populated taxonomy entry expected but absent
+        findingType:
+          type: string
+          enum: [clause_risk, missing_clause]
+        severity:
+          type: string
+          enum: [high, medium, low]
+        title:
+          type: string
+        problem:
+          type: array
+          items:
+            type: string
+          description: '"Vấn đề" bullets - what exactly is wrong or ambiguous (Vietnamese)'
+        consequences:
+          type: array
+          items:
+            type: string
+          description: '"Hệ quả thực tế" bullets'
+        legalBasis:
+          type: array
+          description: '"Cơ sở pháp lý" items. legalKnowledgeChunkIds match RiskCitation.legalKnowledgeChunkId in `citations`, so the UI can render source markers like [A], [B].'
+          items:
+            type: object
+            properties:
+              text:
+                type: string
+              legalKnowledgeChunkIds:
+                type: array
+                items:
+                  type: string
+              verification:
+                type: string
+                enum: [verified, partially_verified, article_not_found, not_in_knowledge_base, unreferenced]
+                description: |
+                  Whether the articles named in "text" (e.g. "khoản 2 Điều 418 Bộ luật Dân sự 2015") were checked against the knowledge base.
+                  verified: every named article exists and is linked. partially_verified: only some are. article_not_found: the law is uploaded but that article (or, for a rule, its expected wording) is not in it, so the citation may be wrong. not_in_knowledge_base: the law is not uploaded (or a different year of it is named). unreferenced: the text names no article; links come from the retrieved excerpts only.
+                  An excerpt the LLM cited for a different article than the one it names is dropped, and a named article is linked even when it was not among the retrieved excerpts.
+        recommendations:
+          type: array
+          items:
+            type: string
+          description: '"Sửa thành" bullets'
+        proposedRevision:
+          type: object
+          nullable: true
+          description: Suggested rewrite shown as a diff (originalText struck through, revisedText added)
+          properties:
+            originalText:
+              type: string
+              description: Text of the clause being replaced; absent for "missing_clause" (revisedText is then a whole new clause to insert)
+            revisedText:
+              type: string
+            reason:
+              type: string
+            isEdited:
+              type: boolean
+        status:
+          type: string
+          enum: [open, acknowledged, dismissed, resolved]
+        detectedBy:
+          type: string
+          enum: [rule, llm, hybrid]
+          description: rule = a fixed legal rule (ruleCode is set) or a missing mandatory clause the LLM did not describe; llm = found by the LLM; hybrid = a missing clause found by the taxonomy check and described by the LLM
+        ruleCode:
+          type: string
+          description: Set when detectedBy is rule and a legal rule fired, e.g. LTM_PENALTY_CAP, BLLD_PROBATION_WAGE
+          example: LTM_PENALTY_CAP
+        ruleVersion:
+          type: integer
+          description: Version of the rule that produced the finding
+        citations:
+          type: array
+          description: Legal sources behind this finding. For a rule finding these are the exact articles the rule cites (relevanceScore 1), attached only when that law is in the knowledge base and the article text contains the rule's expected wording. For an LLM finding these are the retrieved excerpts it relied on.
+          items:
+            $ref: '#/components/schemas/RiskCitation'
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    RiskCitation:
+      type: object
+      properties:
+        legalKnowledgeChunkId:
+          type: string
+        citationLabel:
+          type: string
+          description: 'e.g. "BLDS 2015"'
+        sourceTitle:
+          type: string
+        articleRef:
+          type: string
+          description: 'e.g. "Dieu 418, Khoan 2"'
+        chunkText:
+          type: string
+        relevanceScore:
+          type: number
+          description: Retrieval relevance (0-1). Excerpts are found by hybrid search (Atlas Vector Search + Atlas Search full text, fused by reciprocal rank); 1 means ranked first by both. Articles linked directly (a rule citation, or an article the LLM named that was not retrieved) have 1.
+
+    CreateContractRequest:
+      type: object
+      required: [title, type]
+      properties:
+        title:
+          type: string
+          minLength: 2
+          maxLength: 300
+        type:
+          type: string
+          description: Contract profile code or alias (see GET /contract-profiles). Unknown codes return 400.
+          example: sales
+        ourParty:
+          type: string
+          description: Optional. One of the profile's party codes; risks are then judged from this party's point of view
+          example: buyer
+        industry:
+          type: string
+          description: Optional. Industry code; adds the profile's industry-specific checks and mandatory clauses
+          example: fnb
+        file:
+          type: string
+          format: binary
+
+    LegalHeading:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [part, chapter, section, subsection]
+          description: part = Phần, chapter = Chương, section = Mục, subsection = Tiểu mục
+        number:
+          type: string
+          example: II
+        title:
+          type: string
+          example: MUA BÁN HÀNG HÓA
+
+    LegalCoverage:
+      type: object
+      description: How completely the uploaded text covers the document, so a truncated or partial file is visible before it is relied on
+      properties:
+        structured:
+          type: boolean
+          description: false when no "Điều N" headings were found and the text was split into plain passages
+        articleCount:
+          type: integer
+        firstArticle:
+          type: integer
+        lastArticle:
+          type: integer
+        expectedArticleCount:
+          type: integer
+          description: Echoes the optional expectedArticleCount sent on upload
+        missingArticleCount:
+          type: integer
+          description: Article numbers from 1 to max(lastArticle, expectedArticleCount) that were not found
+        missingRanges:
+          type: array
+          items:
+            type: string
+          example: ['1-116', '200']
+        suffixedArticles:
+          type: array
+          items:
+            type: string
+          description: Inserted articles such as "6a" from consolidated texts
+        headingCount:
+          type: integer
+          description: Number of Phần/Chương/Mục/Tiểu mục headings found
+        chunkCount:
+          type: integer
+        complete:
+          type: boolean
+          description: true when no article is missing
+        warnings:
+          type: array
+          items:
+            type: string
+
+    LegalSource:
+      type: object
+      properties:
+        _id:
+          type: string
+        code:
+          type: string
+          description: Unique stable code that contract profiles use to reference this source
+          example: commercial_law_2005
+        title:
+          type: string
+          example: Luật Thương mại 2005
+        documentNumber:
+          type: string
+          description: Official number; detected from the "Số:" line when not provided
+          example: 36/2005/QH11
+        sourceType:
+          type: string
+          enum: [law, decree, circular, resolution, standard_template]
+        status:
+          type: string
+          enum: [in_force, amended, repealed, not_yet_effective]
+        citationLabel:
+          type: string
+          description: 'Short label used when citing this source, e.g. "BLDS 2015"'
+        issuingBody:
+          type: string
+        issuedDate:
+          type: string
+          format: date-time
+        effectiveDate:
+          type: string
+          format: date-time
+        expiryDate:
+          type: string
+          format: date-time
+        coverage:
+          $ref: '#/components/schemas/LegalCoverage'
+        ingestion:
+          $ref: '#/components/schemas/LegalIngestion'
+        parts:
+          type: array
+          description: Files uploaded into this source, in order
+          items:
+            type: object
+            properties:
+              fileName:
+                type: string
+              articleFrom:
+                type: integer
+              articleTo:
+                type: integer
+              chunkCount:
+                type: integer
+                description: Chunks added by this file
+              skippedArticles:
+                type: array
+                items:
+                  type: string
+                description: Articles in the file that the source already had, so they were not added again
+              uploadedAt:
+                type: string
+                format: date-time
+        chunkCount:
+          type: integer
+          description: Number of LegalKnowledgeChunk documents produced from this source, embedded or not
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    LegalIngestion:
+      type: object
+      description: Background embedding progress. Only embedded chunks are searchable, so a source can already be cited while it is still running.
+      properties:
+        status:
+          type: string
+          enum: [queued, running, paused, completed, failed]
+          description: paused = waiting for the Gemini embedding quota; it resumes automatically at resumeAt. failed = gave up after 5 attempts; call POST /kb/legal-sources/{id}/resume.
+        totalChunks:
+          type: integer
+        embeddedChunks:
+          type: integer
+        error:
+          type: string
+        resumeAt:
+          type: string
+          format: date-time
+        queuedAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+
+    LegalSourcePreview:
+      type: object
+      properties:
+        documentNumber:
+          type: string
+          example: 36/2005/QH11
+        coverage:
+          $ref: '#/components/schemas/LegalCoverage'
+        chunks:
+          type: array
+          items:
+            type: object
+            properties:
+              order:
+                type: integer
+              articleRef:
+                type: string
+                example: Điều 3, khoản 1-9
+              articleTitle:
+                type: string
+              hierarchy:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LegalHeading'
+              characters:
+                type: integer
+              preview:
+                type: string
+                description: First 120 characters of the chunk
+
+    CreateLegalSourceRequest:
+      type: object
+      required: [code, title, sourceType, citationLabel, file]
+      properties:
+        code:
+          type: string
+          minLength: 2
+          maxLength: 60
+          pattern: '^[a-z0-9]+(?:_[a-z0-9]+)*$'
+          description: |
+            Lowercased before validation. Contract profiles reference these codes, so use them for the governing laws:
+            commercial_law_2005 (Luật Thương mại 2005), civil_code_2015 (Bộ luật Dân sự 2015), labor_code_2019 (Bộ luật Lao động 2019), decree_145_2020 (Nghị định 145/2020/NĐ-CP), real_estate_business_law_2023 (Luật Kinh doanh bất động sản 2023), housing_law_2023 (Luật Nhà ở 2023), land_law_2024 (Luật Đất đai 2024), insurance_business_law_2022 (Luật Kinh doanh bảo hiểm 2022).
+          example: commercial_law_2005
+        title:
+          type: string
+          minLength: 2
+          maxLength: 300
+        documentNumber:
+          type: string
+          maxLength: 60
+          description: Optional; detected from the "Số:" line of the document when omitted
+        sourceType:
+          type: string
+          enum: [law, decree, circular, resolution, standard_template]
+        status:
+          type: string
+          enum: [in_force, amended, repealed, not_yet_effective]
+          default: in_force
+        citationLabel:
+          type: string
+          minLength: 1
+          maxLength: 100
+        issuingBody:
+          type: string
+          maxLength: 200
+        issuedDate:
+          type: string
+          format: date
+        effectiveDate:
+          type: string
+          format: date
+        expiryDate:
+          type: string
+          format: date
+          description: Must be after effectiveDate
+        expectedArticleCount:
+          type: integer
+          minimum: 1
+          maximum: 5000
+          description: Optional. Total number of articles in the official text, so a missing tail is reported in coverage
+        file:
+          type: string
+          format: binary
+          description: Legal document to chunk and embed (pdf, docx, doc, or txt)
+
+paths:
+  /organizations/{id}/payments:
+    parameters:
+      - $ref: '#/components/parameters/PaymentOrganizationId'
+    post:
+      tags: [Payments]
+      summary: Create a payOS subscription checkout
+      description: >-
+        Owner only, or the user owning a personal workspace. Price, currency and return URLs
+        come from the server. One unfinished checkout per workspace. Retry with the same
+        Idempotency-Key to recover an existing order. No subscription is granted here.
+        Upgrade charges the full new price and starts a new cycle after payment;
+        renewal appends a period; downgrade must be scheduled first.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [planCode, action]
+              properties:
+                planCode: { type: string, enum: [personal_pro, business_starter, business_pro] }
+                action: { type: string, enum: [purchase, renew, upgrade, downgrade] }
+      responses:
+        '201':
+          description: Stored order and checkout URL (or the original order on retry)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data: { $ref: '#/components/schemas/Payment' }
+        '400': { description: Invalid plan, action, body or missing idempotency key }
+        '403': { description: Caller cannot manage this workspace }
+        '409': { description: Unfinished checkout or subscription state conflict }
+        '502': { description: Creation unconfirmed; recover order from history and synchronize before retrying }
+        '503': { description: payOS is not configured }
+    get:
+      tags: [Payments]
+      summary: List the workspace payment history (owner only)
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+      responses:
+        '200': { description: Paginated items, page and pageSize (20) }
+        '403': { description: Caller cannot manage this workspace }
+  /organizations/{id}/payments/{orderCode}:
+    parameters:
+      - $ref: '#/components/parameters/PaymentOrganizationId'
+      - $ref: '#/components/parameters/PaymentOrderCode'
+    get:
+      tags: [Payments]
+      summary: Read stored payment and activation status (owner only)
+      description: Read-only. Browser return/cancel query parameters never grant paid rights.
+      responses:
+        '200': { description: Payment in the standard success/data envelope }
+        '403': { description: Caller cannot manage this workspace }
+        '404': { description: Order does not exist in this workspace }
+  /organizations/{id}/payments/{orderCode}/sync:
+    parameters:
+      - $ref: '#/components/parameters/PaymentOrganizationId'
+      - $ref: '#/components/parameters/PaymentOrderCode'
+    post:
+      tags: [Payments]
+      summary: Synchronize authoritative payOS status and retry subscription activation
+      description: Owner only. Recovers missed webhooks or an interrupted activation without granting another period.
+      responses:
+        '200': { description: Current payment in the standard success/data envelope }
+        '403': { description: Caller cannot manage this workspace }
+        '409': { description: Payment mismatch; manual review required }
+        '502': { description: payOS unavailable; stored state retained }
+        '503': { description: Payment received but activation pending; read order for details }
+  /organizations/{id}/payments/{orderCode}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/PaymentOrganizationId'
+      - $ref: '#/components/parameters/PaymentOrderCode'
+    post:
+      tags: [Payments]
+      summary: Cancel an unpaid checkout through payOS (owner only)
+      description: If payment wins the cancellation race, the confirmed paid order is activated instead. No automatic refund.
+      responses:
+        '200': { description: Current payment in the standard success/data envelope }
+        '403': { description: Caller cannot manage this workspace }
+        '409': { description: Already paid; cannot cancel here }
+        '502': { description: payOS unavailable; order remains open }
+  /payments/payos/webhook:
+    post:
+      tags: [Payments]
+      security: []
+      summary: Receive a payOS signed payment webhook
+      description: >-
+        Validates the checksum signature with the official SDK, then reconciles the stored
+        order with signed payOS API information before activation. Duplicate events are
+        idempotent. Signed unknown-order probes are acknowledged without creating orders.
+        Invalid signatures are rejected. Paid activation failures return 503 to allow retry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Original payOS webhook including data and signature }
+      responses:
+        '200': { description: Event acknowledged }
+        '400': { description: Invalid signature or mismatched event }
+        '409': { description: Provider order or amount mismatch }
+        '502': { description: payOS reconciliation unavailable; retry later }
+        '503': { description: Activation pending; retry later }
+  /plans:
+    get:
+      tags: [Subscriptions]
+      security: []
+      summary: List the four monthly plans and separate AI quotas
+      responses:
+        '200':
+          description: Catalog seeded by the server; does not activate any subscription
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SubscriptionPlan'
+
+  /organizations/{id}/subscription:
+    get:
+      tags: [Subscriptions]
+      summary: Get current subscription, scheduled downgrade, future paid periods and quotas
+      description: Organization members only. Personal Free resets at midnight on the first day of the month in Vietnam. A business without an active paid plan has three member seats including Owner, but no AI allowance. Payment integration is not implemented yet.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      responses:
+        '200':
+          description: Current entitlements; unfinished expired reservations are recovered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    $ref: '#/components/schemas/SubscriptionState'
+        '403': { description: User does not belong to this organization }
+
+  /organizations/{id}/usage:
+    get:
+      tags: [Subscriptions]
+      summary: Get current plan and separate analysis/chat counters (same response as subscription)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      responses:
+        '200':
+          description: Current subscription including used, reserved, available and limit
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    $ref: '#/components/schemas/SubscriptionState'
+        '403': { description: User does not belong to this organization }
+
+  /organizations/{id}/subscription/downgrade:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, pattern: '^[a-f\d]{24}$' }
+    post:
+      tags: [Subscriptions]
+      summary: Schedule a lower plan for the next unpaid period
+      description: Owner only (or the personal account in its personal workspace). Members must fit the target plan. Invitations immediately respect the lower member limit. A paid target still requires payment; scheduling alone does not activate it. No payOS integration yet.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planCode]
+              properties:
+                planCode: { type: string, enum: [personal_free, business_starter] }
+      responses:
+        '200': { description: Scheduled planCode and effectiveAt in data }
+        '400': { description: Not a lower plan in the same family or no active paid plan }
+        '403': { description: Not the subscription owner }
+        '409': { description: Too many members or scheduled downgrade already paid }
+    delete:
+      tags: [Subscriptions]
+      summary: Cancel an unpaid scheduled downgrade
+      responses:
+        '204': { description: Cancelled }
+        '403': { description: Not the subscription owner }
+        '404': { description: No scheduled downgrade }
+        '409': { description: Scheduled downgrade has already been paid }
+
+  /organizations/{id}/invitations:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, pattern: '^[a-f\d]{24}$' }
+    post:
+      tags: [Invitations]
+      summary: Owner sends an invitation email
+      description: One organization per user. Expires in 7 days. A free business has three seats including Owner; active paid plans use their member limit. Unexpired pending invitations reserve seats, and scheduled downgrade limits apply. Brevo API key and verified sender must be configured. Maximum 20 requests per owner per hour. Token is only sent by email.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                role: { type: string, enum: [manager, staff, reviewer] }
+      responses:
+        '201': { description: Invitation metadata after Brevo API acceptance (not proof of inbox delivery); no token or tokenHash }
+        '400': { description: Invalid email or role }
+        '401': { description: Missing, expired or stale bearer token }
+        '403': { description: Not the owner of this organization }
+        '409': { description: Pending invitation exists or recipient already belongs to an organization }
+        '429': { description: Invitation request limit exceeded }
+        '502': { description: Brevo API delivery request failed; invitation marked delivery_failed }
+        '503': { description: Brevo API key or sender is not configured }
+    get:
+      tags: [Invitations]
+      summary: Owner lists organization invitations
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: Paginated invitations; token hashes excluded }
+        '403': { description: Not the owner of this organization }
+
+  /organizations/{id}/invitations/{invitationId}:
+    delete:
+      tags: [Invitations]
+      summary: Owner revokes a pending invitation
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+        - in: path
+          name: invitationId
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      responses:
+        '200': { description: Revoked invitation }
+        '403': { description: Not the owner of this organization }
+        '409': { description: Pending invitation not found }
+
+  /organizations/{id}/members:
+    get:
+      tags: [Organizations]
+      summary: Owner lists organization members
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200': { description: Paginated members with id, name, email, role and isActive }
+        '403': { description: Not the owner of this organization }
+
+  /organizations/{id}/members/{userId}:
+    delete:
+      tags: [Organizations]
+      summary: Owner removes a member and frees their seat
+      description: >-
+        Only an active owner of this organization may remove a member. Owners cannot
+        be removed. Keeps the user account, organization contracts, reviews, chat,
+        purchased plan and consumed quota. Clears the member organization, resets
+        their role to user and onboarding to incomplete, and invalidates old access
+        tokens even if they later rejoin. Pending invitations for this email in this
+        organization are revoked. The user may accept a new invitation or complete
+        personal onboarding. Repeated removal returns 404. Requests already running
+        and previously issued file download links are not cancelled by this endpoint.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+        - in: path
+          name: userId
+          required: true
+          schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      responses:
+        '204': { description: Member removed; no response body }
+        '400': { description: Invalid organization or user id }
+        '401': { description: Missing, stale or invalid authentication }
+        '403': { description: Caller is not the active owner of this organization }
+        '404': { description: Member does not belong to this organization or was already removed }
+        '409': { description: Cannot remove an owner }
+
+  /invitations/preview:
+    post:
+      tags: [Invitations]
+      security: []
+      summary: Preview a valid invitation before authentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, pattern: '^[a-f0-9]{64}$' }
+      responses:
+        '200': { description: Organization name, invited email, role and expiresAt }
+        '400': { description: Invalid, expired, revoked or consumed invitation }
+
+  /invitations/accept:
+    post:
+      tags: [Invitations]
+      summary: Accept an invitation and receive a new authenticated session
+      description: Requires active user with matching email and no organization. Atomically updates user and consumes invitation using a MongoDB transaction. Call before onboarding completion. Store the returned tokens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string, pattern: '^[a-f0-9]{64}$' }
+      responses:
+        '200': { description: 'Session with user, accessToken and refreshToken; user includes new orgId and role' }
+        '400': { description: Invalid, expired, revoked or consumed invitation }
+        '401': { description: Missing, expired or stale bearer token }
+        '403': { description: Signed-in email does not match invitation }
+        '409': { description: User already belongs to an organization }
+
+  /auth/google:
+    post:
+      tags: [Auth]
+      summary: Register or sign in with Google Identity Services
+      description: Verifies Google's signed ID token (audience, issuer, expiry) and nonce. Supports Gmail and verified Google Workspace email. Uses Google's subject as the stable identity. Existing verified accounts with the same authoritative email are linked without changing roles or organization. Unverified existing accounts must first sign in with password and verify OTP. Invitation email must match; joining still requires explicit acceptance. The frontend obtains a nonce from GET /api/auth/google and binds it to an HttpOnly cookie before invoking Google's button. Google-only accounts do not have a user-known password.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [credential, nonce]
+              properties:
+                credential:
+                  type: string
+                  description: Signed Google ID token returned by Google Identity Services.
+                nonce:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+                  description: Must match the nonce used when initializing the Google button.
+                invitationToken:
+                  type: string
+                  pattern: '^[a-f0-9]{64}$'
+                remember:
+                  type: boolean
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400': { description: Invalid input or invitation }
+        '401': { description: Invalid Google credential, nonce, or inactive account }
+        '403': { description: Invitation email mismatch or email requires password verification }
+        '409': { description: Unverified existing account or identity conflict }
+        '429': { description: Authentication rate limit exceeded }
+        '503': { description: Google client ID is not configured }
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Start registration and email verification
+      description: Sends a six-digit OTP through Brevo. No account or session is created until verification succeeds. Code expires in 10 minutes; five incorrect attempts lock the challenge. Maximum five sends per email per hour, at least 60 seconds apart.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '202':
+          description: Verification required; email accepted by Brevo, not a delivery guarantee
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailVerificationChallenge'
+        '400': { description: Invalid input or invitation }
+        '409': { description: Email already registered; use login }
+        '429': { description: Cooldown or rate limit exceeded }
+        '502': { description: Email provider failed }
+        '503': { description: Email provider is not configured }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login with email and password
+      description: Verified accounts receive tokens immediately. Existing unverified accounts must complete email verification after the password is validated.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '202':
+          description: Email verification required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailVerificationChallenge'
+        '400': { description: Invalid invitation or input }
+        '401': { description: Invalid credentials or inactive account }
+        '429': { description: Cooldown or rate limit exceeded }
+        '502': { description: Email provider failed }
+        '503': { description: Email provider is not configured }
+
+  /auth/verify-email:
+    post:
+      tags: [Auth]
+      summary: Verify OTP and receive a session
+      description: Submit the challengeId and six-digit code. Preserve invitationToken when present at register/login; after verification explicitly accept the invitation. A code can be consumed only once. Previously issued sessions for unverified users cannot access protected APIs.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyEmailRequest'
+      responses:
+        '200':
+          description: Email verified and authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSessionResponse'
+        '400': { description: Incorrect, expired, consumed code or invalid invitation }
+        '401': { description: Account changed or disabled; sign in again }
+        '409': { description: Email already registered }
+        '429': { description: Too many attempts }
+
+  /auth/resend-verification:
+    post:
+      tags: [Auth]
+      summary: Send a replacement verification code through Brevo
+      description: Requires the original challengeId and invitationToken when applicable. Invalidates the previous code. Minimum 60 seconds between sends; maximum five sends per email per hour. Returns the same challengeId with a fresh expiration.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResendVerificationRequest'
+      responses:
+        '202':
+          description: Replacement code sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailVerificationChallenge'
+        '400': { description: Invalid challenge or invitation }
+        '409': { description: Superseded by another verification request }
+        '429': { description: Cooldown or rate limit exceeded }
+        '502': { description: Email provider failed }
+        '503': { description: Email provider is not configured }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Exchange a refresh token for a new access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '401':
+          description: Invalid or expired refresh token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/onboarding/complete:
+    post:
+      tags: [Auth]
+      summary: Mark onboarding as done (creates a personal workspace for role "user" without an org)
+      description: The access token still carries the old orgId afterwards - call /auth/refresh to get one that includes the new workspace.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/AuthUser'
+        '401':
+          description: Missing/invalid token, or the user is inactive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /organizations:
+    post:
+      tags: [Organizations]
+      summary: Create an organization for the current user
+      description: A user can create an organization only when they do not already belong to one. Refresh the access token after success to include the new orgId claim.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrganizationRequest'
+      responses:
+        '201':
+          description: Organization created and attached to the current user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: User already belongs to an organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /organizations/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Organizations]
+      summary: Get the current user's organization
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '403':
+          description: The user does not belong to this organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    patch:
+      tags: [Organizations]
+      summary: Update an organization
+      description: Requires the administrator or organization owner role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrganizationRequest'
+      responses:
+        '200':
+          description: Organization updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Organization'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Organizations]
+      summary: Delete an organization
+      description: Requires the administrator or organization owner role. Deletion is blocked while contracts or other members remain.
+      responses:
+        '204':
+          description: Organization deleted
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Organization not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Organization still has contracts or other members
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts:
+    get:
+      tags: [Contracts]
+      summary: List contracts for the current org (filter/sort/paginate)
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100 }
+        - in: query
+          name: sortBy
+          schema:
+            type: string
+            enum: [createdAt, updatedAt, title, type, status, overallRiskLevel]
+            default: createdAt
+          description: overallRiskLevel sorts by severity (high > medium > low > none), not alphabetically
+        - in: query
+          name: sortOrder
+          schema: { type: string, enum: [asc, desc] }
+        - in: query
+          name: type
+          schema: { type: string }
+          description: Contract profile code or alias (see GET /contract-profiles). Unknown codes return 400.
+        - in: query
+          name: industry
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: riskLevel
+          schema: { type: string }
+        - in: query
+          name: search
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Contract'
+                  total:
+                    type: integer
+                  page:
+                    type: integer
+                  limit:
+                    type: integer
+    post:
+      tags: [Contracts]
+      summary: Upload a new contract
+      description: |
+        The file is stored and text extraction is queued for a background worker (OCR of a large scanned PDF can take minutes).
+        - Without a `Prefer` header the request waits for extraction to finish and returns 201, as before.
+        - With `Prefer: respond-async` it returns 202 immediately with `currentVersion.extractionStatus = "processing"`; poll GET /contracts/{id} and read `extractionProgress` until the status is completed, failed or unsupported.
+      parameters:
+        - in: header
+          name: Prefer
+          required: false
+          schema:
+            type: string
+            enum: [respond-async]
+          description: RFC 7240 preference. Send respond-async to get 202 without waiting for extraction.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateContractRequest'
+      responses:
+        '201':
+          description: Created; extraction has finished (completed, failed or unsupported)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '202':
+          description: Accepted with Prefer respond-async; extraction is still running in the background
+          headers:
+            Preference-Applied:
+              schema:
+                type: string
+                example: respond-async
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '400':
+          description: Validation error or unsupported file type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File exceeds the 20MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background job queue (Redis) is unavailable; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: Get a contract by id
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Contracts]
+      summary: Delete a contract
+      description: Deletes the contract, all its versions, clauses, findings, chat messages and stored files. Roles - administrator, owner, manager, and user (the owner of a personal workspace).
+      responses:
+        '204':
+          description: No Content
+        '403':
+          description: Role not allowed to delete contracts (staff, reviewer)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/clauses:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: List clauses segmented/classified for a contract
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Clause'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/risks:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: List risk findings detected for a contract
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/RiskFinding'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/key-terms:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: List the key terms extracted from the current version during the last review
+      description: |
+        During risk detection the LLM extracts the terms that legal rules check for this contract type (e.g. penalty rate, deposit share, probation length, working hours). A term is kept only when its quote appears verbatim in the cited clause. A few yes/no terms have a legal default when the contract is silent (e.g. no notarization, penalty without damages); those are returned with inferredFromSilence true and no clause.
+        Life insurance has no rule checks yet, so its list is empty.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  extractedAt:
+                    type: string
+                    format: date-time
+                    nullable: true
+                    description: null until a review has run on this version
+                  terms:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          example: penalty_percent
+                        label:
+                          type: string
+                          example: Mức phạt vi phạm (%)
+                        value:
+                          oneOf:
+                            - type: number
+                            - type: boolean
+                          example: 15
+                        inferredFromSilence:
+                          type: boolean
+                        clause:
+                          type: object
+                          nullable: true
+                          properties:
+                            index:
+                              type: integer
+                            title:
+                              type: string
+                              nullable: true
+                        quote:
+                          type: string
+                          nullable: true
+                          example: phạt vi phạm bằng 15% giá trị phần nghĩa vụ hợp đồng bị vi phạm
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/risks/{findingId}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: findingId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    patch:
+      tags: [Contracts]
+      summary: Edit the proposed revision of a finding
+      description: Updates proposedRevision.revisedText and/or reason and marks it isEdited=true. Only findings of the contract's current version can be edited; 404 if the finding has no proposed revision. Roles - administrator, owner, manager, staff, reviewer, user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              properties:
+                revisedText:
+                  type: string
+                  minLength: 1
+                  maxLength: 10000
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        '200':
+          description: The updated finding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskFinding'
+        '404':
+          description: Contract, finding or proposed revision not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/risks/{findingId}/revision:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: findingId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    delete:
+      tags: [Contracts]
+      summary: Remove the proposed revision of a finding
+      description: Clears proposedRevision; the finding itself is kept. Roles - administrator, owner, manager, staff, reviewer, user.
+      responses:
+        '200':
+          description: The finding without proposedRevision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskFinding'
+        '404':
+          description: Contract or finding not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/text:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: Get the extracted text of the contract (for the document view next to the analysis)
+      description: |
+        Clause.startOffset/endOffset and RiskFinding.clause.startOffset/endOffset index into the original text (redacted=false), so the UI can highlight the clause a finding refers to.
+        With `redacted=true` the personal data covered by the contract profile's redactionPolicy is replaced by placeholders such as `[PERSON_1]` or `[PHONE_2]` by default. Clause offsets do not apply to the redacted text.
+        Use `redacted=true&redactionMode=partial` for an internal comparison view: bank accounts keep their last 4 digits, phones their last 3 digits, names use consistent numbered labels, emails keep only their first character and domain (for example m•••@gmail.com), and IDs, birth dates and personal addresses are fully concealed. Distinct accounts or phones sharing a visible suffix get numbered labels to prevent confusion. Phone/account format variants use the same display identity. This mode uses the existing contract-read permission and does not change AI prompts or sharing permissions. The returned redactionSpans refer to the displayed text and contain no original sensitive values.
+      parameters:
+        - in: query
+          name: redacted
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+            default: 'false'
+        - in: query
+          name: redactionMode
+          required: false
+          schema:
+            type: string
+            enum: [token, partial]
+            default: token
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  text:
+                    type: string
+                  redacted:
+                    type: boolean
+                  redactionMode:
+                    type: string
+                    enum: [token, partial]
+                  redactionSpans:
+                    type: array
+                    description: Present for partial mode; offsets into the displayed text.
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        start:
+                          type: integer
+                        end:
+                          type: integer
+                  extractionStatus:
+                    type: string
+                    enum: [pending, processing, completed, failed, unsupported]
+                  fileName:
+                    type: string
+                  mimeType:
+                    type: string
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/share-summary:
+    get:
+      tags: [Contracts]
+      summary: Read a redacted internal summary from saved analysis without running AI
+      description: Uses existing organization-scoped contract access. Requires completed summary and risk detection. Recognized personal values are fully replaced. The response is not a public sharing link.
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-f\d]{24}$'
+        - in: query
+          name: expectedUpdatedAt
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: Redacted plain text and finding counts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                      redacted:
+                        type: boolean
+                        enum: [true]
+                      findingCounts:
+                        type: object
+                        properties:
+                          high:
+                            type: integer
+                          medium:
+                            type: integer
+                          low:
+                            type: integer
+        '404':
+          description: Contract not accessible in the current organization
+        '409':
+          description: Analysis incomplete or contract updated since the displayed result
+
+  /contracts/{id}/file:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: Get the original file link or a separate redacted DOCX reading copy
+      description: Without redacted=true, returns a signed link to the original file. With redacted=true, streams a separate DOCX reading copy using partial masking. Both modes use existing organization-scoped contract access.
+      parameters:
+        - in: query
+          name: redacted
+          schema:
+            type: boolean
+            default: false
+          description: Supports DOCX text, tables, headers and footers. Images and embedded content require the redacted text view instead.
+      responses:
+        '200':
+          description: Original file link or redacted DOCX bytes
+          headers:
+            X-LawScan-Redacted:
+              schema:
+                type: string
+                enum: [partial]
+              description: Present only on the redacted binary response.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
+                      fileName:
+                        type: string
+                      mimeType:
+                        type: string
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Unsupported or invalid DOCX content
+        '404':
+          description: Contract not found, or the contract has no uploaded file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/chat:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: List the chat history for the contract's current version, oldest first
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatMessage'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    post:
+      tags: [Contracts]
+      summary: Ask a follow-up question about the contract
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      description: Requires clauses to be segmented. The answer is grounded in the contract's clauses, summary, risk findings and analysisFocus, plus the last 10 chat messages. Both the question and the answer are saved. Rate-limited (AI cost control).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  minLength: 1
+                  maxLength: 5000
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reply:
+                    type: string
+        '400':
+          description: Clauses not segmented yet, or LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/chat/stream:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Contracts]
+      summary: Same as POST /chat, but the answer is streamed token by token as Server-Sent Events
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      description: |
+        Use `fetch` (not `EventSource`). Events:
+        - `token` `{ "text": string }` - next chunk of the answer
+        - `done` `{ reply, runId, replayed }` - the exchange is saved and chat quota finalized
+        - `error` `{ "status": number, "message": string }`
+        A `: ping` comment line is sent every 15s to keep proxies from closing an idle connection - SSE clients must ignore lines starting with `:`. Closing the connection cancels the LLM call; if the answer had already finished generating, it is still saved.
+        Rate-limited (AI cost control).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  minLength: 1
+                  maxLength: 5000
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /contracts/{id}/reviews:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Start a full review in the background
+      description: |
+        Queues segmentation, summary and risk detection as one review run and returns 202 immediately. Follow it with GET /reviews/{reviewId}/events (SSE) or by polling GET /reviews/{reviewId}. If the upload is still being extracted, the review waits for it. Only one review can run per contract at a time. Rate-limited (AI cost control).
+
+        A review costs one `analysis` credit. The credit is reserved when the review is queued, consumed when it completes and released if it fails. Sending the same Idempotency-Key again returns the same review (200, `replayed: true`) without using another credit.
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9_-]{8,128}$'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                analysisFocus:
+                  type: string
+                  maxLength: 1000
+      responses:
+        '202':
+          description: Review queued
+          headers:
+            Location:
+              schema:
+                type: string
+                example: /api/v1/reviews/665f1c2e8b3a4d0012a1b2c3
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Review'
+                  - type: object
+                    properties:
+                      replayed:
+                        type: boolean
+                        example: false
+        '200':
+          description: Same Idempotency-Key as an earlier request - the existing review is returned and no credit is used
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Review'
+                  - type: object
+                    properties:
+                      replayed:
+                        type: boolean
+                        example: true
+        '400':
+          description: Missing or invalid Idempotency-Key, the contract has no file, or its text could not be extracted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: No active plan, or the analysis quota of the current period is used up
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Contract not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A review or complete analysis is already running for this contract, or the Idempotency-Key was used for a different request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background job queue (Redis) is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags: [Reviews]
+      summary: List the review runs of a contract, newest first
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Review'
+        '404':
+          description: Contract not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Reviews]
+      summary: Get one review run
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/events:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Reviews]
+      summary: Follow a review's progress as Server-Sent Events
+      description: |
+        `text/event-stream`. Works with `EventSource` when the access token is sent by a proxy, or with `fetch`. Events:
+        - `review` - the full Review object, sent on connect and whenever it changes
+        - `done` `{ "status": "completed" | "failed" }` - sent once the review finishes, then the stream closes
+        - `error` `{ "status": number, "message": string }`
+        A `: ping` comment is sent every 15s. Reconnecting is safe - the current state is sent again on connect.
+      responses:
+        '200':
+          description: Event stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contract-profiles:
+    get:
+      tags: [ContractProfiles]
+      summary: List the supported contract types with their parties, governing law, mandatory clauses and industry rules
+      description: Use a profile's code as Contract.type, one of its parties' codes as ourParty, and one of its industries' codes as industry when uploading a contract.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ContractProfile'
+
+  /kb/legal-sources:
+    get:
+      tags: [LegalKB]
+      summary: List legal sources in the knowledge base (with chunk counts)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LegalSource'
+    post:
+      tags: [LegalKB]
+      summary: Upload a legal document (pdf/docx/doc/txt), split it by its legal structure, and embed it in the background (Gemini)
+      description: |
+        Admin only. Rate-limited (AI cost control). Use POST /kb/legal-sources/preview first to check coverage without spending embedding quota.
+
+        The text is read as Phần > Chương > Mục > Tiểu mục > Điều > khoản > điểm. An "Điều N" heading only counts when its number is higher than the previous article, so cross-references such as "Điều 5 của Luật này" at the start of a line stay in the body. The signature block after the last article (e.g. "Luật này đã được Quốc hội ... thông qua", "CHỦ TỊCH QUỐC HỘI", "Nơi nhận:") is dropped.
+
+        Each article becomes one chunk of up to 2200 characters. A longer article is split into groups of whole khoản, and each group repeats the article heading (and the short lead-in sentence) so it can be read alone, e.g. "Điều 3, khoản 1-9". A khoản that is still too long is split into groups of điểm. A document with no "Điều N" headings (e.g. a standard template) is split into plain passages.
+
+        The source and its chunks are saved right away and the request returns 202. A background worker then embeds the chunks in batches of 20 (task type RETRIEVAL_DOCUMENT), paced under LEGAL_EMBED_TOKENS_PER_MINUTE and LEGAL_EMBED_REQUESTS_PER_MINUTE (each text counts as one request). The text sent to the embedding model is the citation label, the chapter/section titles and the chunk text.
+
+        On a Gemini 429 the worker waits the delay Gemini suggests. If the daily quota is used up, or the wait would exceed 5 minutes, the source becomes "paused" and resumes automatically at ingestion.resumeAt. Progress is kept per chunk, so a crash, retry or resume only embeds the chunks that are still missing. Poll GET /kb/legal-sources/{id} (Location header) for ingestion progress.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CreateLegalSourceRequest'
+      responses:
+        '202':
+          description: Saved; embedding runs in the background (ingestion.status queued)
+          headers:
+            Location:
+              schema:
+                type: string
+              description: /api/v1/kb/legal-sources/{id}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSource'
+        '400':
+          description: Validation error, unsupported or unreadable file, no usable text, or LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A legal source with this code already exists (checked before any embedding)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background queue (Redis) is unavailable; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File exceeds the 20MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires administrator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/preview:
+    post:
+      tags: [LegalKB]
+      summary: Dry-run a legal document upload and report its structure and coverage
+      description: Admin only. Parses and chunks the file exactly like the upload endpoint, but saves nothing and calls no AI model, so it costs no embedding quota. Use it to check that every article was read (e.g. a .doc converted badly, or a file that only contains part of the law) before uploading.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  example: 324
+                file:
+                  type: string
+                  format: binary
+                  description: pdf, docx, doc, or txt
+      responses:
+        '200':
+          description: Parsed structure; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSourcePreview'
+        '400':
+          description: Missing, unsupported or unreadable file, or no usable text
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires administrator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File exceeds the 20MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [LegalKB]
+      summary: Get a legal source with its coverage report, ingestion progress and chunk count
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSource'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [LegalKB]
+      summary: Delete a legal source and all of its chunks (also stops a running ingestion)
+      description: Admin only.
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          description: Requires administrator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/parts:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [LegalKB]
+      summary: Add another file to an existing legal source (e.g. the rest of a law uploaded in pieces)
+      description: |
+        Admin only. Rate-limited. The file is parsed like a new upload. Articles the source already has are skipped and listed in parts[].skippedArticles, so uploading the full text over a partial source only adds what was missing. New chunks are appended after the existing ones, coverage is recomputed over the whole source, and only the new chunks are embedded in the background. If an ingestion is already running it is replaced by one that covers both.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  description: Optional; replaces the stored expected article count
+                file:
+                  type: string
+                  format: binary
+                  description: pdf, docx, doc, or txt
+      responses:
+        '202':
+          description: Part added; embedding runs in the background
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSource'
+        '400':
+          description: Missing, unsupported or unreadable file, no usable text, or LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires administrator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Every article in the file is already in the source, or another part is being uploaded at the same time
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background queue (Redis) is unavailable; the part was saved and ingestion is marked failed, so call resume later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/resume:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [LegalKB]
+      summary: Resume embedding the chunks that are still missing
+      description: Admin only. Use it after ingestion.status became failed, or to resume a paused source before its resumeAt. Only chunks without an embedding are sent to Gemini.
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSource'
+        '400':
+          description: LLM not configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires administrator role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Every chunk is already embedded, or the source is already being embedded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background queue (Redis) is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
