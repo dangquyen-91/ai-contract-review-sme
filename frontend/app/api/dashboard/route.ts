@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 
 type AccessClaims = {
+  sub?: string;
+  exp?: number;
   orgId?: string;
   role?: string;
 };
@@ -26,7 +28,19 @@ export async function GET(request: NextRequest) {
   }
 
   const claims = readAccessClaims(accessToken);
+  if (!claims || !claims.exp || claims.exp * 1000 <= Date.now()) {
+    return NextResponse.json({ success: false }, { status: 401 });
+  }
   if (!claims?.orgId) {
+    const user = decodeSessionUser(request.cookies.get(userSessionCookie)?.value);
+    if (claims.role === "user" && user?.role === "user" && user.id === claims.sub && !user.orgId) {
+      // Account display metadata only: no organization is created or assigned.
+      return NextResponse.json({ success: true, data: {
+        organization: { id: "", name: "Tài khoản cá nhân", taxCode: null, address: null },
+        contracts: [], totalContracts: 0, stats: { processing: 0, reviewed: 0, highRisk: 0 },
+        role: "user", user: { name: user.name, email: user.email },
+      } }, { headers: { "Cache-Control": "no-store" } });
+    }
     return NextResponse.json(
       { success: false, error: { message: "Bạn cần thiết lập tổ chức trước khi mở dashboard." } },
       { status: 403 },

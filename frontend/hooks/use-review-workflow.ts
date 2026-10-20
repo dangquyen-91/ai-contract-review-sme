@@ -20,7 +20,7 @@ export function reviewErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Vui lòng thử lại sau.";
 }
 
-export function useReviewWorkflow({ access, initialType, personal = false, reviewPath }: { access: Access; initialType: DashboardContract["type"]; personal?: boolean; reviewPath?: string }) {
+export function useReviewWorkflow({ access, initialType, personal = false, reviewPath, workspaceReady = true }: { access: Access; initialType: DashboardContract["type"]; personal?: boolean; reviewPath?: string; workspaceReady?: boolean }) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [contractType, setContractType] = useState<DashboardContract["type"]>(initialType);
@@ -50,6 +50,10 @@ export function useReviewWorkflow({ access, initialType, personal = false, revie
 
   async function selectFile(nextFile?: File): Promise<boolean> {
     if (!nextFile || !access.upload || uploadContractMutation.isPending || isReviewing) return false;
+    if (!workspaceReady) {
+      toast.error("Chưa thể tải hợp đồng", { description: "Backend hiện chưa hỗ trợ lưu hợp đồng cá nhân khi tài khoản chưa thuộc tổ chức." });
+      return false;
+    }
     const validTypes = new Set(["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg"]);
     if (!validTypes.has(nextFile.type)) {
       toast.error("Định dạng chưa được hỗ trợ", { description: "Vui lòng chọn PDF, DOCX, PNG hoặc JPG." });

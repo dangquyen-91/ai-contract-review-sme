@@ -26,7 +26,7 @@ export function ContractContent({ data, access, onReview, isReviewing = false }:
     if (!contractId) return;
     router.push(`/dashboard/${data.role}/review?contract=${encodeURIComponent(contractId)}${rerun ? "&rerun=1" : ""}`);
   }
-  return <ContractsView contracts={data.contracts} totalContracts={data.totalContracts} scope={`${data.role}:${data.organization.id}`} canDelete={["administrator", "owner", "manager", "user"].includes(data.role)} canReview={access.review} onReview={onReview ?? openReview} isReviewing={isReviewing} />;
+  return <ContractsView contracts={data.contracts} totalContracts={data.totalContracts} scope={`${data.role}:${data.organization.id}`} workspaceReady={Boolean(data.organization.id)} canDelete={["administrator", "owner", "manager", "user"].includes(data.role)} canReview={access.review} onReview={onReview ?? openReview} isReviewing={isReviewing} />;
 }
 
 const contractListParams = { page: paginationPageParser, search: parseAsString.withDefault(""), status: parseAsString.withDefault(""), riskLevel: parseAsString.withDefault("") };
@@ -53,7 +53,7 @@ function ContractSearchForm({ search, onSearch }: { search: string; onSearch: (v
   </form>;
 }
 
-function ContractsView({ contracts, totalContracts, scope, canReview, onReview, isReviewing, canDelete }: { contracts: DashboardContract[]; totalContracts: number; scope: string; canReview: boolean; canDelete: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean }) {
+function ContractsView({ contracts, totalContracts, scope, workspaceReady, canReview, onReview, isReviewing, canDelete }: { contracts: DashboardContract[]; totalContracts: number; scope: string; workspaceReady: boolean; canReview: boolean; canDelete: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -67,7 +67,7 @@ function ContractsView({ contracts, totalContracts, scope, canReview, onReview, 
   const requestedPage = filtered ? page : Math.min(page, Math.max(1, Math.ceil(totalContracts / 10)));
   const { data: pageData, error, isLoading, refetch } = useContractsList(
     { ...filter, page: requestedPage, search: search || undefined },
-    { scope, initialData: requestedPage === 1 && !filtered ? { items: contracts, total: totalContracts } : undefined, pollProcessing: true },
+    { scope, initialData: requestedPage === 1 && !filtered ? { items: contracts, total: totalContracts } : undefined, pollProcessing: true, enabled: workspaceReady },
   );
   const uploaded = highlightId && pageData?.items.find((contract) => (contract.id ?? contract._id) === highlightId);
   const total = pageData?.total ?? (filtered ? 0 : totalContracts);

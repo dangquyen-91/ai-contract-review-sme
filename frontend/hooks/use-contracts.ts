@@ -36,11 +36,12 @@ export function useDeleteContract() {
 
 export function useContractsList(
   filter: DashboardContractFilter & { page?: number; search?: string },
-  options: { scope?: string; initialData?: ContractListResult; retry?: boolean; pollProcessing?: boolean } = {},
+  options: { scope?: string; initialData?: ContractListResult; retry?: boolean; pollProcessing?: boolean; enabled?: boolean } = {},
 ) {
   return useQuery({
     queryKey: contractKeys.list(filter, options.scope),
     queryFn: () => contractsApi.list(filter),
+    enabled: options.enabled,
     initialData: options.initialData,
     retry: options.retry ?? false,
     refetchInterval: options.pollProcessing
