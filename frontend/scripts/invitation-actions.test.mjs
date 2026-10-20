@@ -86,6 +86,20 @@ test('Accept blocks rapid repeated clicks and remains disabled during navigation
   assert.deepEqual(ctx.calls, ['clear', '/dashboard/staff', 'refresh']);
 });
 
+test('A user with an existing orgId can submit acceptance for backend eligibility checks', async () => {
+  const existingUser = { ...user, orgId: 'personal-or-missing-org' };
+  let count = 0;
+  const ctx = harness('../components/invitations/invitation-page.tsx', {
+    accept: { isPending: false, mutateAsync: async () => { count++; return { user: existingUser }; } }, logout: {},
+  });
+  const button = find(ctx.render({ token, user: existingUser }), (node) => node.type === 'button')[0];
+  assert.ok(button);
+  assert.equal(button.props.disabled, false);
+  await button.props.onClick();
+  assert.equal(count, 1);
+  assert.deepEqual(ctx.calls, ['clear', '/dashboard/staff', 'refresh']);
+});
+
 test('Failed acceptance releases the action guard so the user can retry', async () => {
   let count = 0;
   const ctx = harness('../components/invitations/invitation-page.tsx', {
