@@ -19,6 +19,7 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
   onTextFallback?: () => void;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [renderError, setRenderError] = useState(false);
   const [rendered, setRendered] = useState(false);
   const [locationNotFound, setLocationNotFound] = useState(false);
@@ -70,7 +71,24 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
       container?.replaceChildren();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [blob, isDocx, mimeType, attempt]);
+  }, [blob, isDocx, mimeType, attempt, redacted]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!isDocx || !rendered || !container || typeof ResizeObserver === "undefined") return;
+    // Scale the rendered paper, preserving the document's original line breaks.
+    const fitPages = () => {
+      const availableWidth = container.clientWidth;
+      if (!availableWidth) return;
+      container.querySelectorAll<HTMLElement>("section.docx").forEach((page) => {
+        if (page.offsetWidth) page.style.zoom = String(Math.min(1, availableWidth / page.offsetWidth));
+      });
+    };
+    fitPages();
+    const observer = new ResizeObserver(fitPages);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [isDocx, rendered]);
 
   useEffect(() => {
     if (redacted || !isDocx || !rendered || !target || !containerRef.current) return;
@@ -92,8 +110,14 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
     paragraph.style.backgroundColor = "#fff0bf";
     paragraph.style.outline = "4px solid #fff0bf";
     paragraph.style.scrollMarginBlock = "35px";
-    paragraph.scrollIntoView({ behavior: "smooth", block: "center" });
+    const frame = requestAnimationFrame(() => {
+      const scroll = scrollRef.current;
+      if (!scroll) return;
+      const offset = paragraph.getBoundingClientRect().top - scroll.getBoundingClientRect().top;
+      scroll.scrollTo({ top: scroll.scrollTop + offset - (scroll.clientHeight - paragraph.getBoundingClientRect().height) / 2, behavior: "smooth" });
+    });
     return () => {
+      cancelAnimationFrame(frame);
       paragraph.style.backgroundColor = previousBackground;
       paragraph.style.outline = previousOutline;
       paragraph.style.scrollMarginBlock = previousScrollMargin;
@@ -108,11 +132,13 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
   const loadingMessage = !error && !rendered && <p role="status" className="m-4 text-ui text-[#607087]">{redacted ? "Đang chuẩn bị bản DOCX đã che…" : "Đang tải file gốc…"}</p>;
 
   if (isDocx) {
-    return <div className="h-full overflow-auto [background:#eef1f5] p-4 [@media_(max-width:_580px)]:p-2 [&_.docx-wrapper]:!p-0 [&_.docx-wrapper]:!bg-transparent [&_.docx]:shadow-[0_3px_18px_#17243d24]">
+    return <div className="flex h-full min-h-0 flex-col bg-[#eef1f5]">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto overscroll-contain p-2 [&_.docx-wrapper]:!p-0 [&_.docx-wrapper]:!bg-transparent [&_.docx]:shadow-[0_3px_18px_#17243d24]">
       {errorMessage}
       {loadingMessage}
       {locationNotFound && !error && <p className="text-[#875c08] text-ui m-3">Không tìm thấy vị trí điều khoản trong file gốc. Bạn có thể xem trong “Văn bản đầy đủ”.</p>}
       <div ref={containerRef} aria-label={redacted ? "Bản DOCX đã che thông tin" : fileName ?? "File hợp đồng gốc"} />
+      </div>
     </div>;
   }
 

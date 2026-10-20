@@ -181,8 +181,8 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
       {showAiContext && <p className="m-0 border-b border-[#dce7f6] bg-[#f4f8ff] px-5 py-3 text-ui leading-6 text-[#536881]">Kết quả do AI phân tích, chưa thể hiện phê duyệt của chuyên viên.</p>}
       <ReviewResultHeader result={result} onShareSummary={() => setShareSummaryOpen(true)} />
       {showAiContext && <nav className={workspaceStyles.navigation} aria-label="Điều hướng kết quả"><a href={`#${sectionId}-analysis`}>Tóm tắt & rủi ro</a><a href={`#${sectionId}-document`}>Nội dung hợp đồng</a></nav>}
-      <div className={`${workspaceStyles.resultColumns} grid grid-cols-[minmax(0,0.88fr)_minmax(0,1.12fr)] items-stretch [@media_(max-width:_1080px)]:grid-cols-[1fr] ${showAiContext ? workspaceStyles.splitPane : ""}`}>
-        <div id={`${sectionId}-analysis`} className={`min-w-0 [border-right:1px_solid_#e4e8ef] [@media_(max-width:_1080px)]:[border-right:0] [@media_(max-width:_1080px)]:[border-bottom:1px_solid_#e4e8ef] ${showAiContext ? workspaceStyles.analysisPane : ""}`}>
+      <div className={`${workspaceStyles.resultColumns} grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-stretch [@media_(max-width:_1080px)]:grid-cols-[1fr] ${workspaceStyles.splitPane}`}>
+        <div id={`${sectionId}-analysis`} className={`min-w-0 [border-right:1px_solid_#e4e8ef] [@media_(max-width:_1080px)]:[border-right:0] [@media_(max-width:_1080px)]:[border-bottom:1px_solid_#e4e8ef] ${workspaceStyles.analysisPane}`}>
           <article className="[border-bottom:1px_solid_#e4e8ef] [background:#fbfcff] px-[22px] py-5 [&_h3]:text-ui-section [&_h3]:font-semibold [&_h3]:m-0 [&_p]:text-[#5e6e84] [&_p]:text-ui [&_p]:leading-[1.7] [&_p]:whitespace-pre-wrap [&_p]:mt-[9px] [&_p]:mb-0 [&_p]:mx-0 [&_ul]:text-[#5e6e84] [&_ul]:text-ui [&_ul]:leading-[1.7] [&_ul]:mt-[9px] [&_ul]:mb-0 [&_ul]:mx-0 [&_ul]:pl-[18px] [&_li_+_li]:mt-[5px]">
             <h3>Tóm tắt điều hành</h3>
             {result.contract.currentVersion?.summaryPoints?.length ?
@@ -209,22 +209,24 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
             })}</ul> : <p className="text-[#66758a] text-ui mt-3.5 mb-0 mx-0">{severityFilter !== "all" ? "Không có rủi ro trong nhóm đang chọn." : risksComplete ? "Chưa phát hiện điểm rủi ro đáng kể." : "Đánh giá rủi ro chưa hoàn tất."}</p>}
           </section>
         </div>
-        <section className={`${workspaceStyles.documentPane} min-w-0 min-h-0 grid ${showAiContext ? "grid-rows-[auto_auto_minmax(0,1fr)]" : "grid-rows-[auto_auto_minmax(390px,1fr)]"} [@media_(max-width:_1080px)]:block`} id={`${sectionId}-document`} aria-label="Nội dung hợp đồng">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e4e8ef] bg-[#fbfcfe] px-5 py-4">
+        <section className={`${workspaceStyles.documentPane} min-w-0 min-h-0 grid grid-rows-[auto_auto_minmax(0,1fr)] [@media_(max-width:_1080px)]:block`} id={`${sectionId}-document`} aria-label="Nội dung hợp đồng">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e4e8ef] bg-[#fbfcfe] px-4 py-2.5">
             <div className="min-w-0"><h3 className="m-0 text-ui-section font-semibold">Nội dung hợp đồng</h3><p className="mb-0 mt-1 max-w-[360px] truncate text-ui-meta text-[#778398]">{result.contract.currentVersion?.fileName ?? result.contract.title}</p></div>
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-[#f0f4fa] px-2.5 py-1.5 text-ui font-semibold text-[#536881]"><Icon name={viewMode === "redacted" ? "shield" : "document"} className="h-4 w-4" />{viewMode === "redacted" ? "Đối chiếu nội bộ" : showOriginal ? "Đang xem file gốc" : "Nội dung đầy đủ"}</span>
+
           </div>
-          <div className="border-b border-[#e4e8ef] bg-white px-5 py-4">
-            <div className="flex flex-wrap items-center justify-between gap-3 [@media_(max-width:_580px)]:items-start [@media_(max-width:_580px)]:flex-col">
-              <div className="inline-flex max-w-full gap-1 rounded-xl border border-[#dbe3ed] bg-[#f4f7fc] p-1" role="group" aria-label="Chế độ xem văn bản">
+          <div className="border-b border-[#e4e8ef] bg-white px-4 py-2.5">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex max-w-full flex-wrap gap-1" role="group" aria-label="Chế độ xem văn bản">
                 {(["redacted", "text"] as const).map((mode) => <Button variant={viewMode === mode ? "default" : "outline"} size="sm" type="button" key={mode} aria-pressed={viewMode === mode} onClick={() => selectDocumentMode(mode)} >{mode === "redacted" ? (isDocx ? "Bản DOCX đã che" : "Văn bản đã che") : "Văn bản đầy đủ"}</Button>)}
               </div>
               {canShowOriginal && <Button variant={showOriginal ? "default" : "outline"} size="sm" type="button" aria-pressed={showOriginal} onClick={() => selectDocumentMode("original")} ><Icon name="document" className="h-4 w-4" />Xem file gốc</Button>}
             </div>
+            <details className="mt-1.5 max-h-40 overflow-y-auto text-ui-meta leading-5 text-[#607087]"><summary className="w-fit cursor-pointer text-[#536881]">Thông tin hiển thị & bảo mật</summary>
             {viewMode === "redacted" && <p className="mb-0 mt-3 text-ui-meta leading-5 text-[#607087]">Bản đã che vẫn giữ một phần thông tin để đối chiếu.</p>}
             <p className="mb-0 mt-3 text-ui leading-6 text-[#607087]">{viewMode === "redacted" ? "Giữ 4 số cuối tài khoản và 3 số cuối điện thoại để đối chiếu. Tên dùng nhãn thay thế; email giữ ký tự đầu và tên miền; CCCD, ngày sinh, địa chỉ được che hoàn toàn khi nhận diện." : showOriginal ? "File gốc hiển thị nội dung đầy đủ để đối chiếu và không được che trong chế độ này." : "Bạn đang xem văn bản đầy đủ trong phạm vi quyền đọc hợp đồng hiện tại."}</p>
             {viewMode === "redacted" && <p role="note" className="mb-0 mt-2 border-l-2 border-[#e1b96d] pl-3 text-ui-meta leading-6 text-[#79581b]">{isDocx ? "Bản DOCX đã che là bản xem riêng; file gốc được giữ nguyên. " : "Chỉ áp dụng cho khung văn bản này. "}Tóm tắt, rủi ro, chat và file gốc có thể còn thông tin đầy đủ.</p>}
-            <details className="mt-2 text-ui leading-6 text-[#607087]"><summary className="w-fit cursor-pointer font-semibold text-[#315eac]">Cách dữ liệu được bảo vệ</summary><p className="mb-0 mt-2">Việc nhận diện phụ thuộc cấu hình hợp đồng. Tên dùng nhãn Cá nhân 1 nhất quán trong bản xem. Email chỉ giữ ký tự đầu và tên miền, ví dụ m•••@gmail.com. Khi số cuối trùng nhau, nhãn Tài khoản hoặc Điện thoại giúp phân biệt các giá trị. Dấu chấm có độ dài cố định, không phản ánh số ký tự thật. Đây là bản đối chiếu nội bộ, không phải bản báo cáo chia sẻ đã che toàn bộ.</p></details>
+            <p className="mb-0 mt-2">Việc nhận diện phụ thuộc cấu hình hợp đồng. Tên dùng nhãn Cá nhân 1 nhất quán trong bản xem. Email chỉ giữ ký tự đầu và tên miền, ví dụ m•••@gmail.com. Khi số cuối trùng nhau, nhãn Tài khoản hoặc Điện thoại giúp phân biệt các giá trị. Dấu chấm có độ dài cố định, không phản ánh số ký tự thật. Đây là bản đối chiếu nội bộ, không phải bản báo cáo chia sẻ đã che toàn bộ.</p>
+            </details>
           </div>
           <div className={`${workspaceStyles.documentBody} min-h-0 overflow-hidden [@media_(max-width:_1080px)]:h-[min(58vh,650px)] [@media_(max-width:_1080px)]:min-h-[390px]`}>
             {viewMode === "redacted" && isDocx && contractId && !docxTextFallback ? <OriginalContractPreview key="redacted-docx" redacted version={result.contract.updatedAt} contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} onTextFallback={() => setDocxTextFallback(true)} /> : showOriginal && contractId && mimeType ? originalTarget ? <FullDocument query={fullQuery}><OriginalContractPreview key="original-docx" version={result.contract.updatedAt} contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} target={previewTarget} /></FullDocument> : <OriginalContractPreview key="original-file" version={result.contract.updatedAt} contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} /> :

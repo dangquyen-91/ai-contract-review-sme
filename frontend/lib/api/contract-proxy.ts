@@ -18,6 +18,7 @@ export async function proxyContractRequest(
 
   try {
     const method = options.method ?? "GET";
+    const idempotencyKey = request.headers.get("Idempotency-Key");
     const upstream = await fetch(
       `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${contractId}${path}`,
       {
@@ -25,6 +26,7 @@ export async function proxyContractRequest(
         headers: {
           Authorization: `Bearer ${accessToken}`,
           ...(method === "POST" || method === "PATCH" ? { "Content-Type": "application/json" } : {}),
+          ...(method === "POST" && idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
         },
         ...(method === "POST" || method === "PATCH" ? { body: await request.text() } : {}),
         cache: "no-store",
@@ -45,6 +47,7 @@ export async function proxyContractRequest(
 }
 
 export async function proxyContractStream(request: NextRequest, contractId: string, path: string) {
+  const idempotencyKey = request.headers.get("Idempotency-Key");
   const accessToken = request.cookies.get("lawscan_access")?.value;
   if (!accessToken) {
     return NextResponse.json({ success: false, error: { message: "Phiên đăng nhập đã hết hạn." } }, { status: 401 });
@@ -57,7 +60,11 @@ export async function proxyContractStream(request: NextRequest, contractId: stri
       `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${contractId}${path}`,
       {
         method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
+        },
         body: await request.text(),
         cache: "no-store",
         signal: request.signal,

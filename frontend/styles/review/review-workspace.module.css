@@ -4,8 +4,8 @@
 .workspace li :is(span, p) { line-height: 1.65; }
 .navigation { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px 20px; border-bottom: 1px solid #e4e8ef; background: #f8faff; }
 .navigation a { display: inline-flex; align-items: center; min-height: 42px; padding: 7px 12px; border: 1px solid #dce5f2; border-radius: 8px; color: #245bd6; background: white; font-size: var(--text-ui); font-weight: 600; text-decoration: none; }
-.splitPane { height: min(78dvh, 880px); min-height: 540px; }
-.analysisPane { overflow-y: auto; scroll-margin-top: 90px; }
+.splitPane { height: min(86dvh, 1040px); min-height: 540px; grid-template-rows: minmax(0, 1fr); overflow: hidden; }
+.analysisPane { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scroll-margin-top: 90px; }
 .workspace section[aria-label="Nội dung hợp đồng"] { scroll-margin-top: 90px; }
 .filters { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 15px; }
 .filters button:not([data-slot="button"]) { min-height: 40px; padding: 6px 10px; border: 1px solid #dce5f2; border-radius: 18px; color: #536881; background: white; font-size: var(--text-ui); font-weight: 600; cursor: pointer; }
@@ -14,9 +14,9 @@
 .resultColumns { min-width: 0; }
 .documentBody { min-height: 0; }
 @container review-result (max-width: 1000px) {
-  .resultColumns { grid-template-columns: minmax(0, 1fr); height: auto; min-height: 0; }
+  .resultColumns { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; height: auto; min-height: 0; overflow: visible; }
   .resultColumns > div:first-child { border-right: 0; border-bottom: 1px solid #e4e8ef; overflow: visible; }
   .documentPane { display: block; }
   .documentBody { height: min(58vh, 650px); min-height: 390px; }
 }
-@media (max-width: 1080px) { .splitPane { height: auto; min-height: 0; } .analysisPane { overflow: visible; } }
+@media (max-width: 1080px) { .splitPane { height: auto; min-height: 0; grid-template-rows: none; overflow: visible; } .analysisPane { overflow: visible; } }

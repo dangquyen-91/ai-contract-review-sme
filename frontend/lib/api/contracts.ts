@@ -125,6 +125,7 @@ export const contractsApi = {
       url: `/contracts/${contractId}/chat`,
       method: "POST",
       data: { message },
+      headers: { "Idempotency-Key": crypto.randomUUID() },
       timeout: 180_000,
     });
   },

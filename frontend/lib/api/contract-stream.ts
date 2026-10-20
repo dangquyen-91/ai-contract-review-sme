@@ -32,7 +32,11 @@ async function consumeStream<TEvent>(
 ): Promise<void> {
   const options: RequestInit = {
     method: body === undefined ? "GET" : "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      ...(body !== undefined ? { "Idempotency-Key": crypto.randomUUID() } : {}),
+    },
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: "same-origin",
     signal,
