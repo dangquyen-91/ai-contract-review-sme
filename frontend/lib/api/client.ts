@@ -82,7 +82,6 @@ apiClient.interceptors.response.use(
           await refreshSession();
           return await apiClient(config);
         } catch {
-          // Return the original unauthorized error after refresh fails.
         }
       }
     }
