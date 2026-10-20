@@ -1,7 +1,6 @@
 "use client";
 import { Icon } from "@/components/ui/icon";
 import { useAuthForm } from "@/hooks/use-auth-form";
-import { EmailVerificationForm } from "./email-verification-form";
 import { GoogleSignIn } from "./google-sign-in";
 import { AuthFormHeader, AuthFormFooter } from "./auth-form-header";
 import { AuthCredentialsFields } from "./auth-credentials-fields";
@@ -17,8 +16,6 @@ export function AuthFormContent(props: ResolvedAuthFormProps) {
     googleBusy,
     setGoogleBusy,
     accountExists,
-    verification,
-    clearVerification,
     password,
     remember,
     confirmPassword,
@@ -28,15 +25,6 @@ export function AuthFormContent(props: ResolvedAuthFormProps) {
     register,
     formState: { errors, isSubmitting },
   } = form;
-  if (verification)
-    return (
-      <EmailVerificationForm
-        initialChallenge={verification}
-        invitationToken={invited ? invitationToken : undefined}
-        returnTo={returnTo}
-        onBack={clearVerification}
-      />
-    );
   return (
     <div
       className={`${"w-[min(460px,100%)] [&:is(a,_button):focus-visible]:[outline:3px_solid_#8ab8fa] [&:is(a,_button):focus-visible]:outline-offset-[3px] motion-safe:animate-[auth-enter_0.45s_cubic-bezier(.22,1,0.36,1)_both] [@media_(max-width:_840px)]:border [@media_(max-width:_840px)]:[background:#fff] [@media_(max-width:_840px)]:shadow-[0_22px_55px_-40px_#153b7380] [@media_(max-width:_840px)]:pt-[27px] [@media_(max-width:_840px)]:pb-[25px] [@media_(max-width:_840px)]:px-6 [@media_(max-width:_840px)]:rounded-[18px] [@media_(max-width:_840px)]:border-solid [@media_(max-width:_840px)]:border-[#e1e7ef] [@media_(max-width:_480px)]:px-[18px] [@media_(max-width:_480px)]:py-[23px] [@media_(max-width:_480px)]:rounded-[15px] motion-reduce:[animation-duration:0.01ms] motion-reduce:[animation-iteration-count:1]"} ${isRegister ? "[padding-block:22px]" : ""}`}

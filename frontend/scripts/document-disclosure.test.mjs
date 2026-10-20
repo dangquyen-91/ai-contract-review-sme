@@ -77,30 +77,30 @@ function setup(mimeType = 'application/pdf', findings) {
         : { ...fullState, refetch: () => { retries++; } };
     } },
   });
-  const { RedactedDocument } = load('../components/contract/redacted-document.tsx', {
+  const { RedactedDocument } = load('../components/review/redacted-document.tsx', {
     'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
   });
-  const { RiskFindingCard } = load('../components/contract/risk-finding-card.tsx', {
+  const { RiskFindingCard } = load('../components/review/risk-finding-card.tsx', {
     'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
   });
-  const { ReviewResultHeader } = load('../components/contract/review-result-header.tsx', {
+  const { ReviewResultHeader } = load('../components/review/review-result-header.tsx', {
     'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
   });
-  const { RiskDetails } = load('../components/contract/risk-details.tsx', {
+  const { RiskDetails } = load('../components/review/risk-details.tsx', {
     react, 'react/jsx-runtime': jsx,
     '@/hooks/use-contracts': { useUpdateProposedRevisionMutation: () => ({}), useRemoveProposedRevisionMutation: () => ({}) },
   });
-  const { ReviewResults } = load('../components/contract/review-results.tsx', {
+  const { ReviewResults } = load('../components/review/review-results.tsx', {
     react, 'react/jsx-runtime': jsx, '@/hooks/use-contracts': hooks,
     '@/styles/review/review-workspace.module.css': { default: {} }, '@/components/ui/icon': { Icon: () => null },
-    '@/components/contract/redacted-document': { RedactedDocument },
-    '@/components/contract/contract-chat': { ContractChat: () => null },
-    '@/components/contract/risk-details': { RiskDetails },
-    '@/components/contract/risk-finding-card': { RiskFindingCard },
-    '@/components/contract/review-result-header': { ReviewResultHeader },
-    '@/components/contract/key-terms': { KeyTerms: () => null },
-    '@/components/contract/original-contract-preview': { OriginalContractPreview: (props) => props.redacted ? jsx.jsx('div', { 'data-redacted-docx': true, ...props }) : jsx.jsx('iframe', { title: 'Original', ...props }) },
-    '@/components/contract/document-disclosure-dialog': { DocumentDisclosureDialog: ({ mode, onConfirm, onCancel }) => jsx.jsxs('dialog', { children: [
+    '@/components/review/redacted-document': { RedactedDocument },
+    '@/components/review/contract-chat': { ContractChat: () => null },
+    '@/components/review/risk-details': { RiskDetails },
+    '@/components/review/risk-finding-card': { RiskFindingCard },
+    '@/components/review/review-result-header': { ReviewResultHeader },
+    '@/components/review/key-terms': { KeyTerms: () => null },
+    '@/components/review/original-contract-preview': { OriginalContractPreview: (props) => props.redacted ? jsx.jsx('div', { 'data-redacted-docx': true, ...props }) : jsx.jsx('iframe', { title: 'Original', ...props }) },
+    '@/components/review/document-disclosure-dialog': { DocumentDisclosureDialog: ({ mode, onConfirm, onCancel }) => jsx.jsxs('dialog', { children: [
       jsx.jsx('button', { onClick: onConfirm, children: `Confirm ${mode}` }), jsx.jsx('button', { onClick: onCancel, children: 'Cancel' }),
     ] }) },
   });

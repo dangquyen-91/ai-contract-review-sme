@@ -131,7 +131,7 @@ test('Elapsed time is restored from BE dates and stops at finishedAt', () => {
   assert.equal(reviewElapsed({ ...base, startedAt: 'invalid' }, Date.now()), null);
 });
 
-const { ReviewTimeline } = load('../components/contract/review-timeline.tsx', {
+const { ReviewTimeline } = load('../components/review/review-timeline.tsx', {
   'react': React, 'react/jsx-runtime': jsx,
   '@/lib/review-timeline': helpers,
   '@/components/ui/icon': { Icon: () => null },

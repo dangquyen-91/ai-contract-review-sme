@@ -53,11 +53,11 @@ const { SectionDetailDialog } = load('components/management/section-detail-dialo
 const { ReviewBlockedNotice } = load('components/review/review-blocked-notice.tsx');
 let shareState;
 modules.set('hooks/use-contract-share-summary.ts', { exports: { useContractShareSummary: () => shareState } });
-const { ShareSummaryDialog } = load('components/contract/share-summary-dialog.tsx');
+const { ShareSummaryDialog } = load('components/review/share-summary-dialog.tsx');
 modules.set('hooks/use-review-allowance.ts', { exports: { useReviewAllowance: () => ({}) } });
-const { AnalysisFocusDialog } = load('components/contract/analysis-focus-dialog.tsx');
-const { ReviewResultHeader } = load('components/contract/review-result-header.tsx');
-const { ContractUploadForm } = load('components/contract/contract-upload-form.tsx');
+const { AnalysisFocusDialog } = load('components/review/analysis-focus-dialog.tsx');
+const { ReviewResultHeader } = load('components/review/review-result-header.tsx');
+const { ContractUploadForm } = load('components/review/contract-upload-form.tsx');
 const wait = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 test('Legal detail opens in place, restores focus, and keeps the parent open through nested actions and pending mutations', async () => {
@@ -508,7 +508,7 @@ test('Share button opens a clearly labelled UI preview with email disabled and n
 });
 
 test('Formatted summary preserves ordinary text and renders each recognized priority as a labelled risk card', () => {
-  const { ShareSummaryPreview } = load('components/contract/share-summary-preview.tsx');
+  const { ShareSummaryPreview } = load('components/review/share-summary-preview.tsx');
   const html = renderToStaticMarkup(React.createElement(ShareSummaryPreview, {
     text: 'TÓM TẮT\nVẤN ĐỀ ƯU TIÊN\n1. [Cao] High item\n2. [Trung bình] Medium item\n3. [Thấp] Low item\nCustom edited line',
     counts: { high: 1, medium: 1, low: 1 },

@@ -23,3 +23,16 @@ export function safeAuthReturn(value: unknown) {
 export function authDestination(user: AuthUser, invitationToken?: string, returnTo?: string) {
   return invitationToken ? `/loi-moi?token=${invitationToken}` : safeAuthReturn(returnTo) ?? workspacePath(user);
 }
+
+export function emailVerificationNavigation(mode: "login" | "register", invitationToken?: string, returnTo?: string) {
+  const query = new URLSearchParams();
+  if (invitationToken && /^[a-f\d]{64}$/.test(invitationToken)) query.set("invitationToken", invitationToken);
+  const destination = safeAuthReturn(returnTo);
+  if (destination) query.set("returnTo", destination);
+  const backQuery = query.toString();
+  query.set("mode", mode);
+  return {
+    verificationHref: `/xac-minh-email?${query}`,
+    backHref: `${mode === "register" ? "/dang-ky" : "/dang-nhap"}${backQuery ? `?${backQuery}` : ""}`,
+  };
+}

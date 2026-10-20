@@ -16,7 +16,7 @@ function load(path, dependencies) {
   return exports;
 }
 
-const { RedactedDocument } = load('../components/contract/redacted-document.tsx', {
+const { RedactedDocument } = load('../components/review/redacted-document.tsx', {
   'react/jsx-runtime': jsx,
   '@/components/ui/icon': { Icon: () => null },
 });
@@ -101,21 +101,21 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
     } },
     '@/lib/api/contracts': { contractsApi: { getText: async (_id, options) => { requestOptions = options; return textResponse; } } },
   });
-  const { ReviewResultHeader } = load('../components/contract/review-result-header.tsx', {
+  const { ReviewResultHeader } = load('../components/review/review-result-header.tsx', {
     'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
   });
-  const { ReviewResults } = load('../components/contract/review-results.tsx', {
+  const { ReviewResults } = load('../components/review/review-results.tsx', {
     'react': React,
     'react/jsx-runtime': jsx,
     '@/hooks/use-contracts': hooks,
     '@/styles/review/review-workspace.module.css': { default: {} },
     '@/components/ui/icon': { Icon: () => null },
-    '@/components/contract/redacted-document': { RedactedDocument },
-    '@/components/contract/contract-chat': { ContractChat: () => null },
-    '@/components/contract/risk-details': { RiskDetails: () => null },
-    '@/components/contract/review-result-header': { ReviewResultHeader },
-    '@/components/contract/original-contract-preview': { OriginalContractPreview: () => jsx.jsx('iframe', { title: 'Original file' }) },
-    '@/components/contract/key-terms': { KeyTerms: () => null },
+    '@/components/review/redacted-document': { RedactedDocument },
+    '@/components/review/contract-chat': { ContractChat: () => null },
+    '@/components/review/risk-details': { RiskDetails: () => null },
+    '@/components/review/review-result-header': { ReviewResultHeader },
+    '@/components/review/original-contract-preview': { OriginalContractPreview: () => jsx.jsx('iframe', { title: 'Original file' }) },
+    '@/components/review/key-terms': { KeyTerms: () => null },
   });
   const result = {
     contract: { _id: 'contract-1', title: 'Test contract', updatedAt: '2026-10-13', currentVersion: { mimeType: 'application/pdf' } },

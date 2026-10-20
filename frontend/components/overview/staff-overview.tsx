@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { QuickContractUpload } from "@/components/contract/quick-contract-upload";
+import { QuickContractUpload } from "@/components/review/quick-contract-upload";
 import { Icon } from "@/components/ui/icon";
 import type { DashboardContract } from "@/types/contracts";
 import type { DashboardContractFilter, DashboardData } from "@/types/dashboard";

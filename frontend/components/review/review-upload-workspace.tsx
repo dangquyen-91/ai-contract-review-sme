@@ -4,10 +4,10 @@ import type { ComponentProps, RefObject } from "react";
 import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider";
 import type { ReviewBlockReason } from "@/lib/review-failure";
 import { ReviewAllowanceSummary } from "./review-allowance-summary";
-import { ContractUploadForm } from "@/components/contract/contract-upload-form";
-import { ReviewResults } from "@/components/contract/review-results";
-import { ReviewLayout } from "@/components/contract/review-layout";
-import { ReviewTimeline } from "@/components/contract/review-timeline";
+import { ContractUploadForm } from "@/components/review/contract-upload-form";
+import { ReviewResults } from "@/components/review/review-results";
+import { ReviewLayout } from "@/components/review/review-layout";
+import { ReviewTimeline } from "@/components/review/review-timeline";
 import { Icon } from "@/components/ui/icon";
 import type { ContractReviewResult, ContractReviewRun } from "@/types/contracts";
 

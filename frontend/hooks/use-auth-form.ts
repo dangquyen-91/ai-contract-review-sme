@@ -11,12 +11,11 @@ import {
 import { toast } from "sonner";
 import { useAuthMutation } from "@/hooks/use-auth";
 import { isApiClientError } from "@/lib/api/client";
-import { authDestination } from "@/lib/auth-return";
+import { authDestination, emailVerificationNavigation } from "@/lib/auth-return";
 import { authFormSchema } from "@/schemas/auth.schema";
 import type {
   AuthFormValues,
   AuthMutationVariables,
-  EmailVerificationChallenge,
   ResolvedAuthFormProps,
 } from "@/types/auth";
 const authFields = new Set<FieldPath<AuthFormValues>>([
@@ -50,8 +49,6 @@ export function useAuthForm({
   const authMutation = useAuthMutation();
   const [googleBusy, setGoogleBusy] = useState(false);
   const [accountExists, setAccountExists] = useState(false);
-  const [verification, setVerification] =
-    useState<EmailVerificationChallenge | null>(null);
   const form = useForm<AuthFormValues>({
     resolver: zodResolver(authFormSchema),
     mode: "onBlur",
@@ -105,7 +102,7 @@ export function useAuthForm({
     try {
       const session = await authMutation.mutateAsync(request);
       if ("verificationRequired" in session) {
-        setVerification(session);
+        router.push(emailVerificationNavigation(mode, invited ? invitationToken : undefined, returnTo).verificationHref);
         return;
       }
       toast.success(
@@ -164,11 +161,9 @@ export function useAuthForm({
     googleBusy,
     setGoogleBusy,
     accountExists,
-    verification,
     password,
     remember,
     confirmPassword,
     onSubmit: form.handleSubmit(submit),
-    clearVerification: () => setVerification(null),
   };
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { RecentContracts } from "@/components/contract/recent-contracts";
-import { AnalysisFocusDialog } from "@/components/contract/analysis-focus-dialog";
+import { AnalysisFocusDialog } from "@/components/review/analysis-focus-dialog";
 import { ReviewUploadWorkspace } from "@/components/review/review-upload-workspace";
 import { businessTypeLabels } from "@/config/contract-display";
 import type { useReviewWorkflow } from "@/hooks/use-review-workflow";

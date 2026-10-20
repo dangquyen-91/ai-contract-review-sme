@@ -4,6 +4,7 @@ import { encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { rememberedCookieAge, tokenMaxAge } from "@/lib/token-expiry";
 import type { AuthUser } from "@/types/auth";
 import { isSameOriginRequest } from "@/lib/request-origin";
+import { emailVerificationCookie, emailVerificationCookieAge, encodeEmailVerification } from "@/lib/email-verification-session";
 
 const allowedActions = new Set(["login", "register", "refresh", "logout", "verify-email", "resend-verification", "google"]);
 
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
   if (action === "logout") {
     const response = NextResponse.json({ success: true, data: { loggedOut: true } });
     clearSessionCookies(response, secure);
+    response.cookies.set(emailVerificationCookie, "", { ...cookieOptions(secure), maxAge: 0 });
     return response;
   }
 
@@ -88,6 +90,9 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
       response.headers.set("Cache-Control", "no-store");
       // A pending verification is not an authenticated session.
       if (action !== "resend-verification") clearSessionCookies(response, secure);
+      response.cookies.set(emailVerificationCookie, encodeEmailVerification(payload.data), {
+        ...cookieOptions(secure), maxAge: emailVerificationCookieAge,
+      });
       return response;
     }
     if (action === "verify-email") remember = payload.data?.remember === true;
@@ -103,6 +108,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
     });
     response.headers.set("Cache-Control", "no-store");
     const options = cookieOptions(secure);
+    if (!isRefresh) response.cookies.set(emailVerificationCookie, "", { ...options, maxAge: 0 });
     if (action === "google") response.cookies.set("lawscan_google_nonce", "", { ...options, maxAge: 0 });
     response.cookies.set("lawscan_access", accessToken, { ...options, maxAge: tokenMaxAge(accessToken) });
     response.cookies.set("lawscan_refresh", nextRefreshToken, {

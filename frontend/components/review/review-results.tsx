@@ -6,15 +6,15 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type Reac
 import { useContractText } from "@/hooks/use-contracts";
 import workspaceStyles from "@/styles/review/review-workspace.module.css";
 import { Icon } from "@/components/ui/icon";
-import { ContractChat } from "@/components/contract/contract-chat";
-import { RiskDetails } from "@/components/contract/risk-details";
-import { RiskFindingCard } from "@/components/contract/risk-finding-card";
-import { ReviewResultHeader } from "@/components/contract/review-result-header";
-import { OriginalContractPreview } from "@/components/contract/original-contract-preview";
-import { KeyTerms } from "@/components/contract/key-terms";
-import { RedactedDocument } from "@/components/contract/redacted-document";
-import { DocumentDisclosureDialog } from "@/components/contract/document-disclosure-dialog";
-import { ShareSummaryDialog } from "@/components/contract/share-summary-dialog";
+import { ContractChat } from "@/components/review/contract-chat";
+import { RiskDetails } from "@/components/review/risk-details";
+import { RiskFindingCard } from "@/components/review/risk-finding-card";
+import { ReviewResultHeader } from "@/components/review/review-result-header";
+import { OriginalContractPreview } from "@/components/review/original-contract-preview";
+import { KeyTerms } from "@/components/review/key-terms";
+import { RedactedDocument } from "@/components/review/redacted-document";
+import { DocumentDisclosureDialog } from "@/components/review/document-disclosure-dialog";
+import { ShareSummaryDialog } from "@/components/review/share-summary-dialog";
 import type { ContractReviewResult, RiskFinding } from "@/types/contracts";
 
 const severityLabels = { high: "Rủi ro cao", medium: "Rủi ro trung bình", low: "Rủi ro thấp" };
