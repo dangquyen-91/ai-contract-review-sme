@@ -10,14 +10,13 @@ import { REVIEW_STAGES, ReviewModel } from '../../models/review.model';
 import { segmentClauses } from '../analysis/clause.service';
 import { generateContractSummary } from '../analysis/summary.service';
 import { detectRisks } from '../analysis/risk.service';
-import { extendUsageLease, finishUsage } from '../billing/usage.service';
+import { extendUsageLease, finishUsage, isUsageSucceeded, keepUsageLeaseAlive } from '../billing/usage.service';
 
 const REVIEW_QUEUE = 'contract-review';
 const MAX_ATTEMPTS = 2;
 const WORKER_CONCURRENCY = 2;
 const EXTRACTION_POLL_MS = 2000;
 const EXTRACTION_WAIT_MS = 15 * 60 * 1000;
-const CREDIT_HEARTBEAT_MS = 60_000;
 const ACTIVE_JOB_STATES = new Set(['waiting', 'active', 'delayed', 'prioritized', 'waiting-children']);
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 } as const;
 
@@ -206,16 +205,10 @@ export async function processReview(job: Job<ReviewJobData>): Promise<void> {
 
 function keepCreditReserved(usageRunId: string) {
   const controller = new AbortController();
-  const lost = () => controller.abort(new UnrecoverableError('The analysis credit reservation expired; start a new review'));
-  const heartbeat = setInterval(() => {
-    extendUsageLease(usageRunId)
-      .then((alive) => {
-        if (!alive) lost();
-      })
-      .catch(lost);
-  }, CREDIT_HEARTBEAT_MS);
-  heartbeat.unref();
-  return { signal: controller.signal, stop: () => clearInterval(heartbeat) };
+  const stop = keepUsageLeaseAlive(usageRunId, () =>
+    controller.abort(new UnrecoverableError('The analysis credit reservation expired; start a new review')),
+  );
+  return { signal: controller.signal, stop };
 }
 
 async function runReview(job: Job<ReviewJobData>): Promise<void> {
@@ -224,32 +217,34 @@ async function runReview(job: Job<ReviewJobData>): Promise<void> {
 
   const orgId = review.orgId.toString();
   const contractId = review.contractId.toString();
+  const versionId = review.versionId.toString();
   const { usageRunId } = job.data;
   const analysisFocus = review.analysisFocus ?? undefined;
 
-  if (!(await extendUsageLease(usageRunId))) {
-    throw new UnrecoverableError('The analysis credit reservation expired before the review started; start a new review');
-  }
-  const credit = keepCreditReserved(usageRunId);
-  try {
-    await updateReview(job, { status: 'running', startedAt: review.startedAt ?? new Date() }, ['error']);
-    await runStages(job, review.stages, { orgId, contractId, analysisFocus, versionId: review.versionId.toString() }, credit.signal);
-    credit.signal.throwIfAborted();
-    await finishUsage(orgId, usageRunId, true, { reviewId: job.data.reviewId }).catch((err) =>
-      logger.warn('Review finished but its analysis credit could not be finalized', {
-        reviewId: job.data.reviewId,
-        error: err instanceof Error ? err.message : String(err),
-      }),
-    );
-  } catch (err) {
-    throw credit.signal.aborted ? credit.signal.reason : err;
-  } finally {
-    credit.stop();
+  let result: Awaited<ReturnType<typeof buildReviewResult>>;
+  if (await isUsageSucceeded(usageRunId)) {
+    result = await buildReviewResult(versionId);
+  } else {
+    if (!(await extendUsageLease(usageRunId))) {
+      throw new UnrecoverableError('The analysis credit reservation expired before the review started; start a new review');
+    }
+    const credit = keepCreditReserved(usageRunId);
+    try {
+      await updateReview(job, { status: 'running', startedAt: review.startedAt ?? new Date() }, ['error']);
+      await runStages(job, review.stages, { orgId, contractId, analysisFocus, versionId }, credit.signal);
+      credit.signal.throwIfAborted();
+      result = await buildReviewResult(versionId);
+      await finishUsage(orgId, usageRunId, true, { reviewId: job.data.reviewId });
+    } catch (err) {
+      throw credit.signal.aborted ? credit.signal.reason : err;
+    } finally {
+      credit.stop();
+    }
   }
 
   await updateReview(
     job,
-    { status: 'completed', finishedAt: new Date(), result: await buildReviewResult(review.versionId.toString()) },
+    { status: 'completed', finishedAt: new Date(), result },
     ['activeLock', 'currentStage', 'stageDetail', 'error'],
   );
 }
