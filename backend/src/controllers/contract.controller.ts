@@ -4,16 +4,15 @@ import { ok, paginated } from '../utils/ApiResponse';
 import { parsePagination } from '../utils/pagination';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
 import * as contractService from '../services/contract/contract.service';
-import { assertBusinessReviewContract, assertPersonalReviewContract } from '../services/contract/personalReviewPolicy';
+import { assertAccountReviewPolicy } from '../services/contract/personalReviewPolicy';
+import { confirmContractProfile } from '../services/contract/contractClassification.service';
+import { retryClassification } from '../services/contract/classificationWorker.service';
 import { ListContractsQuery } from '../validations/contract.validation';
 
 export const createContractHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
   const respondAsync = /\brespond-async\b/i.test(req.get('Prefer') ?? '');
-  if (req.body.type) {
-    if (user.role === 'user') assertPersonalReviewContract(req.body.type, req.body.ourParty);
-    else assertBusinessReviewContract(req.body.type);
-  }
+  if (req.body.type) assertAccountReviewPolicy(user.role === 'user', req.body.type, req.body.ourParty);
 
   const contract = await contractService.createContract({
     orgId: user.orgId,
@@ -43,6 +42,18 @@ export const getContractHandler = asyncHandler(async (req: Request, res: Respons
   const user = getOrganizationUser(req);
   const contract = await contractService.getContractById(user.orgId, req.params.id);
   ok(res, contract);
+});
+
+export const confirmContractProfileHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getOrganizationUser(req);
+  await confirmContractProfile(user.orgId, req.params.id, req.body, user.role === 'user');
+  ok(res, await contractService.getContractById(user.orgId, req.params.id));
+});
+
+export const retryClassificationHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getOrganizationUser(req);
+  await retryClassification(user.orgId, req.params.id);
+  ok(res, await contractService.getContractById(user.orgId, req.params.id), 202);
 });
 
 export const deleteContractHandler = asyncHandler(async (req: Request, res: Response) => {

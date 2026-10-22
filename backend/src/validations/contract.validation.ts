@@ -11,6 +11,11 @@ export const createContractSchema = z.object({
   industry: codeSchema.optional(),
 });
 
+export const confirmContractProfileSchema = z.object({
+  type: codeSchema,
+  ourParty: codeSchema.optional(),
+});
+
 export const CONTRACT_SORT_FIELDS = [
   'createdAt',
   'updatedAt',

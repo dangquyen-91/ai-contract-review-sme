@@ -4,13 +4,20 @@ import { AppError } from '../../errors/AppError';
 import { ContractModel, CLASSIFICATION_OUTCOMES } from '../../models/contract.model';
 import { ContractProfileModel, SENSITIVE_DATA_TYPES } from '../../models/contractProfile.model';
 import { OrganizationModel } from '../../models/organization.model';
+import { ReviewModel } from '../../models/review.model';
 import { UserModel } from '../../models/user.model';
 import { generateJson } from '../ai/llm.service';
 import { createRedactor, placeholderInstruction } from '../ai/redaction.service';
 import { getCurrentVersionWithText } from './contractVersion.service';
-import { BUSINESS_REVIEW_TYPES, PERSONAL_REVIEW_TYPES } from './personalReviewPolicy';
+import { resolveContractProfile, validateContractContext } from './contractProfile.service';
+import {
+  assertAccountReviewPolicy,
+  BUSINESS_REVIEW_TYPES,
+  PERSONAL_REVIEW_TYPES,
+} from './personalReviewPolicy';
 
 const EXCERPT_CHARS = 8000;
+const RUNNING_STALE_MS = 10 * 60 * 1000;
 const NOT_CONTRACT = 'not_contract';
 const OTHER_TYPE = 'other';
 
@@ -147,12 +154,21 @@ export function decideOutcome(type: string, allowedTypes: readonly string[], sup
   return allowedTypes.includes(type) ? 'supported' : 'not_allowed_for_account';
 }
 
+export function classificationClaimable(staleBefore = new Date(Date.now() - RUNNING_STALE_MS)) {
+  return {
+    $or: [
+      { 'classification.status': { $in: ['pending', 'failed'] } },
+      { 'classification.status': 'running', 'classification.startedAt': { $lt: staleBefore } },
+    ],
+  };
+}
+
 export async function claimClassification(contractId: string) {
   return ContractModel.findOneAndUpdate(
     {
       _id: contractId,
       type: null,
-      'classification.status': { $in: ['pending', 'failed'] },
+      ...classificationClaimable(),
     },
     {
       $set: { 'classification.status': 'running', 'classification.startedAt': new Date() },
@@ -219,7 +235,7 @@ export async function classifyContract(contractId: string, signal?: AbortSignal)
     const confidence = Math.min(1, Math.max(0, parsed.data.confidence ?? 0));
 
     await ContractModel.updateOne(
-      { _id: contract._id },
+      { _id: contract._id, type: null },
       {
         $set: {
           'classification.status': 'completed',
@@ -238,7 +254,7 @@ export async function classifyContract(contractId: string, signal?: AbortSignal)
     return outcome;
   } catch (err) {
     await ContractModel.updateOne(
-      { _id: contract._id },
+      { _id: contract._id, type: null },
       {
         $set: {
           'classification.status': 'failed',
@@ -249,4 +265,46 @@ export async function classifyContract(contractId: string, signal?: AbortSignal)
     );
     throw err;
   }
+}
+
+export async function confirmContractProfile(
+  orgId: string,
+  contractId: string,
+  input: { type: string; ourParty?: string },
+  isPersonal: boolean,
+) {
+  const contract = await ContractModel.findOne({ _id: contractId, orgId });
+  if (!contract) throw AppError.notFound('Contract not found');
+  if (await ReviewModel.exists({ contractId, activeLock: true })) {
+    throw AppError.conflict('A review is running for this contract', 'REVIEW_RUNNING');
+  }
+
+  const profile = await resolveContractProfile(input.type);
+  const ourParty = input.ourParty ?? (isPersonal ? PERSONAL_DEFAULT_PARTY[profile.code] : undefined);
+  await validateContractContext(profile, { ourParty });
+  assertAccountReviewPolicy(isPersonal, profile.code, ourParty);
+
+  const suggestion = contract.classification;
+  const acceptedSuggestion =
+    suggestion?.status === 'completed' &&
+    suggestion.source === 'ai' &&
+    suggestion.type === profile.code &&
+    (suggestion.ourParty ?? undefined) === ourParty;
+  const settled = suggestion?.status === 'completed';
+
+  await ContractModel.updateOne(
+    { _id: contract._id },
+    {
+      $set: {
+        type: profile.code,
+        ...(ourParty ? { ourParty } : {}),
+        ...(contract.status === 'unsupported' ? { status: 'uploaded' } : {}),
+        'classification.status': 'completed',
+        'classification.outcome': settled ? suggestion.outcome : 'supported',
+        'classification.source': acceptedSuggestion ? 'ai' : 'user',
+        'classification.confirmedAt': new Date(),
+      },
+      ...(ourParty ? {} : { $unset: { ourParty: '' } }),
+    },
+  );
 }

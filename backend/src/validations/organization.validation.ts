@@ -11,6 +11,7 @@ export const updateOrganizationSchema = z
     name: z.string().trim().min(2).max(200).optional(),
     taxCode: z.string().trim().min(1).max(50).nullable().optional(),
     address: z.string().trim().min(1).max(500).nullable().optional(),
+    industry: z.string().trim().min(1).max(50).nullable().optional(),
   })
   .refine((input) => Object.keys(input).length > 0, 'At least one field is required');
 

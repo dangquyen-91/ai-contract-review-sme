@@ -10,12 +10,14 @@ import { aiLimiter } from '../middlewares/rateLimit.middleware';
 import { validate } from '../middlewares/validate.middleware';
 import { contractFileUpload } from '../middlewares/upload.middleware';
 import {
+  confirmContractProfileHandler,
   createContractHandler,
   deleteContractHandler,
   getContractFileHandler,
   getContractHandler,
   getContractTextHandler,
   listContractsHandler,
+  retryClassificationHandler,
 } from '../controllers/contract.controller';
 import { listClausesHandler } from '../controllers/clause.controller';
 import { getShareSummaryHandler } from '../controllers/shareSummary.controller';
@@ -33,6 +35,7 @@ import {
 import { listReviewsHandler, startReviewHandler } from '../controllers/review.controller';
 import {
   analysisFocusBodySchema,
+  confirmContractProfileSchema,
   chatMessageBodySchema,
   contractIdParamSchema,
   contractTextQuerySchema,
@@ -59,6 +62,21 @@ router.post(
 );
 
 router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandler);
+
+router.patch(
+  '/:id/profile',
+  requireRole(...CONTRACT_REVIEW_ROLES),
+  validate({ params: contractIdParamSchema, body: confirmContractProfileSchema }),
+  confirmContractProfileHandler,
+);
+
+router.post(
+  '/:id/classify',
+  requireRole(...CONTRACT_REVIEW_ROLES),
+  aiLimiter,
+  validate({ params: contractIdParamSchema }),
+  retryClassificationHandler,
+);
 
 router.get(
   '/:id/text',

@@ -6,7 +6,7 @@ import { getOrganizationUser } from '../middlewares/auth.middleware';
 import { openSseStream } from '../utils/sse';
 import * as reviewService from '../services/review/review.service';
 import * as contractService from '../services/contract/contract.service';
-import { assertBusinessReviewContract, assertPersonalReviewContract } from '../services/contract/personalReviewPolicy';
+import { assertAccountReviewPolicy } from '../services/contract/personalReviewPolicy';
 import { subscribeToReview } from '../services/review/reviewWorker.service';
 import { getIdempotencyKey } from '../validations/subscription.validation';
 
@@ -18,8 +18,7 @@ export const startReviewHandler = asyncHandler(async (req: Request, res: Respons
   if (!contract.type) {
     throw AppError.conflict('Confirm the contract type before starting a review', 'CONTRACT_NOT_CONFIRMED');
   }
-  if (user.role === 'user') assertPersonalReviewContract(contract.type, contract.ourParty);
-  else assertBusinessReviewContract(contract.type);
+  assertAccountReviewPolicy(user.role === 'user', contract.type, contract.ourParty);
   const { review, replayed } = await reviewService.startReview({
     orgId: user.orgId,
     userId: user.sub,

@@ -137,6 +137,10 @@ components:
         address:
           type: string
           nullable: true
+        industry:
+          type: string
+          nullable: true
+          description: Industry code used for contracts that do not set their own
         createdAt:
           type: string
           format: date-time
@@ -174,6 +178,11 @@ components:
           type: string
           nullable: true
           maxLength: 500
+        industry:
+          type: string
+          nullable: true
+          maxLength: 50
+          description: Industry code (see GET /contract-profiles). Used when a contract has no industry of its own; null clears it.
 
     RegisterRequest:
       type: object
@@ -2246,6 +2255,106 @@ paths:
                 $ref: '#/components/schemas/RiskFinding'
         '404':
           description: Contract or finding not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/profile:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-fd]{24}$'
+    patch:
+      tags: [Contracts]
+      summary: Confirm or change the contract type and the user's party
+      description: |
+        Confirms the classification suggestion or overrides it. The contract can be reviewed only after this (or after an upload that already gave a type).
+        Personal accounts may only use life_insurance, housing_purchase and labor (labor always as employee); business accounts sales, labor, service and office_lease.
+        When ourParty is omitted, personal labor defaults to employee and personal life_insurance to policyholder.
+        classification.source becomes "ai" when the confirmed type and party equal the suggestion, otherwise "user". An unsupported contract returns to status uploaded.
+        Roles - administrator, owner, manager, staff, reviewer, user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+                  example: labor
+                ourParty:
+                  type: string
+                  example: employee
+      responses:
+        '200':
+          description: Updated contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '400':
+          description: Unknown type or party, or a type the account cannot review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A review is running for this contract (code REVIEW_RUNNING)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/classify:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-fd]{24}$'
+    post:
+      tags: [Contracts]
+      summary: Run contract classification again
+      description: |
+        Classification runs automatically after text extraction for contracts uploaded without a type. Use this to retry it when classification.status is failed, or pending without progress. It does not use an analysis credit.
+        Roles - administrator, owner, manager, staff, reviewer, user.
+      responses:
+        '202':
+          description: Queued; poll GET /contracts/{id} until classification.status is completed or failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: |
+            CONTRACT_ALREADY_CONFIRMED - the type is already set.
+            EXTRACTION_NOT_READY - the text has not been extracted.
+            CLASSIFICATION_NOT_RETRYABLE - classification is running or already finished.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Background processing is unavailable
           content:
             application/json:
               schema:
