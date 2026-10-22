@@ -117,6 +117,9 @@ components:
       properties:
         message:
           type: string
+        code:
+          type: string
+          description: Machine-readable reason, present for errors the client is expected to handle (e.g. CONTRACT_NOT_CONFIRMED)
         details:
           type: object
 
@@ -328,7 +331,8 @@ components:
           type: string
         type:
           type: string
-          description: Contract profile code (see GET /contract-profiles), e.g. sales, service, office_lease, labor, housing_purchase, life_insurance
+          nullable: true
+          description: Confirmed contract profile code (see GET /contract-profiles), e.g. sales, service, office_lease, labor, housing_purchase, life_insurance. Absent until the type is confirmed; a review cannot start before that (409 CONTRACT_NOT_CONFIRMED).
         ourParty:
           type: string
           description: Party code the user represents in this contract (one of the profile's parties); absent if not specified
@@ -337,6 +341,9 @@ components:
           description: Industry code of the user's business (see GET /contract-profiles); absent if not specified
         status:
           type: string
+          enum: [uploaded, processing, reviewed, archived, unsupported]
+        classification:
+          $ref: '#/components/schemas/ContractClassification'
         currentVersion:
           $ref: '#/components/schemas/ContractVersion'
         createdAt:
@@ -911,17 +918,64 @@ components:
           type: number
           description: Retrieval relevance (0-1). Excerpts are found by hybrid search (Atlas Vector Search + Atlas Search full text, fused by reciprocal rank); 1 means ranked first by both. Articles linked directly (a rule citation, or an article the LLM named that was not retrieved) have 1.
 
+    ContractClassification:
+      type: object
+      description: How the contract type and the user's party were determined. With source=user the type was given at upload or confirmed by the user.
+      properties:
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        outcome:
+          type: string
+          enum: [supported, unsupported_type, not_contract, not_allowed_for_account]
+        detectedLabel:
+          type: string
+          description: Free-text contract kind as detected, e.g. "hợp đồng thuê xe"
+        type:
+          type: string
+          description: Suggested profile code
+        ourParty:
+          type: string
+          description: Suggested party code
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        parties:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              partyCode:
+                type: string
+        source:
+          type: string
+          enum: [ai, user]
+        error:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+
     CreateContractRequest:
       type: object
-      required: [title, type]
       properties:
         title:
           type: string
           minLength: 2
           maxLength: 300
+          description: Optional. Defaults to the file name without its extension
         type:
           type: string
-          description: Contract profile code or alias (see GET /contract-profiles). Unknown codes return 400.
+          description: Optional. Contract profile code or alias (see GET /contract-profiles); unknown codes return 400. When given, the type counts as confirmed by the user. When omitted, the contract waits for classification and confirmation before it can be reviewed.
           example: sales
         ourParty:
           type: string

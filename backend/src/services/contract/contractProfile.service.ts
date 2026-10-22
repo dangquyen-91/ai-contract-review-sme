@@ -3,6 +3,7 @@ import { AppError } from '../../errors/AppError';
 import { ClauseCategory } from '../../models/clauseTypeTaxonomy.model';
 import { ContractProfile, ContractProfileModel } from '../../models/contractProfile.model';
 import { IndustryModel } from '../../models/industry.model';
+import { OrganizationModel } from '../../models/organization.model';
 import { LegalSourceModel } from '../../models/legalSource.model';
 import { getTaxonomyByCodes } from '../analysis/clauseTypeTaxonomy.service';
 import type { SensitiveDataType } from '../ai/redaction.service';
@@ -98,17 +99,24 @@ export interface ReviewContext {
 }
 
 export async function buildReviewContext(contract: {
-  type: string;
+  orgId?: { toString(): string } | null;
+  type?: string | null;
   ourParty?: string | null;
   industry?: string | null;
 }): Promise<ReviewContext> {
+  if (!contract.type) {
+    throw AppError.conflict('Confirm the contract type before analyzing it', 'CONTRACT_NOT_CONFIRMED');
+  }
   const profile = await resolveContractProfile(contract.type);
-  const rule = contract.industry
-    ? profile.industryRules.find((r) => r.industry === contract.industry)
+  const industryCode =
+    contract.industry ??
+    (contract.orgId
+      ? (await OrganizationModel.findById(contract.orgId.toString()).select('industry'))?.industry
+      : undefined);
+  const rule = industryCode
+    ? profile.industryRules.find((r) => r.industry === industryCode)
     : undefined;
-  const industry = contract.industry
-    ? await IndustryModel.findOne({ code: contract.industry })
-    : null;
+  const industry = industryCode ? await IndustryModel.findOne({ code: industryCode }) : null;
 
   return {
     profileCode: profile.code,

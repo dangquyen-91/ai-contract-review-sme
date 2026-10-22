@@ -5,8 +5,8 @@ import { ContractModel } from '../../models/contract.model';
 import { ContractVersionModel } from '../../models/contractVersion.model';
 import { downloadContractFile, storedFileOf } from './storage.service';
 import { extractContractText, ExtractionProgress, recycleOcrIfNeeded } from './textExtraction.service';
-import { resolveContractProfile } from './contractProfile.service';
-import { detectSensitiveData, SensitiveDataType, summarizeSensitiveData } from '../ai/redaction.service';
+import { redactionPolicyFor } from './redactionPolicy.service';
+import { detectSensitiveData, summarizeSensitiveData } from '../ai/redaction.service';
 
 const EXTRACTION_QUEUE = 'contract-extraction';
 const MAX_ATTEMPTS = 3;
@@ -107,8 +107,7 @@ async function summarizeSensitiveText(contractId: string, text: string | undefin
   if (!text) return undefined;
   const contract = await ContractModel.findById(contractId).select('type');
   if (!contract) return undefined;
-  const profile = await resolveContractProfile(contract.type);
-  const policy = new Set(profile.redactionPolicy as SensitiveDataType[]);
+  const policy = new Set(await redactionPolicyFor(contract.type));
   return summarizeSensitiveData(detectSensitiveData(text, policy));
 }
 

@@ -5,8 +5,8 @@ import { RISK_LEVELS } from '../models/contractVersion.model';
 const codeSchema = z.string().trim().min(1).max(50);
 
 export const createContractSchema = z.object({
-  title: z.string().min(2).max(300),
-  type: codeSchema,
+  title: z.string().trim().min(2).max(300).optional(),
+  type: codeSchema.optional(),
   ourParty: codeSchema.optional(),
   industry: codeSchema.optional(),
 });

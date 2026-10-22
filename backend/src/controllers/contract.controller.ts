@@ -10,8 +10,10 @@ import { ListContractsQuery } from '../validations/contract.validation';
 export const createContractHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
   const respondAsync = /\brespond-async\b/i.test(req.get('Prefer') ?? '');
-  if (user.role === 'user') assertPersonalReviewContract(req.body.type, req.body.ourParty);
-  else assertBusinessReviewContract(req.body.type);
+  if (req.body.type) {
+    if (user.role === 'user') assertPersonalReviewContract(req.body.type, req.body.ourParty);
+    else assertBusinessReviewContract(req.body.type);
+  }
 
   const contract = await contractService.createContract({
     orgId: user.orgId,

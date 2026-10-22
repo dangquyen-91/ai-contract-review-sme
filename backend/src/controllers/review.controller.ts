@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
+import { AppError } from '../errors/AppError';
 import { ok } from '../utils/ApiResponse';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
 import { openSseStream } from '../utils/sse';
@@ -14,6 +15,9 @@ const STREAM_POLL_MS = 5000;
 export const startReviewHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
   const contract = await contractService.getContractById(user.orgId, req.params.id);
+  if (!contract.type) {
+    throw AppError.conflict('Confirm the contract type before starting a review', 'CONTRACT_NOT_CONFIRMED');
+  }
   if (user.role === 'user') assertPersonalReviewContract(contract.type, contract.ourParty);
   else assertBusinessReviewContract(contract.type);
   const { review, replayed } = await reviewService.startReview({
