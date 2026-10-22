@@ -6,6 +6,7 @@ import { ContractVersionModel } from '../../models/contractVersion.model';
 import { downloadContractFile, storedFileOf } from './storage.service';
 import { extractContractText, ExtractionProgress, recycleOcrIfNeeded } from './textExtraction.service';
 import { redactionPolicyFor } from './redactionPolicy.service';
+import { enqueueClassification } from './classificationWorker.service';
 import { detectSensitiveData, summarizeSensitiveData } from '../ai/redaction.service';
 
 const EXTRACTION_QUEUE = 'contract-extraction';
@@ -100,7 +101,18 @@ async function processExtraction(job: Job<ExtractionJobData>): Promise<Extractio
     redactionSummary: await summarizeSensitiveText(fresh.contractId.toString(), result.text),
   });
   await fresh.save();
+  if (result.status === 'completed') await requestClassification(fresh.contractId.toString());
   return { status: result.status };
+}
+
+async function requestClassification(contractId: string) {
+  if (!(await ContractModel.exists({ _id: contractId, type: null }))) return;
+  await enqueueClassification(contractId).catch((err) =>
+    logger.warn('Failed to queue contract classification', {
+      contractId,
+      error: err instanceof Error ? err.message : String(err),
+    }),
+  );
 }
 
 async function summarizeSensitiveText(contractId: string, text: string | undefined) {

@@ -1,11 +1,13 @@
 import { closeQueues } from '../config/queue';
 import { terminateOcr } from './contract/textExtraction.service';
 import { startExtractionWorker } from './contract/extractionWorker.service';
+import { startClassificationWorker } from './contract/classificationWorker.service';
 import { startReviewWorker } from './review/reviewWorker.service';
 import { startLegalIngestionWorker } from './legal/legalIngestionWorker.service';
 
 export function startBackgroundWorkers() {
   startExtractionWorker();
+  startClassificationWorker();
   startReviewWorker();
   startLegalIngestionWorker();
 }
