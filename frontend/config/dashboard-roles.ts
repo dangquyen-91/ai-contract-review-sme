@@ -3,7 +3,7 @@ export type DashboardRole = "administrator" | "owner" | "manager" | "staff" | "e
 export const roleAccess: Record<string, { upload: boolean; review: boolean; administer: boolean }> = {
   administrator: { upload: true, review: true, administer: true },
   owner: { upload: true, review: true, administer: true },
-  manager: { upload: true, review: true, administer: false },
+  manager: { upload: false, review: false, administer: false },
   staff: { upload: true, review: true, administer: false },
   expert: { upload: false, review: true, administer: false },
   user: { upload: true, review: true, administer: false },

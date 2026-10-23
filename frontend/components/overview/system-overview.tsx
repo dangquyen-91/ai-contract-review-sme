@@ -7,7 +7,7 @@ export function SystemOverview() {
   const metrics = [
     {
       label: "Tổ chức",
-      href: "organizations",
+      href: "reports",
       icon: "building",
       tone: "border-blue-100 bg-[#f4f8ff]",
       iconTone: "bg-blue-100 text-blue-700",
@@ -74,7 +74,7 @@ export function SystemOverview() {
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
-                href="/dashboard/admin/reports"
+                href="/admin/reports"
                 className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#245bd6] px-4 text-sm font-semibold text-white transition hover:bg-[#1e4fbd] active:scale-[0.98]"
               >
                 Xem báo cáo <Icon name="arrow" className="size-4" />
@@ -107,7 +107,7 @@ export function SystemOverview() {
         {metrics.map((metric) => (
           <Link
             key={metric.label}
-            href={`/dashboard/admin/${metric.href}${"query" in metric ? metric.query : ""}`}
+            href={`/admin/${metric.href}${"query" in metric ? metric.query : ""}`}
             className={`group relative overflow-hidden rounded-2xl border p-5 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_42px_-32px_rgb(30_70_135_/_0.45)] active:scale-[0.99] ${metric.tone}`}
           >
             <div className="flex items-center justify-between gap-4">
@@ -162,7 +162,7 @@ export function SystemOverview() {
               </div>
             </div>
             <Link
-              href="/dashboard/admin/ai-jobs?status=Th%E1%BA%A5t%20b%E1%BA%A1i"
+              href="/admin/ai-jobs?status=Th%E1%BA%A5t%20b%E1%BA%A1i"
               className="text-sm font-semibold text-blue-700 hover:underline"
             >
               Xem tác vụ lỗi →
@@ -174,23 +174,15 @@ export function SystemOverview() {
                 title: "Tác vụ AI xử lý thất bại",
                 detail: "AI-241009-126 · An Phát Logistics",
                 priority: "Cao",
-                href: "/dashboard/admin/ai-jobs?item=AI-241009-126",
+                href: "/admin/ai-jobs?item=AI-241009-126",
                 tone: "border-rose-200 border-l-rose-500 bg-rose-50/70",
                 badge: "bg-rose-100 text-rose-800",
-              },
-              {
-                title: "Tổ chức chờ xác minh",
-                detail: "An Phát Logistics · đăng ký 08/10/2026",
-                priority: "Trung bình",
-                href: "/dashboard/admin/organizations?item=An%20Ph%C3%A1t%20Logistics",
-                tone: "border-amber-200 border-l-amber-500 bg-amber-50/70",
-                badge: "bg-amber-100 text-amber-800",
               },
               {
                 title: "Tài khoản bị khóa",
                 detail: "ha@horizon.vn · cần kiểm tra",
                 priority: "Thấp",
-                href: "/dashboard/admin/users?item=V%C5%A9%20Thanh%20H%C3%A0",
+                href: "/admin/users?item=V%C5%A9%20Thanh%20H%C3%A0",
                 tone: "border-blue-200 border-l-blue-500 bg-blue-50/60",
                 badge: "bg-blue-100 text-blue-800",
               },
@@ -227,12 +219,6 @@ export function SystemOverview() {
           </p>
           {[
             {
-              href: "organizations",
-              title: "Quản lý tổ chức",
-              detail: "Không gian làm việc trên hệ thống",
-              icon: "building",
-            },
-            {
               href: "users",
               title: "Tra cứu người dùng",
               detail: "Tài khoản và vai trò",
@@ -241,7 +227,7 @@ export function SystemOverview() {
           ].map((item) => (
             <Link
               key={item.href}
-              href={`/dashboard/admin/${item.href}`}
+              href={`/admin/${item.href}`}
               className="group flex items-center gap-3 border-t border-slate-100 py-5 first:border-0"
             >
               <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-slate-50 text-slate-500">
@@ -271,7 +257,7 @@ export function SystemOverview() {
         <div className="flex items-center justify-between border-b border-slate-100 p-6">
           <h2 className="font-semibold">Hoạt động quản trị gần đây</h2>
           <Link
-            href="/dashboard/admin/audit-log"
+            href="/admin/audit-log"
             className="text-sm font-medium text-blue-700 hover:underline"
           >
             Xem nhật ký

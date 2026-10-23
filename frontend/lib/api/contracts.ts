@@ -58,7 +58,7 @@ export const contractsApi = {
 
   getReview(contractId: string, signal?: AbortSignal) {
     return apiRequest<ContractReviewResult>({
-      url: `/contracts/${contractId}/review`,
+      url: `/contracts/${contractId}/review-result`,
       method: "GET",
       timeout: 30_000,
       signal,
@@ -77,7 +77,7 @@ export const contractsApi = {
 
   startReview(contractId: string, idempotencyKey: string, analysisFocus?: string, signal?: AbortSignal) {
     return apiRequest<ContractReviewRun>({
-      url: `/contracts/${contractId}/review`,
+      url: `/contracts/${contractId}/reviews`,
       method: "POST",
       data: analysisFocus ? { analysisFocus } : {},
       headers: { "Idempotency-Key": idempotencyKey },

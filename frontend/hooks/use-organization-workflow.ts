@@ -1,6 +1,6 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { toast } from "sonner";
 import { reviewErrorMessage } from "@/hooks/use-review-workflow";
@@ -22,6 +22,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
   const expertMode = role === "expert";
   const router = useRouter();
   const pathname = usePathname();
+  const { contractId: routeContractId, reviewId: routeReviewId } = useParams<{ contractId?: string; reviewId?: string }>();
   const searchParams = useSearchParams();
   const activeTab = organizationDashboardView(pathname);
   const statusParam = searchParams.get("status");
@@ -39,7 +40,9 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
   const loadContract = useLoadContract();
 
   useEffect(() => {
-    const contractId = searchParams.get("contract");
+    // Reading a historical run must never start or resume the current analysis.
+    if (routeReviewId) return;
+    const contractId = routeContractId ?? searchParams.get("contract");
     if (!contractId) {
       openedReviewRequest.current = null;
       return;
@@ -68,7 +71,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
       cancelled = true;
       if (!initiated && openedReviewRequest.current === contractId) openedReviewRequest.current = null;
     };
-  }, [activeTab, data, access.review, searchParams, activeReviewRequest, loadContract]);
+  }, [activeTab, data, routeContractId, routeReviewId, access.review, searchParams, activeReviewRequest, loadContract]);
 
   useEffect(() => {
     if (activeTab === "upload" || returnScroll.current === null) return;
@@ -119,8 +122,8 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
     if (staffMode || expertMode || managerMode) {
       if (activeTab !== "upload") returnLocation.current = { url: `${pathname}${searchParams.size ? `?${searchParams}` : ""}`, scroll: window.scrollY };
     }
-    selectTab("upload");
-    void performReviewExisting(contract, rerun);
+    const contractId = (contract.id ?? contract._id)!;
+    router.push(`/contract/${encodeURIComponent(contractId)}${rerun ? "?rerun=1" : ""}`);
   }
   return { activeTab, searchParams, contractFilter, data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel, selectTab, backToWork, skipUploadedReview, clearUploadedContract, reviewExisting, cancelReview, cancelling, file, title, setTitle, uploadedContract, reviewResult, reviewProgress, reviewResultRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, reviewUploadedContract, retryReview, workflowComplete, reviewing, loadingResult, reconnecting };
 }

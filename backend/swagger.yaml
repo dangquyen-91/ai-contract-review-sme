@@ -1799,6 +1799,48 @@ paths:
                 $ref: '#/components/schemas/Error'
 
   /organizations:
+    get:
+      tags: [Organizations]
+      summary: List all organizations
+      description: Requires the manager role. Includes business and personal organizations across all workspaces, ordered by creation date descending.
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, maximum: 100000, default: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: search
+          description: Case-insensitive literal search by organization name or tax code.
+          schema: { type: string, maxLength: 100 }
+        - in: query
+          name: industry
+          description: Filter by industry code.
+          schema: { type: string, maxLength: 50 }
+      responses:
+        '200':
+          description: Paginated organizations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Organization'
+                  meta:
+                    type: object
+                    properties:
+                      page: { type: integer }
+                      limit: { type: integer }
+                      total: { type: integer }
+                      totalPages: { type: integer }
+        '400': { description: Invalid pagination parameters }
+        '401': { description: Missing or invalid authentication }
+        '403': { description: Requires the manager role }
     post:
       tags: [Organizations]
       summary: Create an organization for the current user

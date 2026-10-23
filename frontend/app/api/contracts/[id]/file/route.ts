@@ -1,3 +1,4 @@
+import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 
 type ContractFilePayload = {
@@ -14,8 +15,9 @@ function isStorageUrl(url: URL) {
 }
 
 export async function GET(request: NextRequest, context: RouteContext<"/api/contracts/[id]/file">) {
-  const accessToken = request.cookies.get("lawscan_access")?.value;
-  if (!accessToken) return NextResponse.json({ error: "Phiên đăng nhập đã hết hạn." }, { status: 401 });
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const accessToken = session.accessToken;
 
   const { id } = await context.params;
   if (!/^[a-f\d]{24}$/i.test(id)) {

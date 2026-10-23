@@ -22,6 +22,7 @@ import {
   createOrganizationHandler,
   deleteOrganizationHandler,
   getOrganizationHandler,
+  listOrganizationsHandler,
   updateOrganizationHandler,
 } from '../controllers/organization.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
@@ -43,6 +44,7 @@ import {
 } from '../validations/invitation.validation';
 import {
   createOrganizationSchema,
+  listOrganizationsQuerySchema,
   organizationIdParamSchema,
   updateOrganizationSchema,
 } from '../validations/organization.validation';
@@ -137,6 +139,12 @@ router.post(
   requireRole('owner', 'manager', 'staff', 'expert', 'user'),
   validate({ body: createOrganizationSchema }),
   createOrganizationHandler,
+);
+router.get(
+  '/',
+  requireRole('manager'),
+  validate({ query: listOrganizationsQuerySchema }),
+  listOrganizationsHandler,
 );
 router.get('/:id', validate({ params: organizationIdParamSchema }), getOrganizationHandler);
 router.patch(

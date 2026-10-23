@@ -1,12 +1,20 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dashboardKeys } from "@/lib/query-keys/dashboard";
 import { organizationsApi } from "@/lib/api/organizations";
 import type { ApiClientError } from "@/lib/api/client";
-import type { CreateOrganizationInput, Organization } from "@/types/organization";
+import type { CreateOrganizationInput, Organization, OrganizationListFilters } from "@/types/organization";
 
-import { organizationMutationKeys } from "@/lib/query-keys/organizations";
+import { organizationKeys, organizationMutationKeys } from "@/lib/query-keys/organizations";
+
+export function useOrganizationsList(page: number, limit = 20, filters: OrganizationListFilters = {}) {
+  return useQuery({
+    queryKey: organizationKeys.list(page, limit, filters),
+    queryFn: ({ signal }) => organizationsApi.list(page, limit, signal, filters),
+    retry: false,
+  });
+}
 
 export function useUpdateOrganization(id: string) {
   const client = useQueryClient();

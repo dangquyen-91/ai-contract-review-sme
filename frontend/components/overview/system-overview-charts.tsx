@@ -176,7 +176,7 @@ export function SystemOverviewCharts() {
               </div>
             </details>
             <Link
-              href="/dashboard/admin/reports"
+              href="/admin/reports"
               className="mt-4 inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-blue-700 hover:underline"
             >
               Xem báo cáo chi tiết <Icon name="arrow" className="size-4" />
@@ -243,8 +243,7 @@ export function SystemOverviewCharts() {
             <ol className="grid gap-2">
               {usageSegments.map((item) => (
                 <li key={item.name}>
-                  <Link
-                    href={`/dashboard/admin/organizations?item=${encodeURIComponent(item.name)}`}
+                  <div
                     className="group flex items-center gap-3 rounded-lg bg-white/80 px-3 py-2.5 ring-1 ring-inset ring-emerald-100 transition-colors hover:bg-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
                   >
                     <span
@@ -265,15 +264,15 @@ export function SystemOverviewCharts() {
                         %
                       </span>
                     </div>
-                  </Link>
+                  </div>
                 </li>
               ))}
             </ol>
             <p className="mt-4 text-xs leading-5 text-slate-500">
-              Chọn một tổ chức để xem thông tin mẫu.
+              Số lượt xử lý theo từng tổ chức trong bản demo.
             </p>
             <Link
-              href="/dashboard/admin/reports"
+              href="/admin/reports"
               className="mt-auto inline-flex min-h-9 items-center gap-1.5 pt-4 text-sm font-semibold text-emerald-700 hover:underline"
             >
               Xem báo cáo chi tiết <Icon name="arrow" className="size-4" />

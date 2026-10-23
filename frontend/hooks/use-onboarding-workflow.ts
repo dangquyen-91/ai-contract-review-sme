@@ -35,7 +35,7 @@ export function useOnboardingWorkflow() {
       await refresh.mutateAsync();
       setNavigating(true);
       await clearSessionCache(queryClient);
-      router.replace(completedAction.current === "organization" ? "/dashboard/owner" : "/dashboard/user");
+      router.replace(completedAction.current === "organization" ? "/dashboard" : "/review");
       router.refresh();
     },
     retry: false,
