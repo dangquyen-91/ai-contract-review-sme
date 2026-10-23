@@ -5,19 +5,16 @@ import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { profileApi } from '@/lib/api/profile';
-import { clearSessionCache } from '@/lib/session-cache';
 import { changePasswordFormSchema } from '@/schemas/profile.schema';
 import { AuthInput } from '@/components/auth/auth-input';
 import { Button } from '@/components/ui/button';
+import { useChangeProfilePassword } from '@/hooks/use-profile';
 import type { Profile } from '@/types/profile';
 
 export function ProfilePasswordForm({ user }: { user: Profile['user'] }) {
-  const mutation = useMutation({ mutationFn: profileApi.changePassword });
+  const mutation = useChangeProfilePassword();
   const router = useRouter();
-  const client = useQueryClient();
   const lock = useRef(false);
   const [visible, setVisible] = useState(false);
   const [changed, setChanged] = useState(false);
@@ -36,7 +33,6 @@ export function ProfilePasswordForm({ user }: { user: Profile['user'] }) {
         try {
           await mutation.mutateAsync({ currentPassword, newPassword });
           form.reset(); setChanged(true);
-          await clearSessionCache(client);
           toast.success('Đã đổi mật khẩu. Vui lòng đăng nhập lại.');
           router.replace('/dang-nhap?returnTo=%2Fho-so'); router.refresh();
         } catch { /* Keep inputs after validation errors. */ }

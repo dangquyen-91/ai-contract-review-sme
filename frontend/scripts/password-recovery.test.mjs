@@ -92,6 +92,7 @@ function hookHarness(api = {}) {
       forgotPassword: api.forgotPassword ?? (async email => { calls.push(email); return { challengeId: 'a'.repeat(64), expiresAt: 'later', resendAfterSeconds: 60 }; }),
       resetPassword: api.resetPassword ?? (async input => { calls.push(input); return { reset: true }; }),
     } },
+    '@/lib/query-keys/auth': { authMutationKeys: { forgotPassword: ['auth', 'forgot-password'], resetPassword: ['auth', 'reset-password'] } },
     '@/lib/session-cache': { clearSessionCache: async () => { calls.push('clear'); } },
   }, { Date: Clock, setInterval: fn => { tick = fn; return 1; }, clearInterval() {} });
   return {
