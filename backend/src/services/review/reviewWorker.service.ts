@@ -11,13 +11,16 @@ import { segmentClauses } from '../analysis/clause.service';
 import { generateContractSummary } from '../analysis/summary.service';
 import { detectRisks } from '../analysis/risk.service';
 import { extendUsageLease, finishUsage, isUsageSucceeded, keepUsageLeaseAlive } from '../billing/usage.service';
+import { reviewErrorCodeOf, reviewFailure, ReviewErrorCode, withReviewErrorCode } from './reviewErrors';
 
 const REVIEW_QUEUE = 'contract-review';
 const MAX_ATTEMPTS = 2;
 const WORKER_CONCURRENCY = 2;
 const EXTRACTION_POLL_MS = 2000;
 const EXTRACTION_WAIT_MS = 15 * 60 * 1000;
+const CANCEL_POLL_MS = 3000;
 const ACTIVE_JOB_STATES = new Set(['waiting', 'active', 'delayed', 'prioritized', 'waiting-children']);
+const UNFINISHED_STATUSES = ['queued', 'running'];
 const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 } as const;
 
 type ReviewStage = (typeof REVIEW_STAGES)[number];
@@ -46,6 +49,18 @@ export async function isReviewJobAlive(reviewId: string): Promise<boolean> {
   const job = await getQueue().getJob(reviewId);
   if (!job) return false;
   return ACTIVE_JOB_STATES.has(await job.getState());
+}
+
+export async function removeIdleReviewJob(reviewId: string): Promise<boolean> {
+  const job = await getQueue().getJob(reviewId);
+  if (!job) return true;
+  if ((await job.getState()) === 'active') return false;
+  try {
+    await job.remove();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const reviewEvents = new EventEmitter();
@@ -77,7 +92,7 @@ async function updateReview(job: Job<ReviewJobData>, set: Record<string, unknown
 
 function toJobError(err: unknown): Error {
   if (err instanceof AppError && err.statusCode < 500 && err.statusCode !== 409) {
-    return new UnrecoverableError(err.message);
+    return withReviewErrorCode(new UnrecoverableError(err.message), err);
   }
   return err instanceof Error ? err : new Error(String(err));
 }
@@ -110,15 +125,17 @@ async function waitForExtraction(job: Job<ReviewJobData>, versionId: string, sig
   for (;;) {
     signal.throwIfAborted();
     const version = await ContractVersionModel.findById(versionId).select('extractionStatus extractionProgress');
-    if (!version) throw new UnrecoverableError('The contract was deleted');
+    if (!version) throw reviewFailure('CONTRACT_DELETED', 'The contract was deleted');
     if (version.extractionStatus === 'completed') return;
     if (version.extractionStatus === 'pending') {
-      throw new UnrecoverableError('The contract has no uploaded file to review');
+      throw reviewFailure('EXTRACTION_FAILED', 'The contract has no uploaded file to review');
     }
     if (version.extractionStatus !== 'processing') {
-      throw new UnrecoverableError('The contract text could not be extracted; upload the file again');
+      throw reviewFailure('EXTRACTION_FAILED', 'The contract text could not be extracted; upload the file again');
     }
-    if (Date.now() > deadline) throw new Error('Timed out waiting for text extraction to finish');
+    if (Date.now() > deadline) {
+      throw reviewFailure('EXTRACTION_TIMEOUT', 'Timed out waiting for text extraction to finish', true);
+    }
 
     const progress = version.extractionProgress;
     const detail = progress ? `${progress.processedPages}/${progress.totalPages} pages` : 'queued';
@@ -163,33 +180,72 @@ async function buildReviewResult(versionId: string) {
   };
 }
 
+type ReviewStages = { segmentation?: string | null; summary?: string | null; riskDetection?: string | null } | null | undefined;
+
+async function buildPartialResult(versionId: string, stages: ReviewStages) {
+  const summaryDone = stages?.summary === 'completed';
+  const riskDone = stages?.riskDetection === 'completed';
+  if (!summaryDone && !riskDone) return undefined;
+  const result = await buildReviewResult(versionId);
+  return {
+    ...result,
+    ...(summaryDone ? {} : { summaryPoints: [] }),
+    ...(riskDone
+      ? {}
+      : { overallRiskLevel: 'none', overallAssessment: [], findingCounts: { high: 0, medium: 0, low: 0 }, findings: [] }),
+    partial: true,
+  };
+}
+
+export async function finishUnsuccessfulReview(reviewId: string, code: ReviewErrorCode, message: string) {
+  const review = await ReviewModel.findById(reviewId);
+  if (!review) return;
+  if (UNFINISHED_STATUSES.includes(review.status)) {
+    const partial = await buildPartialResult(review.versionId.toString(), review.stages).catch(() => undefined);
+    await ReviewModel.updateOne(
+      { _id: review._id, status: { $in: UNFINISHED_STATUSES } },
+      {
+        $set: {
+          status: code === 'CANCELLED' ? 'cancelled' : 'failed',
+          error: message,
+          errorCode: code,
+          finishedAt: new Date(),
+          ...(partial ? { result: partial } : {}),
+        },
+        $unset: { activeLock: '', currentStage: '', stageDetail: '', cancelRequested: '' },
+      },
+    );
+  }
+  await finishUsage(review.orgId.toString(), review.usageRunId.toString(), false).catch((releaseErr) =>
+    logger.warn('Failed to release the analysis credit of an unfinished review', {
+      reviewId,
+      error: releaseErr instanceof Error ? releaseErr.message : String(releaseErr),
+    }),
+  );
+}
+
 async function recordFailure(job: Job<ReviewJobData>, err: unknown) {
   const message = err instanceof Error ? err.message : String(err);
+  const code = reviewErrorCodeOf(err);
   const finalAttempt = err instanceof UnrecoverableError || job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
   logger.warn('Contract review attempt failed', {
     reviewId: job.data.reviewId,
     attempt: job.attemptsMade + 1,
     finalAttempt,
+    code,
     error: message,
   });
   if (!finalAttempt) {
     await ReviewModel.updateOne(
       { _id: job.data.reviewId },
-      { $set: { error: message, stageDetail: 'retrying after an error' } },
+      { $set: { error: message, errorCode: code, stageDetail: 'retrying after an error' } },
     ).catch(() => undefined);
     return;
   }
-  await ReviewModel.updateOne(
-    { _id: job.data.reviewId },
-    {
-      $set: { status: 'failed', error: message, finishedAt: new Date() },
-      $unset: { activeLock: '', currentStage: '', stageDetail: '' },
-    },
-  ).catch(() => undefined);
-  await finishUsage(job.data.orgId, job.data.usageRunId, false).catch((releaseErr) =>
-    logger.warn('Failed to release the analysis credit of a failed review', {
+  await finishUnsuccessfulReview(job.data.reviewId, code, message).catch((finishErr) =>
+    logger.warn('Failed to record the end of an unsuccessful review', {
       reviewId: job.data.reviewId,
-      error: releaseErr instanceof Error ? releaseErr.message : String(releaseErr),
+      error: finishErr instanceof Error ? finishErr.message : String(finishErr),
     }),
   );
 }
@@ -203,17 +259,35 @@ export async function processReview(job: Job<ReviewJobData>): Promise<void> {
   }
 }
 
-function keepCreditReserved(usageRunId: string) {
+function watchReview(reviewId: string, usageRunId: string) {
   const controller = new AbortController();
-  const stop = keepUsageLeaseAlive(usageRunId, () =>
-    controller.abort(new UnrecoverableError('The analysis credit reservation expired; start a new review')),
+  const abort = (reason: Error) => {
+    if (!controller.signal.aborted) controller.abort(reason);
+  };
+  const stopLease = keepUsageLeaseAlive(usageRunId, () =>
+    abort(reviewFailure('CREDIT_EXPIRED', 'The analysis credit reservation expired; start a new review')),
   );
-  return { signal: controller.signal, stop };
+  const cancelPoll = setInterval(() => {
+    ReviewModel.exists({ _id: reviewId, cancelRequested: true })
+      .then((requested) => {
+        if (requested) abort(reviewFailure('CANCELLED', 'The review was cancelled'));
+      })
+      .catch(() => undefined);
+  }, CANCEL_POLL_MS);
+  cancelPoll.unref();
+  return {
+    signal: controller.signal,
+    stop: () => {
+      stopLease();
+      clearInterval(cancelPoll);
+    },
+  };
 }
 
 async function runReview(job: Job<ReviewJobData>): Promise<void> {
   const review = await ReviewModel.findById(job.data.reviewId);
-  if (!review || review.status === 'completed' || review.status === 'failed') return;
+  if (!review || !UNFINISHED_STATUSES.includes(review.status)) return;
+  if (review.cancelRequested) throw reviewFailure('CANCELLED', 'The review was cancelled');
 
   const orgId = review.orgId.toString();
   const contractId = review.contractId.toString();
@@ -226,9 +300,9 @@ async function runReview(job: Job<ReviewJobData>): Promise<void> {
     result = await buildReviewResult(versionId);
   } else {
     if (!(await extendUsageLease(usageRunId))) {
-      throw new UnrecoverableError('The analysis credit reservation expired before the review started; start a new review');
+      throw reviewFailure('CREDIT_EXPIRED', 'The analysis credit reservation expired before the review started; start a new review');
     }
-    const credit = keepCreditReserved(usageRunId);
+    const credit = watchReview(job.data.reviewId, usageRunId);
     try {
       await updateReview(job, { status: 'running', startedAt: review.startedAt ?? new Date() }, ['error']);
       await runStages(job, review.stages, { orgId, contractId, analysisFocus, versionId }, credit.signal);
@@ -245,7 +319,7 @@ async function runReview(job: Job<ReviewJobData>): Promise<void> {
   await updateReview(
     job,
     { status: 'completed', finishedAt: new Date(), result },
-    ['activeLock', 'currentStage', 'stageDetail', 'error'],
+    ['activeLock', 'currentStage', 'stageDetail', 'error', 'errorCode', 'cancelRequested'],
   );
 }
 
@@ -258,7 +332,7 @@ interface StageInput {
 
 async function runStages(
   job: Job<ReviewJobData>,
-  stages: { segmentation?: string | null; summary?: string | null; riskDetection?: string | null } | null | undefined,
+  stages: ReviewStages,
   { orgId, contractId, versionId, analysisFocus }: StageInput,
   signal: AbortSignal,
 ) {

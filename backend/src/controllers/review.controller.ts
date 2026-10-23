@@ -30,6 +30,24 @@ export const startReviewHandler = asyncHandler(async (req: Request, res: Respons
   ok(res, { ...review, replayed }, replayed ? 200 : 202);
 });
 
+export const cancelReviewHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getOrganizationUser(req);
+  ok(res, await reviewService.cancelReview(user.orgId, req.params.reviewId));
+});
+
+export const retryReviewHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getOrganizationUser(req);
+  const review = await reviewService.retryReview({
+    orgId: user.orgId,
+    userId: user.sub,
+    reviewId: req.params.reviewId,
+    idempotencyKey: getIdempotencyKey(req),
+    isPersonal: user.role === 'user',
+  });
+  res.set('Location', `/api/v1/reviews/${review._id}`);
+  ok(res, review, 202);
+});
+
 export const listReviewsHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
   ok(res, await reviewService.listReviews(user.orgId, req.params.id));
@@ -67,7 +85,7 @@ export const streamReviewHandler = asyncHandler(async (req: Request, res: Respon
         lastSent = snapshot;
         stream.send('review', review);
       }
-      if (review.status === 'completed' || review.status === 'failed') {
+      if (review.status === 'completed' || review.status === 'failed' || review.status === 'cancelled') {
         stream.send('done', { status: review.status });
         finish();
       }

@@ -503,7 +503,7 @@ components:
           description: Key the review was started with; reusing it returns this review
         status:
           type: string
-          enum: [queued, running, completed, failed]
+          enum: [queued, running, completed, failed, cancelled]
         currentStage:
           type: string
           enum: [waiting_for_extraction, segmentation, summary, risk_detection]
@@ -528,7 +528,14 @@ components:
           type: string
         error:
           type: string
-          description: Last error; set while a retry is pending or when the review failed
+          description: Last error message (English, for logs); set while an automatic retry is pending or when the review failed or was cancelled
+        errorCode:
+          type: string
+          enum: [AI_OVERLOADED, EXTRACTION_TIMEOUT, EXTRACTION_FAILED, CONTRACT_DELETED, CREDIT_EXPIRED, CANCELLED, UNKNOWN]
+          description: Reason to show the user; set together with error
+        cancelRequested:
+          type: boolean
+          description: True after POST /reviews/{reviewId}/cancel until the worker stops
         startedAt:
           type: string
           format: date-time
@@ -537,8 +544,11 @@ components:
           format: date-time
         result:
           type: object
-          description: Snapshot of the outcome, present when status is completed
+          description: Snapshot of the outcome. Always present when status is completed. When a review failed or was cancelled after the summary or the risk detection finished, it holds those parts with partial=true; such a review uses no analysis credit.
           properties:
+            partial:
+              type: boolean
+              description: True when only some stages finished; summaryPoints is empty if the summary did not finish, and the risk fields are empty if risk detection did not finish
             overallRiskLevel:
               type: string
               enum: [high, medium, low, none]
@@ -2774,6 +2784,93 @@ paths:
                 $ref: '#/components/schemas/Review'
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/cancel:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Cancel a queued or running review
+      description: |
+        A queued review stops at once. A running review stops within a few seconds, at the next point where the worker checks. The review ends with status cancelled and errorCode CANCELLED, its analysis credit is released, and finished parts are kept as a partial result.
+        Roles - administrator, owner, manager, staff, reviewer, user.
+      responses:
+        '200':
+          description: The review; status is cancelled, or still running with cancelRequested=true until the worker stops
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: REVIEW_FINISHED - the review already completed, failed or was cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/retry:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Retry a failed or cancelled review from the failed stage
+      description: |
+        Re-runs only the stages that did not complete, on the same review. Reserves one analysis credit, charged only if the review completes.
+        Roles - administrator, owner, manager, staff, reviewer, user.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Queued again; follow GET /reviews/{reviewId}/events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '403':
+          description: No AI quota left, or the account cannot review this contract type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: |
+            REVIEW_NOT_RETRYABLE - the review is not failed or cancelled.
+            REVIEW_OUTDATED - a newer contract version was uploaded; start a new review.
+            REVIEW_RUNNING - another review of the contract is running.
+            REVIEW_BUSY - the previous attempt is still shutting down; try again shortly.
+            CONTRACT_NOT_CONFIRMED - the contract type is not confirmed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Background processing is unavailable
           content:
             application/json:
               schema:
