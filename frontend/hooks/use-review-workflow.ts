@@ -2,8 +2,7 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { useContractProfiles, useContractReviewResult, useReviewContractMutation, useUploadContractMutation } from "@/hooks/use-contracts";
-import { isApiClientError } from "@/lib/api/client";
+import { useContractReviewResult, useReviewContractMutation, useUploadContractMutation } from "@/hooks/use-contracts";import { isApiClientError } from "@/lib/api/client";
 import { isReviewCancelled, readReviewSession } from "@/lib/review-session";
 import { reviewBlockReason, reviewBlockedMessage, type ReviewBlockReason } from "@/lib/review-failure";
 import type { ContractReviewRun, DashboardContract } from "@/types/contracts";
@@ -20,12 +19,9 @@ export function reviewErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Vui lòng thử lại sau.";
 }
 
-export function useReviewWorkflow({ access, initialType, personal = false, reviewPath }: { access: Access; initialType: string; personal?: boolean; reviewPath?: string }) {
+export function useReviewWorkflow({ access, reviewPath }: { access: Access; reviewPath?: string }) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
-  const [contractType, setContractType] = useState<string>(initialType);
-  const [ourParty, setOurParty] = useState("");
-  const [industry, setIndustry] = useState("");
   const [uploadedContract, setUploadedContract] = useState<{ id: string; title: string } | null>(null);
   const [workflowComplete, setWorkflowComplete] = useState(false);
   const [timelineScrollRequest, setTimelineScrollRequest] = useState(0);
@@ -43,8 +39,6 @@ export function useReviewWorkflow({ access, initialType, personal = false, revie
   const reviewContractMutation = useReviewContractMutation();
   const resultQuery = useContractReviewResult(selectedContractId);
   const reviewResult = workflowComplete ? resultQuery.data ?? null : null;
-  const { data: profiles } = useContractProfiles();
-  const selectedProfile = profiles?.find((profile) => profile.code === contractType);
   const stage: ReviewStage = uploadContractMutation.isPending ? "uploading" : reviewContractMutation.isPending ? "reviewing" : workflowComplete ? "done" : "idle";
   const isReviewing = stage === "reviewing" || resultQuery.isLoadingResult;
 
@@ -56,8 +50,7 @@ export function useReviewWorkflow({ access, initialType, personal = false, revie
       return false;
     }
     if (nextFile.size > 20 * 1024 * 1024) { toast.error("Tệp vượt quá 20 MB"); return false; }
-    const uploadTitle = title.trim() || nextFile.name.replace(/\.[^.]+$/, "").trim() || "Hợp đồng mới";
-    if (uploadTitle.length < 2) { toast.error("Tên hợp đồng phải có ít nhất 2 ký tự"); return false; }
+    const uploadTitle = nextFile.name.replace(/\.[^.]+$/, "").trim() || "Hợp đồng mới";
     setFile(nextFile);
     setTitle(uploadTitle);
     setSelectedContractId("");
@@ -69,11 +62,6 @@ export function useReviewWorkflow({ access, initialType, personal = false, revie
     setWorkflowComplete(false);
     const formData = new FormData();
     formData.set("file", nextFile);
-    formData.set("title", uploadTitle);
-    formData.set("type", contractType);
-    if (personal && contractType === "labor") formData.set("ourParty", "employee");
-    else if (ourParty) formData.set("ourParty", ourParty);
-    if (industry) formData.set("industry", industry);
     try {
       const contract = await uploadContractMutation.mutateAsync(formData);
       const contractId = contract.id ?? contract._id;
@@ -126,6 +114,10 @@ export function useReviewWorkflow({ access, initialType, personal = false, revie
   async function reviewExisting(contract: DashboardContract, rerun = false, resumeOnly = false) {
     const contractId = contract.id ?? contract._id;
     if (!contractId || contract.status === "archived" || isReviewing) return false;
+    if (!contract.type && contract.classification) {
+      setUploadedContract({ id: contractId, title: contract.title });
+      return true;
+    }
     activeReviewRequest.current = contractId;
     const kind = contract.status === "reviewed" && !rerun && !readReviewSession(contractId) ? "load" : "run";
     setRetryKind(kind);
@@ -170,5 +162,5 @@ export function useReviewWorkflow({ access, initialType, personal = false, revie
     }
   }
 
-  return { file, title, setTitle, contractType, setContractType, ourParty, setOurParty, industry, setIndustry, uploadedContract, setUploadedContract, reviewResult, reviewProgress, reviewResultRef, reviewTimelineRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectedProfile, profiles, selectFile, runReview, reviewUploadedContract, reviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing: reviewContractMutation.isPending, loadingResult: resultQuery.isLoadingResult, reconnecting: reviewContractMutation.reconnecting };
+  return { file, title, setTitle, uploadedContract, setUploadedContract, reviewResult, reviewProgress, reviewResultRef, reviewTimelineRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, runReview, reviewUploadedContract, reviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing: reviewContractMutation.isPending, loadingResult: resultQuery.isLoadingResult, reconnecting: reviewContractMutation.reconnecting };
 }

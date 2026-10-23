@@ -57,5 +57,6 @@ export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) 
       setUploadedContract(null);
       toast.success("Đã tải hợp đồng lên");
     },
+    onDeletedUpload: () => setUploadedContract(null),
   };
 }

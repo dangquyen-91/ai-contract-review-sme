@@ -34,6 +34,7 @@ export type DashboardContract = {
     overallAssessment?: string[];
     summaryPoints?: string[];
     extractionStatus?: "pending" | "processing" | "completed" | "failed" | "unsupported";
+    extractionProgress?: { processedPages: number; totalPages: number };
     segmentationStatus?: "pending" | "processing" | "completed" | "failed";
     segmentationError?: string;
     segmentationStartedAt?: string;

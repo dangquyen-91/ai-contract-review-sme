@@ -16,6 +16,16 @@ export const businessTypeLabels: Record<string, string> = {
   office_lease: "Hợp đồng thuê văn phòng, mặt bằng",
 };
 
+export const personalTypeLabels: Record<string, string> = {
+  life_insurance: "Hợp đồng bảo hiểm nhân thọ",
+  housing_purchase: "Hợp đồng mua bán bất động sản",
+  labor: "Hợp đồng lao động",
+};
+
+export function reviewableTypeLabels(personal: boolean) {
+  return personal ? personalTypeLabels : businessTypeLabels;
+}
+
 export const contractStatusLabels: Record<ContractStatus, string> = {
   uploaded: "Đã tải lên",
   processing: "AI đang xử lý",
