@@ -1,5 +1,5 @@
 import { OrganizationOverviewPage } from "@/components/overview/organization-overview-page";
 
-export default function ReviewerPage() {
+export default function ExpertPage() {
   return <OrganizationOverviewPage />;
 }

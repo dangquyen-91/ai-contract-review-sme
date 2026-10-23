@@ -134,7 +134,7 @@ router.delete(
 );
 router.post(
   '/',
-  requireRole('owner', 'manager', 'staff', 'reviewer', 'user'),
+  requireRole('owner', 'manager', 'staff', 'expert', 'user'),
   validate({ body: createOrganizationSchema }),
   createOrganizationHandler,
 );

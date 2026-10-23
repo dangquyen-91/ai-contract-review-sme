@@ -11,9 +11,9 @@ export async function proxyLegalSource(request: Request, action: LegalSourceActi
         { success: false, error: { message: "Vui lòng đăng nhập lại." } },
         { status: 401 },
       );
-    if (session.role !== "administrator")
+    if (session.role !== "manager")
       return NextResponse.json(
-        { success: false, error: { message: "Bạn không có quyền quản trị." } },
+        { success: false, error: { message: "Bạn không có quyền quản lý kho pháp lý." } },
         { status: 403 },
       );
     if (id !== undefined && !/^[a-f\d]{24}$/i.test(id))

@@ -27,7 +27,7 @@ export function InvitationFormDialog({ organizationName, email, role, submitting
           <select disabled={submitting} value={role} onChange={(event) => onRoleChange(event.target.value as InvitationRole)} className={field}>
             <option value="manager">Manager — quản lý công việc</option>
             <option value="staff">Staff — tải và rà soát</option>
-            <option value="reviewer">Reviewer — rà soát hợp đồng</option>
+            <option value="expert">Expert — rà soát hợp đồng</option>
           </select>
         </label>
         <p className="rounded-lg bg-muted px-3 py-2.5 text-ui-meta leading-5 text-muted-foreground">Lời mời có hiệu lực 7 ngày. Chỉ email được mời mới có thể chấp nhận.</p>

@@ -3,7 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
-import { AnalysisFocusDialog } from "@/components/review/analysis-focus-dialog";
+import { AnalysisFocusDialog } from "@/components/review/upload/analysis-focus-dialog";
 import { Button } from "@/components/ui/button";
 import { reviewableTypeLabels } from "@/config/contract-display";
 import { useConfirmProfileMutation, useContractClassification, useContractProfiles, useDeleteContract, useRetryClassificationMutation } from "@/hooks/use-contracts";

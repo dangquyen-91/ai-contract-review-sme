@@ -8,7 +8,7 @@ import type {
 export type AuthMode = "login" | "register";
 
 export type UserRole =
-  "administrator" | "manager" | "staff" | "owner" | "reviewer" | "user";
+  "administrator" | "manager" | "staff" | "owner" | "expert" | "user";
 export type LogoutResult = { loggedOut: true };
 
 export type AuthUser = {

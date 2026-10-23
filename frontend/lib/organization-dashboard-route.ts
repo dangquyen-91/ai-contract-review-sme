@@ -1,7 +1,7 @@
-export type OrganizationDashboardRole = "owner" | "manager" | "staff" | "reviewer";
+export type OrganizationDashboardRole = "owner" | "manager" | "staff" | "expert";
 
 export function isOrganizationDashboardRole(role: string): role is OrganizationDashboardRole {
-  return role === "owner" || role === "manager" || role === "staff" || role === "reviewer";
+  return role === "owner" || role === "manager" || role === "staff" || role === "expert";
 }
 export type OrganizationDashboardView = "overview" | "upload" | "contracts" | "administration" | "members";
 

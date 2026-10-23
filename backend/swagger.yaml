@@ -324,7 +324,7 @@ components:
           type: string
         role:
           type: string
-          enum: [administrator, manager, staff, owner, reviewer, user]
+          enum: [administrator, manager, staff, owner, expert, user]
         orgId:
           type: string
           nullable: true
@@ -1476,7 +1476,7 @@ paths:
               required: [email, role]
               properties:
                 email: { type: string, format: email }
-                role: { type: string, enum: [manager, staff, reviewer] }
+                role: { type: string, enum: [manager, staff, expert] }
       responses:
         '201': { description: Invitation metadata after Brevo API acceptance (not proof of inbox delivery); no token or tokenHash }
         '400': { description: Invalid email or role }
@@ -2054,12 +2054,12 @@ paths:
     delete:
       tags: [Contracts]
       summary: Delete a contract
-      description: Deletes the contract, all its versions, clauses, findings, chat messages and stored files. Roles - administrator, owner, manager, and user (the owner of a personal workspace).
+      description: Deletes the contract, all its versions, clauses, findings, chat messages and stored files. Roles - administrator, owner, manager, staff, and user (the owner of a personal workspace).
       responses:
         '204':
           description: No Content
         '403':
-          description: Role not allowed to delete contracts (staff, reviewer)
+          description: Role not allowed to delete contracts (expert)
           content:
             application/json:
               schema:
@@ -2207,7 +2207,7 @@ paths:
     patch:
       tags: [Contracts]
       summary: Edit the proposed revision of a finding
-      description: Updates proposedRevision.revisedText and/or reason and marks it isEdited=true. Only findings of the contract's current version can be edited; 404 if the finding has no proposed revision. Roles - administrator, owner, manager, staff, reviewer, user.
+      description: Updates proposedRevision.revisedText and/or reason and marks it isEdited=true. Only findings of the contract's current version can be edited; 404 if the finding has no proposed revision. Roles - administrator, owner, manager, staff, expert, user.
       requestBody:
         required: true
         content:
@@ -2255,7 +2255,7 @@ paths:
     delete:
       tags: [Contracts]
       summary: Remove the proposed revision of a finding
-      description: Clears proposedRevision; the finding itself is kept. Roles - administrator, owner, manager, staff, reviewer, user.
+      description: Clears proposedRevision; the finding itself is kept. Roles - administrator, owner, manager, staff, expert, user.
       responses:
         '200':
           description: The finding without proposedRevision
@@ -2286,7 +2286,7 @@ paths:
         Personal accounts may only use life_insurance, housing_purchase and labor (labor always as employee); business accounts sales, labor, service and office_lease.
         When ourParty is omitted, personal labor defaults to employee and personal life_insurance to policyholder.
         classification.source becomes "ai" when the confirmed type and party equal the suggestion, otherwise "user". An unsupported contract returns to status uploaded.
-        Roles - administrator, owner, manager, staff, reviewer, user.
+        Roles - administrator, owner, manager, staff, expert, user.
       requestBody:
         required: true
         content:
@@ -2340,7 +2340,7 @@ paths:
       summary: Run contract classification again
       description: |
         Classification runs automatically after text extraction for contracts uploaded without a type. Use this to retry it when classification.status is failed, or pending without progress. It does not use an analysis credit.
-        Roles - administrator, owner, manager, staff, reviewer, user.
+        Roles - administrator, owner, manager, staff, expert, user.
       responses:
         '202':
           description: Queued; poll GET /contracts/{id} until classification.status is completed or failed
@@ -2802,7 +2802,7 @@ paths:
       summary: Cancel a queued or running review
       description: |
         A queued review stops at once. A running review stops within a few seconds, at the next point where the worker checks. The review ends with status cancelled and errorCode CANCELLED, its analysis credit is released, and finished parts are kept as a partial result.
-        Roles - administrator, owner, manager, staff, reviewer, user.
+        Roles - administrator, owner, manager, staff, expert, user.
       responses:
         '200':
           description: The review; status is cancelled, or still running with cancelRequested=true until the worker stops
@@ -2836,7 +2836,7 @@ paths:
       summary: Retry a failed or cancelled review from the failed stage
       description: |
         Re-runs only the stages that did not complete, on the same review. Reserves one analysis credit, charged only if the review completes.
-        Roles - administrator, owner, manager, staff, reviewer, user.
+        Roles - administrator, owner, manager, staff, expert, user.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
       responses:
@@ -2926,6 +2926,7 @@ paths:
     get:
       tags: [LegalKB]
       summary: List legal sources in the knowledge base (with chunk counts)
+      description: Manager only.
       responses:
         '200':
           description: OK
@@ -2939,7 +2940,7 @@ paths:
       tags: [LegalKB]
       summary: Upload a legal document (pdf/docx/doc/txt), split it by its legal structure, and embed it in the background (Gemini)
       description: |
-        Admin only. Rate-limited (AI cost control). Use POST /kb/legal-sources/preview first to check coverage without spending embedding quota.
+        Manager only. Rate-limited (AI cost control). Use POST /kb/legal-sources/preview first to check coverage without spending embedding quota.
 
         The text is read as Phần > Chương > Mục > Tiểu mục > Điều > khoản > điểm. An "Điều N" heading only counts when its number is higher than the previous article, so cross-references such as "Điều 5 của Luật này" at the start of a line stay in the body. The signature block after the last article (e.g. "Luật này đã được Quốc hội ... thông qua", "CHỦ TỊCH QUỐC HỘI", "Nơi nhận:") is dropped.
 
@@ -2991,7 +2992,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Requires administrator role
+          description: Requires manager role
           content:
             application/json:
               schema:
@@ -3001,7 +3002,7 @@ paths:
     post:
       tags: [LegalKB]
       summary: Dry-run a legal document upload and report its structure and coverage
-      description: Admin only. Parses and chunks the file exactly like the upload endpoint, but saves nothing and calls no AI model, so it costs no embedding quota. Use it to check that every article was read (e.g. a .doc converted badly, or a file that only contains part of the law) before uploading.
+      description: Manager only. Parses and chunks the file exactly like the upload endpoint, but saves nothing and calls no AI model, so it costs no embedding quota. Use it to check that every article was read (e.g. a .doc converted badly, or a file that only contains part of the law) before uploading.
       requestBody:
         required: true
         content:
@@ -3033,7 +3034,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Requires administrator role
+          description: Requires manager role
           content:
             application/json:
               schema:
@@ -3056,6 +3057,7 @@ paths:
     get:
       tags: [LegalKB]
       summary: Get a legal source with its coverage report, ingestion progress and chunk count
+      description: Manager only.
       responses:
         '200':
           description: OK
@@ -3072,12 +3074,12 @@ paths:
     delete:
       tags: [LegalKB]
       summary: Delete a legal source and all of its chunks (also stops a running ingestion)
-      description: Admin only.
+      description: Manager only.
       responses:
         '204':
           description: Deleted
         '403':
-          description: Requires administrator role
+          description: Requires manager role
           content:
             application/json:
               schema:
@@ -3101,7 +3103,7 @@ paths:
       tags: [LegalKB]
       summary: Add another file to an existing legal source (e.g. the rest of a law uploaded in pieces)
       description: |
-        Admin only. Rate-limited. The file is parsed like a new upload. Articles the source already has are skipped and listed in parts[].skippedArticles, so uploading the full text over a partial source only adds what was missing. New chunks are appended after the existing ones, coverage is recomputed over the whole source, and only the new chunks are embedded in the background. If an ingestion is already running it is replaced by one that covers both.
+        Manager only. Rate-limited. The file is parsed like a new upload. Articles the source already has are skipped and listed in parts[].skippedArticles, so uploading the full text over a partial source only adds what was missing. New chunks are appended after the existing ones, coverage is recomputed over the whole source, and only the new chunks are embedded in the background. If an ingestion is already running it is replaced by one that covers both.
       requestBody:
         required: true
         content:
@@ -3133,7 +3135,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Requires administrator role
+          description: Requires manager role
           content:
             application/json:
               schema:
@@ -3168,7 +3170,7 @@ paths:
     post:
       tags: [LegalKB]
       summary: Resume embedding the chunks that are still missing
-      description: Admin only. Use it after ingestion.status became failed, or to resume a paused source before its resumeAt. Only chunks without an embedding are sent to Gemini.
+      description: Manager only. Use it after ingestion.status became failed, or to resume a paused source before its resumeAt. Only chunks without an embedding are sent to Gemini.
       responses:
         '202':
           description: Queued
@@ -3183,7 +3185,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Requires administrator role
+          description: Requires manager role
           content:
             application/json:
               schema:

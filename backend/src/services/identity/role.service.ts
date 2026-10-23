@@ -1,5 +1,7 @@
 import { AppError } from '../../errors/AppError';
 import { RoleCode, RoleModel } from '../../models/role.model';
+import { UserModel } from '../../models/user.model';
+import { OrganizationInvitationModel } from '../../models/organizationInvitation.model';
 
 const DEFAULT_ROLES: Array<{ code: RoleCode; name: string; description: string }> = [
   {
@@ -23,8 +25,8 @@ const DEFAULT_ROLES: Array<{ code: RoleCode; name: string; description: string }
     description: 'Full access to manage their own contracts and review outcomes',
   },
   {
-    code: 'reviewer',
-    name: 'Reviewer',
+    code: 'expert',
+    name: 'Expert',
     description: 'Review and approve contracts within their scope',
   },
   {
@@ -35,6 +37,19 @@ const DEFAULT_ROLES: Array<{ code: RoleCode; name: string; description: string }
 ];
 
 export async function seedDefaultRoles(): Promise<void> {
+  // Preserve existing memberships when upgrading the former reviewer role.
+  const legacyRole = await RoleModel.findOne({ code: 'reviewer' });
+  if (legacyRole) {
+    const expertRole = await RoleModel.findOne({ code: 'expert' });
+    if (expertRole) {
+      await UserModel.updateMany({ roleId: legacyRole._id }, { $set: { roleId: expertRole._id } });
+      await RoleModel.deleteOne({ _id: legacyRole._id });
+    } else {
+      await RoleModel.updateOne({ _id: legacyRole._id }, { $set: { code: 'expert', name: 'Expert' } });
+    }
+  }
+  await OrganizationInvitationModel.updateMany({ role: 'reviewer' }, { $set: { role: 'expert' } });
+
   await Promise.all(
     DEFAULT_ROLES.map((role) =>
       RoleModel.findOneAndUpdate(

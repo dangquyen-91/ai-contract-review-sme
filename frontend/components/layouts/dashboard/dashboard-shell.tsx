@@ -53,7 +53,7 @@ function DashboardDataView({ view, children }: DataProps) {
   if (isLoading) return <DashboardSkeleton />;
   if (error || !data) return <DashboardError error={error} onRetry={() => refetch()} />;
 
-  const role: DashboardRole = data.role === "administrator" || data.role === "owner" || data.role === "manager" || data.role === "staff" || data.role === "reviewer" ? data.role : "user";
+  const role: DashboardRole = data.role === "administrator" || data.role === "owner" || data.role === "manager" || data.role === "staff" || data.role === "expert" ? data.role : "user";
   const activeKey = role === "user" ? view : view === "review" ? "upload" : "contracts";
 
   return <DashboardFrame
