@@ -8,7 +8,7 @@ export function ContractCards({ contracts, onReview, isReviewing, highlightId }:
   isReviewing: boolean;
   highlightId?: string;
 }) {
-  const statuses = { uploaded: "Chờ rà soát", processing: "AI đang xử lý", reviewed: "AI đã phân tích", archived: "Lưu trữ" };
+  const statuses = { uploaded: "Chờ rà soát", processing: "AI đang xử lý", reviewed: "AI đã phân tích", archived: "Lưu trữ", unsupported: "Chưa hỗ trợ" };
   const risks = { high: "Rủi ro cao", medium: "Trung bình", low: "Rủi ro thấp", none: "Chưa đánh giá" };
   return <ul className={"grid gap-[12px] p-[0] m-[18px_0_0] list-none [&_>_li]:[border:1px_solid_#e4ebf5] [&_>_li]:rounded-[12px] [&_>_li]:p-[16px] [&_>_li]:[background:#fbfcff] [&_>_.tw-member-insights-newContract]:[background:#effaf5]! [&_>_.tw-member-insights-newContract]:shadow-[inset_3px_0_#20a078]"}>{contracts.map((contract) => {
     const date = new Date(contract.updatedAt);

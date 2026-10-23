@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { InvitationStatus, OrganizationInvitation } from "@/types/invitations";
-const roles: Record<string, string> = { owner: "Owner", manager: "Manager", staff: "Staff", reviewer: "Reviewer" };
+const roles: Record<string, string> = { owner: "Owner", manager: "Manager", staff: "Staff", expert: "Expert" };
 const statuses: Record<InvitationStatus, { label: string; variant: "warning" | "success" | "neutral" | "danger" }> = {
   pending: { label: "Đang chờ", variant: "warning" },
   accepted: { label: "Đã chấp nhận", variant: "success" },

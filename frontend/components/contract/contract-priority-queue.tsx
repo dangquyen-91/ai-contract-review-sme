@@ -10,7 +10,7 @@ import { ContractCards } from "@/components/contract/contract-cards";
 
 export function ContractPriorityQueue({ orgId, role, onReview, onViewContracts, isReviewing }: {
   orgId: string;
-  role: "staff" | "reviewer" | "manager";
+  role: "staff" | "expert" | "manager";
   onReview: (contract: DashboardContract) => void;
   onViewContracts: (filter?: DashboardContractFilter) => void;
   isReviewing: boolean;

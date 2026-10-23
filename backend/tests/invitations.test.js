@@ -115,7 +115,7 @@ afterAll(async () => {
 });
 
 test('owner sends normalized email; registration, preview, acceptance and member listing work', async () => {
-  const invitation = await invite('NEW-MEMBER@EXAMPLE.COM', 'reviewer');
+  const invitation = await invite('NEW-MEMBER@EXAMPLE.COM', 'expert');
   expect(sendInvitationEmail.mock.calls.at(-1)[0].email).toBe('new-member@example.com');
   expect(JSON.stringify(invitation.data)).not.toContain(invitation.token);
   const stored = await Invitations.findById(invitation.data.id).select('+tokenHash');
@@ -148,12 +148,12 @@ test('owner sends normalized email; registration, preview, acceptance and member
   expect(result.status).toBe(200);
   expect(result.body.data.user).toMatchObject({
     orgId: org.id,
-    role: 'reviewer',
+    role: 'expert',
     hasCompletedOnboarding: true,
   });
   expect(jwt.verify(result.body.data.accessToken, process.env.JWT_ACCESS_SECRET)).toMatchObject({
     orgId: org.id,
-    role: 'reviewer',
+    role: 'expert',
   });
   expect((await Invitations.findById(stored.id)).status).toBe('accepted');
   const members = await request(app)
@@ -216,11 +216,11 @@ test('personal workspace user can be invited and joins only after acceptance', a
   const user = await makeUser('user', personal._id);
   await UserModel.updateOne({ _id: user.id }, { $set: { hasCompletedOnboarding: true } });
   const oldToken = bearer(user);
-  const invitation = await invite(user.email, 'reviewer');
+  const invitation = await invite(user.email, 'expert');
   expect((await UserModel.findById(user.id)).orgId.toString()).toBe(personal.id);
   const result = await accept(user, invitation.token);
   expect(result.status).toBe(200);
-  expect(result.body.data.user).toMatchObject({ orgId: org.id, role: 'reviewer' });
+  expect(result.body.data.user).toMatchObject({ orgId: org.id, role: 'expert' });
   expect((await UserModel.findById(user.id)).permissionsVersion).toBe(1);
   expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
   expect(await OrganizationModel.exists({ _id: personal._id, isPersonal: true })).toBeTruthy();
@@ -392,15 +392,15 @@ test('received invitations are scoped to the authenticated email and never expos
 
 test('dashboard acceptance assigns orgId and role without needing the email token', async () => {
   const user = await makeUser();
-  const invitation = await seedReceivedInvitation(user.email, 'reviewer');
+  const invitation = await seedReceivedInvitation(user.email, 'expert');
   const response = await request(app)
     .post(`/api/v1/invitations/received/${invitation.data.id}/accept`)
     .set('Authorization', bearer(user));
   expect(response.status).toBe(200);
-  expect(response.body.data.user).toMatchObject({ orgId: org.id, role: 'reviewer' });
+  expect(response.body.data.user).toMatchObject({ orgId: org.id, role: 'expert' });
   expect(jwt.verify(response.body.data.accessToken, process.env.JWT_ACCESS_SECRET)).toMatchObject({
     orgId: org.id,
-    role: 'reviewer',
+    role: 'expert',
   });
   expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
 });

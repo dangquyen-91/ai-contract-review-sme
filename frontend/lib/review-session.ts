@@ -1,11 +1,23 @@
 import { contractsApi } from "@/lib/api/contracts";
 import { ApiClientError } from "@/lib/api/client";
+import { reviewFailureCopy } from "@/lib/review-error-codes";
 import type { ContractReviewRun } from "@/types/contracts";
 
-type Session = { key: string; reviewId?: string; analysisFocus?: string; blockedError?: string };
+type Session = { key: string; reviewId?: string; analysisFocus?: string; blockedError?: string; retryKey?: string };
 const storageKey = (id: string) => `lawscan_review_${id}`;
 export function clearReviewSession(id: string) { sessionStorage.removeItem(storageKey(id)); }
 export function isReviewCancelled(error: unknown) { return error instanceof Error && error.name === "AbortError"; }
+
+export class ReviewRunError extends Error {
+  readonly review: ContractReviewRun;
+  constructor(review: ContractReviewRun) {
+    super(review.errorCode ? reviewFailureCopy(review.errorCode).message : review.error || "Lượt rà soát thất bại. Bạn có thể chủ động thử lại.");
+    this.name = "ReviewRunError";
+    this.review = review;
+  }
+}
+
+const RETRY_FALLBACK_CODES = new Set(["REVIEW_OUTDATED", "REVIEW_NOT_RETRYABLE"]);
 
 export function readReviewSession(id: string): Session | null {
   const value = sessionStorage.getItem(storageKey(id));
@@ -57,6 +69,25 @@ export async function executeReview({ contractId, analysisFocus, resumeOnly = fa
       }
     }
   }
+  async function retryFailedRun(failed: ContractReviewRun): Promise<ContractReviewRun | null> {
+    const current = session!;
+    current.retryKey ??= crypto.randomUUID();
+    sessionStorage.setItem(storageKey(contractId), JSON.stringify(current));
+    const settle = (run: ContractReviewRun) => {
+      delete current.retryKey;
+      sessionStorage.setItem(storageKey(contractId), JSON.stringify(current));
+      return run;
+    };
+    try {
+      return settle(await request(() => contractsApi.retryReviewRun(failed._id, current.retryKey!, signal)));
+    } catch (error) {
+      if (!(error instanceof ApiClientError) || error.status !== 409) throw error;
+      const latest = await request(() => contractsApi.getReviewRun(failed._id, signal));
+      if (latest.status === "queued" || latest.status === "running") return settle(latest);
+      if (error.serverCode && RETRY_FALLBACK_CODES.has(error.serverCode)) return null;
+      throw error;
+    }
+  }
   let session = readReviewSession(contractId);
   if (resumeOnly && session?.blockedError) throw new ApiClientError(session.blockedError, { status: 403 });
   analysisFocus ??= session?.analysisFocus;
@@ -67,8 +98,10 @@ export async function executeReview({ contractId, analysisFocus, resumeOnly = fa
       if (!(error instanceof ApiClientError) || error.status !== 404) throw error;
       sessionStorage.removeItem(storageKey(contractId)); session = null;
     }
-    if (review?.status === "failed" && !resumeOnly) {
-      review = undefined; session = null; sessionStorage.removeItem(storageKey(contractId));
+    if (review && (review.status === "failed" || review.status === "cancelled") && !resumeOnly) {
+      const retried = review.errorCode ? await retryFailedRun(review) : null;
+      if (retried) review = retried;
+      else { review = undefined; session = null; sessionStorage.removeItem(storageKey(contractId)); }
     }
   }
   if (!session && !review && resumeOnly) {
@@ -121,7 +154,7 @@ export async function executeReview({ contractId, analysisFocus, resumeOnly = fa
   for (;;) {
     signal.throwIfAborted();
     onProgress?.(review);
-    if (review.status === "failed") throw new Error(review.error || "Lượt rà soát thất bại. Bạn có thể chủ động thử lại.");
+    if (review.status === "failed" || review.status === "cancelled") throw new ReviewRunError(review);
     if (review.status === "completed") break;
     if (Date.now() >= deadline) throw new Error("Lượt rà soát vẫn đang chạy. Mở lại hợp đồng để tiếp tục theo dõi.");
     await pause(2_000, signal);

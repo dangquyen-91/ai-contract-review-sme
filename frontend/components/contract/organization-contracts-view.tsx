@@ -16,10 +16,10 @@ const listSearchParams = {
   search: parseAsString.withDefault(""),
 };
 
-export function OrganizationContractsView({ orgId, filter, reviewerMode, managerMode = false, onFilter, renderContracts }: {
+export function OrganizationContractsView({ orgId, filter, expertMode, managerMode = false, onFilter, renderContracts }: {
   orgId: string;
   filter: DashboardContractFilter;
-  reviewerMode: boolean;
+  expertMode: boolean;
   managerMode?: boolean;
   onFilter: (filter?: DashboardContractFilter) => void;
   renderContracts: (contracts: DashboardContract[], onDeleted: () => void) => ReactNode;
@@ -36,16 +36,16 @@ export function OrganizationContractsView({ orgId, filter, reviewerMode, manager
   function updateList(next: { page?: number; search?: string }) {
     void setListState({ page: next.page ?? page, search: next.search ?? search });
   }
-  const query = useContractsList({ ...filter, page, search: search || undefined }, { scope: `${managerMode ? "manager" : reviewerMode ? "reviewer" : "staff"}:${orgId}`, pollProcessing: true });
+  const query = useContractsList({ ...filter, page, search: search || undefined }, { scope: `${managerMode ? "manager" : expertMode ? "expert" : "staff"}:${orgId}`, pollProcessing: true });
   const pages = Math.max(1, Math.ceil((query.data?.total ?? 0) / 10));
   const uploaded = highlighted && query.data?.items.find((contract) => (contract.id ?? contract._id) === highlighted);
   const choices: { label: string; filter: DashboardContractFilter }[] = [
     { label: "Tất cả", filter: {} },
-    ...((reviewerMode || managerMode) ? [{ label: "Rủi ro cao", filter: { riskLevel: "high" } as DashboardContractFilter }, { label: "Đã có kết quả", filter: { status: "reviewed" } as DashboardContractFilter }] : []),
-    ...(!reviewerMode ? [{ label: "Chờ rà soát", filter: { status: "uploaded" } as DashboardContractFilter }] : []),
+    ...((expertMode || managerMode) ? [{ label: "Rủi ro cao", filter: { riskLevel: "high" } as DashboardContractFilter }, { label: "Đã có kết quả", filter: { status: "reviewed" } as DashboardContractFilter }] : []),
+    ...(!expertMode ? [{ label: "Chờ rà soát", filter: { status: "uploaded" } as DashboardContractFilter }] : []),
     { label: "AI đang xử lý", filter: { status: "processing" } },
   ];
-  const statusNames = { uploaded: "Chờ rà soát", processing: "AI đang xử lý", reviewed: "Đã rà soát", archived: "Lưu trữ" };
+  const statusNames = { uploaded: "Chờ rà soát", processing: "AI đang xử lý", reviewed: "Đã rà soát", archived: "Lưu trữ", unsupported: "Chưa hỗ trợ" };
   const riskNames = { high: "Rủi ro cao", medium: "Rủi ro trung bình", low: "Rủi ro thấp", none: "Chưa đánh giá" };
   return <section className={"min-w-[0] [border:1px_solid_#e1e8f2] rounded-[18px] [background:#fff] p-[24px] shadow-[0_18px_35px_-34px_#4b668b] mt-[20px] [&_form]:flex [&_form]:flex-wrap [&_form]:gap-[10px] [&_form]:m-[18px_0] [&_input]:flex-1 [&_input]:min-w-[150px] [&_input]:min-h-[42px] [&_input]:p-[8px_12px] [&_input]:[border:1px_solid_#dce5f2] [&_input]:rounded-[9px] [&_input]:text-[13px] [&_form_button]:[border:1px_solid_#dce5f2] [&_form_button]:rounded-[9px] [&_form_button]:[background:white] [&_form_button]:p-[9px_14px] [&_form_button]:text-[#245bd6] [&_form_button]:text-[13px] [&_form_button]:font-semibold [&_form_button]:cursor-pointer max-[650px]:p-[20px]"} aria-labelledby="member-contracts-heading">
     <h1 id="member-contracts-heading" className="text-[28px] font-bold tracking-[-.03em]">Hợp đồng của tổ chức</h1>

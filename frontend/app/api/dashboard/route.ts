@@ -97,7 +97,7 @@ export async function GET(request: NextRequest) {
     });
 
     let distribution;
-    if (["staff", "reviewer", "manager"].includes(claims.role ?? "")) {
+    if (["staff", "expert", "manager"].includes(claims.role ?? "")) {
       const filters = ["status=uploaded", "status=archived", "riskLevel=medium", "riskLevel=low", "riskLevel=none"];
       const extraMetrics = await Promise.all(filters.map(async (filter) => {
         const response = await fetch(`${apiBaseUrl}/api/v1/contracts?limit=1&${filter}`, { headers, cache: "no-store" });

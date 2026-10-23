@@ -16,6 +16,7 @@ function toOrganizationResponse(organization: Awaited<ReturnType<typeof getOrgan
     name: organization.name,
     taxCode: organization.taxCode ?? null,
     address: organization.address ?? null,
+    industry: organization.industry ?? null,
     createdAt: organization.createdAt,
     updatedAt: organization.updatedAt,
   };

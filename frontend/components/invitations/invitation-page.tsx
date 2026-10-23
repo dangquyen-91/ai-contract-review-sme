@@ -17,7 +17,7 @@ import { useAcceptInvitationMutation, useInvitationPreview } from "@/hooks/use-i
 import { workspacePath } from "@/lib/workspace-path";
 import type { AuthUser } from "@/types/auth";
 
-const roleNames: Record<string, string> = { manager: "Manager", staff: "Staff", reviewer: "Reviewer" };
+const roleNames: Record<string, string> = { manager: "Manager", staff: "Staff", expert: "Expert" };
 
 export function InvitationPage({ token, user }: { token: string; user: AuthUser | null }) {
   const router = useRouter();

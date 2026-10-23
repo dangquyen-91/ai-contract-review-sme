@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dashboardKeys } from "@/lib/query-keys/dashboard";
 import { contractsApi } from "@/lib/api/contracts";
 import { ApiClientError } from "@/lib/api/client";
+import { isAwaitingClassification } from "@/lib/contract-classification";
 import type { ChatStreamEvent, ContractListResult, ContractReviewResult, ContractReviewRun, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
 import { contractKeys, contractMutationKeys } from "@/lib/query-keys/contracts";
@@ -67,6 +68,38 @@ export function useContract(contractId: string) {
     ...contractDetailQuery(contractId),
     enabled: Boolean(contractId),
   });
+}
+
+export function useContractClassification(contractId: string) {
+  return useQuery({
+    queryKey: contractKeys.detail(contractId),
+    queryFn: () => contractsApi.getContract(contractId),
+    enabled: Boolean(contractId),
+    refetchInterval: (query) => isAwaitingClassification(query.state.data) ? 2_000 : false,
+  });
+}
+
+function useContractUpdate<Variables>(mutationFn: (variables: Variables & { contractId: string }) => Promise<DashboardContract>) {
+  const queryClient = useQueryClient();
+  return useMutation<DashboardContract, ApiClientError, Variables & { contractId: string }>({
+    mutationFn,
+    onSuccess: (contract, { contractId }) => {
+      queryClient.setQueryData(contractKeys.detail(contractId), contract);
+      return Promise.all([
+        queryClient.invalidateQueries({ queryKey: contractKeys.lists }),
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+      ]);
+    },
+  });
+}
+
+export function useConfirmProfileMutation() {
+  return useContractUpdate<{ type: string; ourParty?: string }>(({ contractId, type, ourParty }) =>
+    contractsApi.confirmProfile(contractId, { type, ourParty }));
+}
+
+export function useRetryClassificationMutation() {
+  return useContractUpdate<object>(({ contractId }) => contractsApi.retryClassification(contractId));
 }
 
 export function useContractText(contractId: string, options: {

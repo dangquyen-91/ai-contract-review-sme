@@ -12,7 +12,7 @@ import { workspacePath } from "@/lib/workspace-path";
 import type { AuthSession } from "@/types/auth";
 import type { ReceivedInvitation } from "@/types/invitations";
 
-const labels = { staff: "Nhân viên", manager: "Quản lý", reviewer: "Chuyên viên rà soát" };
+const labels = { staff: "Nhân viên", manager: "Quản lý", expert: "Chuyên viên rà soát" };
 export function ReceivedInvitations() {
   const client = useQueryClient();
   const router = useRouter();

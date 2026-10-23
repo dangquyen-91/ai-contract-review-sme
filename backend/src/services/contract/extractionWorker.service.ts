@@ -5,8 +5,9 @@ import { ContractModel } from '../../models/contract.model';
 import { ContractVersionModel } from '../../models/contractVersion.model';
 import { downloadContractFile, storedFileOf } from './storage.service';
 import { extractContractText, ExtractionProgress, recycleOcrIfNeeded } from './textExtraction.service';
-import { resolveContractProfile } from './contractProfile.service';
-import { detectSensitiveData, SensitiveDataType, summarizeSensitiveData } from '../ai/redaction.service';
+import { redactionPolicyFor } from './redactionPolicy.service';
+import { enqueueClassification } from './classificationWorker.service';
+import { detectSensitiveData, summarizeSensitiveData } from '../ai/redaction.service';
 
 const EXTRACTION_QUEUE = 'contract-extraction';
 const MAX_ATTEMPTS = 3;
@@ -100,15 +101,25 @@ async function processExtraction(job: Job<ExtractionJobData>): Promise<Extractio
     redactionSummary: await summarizeSensitiveText(fresh.contractId.toString(), result.text),
   });
   await fresh.save();
+  if (result.status === 'completed') await requestClassification(fresh.contractId.toString());
   return { status: result.status };
+}
+
+async function requestClassification(contractId: string) {
+  if (!(await ContractModel.exists({ _id: contractId, type: null }))) return;
+  await enqueueClassification(contractId).catch((err) =>
+    logger.warn('Failed to queue contract classification', {
+      contractId,
+      error: err instanceof Error ? err.message : String(err),
+    }),
+  );
 }
 
 async function summarizeSensitiveText(contractId: string, text: string | undefined) {
   if (!text) return undefined;
   const contract = await ContractModel.findById(contractId).select('type');
   if (!contract) return undefined;
-  const profile = await resolveContractProfile(contract.type);
-  const policy = new Set(profile.redactionPolicy as SensitiveDataType[]);
+  const policy = new Set(await redactionPolicyFor(contract.type));
   return summarizeSensitiveData(detectSensitiveData(text, policy));
 }
 

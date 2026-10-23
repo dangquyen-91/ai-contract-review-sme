@@ -26,7 +26,9 @@ const NAME_WORD = '(?:\\p{Lu}{2,}|\\p{Lu}[\\p{Ll}\\p{M}]*)(?![\\p{L}\\p{M}])';
 const NAME_LABEL =
   '(?<![\\p{L}\\p{M}])(?:Ông|ÔNG|Bà|BÀ|Họ và tên|HỌ VÀ TÊN|Họ tên|HỌ TÊN|Người đại diện(?: theo pháp luật)?|NGƯỜI ĐẠI DIỆN|Đại diện|ĐẠI DIỆN)(?![\\p{L}\\p{M}])';
 const NOT_A_PERSON =
-  '(?!(?:Bên|BÊN|Công ty|CÔNG TY|Ngân hàng|NGÂN HÀNG|Chi nhánh|CHI NHÁNH|Hộ kinh doanh|HỘ KINH DOANH|Doanh nghiệp|DOANH NGHIỆP)(?![\\p{L}\\p{M}]))';
+  '(?!(?:Bên|BÊN|Công ty|CÔNG TY|Tổng công ty|TỔNG CÔNG TY|Tập đoàn|TẬP ĐOÀN|Ngân hàng|NGÂN HÀNG|Chi nhánh|CHI NHÁNH|Hộ kinh doanh|HỘ KINH DOANH|Doanh nghiệp|DOANH NGHIỆP|Hợp tác xã|HỢP TÁC XÃ|Văn phòng|VĂN PHÒNG|Trung tâm|TRUNG TÂM|Bệnh viện|BỆNH VIỆN|Ủy ban|Uỷ ban|ỦY BAN|UỶ BAN|UBND|Cơ quan|CƠ QUAN|Tổ chức|TỔ CHỨC)(?![\\p{L}\\p{M}]))';
+const PARTY_LABEL =
+  '(?<![\\p{L}\\p{M}])(?:Bên|BÊN)(?:[ \\t]+[\\p{L}\\p{M}]+){1,4}(?:[ \\t]*\\([^()\\n]{1,60}\\))?[ \\t]*:';
 
 interface Detector {
   type: SensitiveDataType;
@@ -42,6 +44,13 @@ const DETECTORS: Detector[] = [
     type: 'person_name',
     pattern: new RegExp(
       `${NAME_LABEL}[ \\t]*[:.]?[ \\t]*(?:(?:Ông|Bà|ÔNG|BÀ)\\.?[ \\t]+)?${NOT_A_PERSON}(${NAME_WORD}(?:[ \\t]+${NAME_WORD}){1,5})`,
+      'gu',
+    ),
+  },
+  {
+    type: 'person_name',
+    pattern: new RegExp(
+      `${PARTY_LABEL}[ \\t]*(?:(?:Ông|Bà|ÔNG|BÀ)\\.?[ \\t]+)?${NOT_A_PERSON}(${NAME_WORD}(?:[ \\t]+${NAME_WORD}){1,5})`,
       'gu',
     ),
   },

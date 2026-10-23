@@ -2,7 +2,17 @@ import { Schema, model, Types, InferSchemaType } from 'mongoose';
 import { RISK_LEVELS } from './contractVersion.model';
 import { RISK_DETECTED_BY, RISK_FINDING_TYPES, RISK_SEVERITIES } from './riskFinding.model';
 
-export const REVIEW_STATUSES = ['queued', 'running', 'completed', 'failed'] as const;
+export const REVIEW_STATUSES = ['queued', 'running', 'completed', 'failed', 'cancelled'] as const;
+
+export const REVIEW_ERROR_CODES = [
+  'AI_OVERLOADED',
+  'EXTRACTION_TIMEOUT',
+  'EXTRACTION_FAILED',
+  'CONTRACT_DELETED',
+  'CREDIT_EXPIRED',
+  'CANCELLED',
+  'UNKNOWN',
+] as const;
 
 export const REVIEW_STAGES = [
   'waiting_for_extraction',
@@ -40,6 +50,7 @@ const reviewResultSchema = new Schema(
       low: { type: Number, default: 0 },
     },
     findings: { type: [findingSnapshotSchema], default: [] },
+    partial: { type: Boolean, default: false },
   },
   { _id: false },
 );
@@ -63,6 +74,8 @@ const reviewSchema = new Schema(
     },
     analysisFocus: { type: String },
     error: { type: String },
+    errorCode: { type: String, enum: REVIEW_ERROR_CODES },
+    cancelRequested: { type: Boolean },
     startedAt: { type: Date },
     finishedAt: { type: Date },
     result: { type: reviewResultSchema, default: undefined },

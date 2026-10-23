@@ -117,6 +117,9 @@ components:
       properties:
         message:
           type: string
+        code:
+          type: string
+          description: Machine-readable reason, present for errors the client is expected to handle (e.g. CONTRACT_NOT_CONFIRMED)
         details:
           type: object
 
@@ -134,6 +137,10 @@ components:
         address:
           type: string
           nullable: true
+        industry:
+          type: string
+          nullable: true
+          description: Industry code used for contracts that do not set their own
         createdAt:
           type: string
           format: date-time
@@ -171,6 +178,11 @@ components:
           type: string
           nullable: true
           maxLength: 500
+        industry:
+          type: string
+          nullable: true
+          maxLength: 50
+          description: Industry code (see GET /contract-profiles). Used when a contract has no industry of its own; null clears it.
 
     RegisterRequest:
       type: object
@@ -312,7 +324,7 @@ components:
           type: string
         role:
           type: string
-          enum: [administrator, manager, staff, owner, reviewer, user]
+          enum: [administrator, manager, staff, owner, expert, user]
         orgId:
           type: string
           nullable: true
@@ -328,7 +340,8 @@ components:
           type: string
         type:
           type: string
-          description: Contract profile code (see GET /contract-profiles), e.g. sales, service, office_lease, labor, housing_purchase, life_insurance
+          nullable: true
+          description: Confirmed contract profile code (see GET /contract-profiles), e.g. sales, service, office_lease, labor, housing_purchase, life_insurance. Absent until the type is confirmed; a review cannot start before that (409 CONTRACT_NOT_CONFIRMED).
         ourParty:
           type: string
           description: Party code the user represents in this contract (one of the profile's parties); absent if not specified
@@ -337,6 +350,9 @@ components:
           description: Industry code of the user's business (see GET /contract-profiles); absent if not specified
         status:
           type: string
+          enum: [uploaded, processing, reviewed, archived, unsupported]
+        classification:
+          $ref: '#/components/schemas/ContractClassification'
         currentVersion:
           $ref: '#/components/schemas/ContractVersion'
         createdAt:
@@ -487,7 +503,7 @@ components:
           description: Key the review was started with; reusing it returns this review
         status:
           type: string
-          enum: [queued, running, completed, failed]
+          enum: [queued, running, completed, failed, cancelled]
         currentStage:
           type: string
           enum: [waiting_for_extraction, segmentation, summary, risk_detection]
@@ -512,7 +528,14 @@ components:
           type: string
         error:
           type: string
-          description: Last error; set while a retry is pending or when the review failed
+          description: Last error message (English, for logs); set while an automatic retry is pending or when the review failed or was cancelled
+        errorCode:
+          type: string
+          enum: [AI_OVERLOADED, EXTRACTION_TIMEOUT, EXTRACTION_FAILED, CONTRACT_DELETED, CREDIT_EXPIRED, CANCELLED, UNKNOWN]
+          description: Reason to show the user; set together with error
+        cancelRequested:
+          type: boolean
+          description: True after POST /reviews/{reviewId}/cancel until the worker stops
         startedAt:
           type: string
           format: date-time
@@ -521,8 +544,11 @@ components:
           format: date-time
         result:
           type: object
-          description: Snapshot of the outcome, present when status is completed
+          description: Snapshot of the outcome. Always present when status is completed. When a review failed or was cancelled after the summary or the risk detection finished, it holds those parts with partial=true; such a review uses no analysis credit.
           properties:
+            partial:
+              type: boolean
+              description: True when only some stages finished; summaryPoints is empty if the summary did not finish, and the risk fields are empty if risk detection did not finish
             overallRiskLevel:
               type: string
               enum: [high, medium, low, none]
@@ -911,17 +937,64 @@ components:
           type: number
           description: Retrieval relevance (0-1). Excerpts are found by hybrid search (Atlas Vector Search + Atlas Search full text, fused by reciprocal rank); 1 means ranked first by both. Articles linked directly (a rule citation, or an article the LLM named that was not retrieved) have 1.
 
+    ContractClassification:
+      type: object
+      description: How the contract type and the user's party were determined. With source=user the type was given at upload or confirmed by the user.
+      properties:
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        outcome:
+          type: string
+          enum: [supported, unsupported_type, not_contract, not_allowed_for_account]
+        detectedLabel:
+          type: string
+          description: Free-text contract kind as detected, e.g. "hợp đồng thuê xe"
+        type:
+          type: string
+          description: Suggested profile code
+        ourParty:
+          type: string
+          description: Suggested party code
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        parties:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              partyCode:
+                type: string
+        source:
+          type: string
+          enum: [ai, user]
+        error:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+
     CreateContractRequest:
       type: object
-      required: [title, type]
       properties:
         title:
           type: string
           minLength: 2
           maxLength: 300
+          description: Optional. Defaults to the file name without its extension
         type:
           type: string
-          description: Contract profile code or alias (see GET /contract-profiles). Unknown codes return 400.
+          description: Optional. Contract profile code or alias (see GET /contract-profiles); unknown codes return 400. When given, the type counts as confirmed by the user. When omitted, the contract waits for classification and confirmation before it can be reviewed.
           example: sales
         ourParty:
           type: string
@@ -1403,7 +1476,7 @@ paths:
               required: [email, role]
               properties:
                 email: { type: string, format: email }
-                role: { type: string, enum: [manager, staff, reviewer] }
+                role: { type: string, enum: [manager, staff, expert] }
       responses:
         '201': { description: Invitation metadata after Brevo API acceptance (not proof of inbox delivery); no token or tokenHash }
         '400': { description: Invalid email or role }
@@ -1981,12 +2054,12 @@ paths:
     delete:
       tags: [Contracts]
       summary: Delete a contract
-      description: Deletes the contract, all its versions, clauses, findings, chat messages and stored files. Roles - administrator, owner, manager, and user (the owner of a personal workspace).
+      description: Deletes the contract, all its versions, clauses, findings, chat messages and stored files. Roles - administrator, owner, manager, staff, and user (the owner of a personal workspace).
       responses:
         '204':
           description: No Content
         '403':
-          description: Role not allowed to delete contracts (staff, reviewer)
+          description: Role not allowed to delete contracts (expert)
           content:
             application/json:
               schema:
@@ -2134,7 +2207,7 @@ paths:
     patch:
       tags: [Contracts]
       summary: Edit the proposed revision of a finding
-      description: Updates proposedRevision.revisedText and/or reason and marks it isEdited=true. Only findings of the contract's current version can be edited; 404 if the finding has no proposed revision. Roles - administrator, owner, manager, staff, reviewer, user.
+      description: Updates proposedRevision.revisedText and/or reason and marks it isEdited=true. Only findings of the contract's current version can be edited; 404 if the finding has no proposed revision. Roles - administrator, owner, manager, staff, expert, user.
       requestBody:
         required: true
         content:
@@ -2182,7 +2255,7 @@ paths:
     delete:
       tags: [Contracts]
       summary: Remove the proposed revision of a finding
-      description: Clears proposedRevision; the finding itself is kept. Roles - administrator, owner, manager, staff, reviewer, user.
+      description: Clears proposedRevision; the finding itself is kept. Roles - administrator, owner, manager, staff, expert, user.
       responses:
         '200':
           description: The finding without proposedRevision
@@ -2192,6 +2265,106 @@ paths:
                 $ref: '#/components/schemas/RiskFinding'
         '404':
           description: Contract or finding not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/profile:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-fd]{24}$'
+    patch:
+      tags: [Contracts]
+      summary: Confirm or change the contract type and the user's party
+      description: |
+        Confirms the classification suggestion or overrides it. The contract can be reviewed only after this (or after an upload that already gave a type).
+        Personal accounts may only use life_insurance, housing_purchase and labor (labor always as employee); business accounts sales, labor, service and office_lease.
+        When ourParty is omitted, personal labor defaults to employee and personal life_insurance to policyholder.
+        classification.source becomes "ai" when the confirmed type and party equal the suggestion, otherwise "user". An unsupported contract returns to status uploaded.
+        Roles - administrator, owner, manager, staff, expert, user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type:
+                  type: string
+                  example: labor
+                ourParty:
+                  type: string
+                  example: employee
+      responses:
+        '200':
+          description: Updated contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '400':
+          description: Unknown type or party, or a type the account cannot review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: A review is running for this contract (code REVIEW_RUNNING)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/classify:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-fd]{24}$'
+    post:
+      tags: [Contracts]
+      summary: Run contract classification again
+      description: |
+        Classification runs automatically after text extraction for contracts uploaded without a type. Use this to retry it when classification.status is failed, or pending without progress. It does not use an analysis credit.
+        Roles - administrator, owner, manager, staff, expert, user.
+      responses:
+        '202':
+          description: Queued; poll GET /contracts/{id} until classification.status is completed or failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: |
+            CONTRACT_ALREADY_CONFIRMED - the type is already set.
+            EXTRACTION_NOT_READY - the text has not been extracted.
+            CLASSIFICATION_NOT_RETRYABLE - classification is running or already finished.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Background processing is unavailable
           content:
             application/json:
               schema:
@@ -2616,6 +2789,93 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /reviews/{reviewId}/cancel:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Cancel a queued or running review
+      description: |
+        A queued review stops at once. A running review stops within a few seconds, at the next point where the worker checks. The review ends with status cancelled and errorCode CANCELLED, its analysis credit is released, and finished parts are kept as a partial result.
+        Roles - administrator, owner, manager, staff, expert, user.
+      responses:
+        '200':
+          description: The review; status is cancelled, or still running with cancelRequested=true until the worker stops
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: REVIEW_FINISHED - the review already completed, failed or was cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/retry:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Retry a failed or cancelled review from the failed stage
+      description: |
+        Re-runs only the stages that did not complete, on the same review. Reserves one analysis credit, charged only if the review completes.
+        Roles - administrator, owner, manager, staff, expert, user.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Queued again; follow GET /reviews/{reviewId}/events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Review'
+        '403':
+          description: No AI quota left, or the account cannot review this contract type
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: |
+            REVIEW_NOT_RETRYABLE - the review is not failed or cancelled.
+            REVIEW_OUTDATED - a newer contract version was uploaded; start a new review.
+            REVIEW_RUNNING - another review of the contract is running.
+            REVIEW_BUSY - the previous attempt is still shutting down; try again shortly.
+            CONTRACT_NOT_CONFIRMED - the contract type is not confirmed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Background processing is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /reviews/{reviewId}/events:
     parameters:
       - in: path
@@ -2666,6 +2926,7 @@ paths:
     get:
       tags: [LegalKB]
       summary: List legal sources in the knowledge base (with chunk counts)
+      description: Manager only.
       responses:
         '200':
           description: OK
@@ -2679,7 +2940,7 @@ paths:
       tags: [LegalKB]
       summary: Upload a legal document (pdf/docx/doc/txt), split it by its legal structure, and embed it in the background (Gemini)
       description: |
-        Admin only. Rate-limited (AI cost control). Use POST /kb/legal-sources/preview first to check coverage without spending embedding quota.
+        Manager only. Rate-limited (AI cost control). Use POST /kb/legal-sources/preview first to check coverage without spending embedding quota.
 
         The text is read as Phần > Chương > Mục > Tiểu mục > Điều > khoản > điểm. An "Điều N" heading only counts when its number is higher than the previous article, so cross-references such as "Điều 5 của Luật này" at the start of a line stay in the body. The signature block after the last article (e.g. "Luật này đã được Quốc hội ... thông qua", "CHỦ TỊCH QUỐC HỘI", "Nơi nhận:") is dropped.
 
@@ -2731,7 +2992,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Requires administrator role
+          description: Requires manager role
           content:
             application/json:
               schema:
@@ -2741,7 +3002,7 @@ paths:
     post:
       tags: [LegalKB]
       summary: Dry-run a legal document upload and report its structure and coverage
-      description: Admin only. Parses and chunks the file exactly like the upload endpoint, but saves nothing and calls no AI model, so it costs no embedding quota. Use it to check that every article was read (e.g. a .doc converted badly, or a file that only contains part of the law) before uploading.
+      description: Manager only. Parses and chunks the file exactly like the upload endpoint, but saves nothing and calls no AI model, so it costs no embedding quota. Use it to check that every article was read (e.g. a .doc converted badly, or a file that only contains part of the law) before uploading.
       requestBody:
         required: true
         content:
@@ -2773,7 +3034,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Requires administrator role
+          description: Requires manager role
           content:
             application/json:
               schema:
@@ -2796,6 +3057,7 @@ paths:
     get:
       tags: [LegalKB]
       summary: Get a legal source with its coverage report, ingestion progress and chunk count
+      description: Manager only.
       responses:
         '200':
           description: OK
@@ -2812,12 +3074,12 @@ paths:
     delete:
       tags: [LegalKB]
       summary: Delete a legal source and all of its chunks (also stops a running ingestion)
-      description: Admin only.
+      description: Manager only.
       responses:
         '204':
           description: Deleted
         '403':
-          description: Requires administrator role
+          description: Requires manager role
           content:
             application/json:
               schema:
@@ -2841,7 +3103,7 @@ paths:
       tags: [LegalKB]
       summary: Add another file to an existing legal source (e.g. the rest of a law uploaded in pieces)
       description: |
-        Admin only. Rate-limited. The file is parsed like a new upload. Articles the source already has are skipped and listed in parts[].skippedArticles, so uploading the full text over a partial source only adds what was missing. New chunks are appended after the existing ones, coverage is recomputed over the whole source, and only the new chunks are embedded in the background. If an ingestion is already running it is replaced by one that covers both.
+        Manager only. Rate-limited. The file is parsed like a new upload. Articles the source already has are skipped and listed in parts[].skippedArticles, so uploading the full text over a partial source only adds what was missing. New chunks are appended after the existing ones, coverage is recomputed over the whole source, and only the new chunks are embedded in the background. If an ingestion is already running it is replaced by one that covers both.
       requestBody:
         required: true
         content:
@@ -2873,7 +3135,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Requires administrator role
+          description: Requires manager role
           content:
             application/json:
               schema:
@@ -2908,7 +3170,7 @@ paths:
     post:
       tags: [LegalKB]
       summary: Resume embedding the chunks that are still missing
-      description: Admin only. Use it after ingestion.status became failed, or to resume a paused source before its resumeAt. Only chunks without an embedding are sent to Gemini.
+      description: Manager only. Use it after ingestion.status became failed, or to resume a paused source before its resumeAt. Only chunks without an embedding are sent to Gemini.
       responses:
         '202':
           description: Queued
@@ -2923,7 +3185,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '403':
-          description: Requires administrator role
+          description: Requires manager role
           content:
             application/json:
               schema:

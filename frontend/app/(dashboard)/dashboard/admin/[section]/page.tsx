@@ -1,7 +1,8 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { PageHeading } from "@/components/ui/page-heading";
 import { sections } from "@/config/management-sections";
 import { ManagementSectionTable } from "@/components/management/management-section-table";
+import { userManagementPath } from "@/config/user-management";
 export default async function AdminSectionPage({
   params,
   searchParams,
@@ -10,6 +11,7 @@ export default async function AdminSectionPage({
   searchParams: Promise<{ status?: string; item?: string }>;
 }) {
   const { section } = await params;
+  if (section === "users" || section === "userManagement") redirect(userManagementPath);
   if (!Object.hasOwn(sections, section)) notFound();
   const config = sections[section as keyof typeof sections];
   const query = await searchParams;

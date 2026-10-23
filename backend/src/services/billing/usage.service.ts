@@ -109,6 +109,22 @@ export async function extendUsageLease(runId: string, leaseMs = LEASE_MS): Promi
   return updated.matchedCount > 0;
 }
 
+export function keepUsageLeaseAlive(runId: string, onLost: () => void, leaseMs = LEASE_MS) {
+  const heartbeat = setInterval(() => {
+    extendUsageLease(runId, leaseMs)
+      .then((alive) => {
+        if (!alive) onLost();
+      })
+      .catch(onLost);
+  }, 60_000);
+  heartbeat.unref();
+  return () => clearInterval(heartbeat);
+}
+
+export async function isUsageSucceeded(runId: string): Promise<boolean> {
+  return Boolean(await UsageRunModel.exists({ _id: runId, status: 'succeeded' }));
+}
+
 export async function finishUsage(
   orgId: string,
   runId: string,
@@ -154,17 +170,7 @@ export async function withUsage<T>(
   const onAbort = () => controller.abort(parentSignal?.reason);
   parentSignal?.addEventListener('abort', onAbort, { once: true });
   if (parentSignal?.aborted) onAbort();
-  const heartbeat = setInterval(() => {
-    void UsageRunModel.updateOne(
-      { _id: run._id, status: 'reserved', leaseExpiresAt: { $gt: new Date() } },
-      { $set: { leaseExpiresAt: new Date(Date.now() + LEASE_MS) } },
-    )
-      .then((updated) => {
-        if (!updated.modifiedCount) controller.abort();
-      })
-      .catch(() => controller.abort());
-  }, 60_000);
-  heartbeat.unref();
+  const stopHeartbeat = keepUsageLeaseAlive(run.id, () => controller.abort());
   try {
     controller.signal.throwIfAborted();
     const result = await work(controller.signal);
@@ -175,7 +181,7 @@ export async function withUsage<T>(
     await finishUsage(input.orgId, run.id, false);
     throw error;
   } finally {
-    clearInterval(heartbeat);
+    stopHeartbeat();
     parentSignal?.removeEventListener('abort', onAbort);
   }
 }
