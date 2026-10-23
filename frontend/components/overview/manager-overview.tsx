@@ -41,8 +41,8 @@ export function ManagerOverview({ data, onUpload, onViewContracts, onReview, isR
     </section>
     <ContractPriorityQueue orgId={data.organization.id} role="manager" onReview={onReview} onViewContracts={onViewContracts} isReviewing={isReviewing} />
     <div className={"grid grid-cols-[repeat(2,_minmax(0,_1fr))] gap-[20px] [&_>_section]:h-[100%] [&_>_section]:flex [&_>_section]:flex-col [&_>_section_>_p:last-child]:mt-[auto]! [&_>_section_>_p:last-child]:pt-[16px] max-[950px]:grid-cols-[1fr]"}>
-      <ContractStatusChart data={data} reviewerMode={false} onFilter={onViewContracts} />
-      <ContractStatusChart data={data} reviewerMode onFilter={onViewContracts} />
+      <ContractStatusChart data={data} expertMode={false} onFilter={onViewContracts} />
+      <ContractStatusChart data={data} expertMode onFilter={onViewContracts} />
     </div>
     <details className={"[border:1px_solid_#e1e8f2] rounded-[18px] [background:white] p-[24px] shadow-[0_18px_35px_-34px_#4b668b] block [&_h2]:text-[18px] [&_h2]:font-bold [&_h2]:tracking-[-.02em] [&_h2]:mt-[14px] [&_p]:mt-[7px] [&_p]:text-[#708099] [&_p]:text-[13px] [&_p]:leading-[1.6] [&_summary]:cursor-pointer [&_summary]:text-[14px] [&_summary]:font-semibold [&[open]_dl]:mt-[20px] [&_dl]:grid [&_dl]:gap-[15px] [&_dl]:content-center [&_dt]:text-[#708099] [&_dt]:text-[12px] [&_dd]:m-[5px_0_0] [&_dd]:wrap-anywhere [&_dd]:text-[14px] [&_dd]:font-semibold max-[650px]:grid-cols-[1fr] max-[650px]:p-[20px]"} aria-labelledby="manager-org-heading">
       <summary id="manager-org-heading">Thông tin tổ chức · {data.organization.name}</summary>

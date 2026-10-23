@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
-import { AvailableOverview } from "@/components/legal-sources/legal-source-overview";
 import { SystemOverviewCharts } from "@/components/overview/system-overview-charts";
 import { sections } from "@/config/management-sections";
 
@@ -17,7 +16,7 @@ export function SystemOverview() {
     },
     {
       label: "Người dùng",
-      href: "users",
+      href: "management",
       icon: "team",
       tone: "border-emerald-100 bg-[#f3faf8]",
       iconTone: "bg-emerald-100 text-emerald-700",
@@ -79,12 +78,6 @@ export function SystemOverview() {
                 className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#245bd6] px-4 text-sm font-semibold text-white transition hover:bg-[#1e4fbd] active:scale-[0.98]"
               >
                 Xem báo cáo <Icon name="arrow" className="size-4" />
-              </Link>
-              <Link
-                href="/dashboard/admin/legal-sources"
-                className="inline-flex min-h-11 items-center rounded-lg border border-blue-200 bg-white/75 px-4 text-sm font-semibold text-blue-800 transition hover:bg-white active:scale-[0.98]"
-              >
-                Quản lý kho pháp lý
               </Link>
             </div>
           </div>
@@ -245,12 +238,6 @@ export function SystemOverview() {
               detail: "Tài khoản và vai trò",
               icon: "team",
             },
-            {
-              href: "legal-sources",
-              title: "Kho dữ liệu pháp lý",
-              detail: "Văn bản và nguồn tham chiếu",
-              icon: "scales",
-            },
           ].map((item) => (
             <Link
               key={item.href}
@@ -280,9 +267,6 @@ export function SystemOverview() {
         </section>
       </div>
       <SystemOverviewCharts />
-      <div className="mt-6">
-        <AvailableOverview compact />
-      </div>
       <section className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_42px_-40px_rgb(30_70_135_/_0.32)]">
         <div className="flex items-center justify-between border-b border-slate-100 p-6">
           <h2 className="font-semibold">Hoạt động quản trị gần đây</h2>

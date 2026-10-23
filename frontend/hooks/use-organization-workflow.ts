@@ -19,7 +19,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
   const ownerMode = role === "owner";
   const managerMode = role === "manager";
   const staffMode = role === "staff";
-  const reviewerMode = role === "reviewer";
+  const expertMode = role === "expert";
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -116,7 +116,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
 
   function reviewExisting(contract: DashboardContract, rerun = false) {
     if (!(contract.id ?? contract._id) || contract.status === "archived" || isReviewing) return;
-    if (staffMode || reviewerMode || managerMode) {
+    if (staffMode || expertMode || managerMode) {
       if (activeTab !== "upload") returnLocation.current = { url: `${pathname}${searchParams.size ? `?${searchParams}` : ""}`, scroll: window.scrollY };
     }
     selectTab("upload");

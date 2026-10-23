@@ -5,10 +5,10 @@
 | Chức năng | API backend | Giao diện / vai trò |
 | --- | --- | --- |
 | Chỉnh sửa tổ chức | `PATCH /api/v1/organizations/:id` | Owner: `/dashboard/owner/administration`, popup chỉnh sửa tên, mã số thuế, địa chỉ. |
-| Xóa hợp đồng | `DELETE /api/v1/contracts/:id` | Danh sách hợp đồng của owner, manager, user; popup xác nhận trước khi xóa. Staff/reviewer không có nút xóa. |
+| Xóa hợp đồng | `DELETE /api/v1/contracts/:id` | Danh sách hợp đồng của owner, manager, staff, user; popup xác nhận trước khi xóa. Expert không có nút xóa. |
 | Đặt lịch hạ gói | `POST /api/v1/organizations/:id/subscription/downgrade` | Owner: trang quản trị tổ chức; user cá nhân: `/dashboard/user/subscription`. |
 | Hủy lịch hạ gói | `DELETE /api/v1/organizations/:id/subscription/downgrade` | Cùng vị trí và vai trò với đặt lịch; hiển thị ngày hiệu lực. |
-| Tiến độ rà soát trực tiếp | `GET /api/v1/reviews/:reviewId/events` | Các vai trò được rà soát: owner, manager, staff, reviewer, user; dùng luồng rà soát hiện có. |
+| Tiến độ rà soát trực tiếp | `GET /api/v1/reviews/:reviewId/events` | Các vai trò được rà soát: owner, manager, staff, expert, user; dùng luồng rà soát hiện có. |
 | Xóa tổ chức | `DELETE /api/v1/organizations/:id` | Owner: trang quản trị tổ chức, có xác nhận và giải thích điều kiện xóa. |
 
 Backend cũng cho phép administrator sửa/xóa tổ chức và xóa hợp đồng **trong tổ chức của chính tài khoản**. Đây không phải API quản trị mọi tổ chức; giao diện admin toàn hệ thống chưa có danh sách đối tượng thật để thực hiện các thao tác này.

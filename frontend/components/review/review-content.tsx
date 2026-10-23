@@ -1,8 +1,8 @@
 "use client";
 
 import { RecentContracts } from "@/components/contract/recent-contracts";
-import { ContractConfirmationDialog } from "@/components/review/contract-confirmation-dialog";
-import { ReviewUploadWorkspace } from "@/components/review/review-upload-workspace";
+import { ContractConfirmationDialog } from "@/components/review/upload/contract-confirmation-dialog";
+import { ReviewUploadWorkspace } from "@/components/review/upload/review-upload-workspace";
 import { reviewableTypeLabels } from "@/config/contract-display";
 import type { useReviewWorkflow } from "@/hooks/use-review-workflow";
 import type { DashboardContract } from "@/types/contracts";

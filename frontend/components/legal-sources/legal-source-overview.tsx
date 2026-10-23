@@ -220,7 +220,7 @@ export function AvailableOverview({
           )}
           {showLink && (
             <Link
-              href="/dashboard/admin/legal-sources"
+              href="/dashboard/manager/legal-sources"
               className="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-blue-700 hover:underline"
             >
               Mở kho pháp lý →
@@ -265,7 +265,7 @@ export function AvailableOverview({
         )}
         {compact && (
           <Link
-            href="/dashboard/admin/legal-sources"
+            href="/dashboard/manager/legal-sources"
             className="mt-3 inline-flex min-h-9 items-center text-sm font-semibold text-blue-700 hover:underline"
           >
             Xem phân tích và nguồn pháp lý →

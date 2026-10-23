@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { Icon } from "@/components/ui/icon";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ReviewAllowanceSummary } from "@/components/review/review-allowance-summary";
+import { ReviewAllowanceSummary } from "@/components/review/upload/review-allowance-summary";
 
 type AnalysisFocusDialogProps = {
   contractTitle: string;

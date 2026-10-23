@@ -1,4 +1,4 @@
-export type InvitationRole = "manager" | "staff" | "reviewer";
+export type InvitationRole = "manager" | "staff" | "expert";
 export type CreateInvitationInput = { email: string; role: InvitationRole };
 export type InvitationStatus = "pending" | "accepted" | "revoked" | "expired" | "delivery_failed";
 

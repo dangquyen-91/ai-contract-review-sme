@@ -8,6 +8,7 @@ const userSchema = new Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true, select: false },
     isActive: { type: Boolean, default: true },
+    deletedAt: { type: Date, default: null },
     hasCompletedOnboarding: { type: Boolean, default: false },
     permissionsVersion: { type: Number, default: 0 },
     emailVerifiedAt: { type: Date, default: null },
