@@ -92,6 +92,24 @@ test('invalid signature/issuer/audience/expiry from verifier, nonce and unverifi
   expect((await signIn()).body.data.user.email).toBe(workspace.email);
 });
 
+test('Google login after onboarding never creates an organization or assigns orgId', async () => {
+  const organizationsBefore = await OrganizationModel.countDocuments();
+  const payload = identity();
+  const first = await signIn();
+  expect(first.status).toBe(200);
+  const onboarding = await request(app)
+    .post('/api/v1/auth/onboarding/complete')
+    .set('Authorization', `Bearer ${first.body.data.accessToken}`)
+    .send({});
+  expect(onboarding.status).toBe(200);
+  expect(onboarding.body.data.user).toMatchObject({ orgId: null, hasCompletedOnboarding: true });
+  const again = await signIn();
+  expect(again.status).toBe(200);
+  expect(again.body.data.user).toMatchObject({ orgId: null, hasCompletedOnboarding: true });
+  expect((await UserModel.findOne({ email: payload.email })).orgId).toBeUndefined();
+  expect(await OrganizationModel.countDocuments()).toBe(organizationsBefore);
+});
+
 test('verified existing account links without duplicating account or altering owner rights', async () => {
   const payload = identity();
   const role = await getRoleByCode('owner');

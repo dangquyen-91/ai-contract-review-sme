@@ -6,29 +6,32 @@ import Link from "next/link";
 import { useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { MemberTable } from "@/components/members/member-table";
+import { RemoveMemberDialog } from "@/components/members/remove-member-dialog";
 import { InvitationTable } from "@/components/invitations/invitation-table";
 import { InvitationFormDialog } from "@/components/invitations/invitation-form-dialog";
 import { Icon } from "@/components/ui/icon";
 import { MemberCapacityDialog } from "@/components/members/member-capacity-dialog";
-import { useCreateInvitationMutation, useMemberSubscription, useOrganizationInvitations, useOrganizationMembers, useRevokeInvitationMutation } from "@/hooks/use-invitations";
+import { useCreateInvitationMutation, useMemberSubscription, useOrganizationInvitations, useOrganizationMembers, useRemoveMemberMutation, useRevokeInvitationMutation } from "@/hooks/use-invitations";
 import { isApiClientError } from "@/lib/api/client";
-import type { InvitationRole } from "@/types/invitations";
+import type { OrganizationMember } from "@/types/invitations";
 
 const errorMessage = (error: unknown) => isApiClientError(error) ? error.message : "Không thể xử lý yêu cầu. Vui lòng thử lại.";
 
 export function MembersWorkspace({ orgId, organizationName }: { orgId: string; organizationName: string }) {
   const createInvitation = useCreateInvitationMutation(orgId);
   const revokeInvitation = useRevokeInvitationMutation(orgId);
+  const removeMember = useRemoveMemberMutation(orgId);
+  const [memberToRemove, setMemberToRemove] = useState<OrganizationMember | null>(null);
+  const [removeError, setRemoveError] = useState<string>();
   const [tab, setTab] = useState<"members" | "invitations">("members");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [showInvite, setShowInvite] = useState(false);
   const [showCapacity, setShowCapacity] = useState(false);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<InvitationRole>("staff");
   const submitting = createInvitation.isPending;
   const revoking = revokeInvitation.isPending ? revokeInvitation.variables ?? null : null;
-  const actionLocks = useRef({ send: false, revoke: false });
+  const actionLocks = useRef({ send: false, revoke: false, remove: false });
 
   const members = useOrganizationMembers(orgId, page);
   const invitations = useOrganizationInvitations(orgId, page);
@@ -62,7 +65,7 @@ export function MembersWorkspace({ orgId, organizationName }: { orgId: string; o
     }
     actionLocks.current.send = true;
     try {
-      await createInvitation.mutateAsync({ email: email.trim().toLowerCase(), role });
+      await createInvitation.mutateAsync({ email: email.trim().toLowerCase(), role: "staff" });
       setShowInvite(false);
       setEmail("");
       setPage(1);
@@ -86,6 +89,32 @@ export function MembersWorkspace({ orgId, organizationName }: { orgId: string; o
       toast.success("Đã thu hồi lời mời");
     } catch (error) { toast.error(errorMessage(error)); }
     finally { actionLocks.current.revoke = false; }
+  }
+
+  function requestRemoval(member: OrganizationMember) {
+    if (member.role === "owner" || removeMember.isPending || actionLocks.current.remove) return;
+    setRemoveError(undefined);
+    setMemberToRemove(member);
+  }
+
+  function closeRemoval() {
+    if (removeMember.isPending || actionLocks.current.remove) return;
+    setMemberToRemove(null);
+    setRemoveError(undefined);
+  }
+
+  async function confirmRemoval() {
+    if (!memberToRemove || memberToRemove.role === "owner" || removeMember.isPending || actionLocks.current.remove) return;
+    actionLocks.current.remove = true;
+    setRemoveError(undefined);
+    try {
+      await removeMember.mutateAsync(memberToRemove.id);
+      setMemberToRemove(null);
+      if (members.data?.items.length === 1 && page > 1) setPage(page - 1);
+      toast.success("Đã xóa thành viên khỏi tổ chức");
+    } catch (error) {
+      setRemoveError(errorMessage(error));
+    } finally { actionLocks.current.remove = false; }
   }
 
   return <div className="space-y-6 text-[#14213d]">
@@ -113,10 +142,11 @@ export function MembersWorkspace({ orgId, organizationName }: { orgId: string; o
         </div>
         <label className="mb-3 flex min-h-10 items-center gap-2 rounded-lg border border-[#dde5ef] bg-[#fbfcfe] px-3 text-[#8b99aa]"><Icon name="search" className="h-4 w-4" /><span className="sr-only">Tìm theo tên hoặc email</span><input className="w-[min(220px,44vw)] bg-transparent text-[13px] text-[#14213d] outline-none" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm trên trang này..." /></label>
       </div>
-      {current.isLoading ? <div className="p-12 text-center text-[14px] text-[#6b778c]" aria-busy="true">Đang tải dữ liệu...</div> : current.error ? <div className="p-9 text-center"><p className="text-[14px] text-[#a23a4d]">{errorMessage(current.error)}</p><Button variant="outline" size="sm"  type="button" onClick={() => current.refetch()}>Thử lại</Button></div> : !filtered?.length ? <div className="px-6 py-16 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-[#edf3ff] text-[#2864dc]"><Icon name={tab === "members" ? "team" : "mail"} className="h-6 w-6" /></span><h2 className="mb-0 mt-4 text-[17px]">{search ? "Không tìm thấy kết quả" : tab === "members" ? "Chưa có thành viên" : "Chưa có lời mời"}</h2><p className="mt-2 text-[13px] text-[#718096]">{search ? "Thử từ khóa khác hoặc xóa bộ lọc." : tab === "members" ? "Thành viên được mời sẽ hiển thị tại đây sau khi chấp nhận." : "Mời đồng đội tham gia tổ chức để bắt đầu cộng tác."}</p></div> : tab === "members" ? <MemberTable members={(members.data?.items ?? []).filter((item) => filtered.includes(item))} /> : <InvitationTable invitations={(invitations.data?.items ?? []).filter((item) => filtered.includes(item))} revoking={revoking} onRevoke={revoke} />}
+      {current.isLoading ? <div className="p-12 text-center text-[14px] text-[#6b778c]" aria-busy="true">Đang tải dữ liệu...</div> : current.error ? <div className="p-9 text-center"><p className="text-[14px] text-[#a23a4d]">{errorMessage(current.error)}</p><Button variant="outline" size="sm"  type="button" onClick={() => current.refetch()}>Thử lại</Button></div> : !filtered?.length ? <div className="px-6 py-16 text-center"><span className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-[#edf3ff] text-[#2864dc]"><Icon name={tab === "members" ? "team" : "mail"} className="h-6 w-6" /></span><h2 className="mb-0 mt-4 text-[17px]">{search ? "Không tìm thấy kết quả" : tab === "members" ? "Chưa có thành viên" : "Chưa có lời mời"}</h2><p className="mt-2 text-[13px] text-[#718096]">{search ? "Thử từ khóa khác hoặc xóa bộ lọc." : tab === "members" ? "Thành viên được mời sẽ hiển thị tại đây sau khi chấp nhận." : "Mời đồng đội tham gia tổ chức để bắt đầu cộng tác."}</p></div> : tab === "members" ? <MemberTable members={(members.data?.items ?? []).filter((item) => filtered.includes(item))} removing={removeMember.isPending ? removeMember.variables ?? null : null} onRemove={requestRemoval} /> : <InvitationTable invitations={(invitations.data?.items ?? []).filter((item) => filtered.includes(item))} revoking={revoking} onRevoke={revoke} />}
       {current.data && current.data.pages > 1 && <div className="flex items-center justify-between border-t border-[#e9edf3] px-6 py-4 text-[13px] text-[#738198]"><span>Trang {page} / {current.data.pages}</span><div className="flex gap-2"><Button variant="outline" size="sm" type="button"  disabled={page <= 1} onClick={() => setPage(page - 1)}>Trước</Button><Button variant="outline" size="sm" type="button"  disabled={page >= current.data.pages} onClick={() => setPage(page + 1)}>Sau</Button></div></div>}
     </section>
 
-    {showInvite && <InvitationFormDialog organizationName={organizationName} email={email} role={role} submitting={submitting} onEmailChange={setEmail} onRoleChange={setRole} onSubmit={sendInvitation} onClose={() => setShowInvite(false)} />}
+    {showInvite && <InvitationFormDialog organizationName={organizationName} email={email} submitting={submitting} onEmailChange={setEmail} onSubmit={sendInvitation} onClose={() => setShowInvite(false)} />}
+    {memberToRemove && <RemoveMemberDialog member={memberToRemove} organizationName={organizationName} busy={removeMember.isPending} error={removeError} onConfirm={confirmRemoval} onClose={closeRemoval} />}
   </div>;
 }

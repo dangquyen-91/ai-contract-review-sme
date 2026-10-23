@@ -45,4 +45,3 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/cont
     return NextResponse.json({ success: false, error: { message: "Không thể tải kết quả rà soát. Vui lòng thử lại." } }, { status: 503 });
   }
 }
-

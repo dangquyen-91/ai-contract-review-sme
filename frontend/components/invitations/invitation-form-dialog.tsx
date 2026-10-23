@@ -4,11 +4,10 @@ import type { FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
-import type { InvitationRole } from "@/types/invitations";
 
-export function InvitationFormDialog({ organizationName, email, role, submitting, onEmailChange, onRoleChange, onSubmit, onClose }: {
-  organizationName: string; email: string; role: InvitationRole; submitting: boolean;
-  onEmailChange: (email: string) => void; onRoleChange: (role: InvitationRole) => void;
+export function InvitationFormDialog({ organizationName, email, submitting, onEmailChange, onSubmit, onClose }: {
+  organizationName: string; email: string; submitting: boolean;
+  onEmailChange: (email: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void; onClose: () => void;
 }) {
   const field = "mt-2 h-11 w-full rounded-lg border border-input bg-card px-3 text-ui outline-none focus:border-ring focus:ring-2 focus:ring-ring/25 disabled:opacity-60";
@@ -23,13 +22,7 @@ export function InvitationFormDialog({ organizationName, email, role, submitting
         <label className="block text-ui font-semibold">Email người nhận
           <input disabled={submitting} type="email" required maxLength={254} value={email} onChange={(event) => onEmailChange(event.target.value)} placeholder="dongdoi@congty.vn" className={field} />
         </label>
-        <label className="block text-ui font-semibold">Vai trò
-          <select disabled={submitting} value={role} onChange={(event) => onRoleChange(event.target.value as InvitationRole)} className={field}>
-            <option value="manager">Manager — quản lý công việc</option>
-            <option value="staff">Staff — tải và rà soát</option>
-            <option value="expert">Expert — rà soát hợp đồng</option>
-          </select>
-        </label>
+        <div className="text-ui"><p className="font-semibold">Vai trò</p><p className="mt-2 rounded-lg border border-input bg-muted px-3 py-3">Staff — tải và rà soát</p><p className="mt-2 text-ui-meta text-muted-foreground">Thành viên được mời sẽ tham gia với vai trò Staff.</p></div>
         <p className="rounded-lg bg-muted px-3 py-2.5 text-ui-meta leading-5 text-muted-foreground">Lời mời có hiệu lực 7 ngày. Chỉ email được mời mới có thể chấp nhận.</p>
         <div className="flex justify-end gap-3 pt-1">
           <Button variant="outline" disabled={submitting} onClick={onClose}>Hủy</Button>

@@ -61,20 +61,20 @@ test('a new free organization reserves two invitation seats and accepts two memb
 
   const first = await createInvitation(owner.id, organization.id, { email: 'first@example.com', role: 'staff' });
   const firstToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
-  const second = await createInvitation(owner.id, organization.id, { email: 'second@example.com', role: 'expert' });
+  const second = await createInvitation(owner.id, organization.id, { email: 'second@example.com', role: 'staff' });
   const secondToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
   expect(await getSubscription(owner.id, organization.id)).toMatchObject({
     members: { count: 1, pending: 2, limit: 3, available: 0 },
   });
   await expect(createInvitation(owner.id, organization.id, {
-    email: 'third@example.com', role: 'manager',
+    email: 'third@example.com', role: 'staff',
   })).rejects.toMatchObject({ statusCode: 403 });
 
   await revokeInvitation(owner.id, organization.id, second.id);
   expect(await getSubscription(owner.id, organization.id)).toMatchObject({
     members: { count: 1, pending: 1, limit: 3, available: 1 },
   });
-  await createInvitation(owner.id, organization.id, { email: 'second@example.com', role: 'expert' });
+  await createInvitation(owner.id, organization.id, { email: 'second@example.com', role: 'staff' });
   const replacementToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
 
   const firstUser = await makeUser('first@example.com');
@@ -85,11 +85,23 @@ test('a new free organization reserves two invitation seats and accepts two memb
     members: { count: 3, pending: 0, limit: 3, available: 0 },
   });
   await expect(createInvitation(owner.id, organization.id, {
-    email: 'third@example.com', role: 'manager',
+    email: 'third@example.com', role: 'staff',
   })).rejects.toMatchObject({ statusCode: 403 });
   expect(first.id).toBeTruthy();
   expect(second.id).toBeTruthy();
   expect(secondToken).not.toBe(replacementToken);
+});
+
+test.each(['manager', 'expert'])('invitation service rejects %s without reserving seats or sending email', async (role) => {
+  const owner = await makeUser();
+  const organization = await createOrganization(owner.id, { name: 'Staff-only team' });
+  const deliveriesBefore = sendInvitationEmail.mock.calls.length;
+  await expect(createInvitation(owner.id, organization.id, {
+    email: 'forbidden@example.com', role,
+  })).rejects.toMatchObject({ statusCode: 400 });
+  expect(sendInvitationEmail.mock.calls.length).toBe(deliveriesBefore);
+  expect(await OrganizationInvitationModel.countDocuments({ orgId: organization.id })).toBe(0);
+  expect((await getSubscription(owner.id, organization.id)).members.available).toBe(2);
 });
 
 test('personal workspaces remain limited to one member', async () => {

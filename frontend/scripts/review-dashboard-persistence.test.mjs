@@ -25,7 +25,7 @@ function setup(role) {
   const result = { contract: { _id: 'contract-1', title: 'Test', updatedAt: 'version-1', currentVersion: { summaryStatus: 'completed', riskDetectionStatus: 'completed' } }, findings: [], clauses: [] };
   const overrides = {
     'next/navigation': { useRouter: () => router },
-    '@/hooks/use-dashboard-workspace': { useDashboardWorkspace: () => ({ data: { role }, access: { upload: role !== 'reviewer', review: true } }) },
+    '@/hooks/use-dashboard-workspace': { useDashboardWorkspace: () => ({ data: { role, organization: { id: 'organization-1' } }, access: { upload: role !== 'expert', review: true } }) },
     '@/lib/api/contracts': { contractsApi: { listProfiles: async () => [] } },
     '@/lib/review-session': {
       readReviewSession: () => null, clearReviewSession() {}, isReviewCancelled: (error) => error.name === 'AbortError',
@@ -74,7 +74,7 @@ function setup(role) {
   };
 }
 
-for (const role of ['user', 'owner', 'manager', 'staff', 'reviewer']) {
+for (const role of ['user', 'owner', 'manager', 'staff', 'expert']) {
   test(`${role}: switching dashboard pages preserves one live run and its completed result`, async () => {
     const ctx = setup(role);
     try {
@@ -94,7 +94,7 @@ for (const role of ['user', 'owner', 'manager', 'staff', 'reviewer']) {
       assert.equal(ctx.notifications.length, 1);
       assert.equal(ctx.notifications[0].message, 'Kết quả đã sẵn sàng');
       await React.act(async () => ctx.notifications[0].options.action.onClick());
-      assert.match(ctx.routes[0], new RegExp(`/dashboard/${role}/review\\?contract=contract-1&reviewMode=resume#review-result$`));
+      assert.equal(ctx.routes[0], '/contract/contract-1#review-result');
       await ctx.page('review');
       assert.equal(ctx.latest().reviewProgress.status, 'completed');
       assert.equal(ctx.latest().reviewResult.contract._id, 'contract-1');

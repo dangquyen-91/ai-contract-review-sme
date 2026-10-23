@@ -14,6 +14,9 @@ export const invitationsApi = {
   members(orgId: string, page = 1) {
     return list<OrganizationMember>(`/organizations/${orgId}/members`, page);
   },
+  removeMember(orgId: string, userId: string) {
+    return apiRequest<void>({ url: `/organizations/${orgId}/members/${userId}`, method: "DELETE" });
+  },
   invitations(orgId: string, page = 1) {
     return list<OrganizationInvitation>(`/organizations/${orgId}/invitations`, page);
   },

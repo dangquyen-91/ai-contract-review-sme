@@ -10,6 +10,7 @@ const statuses: Record<InvitationStatus, { label: string; variant: "warning" | "
   revoked: { label: "Đã thu hồi", variant: "neutral" },
   expired: { label: "Hết hạn", variant: "neutral" },
   delivery_failed: { label: "Gửi thất bại", variant: "danger" },
+  declined: { label: "Đã từ chối", variant: "neutral" },
 };
 
 const date = (value: string) => new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));

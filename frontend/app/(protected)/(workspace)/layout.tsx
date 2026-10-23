@@ -7,5 +7,5 @@ import { isOrganizationDashboardRole } from "@/lib/organization-dashboard-route"
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   const user = (await getSession())?.user ?? null;
   const organizationRole = user?.orgId && isOrganizationDashboardRole(user.role) ? user.role : undefined;
-  return <DashboardProvider organizationRole={organizationRole} reviewRole={user?.role ?? "user"}><SessionKeeper />{children}</DashboardProvider>;
+  return <DashboardProvider organizationRole={organizationRole} reviewRole={user?.role ?? "user"} hasWorkspace={Boolean(user?.orgId)}><SessionKeeper />{children}</DashboardProvider>;
 }

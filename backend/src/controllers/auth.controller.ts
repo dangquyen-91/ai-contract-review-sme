@@ -20,6 +20,7 @@ export function toPublicUser(user: HydratedDocument<User>) {
     id: user._id.toString(),
     name: user.name,
     email: user.email,
+    avatarUrl: user.avatarUrl ?? null,
     role: (user.roleId as unknown as Role).code,
     orgId: user.orgId?.toString() ?? null,
     hasCompletedOnboarding: user.hasCompletedOnboarding,

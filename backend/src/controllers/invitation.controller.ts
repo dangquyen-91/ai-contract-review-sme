@@ -41,3 +41,20 @@ export const acceptInvitationHandler = asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   ok(res, { user: toPublicUser(user), ...tokensForUser(user) });
 });
+
+export const listReceivedInvitationsHandler = asyncHandler(async (req, res) => {
+  if (!req.user) throw AppError.unauthorized();
+  res.setHeader('Cache-Control', 'no-store');
+  ok(res, await service.listReceivedInvitations(req.user.sub));
+});
+export const acceptReceivedInvitationHandler = asyncHandler(async (req, res) => {
+  if (!req.user) throw AppError.unauthorized();
+  const user = await service.acceptInvitation(req.user.sub, undefined, req.params.invitationId);
+  res.setHeader('Cache-Control', 'no-store');
+  ok(res, { user: toPublicUser(user), ...tokensForUser(user) });
+});
+export const declineReceivedInvitationHandler = asyncHandler(async (req, res) => {
+  if (!req.user) throw AppError.unauthorized();
+  await service.declineReceivedInvitation(req.user.sub, req.params.invitationId);
+  ok(res, { declined: true });
+});

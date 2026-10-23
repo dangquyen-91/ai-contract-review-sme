@@ -12,9 +12,9 @@ const ReviewWorkflowContext = createContext<ReviewWorkflow | null>(null);
 
 // The dashboard layout owns the job. Route changes only mount/unmount its views.
 export function ReviewWorkflowProvider({ children }: { children: ReactNode; initialRole?: string }) {
-  const { access } = useDashboardWorkspace();
+  const { access, data } = useDashboardWorkspace();
   const router = useRouter();
-  const workflow = useReviewWorkflow({ access });
+  const workflow = useReviewWorkflow({ access, workspaceReady: Boolean(data?.organization?.id) });
   useReviewTimelineScroll(workflow.timelineScrollRequest, workflow.reviewTimelineRef);
   const contract = workflow.reviewResult?.contract;
   const contractId = contract?.id ?? contract?._id;

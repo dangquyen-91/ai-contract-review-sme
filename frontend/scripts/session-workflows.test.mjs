@@ -101,7 +101,7 @@ test('Organization setup retries token refresh without creating another organiza
   await ctx.render().createOrganization('');
   assert.equal(creates, 1); assert.equal(refreshes, 2);
   assert.equal(ctx.render().busy, true);
-  assert.deepEqual(ctx.calls, ['/dashboard/owner', 'refresh']);
+  assert.deepEqual(ctx.calls, ['/dashboard', 'refresh']);
   assert.equal(ctx.client.getQueryCache().getAll().length, 0);
 });
 
@@ -118,7 +118,7 @@ test('Invalid organization names never submit; personal setup completes once acr
   await ctx.render().continueWithoutOrganization();
   await ctx.render().continueWithoutOrganization();
   assert.equal(completes, 1); assert.equal(refreshes, 2);
-  assert.deepEqual(ctx.calls, ['/dashboard/user', 'refresh']);
+  assert.deepEqual(ctx.calls, ['/review', 'refresh']);
 });
 
 test('Rapid onboarding clicks submit a single organization creation', async () => {

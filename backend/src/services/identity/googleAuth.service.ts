@@ -8,7 +8,7 @@ import { UserModel } from '../../models/user.model';
 import { googleLoginSchema } from '../../validations/auth.validation';
 import { getPendingInvitation } from '../organization/invitation.service';
 import { getRoleByCode } from './role.service';
-import { ensurePersonalWorkspace, tokensForUser } from './auth.service';
+import { tokensForUser } from './auth.service';
 
 const client = new OAuth2Client();
 
@@ -62,7 +62,7 @@ export async function googleLogin(input: z.infer<typeof googleLoginSchema>) {
           isActive: true,
           $or: [{ googleSubject: { $exists: false } }, { googleSubject: payload.sub }],
         },
-        { $set: { googleSubject: payload.sub } },
+        { $set: { googleSubject: payload.sub, hasPassword: user.hasPassword ?? true } },
         { new: true },
       ).populate('roleId');
       if (!linked) throw AppError.conflict('Account changed. Please sign in again.');
@@ -74,6 +74,7 @@ export async function googleLogin(input: z.infer<typeof googleLoginSchema>) {
           email,
           name: (payload.name || email.split('@')[0]).slice(0, 100),
           googleSubject: payload.sub,
+          hasPassword: false,
           emailVerifiedAt: new Date(),
           // A Google-only account has no user-known password; existing password auth stays unchanged.
           passwordHash: await bcrypt.hash(randomBytes(32).toString('hex'), 10),
@@ -88,7 +89,5 @@ export async function googleLogin(input: z.infer<typeof googleLoginSchema>) {
     }
   }
   if (!user.isActive || !user.emailVerifiedAt) throw AppError.unauthorized('Invalid credentials');
-  const role = (user.roleId as unknown as { code: string }).code;
-  if (!input.invitationToken && role === 'user') user = await ensurePersonalWorkspace(user);
   return { user, ...tokensForUser(user, input.remember === true) };
 }

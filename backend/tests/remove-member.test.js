@@ -100,7 +100,7 @@ afterAll(async () => {
 test('removal frees one paid seat while retaining the account, organization data, plan and usage', async () => {
   const { org, owner } = await team();
   const staff = await user('staff', org._id);
-  await Promise.all(['manager', 'reviewer', 'staff'].map((role) => user(role, org._id)));
+  await Promise.all(['manager', 'expert', 'staff'].map((role) => user(role, org._id)));
   const paid = await activatePaidSubscription({
     orgId: org.id,
     planCode: 'business_starter',
@@ -240,7 +240,7 @@ test('only the organization owner can remove members; owner and cross-org target
   expect(
     (await request(app).delete(`/api/v1/organizations/${org.id}/members/${staff.id}`)).status,
   ).toBe(401);
-  for (const role of ['staff', 'manager', 'reviewer', 'administrator', 'user']) {
+  for (const role of ['staff', 'manager', 'expert', 'administrator', 'user']) {
     expect((await remove(await user(role, org._id), org.id, staff.id)).status).toBe(403);
   }
   expect((await remove(other.owner, org.id, staff.id)).status).toBe(403);

@@ -38,3 +38,11 @@ export const resendVerificationSchema = z.object({
 export const verifyEmailSchema = resendVerificationSchema.extend({
   code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit verification code'),
 });
+export const forgotPasswordSchema = z.object({
+  email: z.string().trim().email().max(254).toLowerCase(),
+});
+export const resetPasswordSchema = z.object({
+  challengeId: z.string().regex(/^[a-f0-9]{64}$/),
+  code: z.string().regex(/^\d{6}$/, 'Enter the 6-digit verification code'),
+  password: registerSchema.shape.password,
+});

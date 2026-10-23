@@ -9,6 +9,14 @@ export async function GET() {
 
     const claims = session.user;
     if (!claims.orgId) {
+      if (claims.role === "user") {
+        // Personal accounts can open the dashboard without creating an organization.
+        return NextResponse.json({ success: true, data: {
+          organization: { id: "", name: "Tài khoản cá nhân", taxCode: null, address: null },
+          contracts: [], totalContracts: 0, stats: { processing: 0, reviewed: 0, highRisk: 0 },
+          role: "user", user: { name: claims.name, email: claims.email },
+        } }, { headers: { "Cache-Control": "no-store" } });
+      }
       return NextResponse.json(
         { success: false, error: { message: "Bạn cần thiết lập tổ chức trước khi mở dashboard." } },
         { status: 403 },

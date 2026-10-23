@@ -23,7 +23,7 @@ const mongoose = require('mongoose');
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
-const { createHash } = require('crypto');
+const { createHash, randomBytes } = require('crypto');
 const { createApp } = require('../dist/app');
 const { UserModel } = require('../dist/models/user.model');
 const { OrganizationModel } = require('../dist/models/organization.model');
@@ -82,6 +82,20 @@ function accept(user, token) {
     .send({ token });
 }
 
+// Inbox tests seed delivery records directly so they do not exhaust the owner's send limiter.
+async function seedReceivedInvitation(email, role = 'staff') {
+  const token = randomBytes(32).toString('hex');
+  const invitation = await Invitations.create({
+    orgId: org._id,
+    email,
+    role,
+    invitedBy: owner._id,
+    tokenHash: createHash('sha256').update(token).digest('hex'),
+    expiresAt: new Date(Date.now() + 86400000),
+  });
+  return { token, data: { id: invitation.id } };
+}
+
 beforeAll(async () => {
   repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(repl.getUri());
@@ -101,7 +115,7 @@ afterAll(async () => {
 });
 
 test('owner sends normalized email; registration, preview, acceptance and member listing work', async () => {
-  const invitation = await invite('NEW-MEMBER@EXAMPLE.COM', 'reviewer');
+  const invitation = await invite('NEW-MEMBER@EXAMPLE.COM', 'staff');
   expect(sendInvitationEmail.mock.calls.at(-1)[0].email).toBe('new-member@example.com');
   expect(JSON.stringify(invitation.data)).not.toContain(invitation.token);
   const stored = await Invitations.findById(invitation.data.id).select('+tokenHash');
@@ -134,12 +148,12 @@ test('owner sends normalized email; registration, preview, acceptance and member
   expect(result.status).toBe(200);
   expect(result.body.data.user).toMatchObject({
     orgId: org.id,
-    role: 'reviewer',
+    role: 'staff',
     hasCompletedOnboarding: true,
   });
   expect(jwt.verify(result.body.data.accessToken, process.env.JWT_ACCESS_SECRET)).toMatchObject({
     orgId: org.id,
-    role: 'reviewer',
+    role: 'staff',
   });
   expect((await Invitations.findById(stored.id)).status).toBe('accepted');
   const members = await request(app)
@@ -172,13 +186,16 @@ test('non-owner, cross-organization owner and invalid roles cannot invite', asyn
       .send({ email: 'forbidden@example.com', role: 'staff' });
     expect(response.status).toBe(403);
   }
-  for (const role of ['owner', 'administrator']) {
+  const deliveriesBefore = sendInvitationEmail.mock.calls.length;
+  for (const role of ['owner', 'administrator', 'manager', 'expert', 'user']) {
     const response = await request(app)
-      .post(`/api/v1/organizations/${org.id}/invitations`)
-      .set('Authorization', ownerToken)
+      .post(`/api/v1/organizations/${another.id}/invitations`)
+      .set('Authorization', bearer(otherOwner))
       .send({ email: 'forbidden@example.com', role });
     expect(response.status).toBe(400);
   }
+  expect(sendInvitationEmail.mock.calls.length).toBe(deliveriesBefore);
+  expect(await Invitations.countDocuments({ email: 'forbidden@example.com' })).toBe(0);
 });
 
 test('wrong email, expired invitation and revoked invitation cannot be accepted', async () => {
@@ -197,12 +214,49 @@ test('wrong email, expired invitation and revoked invitation cannot be accepted'
   expect((await UserModel.findById(intended.id)).orgId).toBeUndefined();
 });
 
-test('existing personal/company organization blocks acceptance without consuming invitation', async () => {
+test('personal workspace user can be invited and joins only after acceptance', async () => {
+  const personal = await OrganizationModel.create({ name: 'Personal', isPersonal: true });
+  const user = await makeUser('user', personal._id);
+  await UserModel.updateOne({ _id: user.id }, { $set: { hasCompletedOnboarding: true } });
+  const oldToken = bearer(user);
+  const invitation = await invite(user.email, 'staff');
+  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(personal.id);
+  const result = await accept(user, invitation.token);
+  expect(result.status).toBe(200);
+  expect(result.body.data.user).toMatchObject({ orgId: org.id, role: 'staff' });
+  expect((await UserModel.findById(user.id)).permissionsVersion).toBe(1);
+  expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
+  expect(await OrganizationModel.exists({ _id: personal._id, isPersonal: true })).toBeTruthy();
+  const stale = await request(app).get('/api/v1/contracts').set('Authorization', oldToken);
+  expect(stale.status).toBe(401);
+});
+
+test('personal workspace created after sending an invitation can still join', async () => {
   const invitation = await invite();
   const personal = await OrganizationModel.create({ name: 'Personal', isPersonal: true });
   const user = await makeUser('user', personal._id, invitation.email);
+  expect((await accept(user, invitation.token)).status).toBe(200);
+  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(org.id);
+});
+
+test('a dangling orgId allows invitation and is replaced only on acceptance', async () => {
+  const missingOrgId = new mongoose.Types.ObjectId();
+  const user = await makeUser('user', missingOrgId);
+  const invitation = await invite(user.email);
+  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(missingOrgId.toString());
+  const response = await accept(user, invitation.token);
+  expect(response.status).toBe(200);
+  expect(response.body.data.user).toMatchObject({ orgId: org.id, role: 'staff' });
+  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(org.id);
+  expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
+});
+
+test('company membership blocks acceptance without consuming invitation', async () => {
+  const invitation = await invite();
+  const company = await OrganizationModel.create({ name: 'Other company' });
+  const user = await makeUser('staff', company._id, invitation.email);
   expect((await accept(user, invitation.token)).status).toBe(409);
-  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(personal.id);
+  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(company.id);
   expect((await Invitations.findById(invitation.data.id)).status).toBe('pending');
   const blocked = await request(app)
     .post(`/api/v1/organizations/${org.id}/invitations`)
@@ -216,7 +270,7 @@ test('duplicate pending invitations are blocked; email failure permits retry', a
   const duplicate = await request(app)
     .post(`/api/v1/organizations/${org.id}/invitations`)
     .set('Authorization', ownerToken)
-    .send({ email: invitation.email, role: 'manager' });
+    .send({ email: invitation.email, role: 'staff' });
   expect(duplicate.status).toBe(409);
   const { AppError } = require('../dist/errors/AppError');
   sendInvitationEmail.mockRejectedValueOnce(new AppError('Email provider unavailable', 502));
@@ -282,27 +336,101 @@ test('invitation login and refresh skip automatic personal workspace creation', 
   expect((await UserModel.findById(registration.body.data.user.id)).orgId).toBeUndefined();
 });
 
-test('simultaneous invitations from two organizations can only assign one organization', async () => {
-  const first = await invite();
-  const otherOrg = await OrganizationModel.create({ name: 'Competing company' });
-  const otherOwner = await makeUser('owner', otherOrg._id);
-  const second = await request(app)
-    .post(`/api/v1/organizations/${otherOrg.id}/invitations`)
-    .set('Authorization', bearer(otherOwner))
-    .send({ email: first.email, role: 'manager' });
-  expect(second.status).toBe(201);
-  const secondToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
-  const user = await makeUser('user', undefined, first.email);
-  const responses = await Promise.all([accept(user, first.token), accept(user, secondToken)]);
-  expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
-  expect(responses.every((response) => [200, 401, 409].includes(response.status))).toBe(true);
-  const invitations = await Invitations.find({ email: first.email });
-  expect(invitations.filter((item) => item.status === 'accepted')).toHaveLength(1);
-  expect(invitations.filter((item) => item.status === 'pending')).toHaveLength(1);
-  const updated = await UserModel.findById(user.id);
-  expect(updated.orgId.toString()).toBe(
-    invitations.find((item) => item.status === 'accepted').orgId.toString(),
-  );
+test.each([false, true])(
+  'simultaneous invitations assign only one organization (personal: %s)',
+  async (hasPersonal) => {
+    const first = await invite();
+    const otherOrg = await OrganizationModel.create({ name: 'Competing company' });
+    const otherOwner = await makeUser('owner', otherOrg._id);
+    const second = await request(app)
+      .post(`/api/v1/organizations/${otherOrg.id}/invitations`)
+      .set('Authorization', bearer(otherOwner))
+      .send({ email: first.email, role: 'staff' });
+    expect(second.status).toBe(201);
+    const secondToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
+    const personal = hasPersonal
+      ? await OrganizationModel.create({ name: 'Personal race', isPersonal: true })
+      : undefined;
+    const user = await makeUser('user', personal?._id, first.email);
+    const responses = await Promise.all([accept(user, first.token), accept(user, secondToken)]);
+    expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
+    expect(responses.every((response) => [200, 401, 409].includes(response.status))).toBe(true);
+    const invitations = await Invitations.find({ email: first.email });
+    expect(invitations.filter((item) => item.status === 'accepted')).toHaveLength(1);
+    expect(invitations.filter((item) => item.status === 'pending')).toHaveLength(1);
+    const updated = await UserModel.findById(user.id);
+    expect(updated.orgId.toString()).toBe(
+      invitations.find((item) => item.status === 'accepted').orgId.toString(),
+    );
+  },
+);
+
+test('received invitations are scoped to the authenticated email and never expose token hashes', async () => {
+  const user = await makeUser();
+  const own = await seedReceivedInvitation(user.email);
+  const stranger = await makeUser();
+  const response = await request(app)
+    .get('/api/v1/invitations/received')
+    .set('Authorization', bearer(user));
+  expect(response.status).toBe(200);
+  expect(response.body.data).toEqual([
+    expect.objectContaining({ id: own.data.id, organizationName: org.name, role: 'staff' }),
+  ]);
+  expect(JSON.stringify(response.body)).not.toContain('tokenHash');
+  expect(JSON.stringify(response.body)).not.toContain(own.token);
+  const others = await request(app)
+    .get('/api/v1/invitations/received')
+    .set('Authorization', bearer(stranger));
+  expect(others.body.data).toEqual([]);
+  const stolen = await request(app)
+    .post(`/api/v1/invitations/received/${own.data.id}/accept`)
+    .set('Authorization', bearer(stranger));
+  expect(stolen.status).toBe(400);
+  const declined = await request(app)
+    .post(`/api/v1/invitations/received/${own.data.id}/decline`)
+    .set('Authorization', bearer(stranger));
+  expect(declined.status).toBe(400);
+  expect((await Invitations.findById(own.data.id)).status).toBe('pending');
+});
+
+test('dashboard acceptance assigns orgId and role without needing the email token', async () => {
+  const user = await makeUser();
+  const invitation = await seedReceivedInvitation(user.email, 'expert');
+  const response = await request(app)
+    .post(`/api/v1/invitations/received/${invitation.data.id}/accept`)
+    .set('Authorization', bearer(user));
+  expect(response.status).toBe(200);
+  expect(response.body.data.user).toMatchObject({ orgId: org.id, role: 'expert' });
+  expect(jwt.verify(response.body.data.accessToken, process.env.JWT_ACCESS_SECRET)).toMatchObject({
+    orgId: org.id,
+    role: 'expert',
+  });
+  expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
+});
+
+test('declining removes the notification and expired invitations cannot be acted on', async () => {
+  const user = await makeUser();
+  const invitation = await seedReceivedInvitation(user.email);
+  const response = await request(app)
+    .post(`/api/v1/invitations/received/${invitation.data.id}/decline`)
+    .set('Authorization', bearer(user));
+  expect(response.status).toBe(200);
+  expect((await Invitations.findById(invitation.data.id)).status).toBe('declined');
+  expect((await UserModel.findById(user.id)).orgId).toBeUndefined();
+  expect((await accept(user, invitation.token)).status).toBe(400);
+  const expired = await seedReceivedInvitation(user.email);
+  await Invitations.updateOne({ _id: expired.data.id }, { $set: { expiresAt: new Date(0) } });
+  const inbox = await request(app)
+    .get('/api/v1/invitations/received')
+    .set('Authorization', bearer(user));
+  expect(inbox.body.data).toEqual([]);
+  expect(
+    (
+      await request(app)
+        .post(`/api/v1/invitations/received/${expired.data.id}/accept`)
+        .set('Authorization', bearer(user))
+    ).status,
+  ).toBe(400);
 });
 
 test('acceptance racing organization deletion never leaves an orphan member', async () => {
