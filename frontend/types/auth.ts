@@ -18,6 +18,7 @@ export type AuthUser = {
   role: UserRole;
   orgId: string | null;
   hasCompletedOnboarding: boolean;
+  avatarUrl?: string | null;
 };
 
 export type LoginFormValues = z.infer<typeof loginFormSchema>;

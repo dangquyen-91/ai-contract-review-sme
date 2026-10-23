@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { AccountSummary } from "@/components/profile/account-menu";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
 import type { NavigationItem } from "@/config/dashboard-navigation";
@@ -52,7 +53,7 @@ export function DashboardSidebar({ homeHref, workspaceName, workspaceLabel, name
       <Link href={homeHref} aria-label="LawScan dashboard" className="w-fit pl-2 [&_.brand-image]:h-[52px] [&_.brand-image]:w-[150px] [&_.brand-image_img]:top-[-18px] [&_.brand-image_img]:h-[84px] [&_.brand-image_img]:w-[154px]"><Brand /></Link>
       {workspaceName && <div className="mt-[22px] grid grid-cols-[38px_minmax(0,1fr)] items-center gap-2.5 rounded-xl border border-slate-200 bg-slate-50 p-[11px]"><span className="grid size-[38px] place-items-center rounded-lg bg-blue-50 text-blue-700"><Icon name={workspaceLabel === "Không gian cá nhân" ? "user" : "building"} className="size-[18px]" /></span><div className="min-w-0"><strong className="block truncate text-xs">{workspaceName}</strong><small className="block truncate text-[10px] text-slate-500">{workspaceLabel}</small></div></div>}
       <DashboardNavigation {...navigation} />
-      <div className="mt-auto border-t border-slate-200 pt-4"><div className="flex items-center gap-2 px-2"><span className="grid size-9 shrink-0 place-items-center rounded-lg bg-slate-100"><Icon name="user" className="size-4" /></span><div className="min-w-0"><strong className="block truncate text-xs">{name}</strong><small className="block truncate text-[10px] text-slate-500">{roleLabel}</small></div></div><button type="button" onClick={onLogout} disabled={loggingOut} className="mt-3 flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Icon name="arrow" className="size-4 rotate-180" />{loggingOut ? "Đang đăng xuất..." : "Đăng xuất"}</button></div>
+      <div className="mt-auto border-t border-slate-200 pt-4"><AccountSummary fallbackName={name} roleLabel={roleLabel} /><button type="button" onClick={onLogout} disabled={loggingOut} className="mt-3 flex min-h-10 w-full items-center gap-2 rounded-lg px-3 text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Icon name="arrow" className="size-4 rotate-180" />{loggingOut ? "Đang đăng xuất..." : "Đăng xuất"}</button></div>
     </aside>
   );
 }

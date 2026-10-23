@@ -8,6 +8,7 @@ export function safeAuthReturn(value: unknown) {
   try {
     const url = new URL(value, "https://lawscan.invalid");
     if (url.origin !== "https://lawscan.invalid") return null;
+    if (url.pathname === "/ho-so") return "/ho-so";
     if (url.pathname === "/goi-dich-vu/xac-nhan") {
       const plan = url.searchParams.get("plan");
       return planCodes.some(code => code === plan) ? `/goi-dich-vu/xac-nhan?plan=${plan}` : null;
