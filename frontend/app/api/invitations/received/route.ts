@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSameOriginRequest } from "@/lib/request-origin";
+import { getApiSession } from "@/lib/auth/api-session";
 
 async function proxy(request: NextRequest, decline = false) {
-  const token = request.cookies.get("lawscan_access")?.value;
-  if (!token) return NextResponse.json({ success: false }, { status: 401 });
   if (decline && !isSameOriginRequest(request)) return NextResponse.json({ success: false }, { status: 403 });
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const token = session.accessToken;
   try {
     let suffix = "";
     if (decline) {

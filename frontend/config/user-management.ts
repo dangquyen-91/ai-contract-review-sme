@@ -1,2 +1,2 @@
-export const userManagementPath = "/dashboard/admin/management";
+export const userManagementPath = "/admin/users";
 export const userManagementPageSize = 10;

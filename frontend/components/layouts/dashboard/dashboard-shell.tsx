@@ -1,5 +1,6 @@
 "use client";
 
+import { routes } from "@/config/routes";
 import type { ReactNode } from "react";
 import { DashboardHeader } from "./dashboard-header";
 import { DashboardNavigation, DashboardSidebar } from "./dashboard-sidebar";
@@ -69,7 +70,7 @@ function DashboardDataView({ view, children }: DataProps) {
   >{children({ data, access, roleLabel })}</DashboardFrame>;
 }
 
-function DashboardFrame({ role, activeKey, sectionLabel, workspaceName, workspaceLabel, name, roleLabel, onNavigate, contractCount, homeHref = `/dashboard/${role === "administrator" ? "admin" : role}`, mainId = "dashboard-content", className = "", mainClassName = "", footer, children }: WorkspaceProps) {
+function DashboardFrame({ role, activeKey, sectionLabel, workspaceName, workspaceLabel, name, roleLabel, onNavigate, contractCount, homeHref = routes.home(role), mainId = "dashboard-content", className = "", mainClassName = "", footer, children }: WorkspaceProps) {
   const { logout: onLogout, loggingOut } = useDashboardSession();
   const navigation = getDashboardNavigation(role);
 

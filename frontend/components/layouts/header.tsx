@@ -1,17 +1,15 @@
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
 import { workspacePath } from "@/lib/workspace-path";
-import { cookies } from "next/headers";
+
 import { Brand } from "@/components/ui/brand";
 import { Button } from "@/components/ui/button";
-import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
+import { getSession } from "@/lib/auth/session";
 import { AccountMenu } from "./account-menu";
 import { MobileMenu } from "./mobile-menu";
 
 export async function Header() {
-  const cookieStore = await cookies();
-  const hasSession = cookieStore.has("lawscan_access") || cookieStore.has("lawscan_refresh");
-  const user = hasSession ? decodeSessionUser(cookieStore.get(userSessionCookie)?.value) : null;
+  const user = (await getSession().catch(() => null))?.user ?? null;
   const accountHref = workspacePath(user);
 
   return <header className="relative z-20 mx-auto flex min-h-[104px] w-[calc(100%_-_40px)] max-w-[1380px] items-center justify-between gap-5 text-sm text-[#14213d] print:hidden max-sm:min-h-20 sm:w-[calc(100%_-_64px)] lg:w-[calc(100%_-_112px)]">

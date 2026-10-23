@@ -11,18 +11,16 @@ type ReviewWorkflow = ReturnType<typeof useReviewWorkflow>;
 const ReviewWorkflowContext = createContext<ReviewWorkflow | null>(null);
 
 // The dashboard layout owns the job. Route changes only mount/unmount its views.
-export function ReviewWorkflowProvider({ children, initialRole }: { children: ReactNode; initialRole: string }) {
-  const { data, access } = useDashboardWorkspace();
-  const role = data?.role ?? initialRole;
-  const reviewPath = `/dashboard/${role === "administrator" ? "admin" : role}/review`;
+export function ReviewWorkflowProvider({ children }: { children: ReactNode; initialRole?: string }) {
+  const { access, data } = useDashboardWorkspace();
   const router = useRouter();
-  const workflow = useReviewWorkflow({ access, reviewPath, workspaceReady: Boolean(data?.organization.id) });
+  const workflow = useReviewWorkflow({ access, workspaceReady: Boolean(data?.organization?.id) });
   useReviewTimelineScroll(workflow.timelineScrollRequest, workflow.reviewTimelineRef);
   const contract = workflow.reviewResult?.contract;
   const contractId = contract?.id ?? contract?._id;
   const openResult = useCallback(() => {
-    if (contractId) router.push(`${reviewPath}?${new URLSearchParams({ contract: contractId, reviewMode: "resume" })}#review-result`);
-  }, [contractId, reviewPath, router]);
+    if (contractId) router.push(`/contract/${encodeURIComponent(contractId)}#review-result`);
+  }, [contractId, router]);
   useReviewResultNavigation({
     resultKey: contractId ? `${contractId}:${contract?.updatedAt}` : undefined,
     title: contract?.title,

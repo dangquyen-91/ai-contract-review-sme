@@ -16,6 +16,8 @@ router.get('/health', (_req, res) => res.json({ success: true, data: { status: '
 
 router.use('/auth', authRoutes);
 router.use('/profile', profileRoutes);
+router.use('/admin/users', userManagementRoutes);
+// Compatibility alias for existing clients.
 router.use('/admin/userManagement', userManagementRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/invitations', invitationRoutes);

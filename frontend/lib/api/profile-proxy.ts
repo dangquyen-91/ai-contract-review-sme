@@ -3,11 +3,13 @@ import { isSameOriginRequest } from '@/lib/request-origin';
 import { encodeSessionUser, userSessionCookie } from '@/lib/auth-session';
 import { rememberedCookieAge } from '@/lib/token-expiry';
 import { emailVerificationCookie } from '@/lib/email-verification-session';
+import { getApiSession } from '@/lib/auth/api-session';
 
 export async function proxyProfile(request: NextRequest, action: '' | 'avatar' | 'password' = '') {
-  const token = request.cookies.get('lawscan_access')?.value;
-  if (!token) return NextResponse.json({ success: false, error: { message: 'Vui lòng đăng nhập.' } }, { status: 401 });
   if (request.method !== 'GET' && !isSameOriginRequest(request)) return NextResponse.json({ success: false }, { status: 403 });
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const token = session.accessToken;
   try {
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     let body: BodyInit | undefined;

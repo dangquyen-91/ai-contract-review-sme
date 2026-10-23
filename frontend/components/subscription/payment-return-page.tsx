@@ -1,5 +1,4 @@
-import { cookies } from "next/headers";
-import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
+import { getSession } from "@/lib/auth/session";
 import { PaymentResult } from "./payment-result";
 
 export async function PaymentReturnPage({
@@ -16,8 +15,7 @@ export async function PaymentReturnPage({
     Number.isSafeInteger(Number(raw))
       ? Number(raw)
       : null;
-  const store = await cookies();
-  const user = decodeSessionUser(store.get(userSessionCookie)?.value);
+  const user = (await getSession())?.user ?? null;
   return (
     <PaymentResult user={user} orderCode={orderCode} cancelled={cancelled} />
   );

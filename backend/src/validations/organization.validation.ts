@@ -1,5 +1,12 @@
 import { z } from 'zod';
 
+export const listOrganizationsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().max(100).default(''),
+  industry: z.string().trim().max(50).default(''),
+});
+
 export const createOrganizationSchema = z.object({
   name: z.string().trim().min(2).max(200),
   taxCode: z.string().trim().min(1).max(50).optional(),

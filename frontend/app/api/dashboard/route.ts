@@ -1,56 +1,31 @@
-import { NextRequest, NextResponse } from "next/server";
-import { decodeSessionUser, userSessionCookie } from "@/lib/auth-session";
+import { NextResponse } from "next/server";
+import { getApiSession } from "@/lib/auth/api-session";
 
-type AccessClaims = {
-  sub?: string;
-  exp?: number;
-  orgId?: string;
-  role?: string;
-};
-
-function readAccessClaims(token: string): AccessClaims | null {
+export async function GET() {
   try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as AccessClaims;
-  } catch {
-    return null;
-  }
-}
+    const session = await getApiSession();
+    if (session.error) return session.error;
+    const accessToken = session.accessToken;
 
-export async function GET(request: NextRequest) {
-  const accessToken = request.cookies.get("lawscan_access")?.value;
-  if (!accessToken) {
-    return NextResponse.json(
-      { success: false, error: { message: "Phiên đăng nhập đã hết hạn." } },
-      { status: 401 },
-    );
-  }
-
-  const claims = readAccessClaims(accessToken);
-  if (!claims || !claims.exp || claims.exp * 1000 <= Date.now()) {
-    return NextResponse.json({ success: false }, { status: 401 });
-  }
-  if (!claims?.orgId) {
-    const user = decodeSessionUser(request.cookies.get(userSessionCookie)?.value);
-    if (claims.role === "user" && user?.role === "user" && user.id === claims.sub && !user.orgId) {
-      // Account display metadata only: no organization is created or assigned.
-      return NextResponse.json({ success: true, data: {
-        organization: { id: "", name: "Tài khoản cá nhân", taxCode: null, address: null },
-        contracts: [], totalContracts: 0, stats: { processing: 0, reviewed: 0, highRisk: 0 },
-        role: "user", user: { name: user.name, email: user.email },
-      } }, { headers: { "Cache-Control": "no-store" } });
+    const claims = session.user;
+    if (!claims.orgId) {
+      if (claims.role === "user") {
+        // Personal accounts can open the dashboard without creating an organization.
+        return NextResponse.json({ success: true, data: {
+          organization: { id: "", name: "Tài khoản cá nhân", taxCode: null, address: null },
+          contracts: [], totalContracts: 0, stats: { processing: 0, reviewed: 0, highRisk: 0 },
+          role: "user", user: { name: claims.name, email: claims.email },
+        } }, { headers: { "Cache-Control": "no-store" } });
+      }
+      return NextResponse.json(
+        { success: false, error: { message: "Bạn cần thiết lập tổ chức trước khi mở dashboard." } },
+        { status: 403 },
+      );
     }
-    return NextResponse.json(
-      { success: false, error: { message: "Bạn cần thiết lập tổ chức trước khi mở dashboard." } },
-      { status: 403 },
-    );
-  }
 
-  const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
-  const headers = { Authorization: `Bearer ${accessToken}` };
+    const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
+    const headers = { Authorization: `Bearer ${accessToken}` };
 
-  try {
     const [organizationResponse, contractsResponse, processingResponse, reviewedResponse, highRiskResponse] = await Promise.all([
       fetch(`${apiBaseUrl}/api/v1/organizations/${claims.orgId}`, { headers, cache: "no-store" }),
       fetch(`${apiBaseUrl}/api/v1/contracts?limit=10&sortBy=updatedAt&sortOrder=desc`, {
@@ -86,7 +61,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(payload, { status: response.status });
     }
 
-    const user = decodeSessionUser(request.cookies.get(userSessionCookie)?.value);
+    const user = session.user;
     const contracts = (contractsPayload.data as Array<Record<string, unknown>>).map((contract) => {
       const currentVersion = contract.currentVersion as { overallRiskLevel?: string; fileName?: string } | undefined;
       return {

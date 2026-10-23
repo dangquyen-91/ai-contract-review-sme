@@ -1,7 +1,14 @@
-import { apiRequest } from "@/lib/api/client";
-import type { CreateOrganizationInput, Organization } from "@/types/organization";
+import { apiClient, apiRequest } from "@/lib/api/client";
+import type { CreateOrganizationInput, Organization, OrganizationListFilters, OrganizationListResult } from "@/types/organization";
 
 export const organizationsApi = {
+  async list(page = 1, limit = 20, signal?: AbortSignal, filters: OrganizationListFilters = {}): Promise<OrganizationListResult> {
+    const response = await apiClient.get<{
+      data: Organization[];
+      meta: Omit<OrganizationListResult, "items">;
+    }>("/organizations", { params: { page, limit, ...filters }, signal });
+    return { items: response.data.data, ...response.data.meta };
+  },
   update(id: string, input: { name: string; taxCode: string | null; address: string | null }) {
     return apiRequest<Organization>({ url: `/organizations/${id}`, method: "PATCH", data: input });
   },

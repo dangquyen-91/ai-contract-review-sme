@@ -80,13 +80,14 @@ test('declining refreshes notifications without changing the active organization
   assert.deepEqual(ctx.calls.slice(1), ['refetch']);
 });
 
-function proxyRoute(file, fetch) {
+function proxyRoute(file, fetch, authenticated = true) {
   const exports = {};
   const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const dependencies = {
     'next/server': { NextRequest, NextResponse },
+    '@/lib/auth/api-session': { getApiSession: async () => authenticated ? { accessToken: 'old-access' } : { error: NextResponse.json({ success: false }, { status: 401 }) } },
     '@/lib/auth-session': { userSessionCookie: 'lawscan_user', encodeSessionUser: user => JSON.stringify(user) },
     '@/lib/token-expiry': { tokenMaxAge: () => 900, rememberedCookieAge: () => ({ maxAge: 604800 }) },
     '@/lib/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
@@ -116,7 +117,7 @@ test('accepting a received invitation updates HttpOnly session cookies without e
 
 test('inbox proxy requires authentication and rejects cross-origin declines', async () => {
   let calls = 0;
-  const route = proxyRoute('../app/api/invitations/received/route.ts', async () => { calls++; return NextResponse.json({ success: true, data: [] }); });
+  const route = proxyRoute('../app/api/invitations/received/route.ts', async () => { calls++; return NextResponse.json({ success: true, data: [] }); }, false);
   assert.equal((await route.GET(new NextRequest('http://localhost/api/invitations/received'))).status, 401);
   assert.equal((await route.POST(new NextRequest('http://localhost/api/invitations/received', {
     method: 'POST', headers: { cookie: 'lawscan_access=access', origin: 'http://elsewhere' }, body: JSON.stringify({ invitationId: data[0].id }),

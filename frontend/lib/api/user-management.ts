@@ -1,7 +1,7 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
 import type { CreateManagedUserInput, ManagedUser, ManagedUserList, UpdateManagedUserInput, UserListParams } from "@/types/user-management";
 
-const endpoint = "/admin/userManagement";
+const endpoint = "/admin/users";
 
 export const userManagementApi = {
   list({ role, status, ...params }: UserListParams, signal?: AbortSignal) {

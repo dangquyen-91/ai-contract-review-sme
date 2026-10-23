@@ -33,14 +33,17 @@ test('profile validates trimmed names, optional phones and matching strong passw
 
 function proxyHarness(status = 200) {
   const calls = [];
+  let authenticated = false;
   const { proxyProfile } = load('../lib/api/profile-proxy.ts', {
     'next/server': { NextRequest, NextResponse },
+    '@/lib/auth/api-session': { getApiSession: async () => authenticated ? { accessToken: 'access', user: profile.user } : { error: NextResponse.json({ success: false }, { status: 401 }) } },
     '@/lib/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
     '@/lib/auth-session': { userSessionCookie: 'lawscan_user', encodeSessionUser: user => JSON.stringify(user) },
     '@/lib/token-expiry': { rememberedCookieAge: () => ({ maxAge: 604800 }) },
     '@/lib/email-verification-session': { emailVerificationCookie: 'lawscan_email_verification' },
   }, { fetch: async (url, options) => { calls.push({ url, options }); return NextResponse.json(status === 200 ? { success: true, data: profile } : { success: false, error: { message: 'Invalid profile' } }, { status }); } });
   function run(method, action = '', body, headers = {}) {
+    authenticated = true;
     const isForm = body instanceof FormData;
     return proxyProfile(new NextRequest(`http://localhost/api/profile${action ? `/${action}` : ''}`, {
       method, headers: { cookie: 'lawscan_access=access; lawscan_refresh=refresh; lawscan_remember=1', origin: 'http://localhost', ...headers },

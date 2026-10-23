@@ -1,13 +1,13 @@
+import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 
 const objectIdPattern = /^[a-f\d]{24}$/i;
 const idempotencyKeyPattern = /^[a-zA-Z0-9_-]{8,128}$/;
 
 export async function proxyReviewAction(request: NextRequest, reviewId: string, action: "cancel" | "retry") {
-  const accessToken = request.cookies.get("lawscan_access")?.value;
-  if (!accessToken) {
-    return NextResponse.json({ success: false, error: { message: "Phiên đăng nhập đã hết hạn." } }, { status: 401 });
-  }
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const accessToken = session.accessToken;
   if (!objectIdPattern.test(reviewId)) {
     return NextResponse.json({ success: false, error: { message: "Mã lượt rà soát không hợp lệ." } }, { status: 400 });
   }

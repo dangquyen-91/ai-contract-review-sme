@@ -24,7 +24,7 @@ export function ContractContent({ data, access, onReview, isReviewing = false }:
   function openReview(contract: DashboardContract, rerun = false) {
     const contractId = contract.id ?? contract._id;
     if (!contractId) return;
-    router.push(`/dashboard/${data.role}/review?contract=${encodeURIComponent(contractId)}${rerun ? "&rerun=1" : ""}`);
+    router.push(`/contract/${encodeURIComponent(contractId)}${rerun ? "?rerun=1" : ""}`);
   }
   return <ContractsView contracts={data.contracts} totalContracts={data.totalContracts} scope={`${data.role}:${data.organization.id}`} workspaceReady={Boolean(data.organization.id)} canDelete={["administrator", "owner", "manager", "staff", "user"].includes(data.role)} canReview={access.review} onReview={onReview ?? openReview} isReviewing={isReviewing} />;
 }

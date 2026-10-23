@@ -1,3 +1,4 @@
+import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 import { encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { rememberedCookieAge, tokenMaxAge } from "@/lib/token-expiry";
@@ -5,8 +6,9 @@ import type { AuthUser } from "@/types/auth";
 import { isSameOriginRequest } from "@/lib/request-origin";
 
 export async function POST(request: NextRequest) {
-  const accessToken = request.cookies.get("lawscan_access")?.value;
-  if (!accessToken) return NextResponse.json({ success: false, error: { message: "Vui lòng đăng nhập để chấp nhận lời mời." } }, { status: 401 });
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const accessToken = session.accessToken;
   if (!isSameOriginRequest(request)) return NextResponse.json({ success: false }, { status: 403 });
   try {
     const { token, invitationId } = await request.json() as { token?: string; invitationId?: string };

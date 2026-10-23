@@ -13,3 +13,16 @@ export type Organization = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type OrganizationListResult = {
+  items: Organization[];
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+};
+
+export type OrganizationListFilters = {
+  search?: string;
+  industry?: string;
+};

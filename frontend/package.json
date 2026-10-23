@@ -16,7 +16,9 @@
     "test:profile:browser": "node scripts/profile-browser-check.mjs",
     "test:payments": "node --test scripts/payment-workflow.test.mjs",
     "test:payments:browser": "node scripts/payment-browser-check.mjs",
-    "test:users": "node scripts/user-management-smoke.cjs"
+    "test:users": "node scripts/user-management-smoke.cjs",
+    "test:routing": "node --test scripts/routing-session.test.mjs scripts/expert-role.test.mjs scripts/legal-source-access.test.mjs scripts/review-dashboard-persistence.test.mjs",
+    "test:routing:smoke": "node scripts/routing-smoke.cjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
