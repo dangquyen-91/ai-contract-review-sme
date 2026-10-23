@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { ReviewBlockedNotice } from "@/components/review/review-blocked-notice";
+import { ReviewBlockedNotice } from "@/components/review/timeline/review-blocked-notice";
 
 import { useEffect, useId, useState } from "react";
 import { Icon } from "@/components/ui/icon";

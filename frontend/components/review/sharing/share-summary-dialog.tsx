@@ -5,7 +5,7 @@ import { Copy, Check, FileText, ShieldCheck, Share2, Mail, Pencil, Eye } from "l
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useContractShareSummary } from "@/hooks/use-contract-share-summary";
-import { ShareSummaryPreview } from "./share-summary-preview";
+import { ShareSummaryPreview } from "@/components/review/sharing/share-summary-preview";
 
 export function ShareSummaryDialog({ contractId, version, onClose }: {
   contractId: string; version?: string; onClose: () => void;

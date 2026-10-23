@@ -16,10 +16,10 @@ const listSearchParams = {
   search: parseAsString.withDefault(""),
 };
 
-export function OrganizationContractsView({ orgId, filter, reviewerMode, managerMode = false, onFilter, renderContracts }: {
+export function OrganizationContractsView({ orgId, filter, expertMode, managerMode = false, onFilter, renderContracts }: {
   orgId: string;
   filter: DashboardContractFilter;
-  reviewerMode: boolean;
+  expertMode: boolean;
   managerMode?: boolean;
   onFilter: (filter?: DashboardContractFilter) => void;
   renderContracts: (contracts: DashboardContract[], onDeleted: () => void) => ReactNode;
@@ -36,13 +36,13 @@ export function OrganizationContractsView({ orgId, filter, reviewerMode, manager
   function updateList(next: { page?: number; search?: string }) {
     void setListState({ page: next.page ?? page, search: next.search ?? search });
   }
-  const query = useContractsList({ ...filter, page, search: search || undefined }, { scope: `${managerMode ? "manager" : reviewerMode ? "reviewer" : "staff"}:${orgId}`, pollProcessing: true });
+  const query = useContractsList({ ...filter, page, search: search || undefined }, { scope: `${managerMode ? "manager" : expertMode ? "expert" : "staff"}:${orgId}`, pollProcessing: true });
   const pages = Math.max(1, Math.ceil((query.data?.total ?? 0) / 10));
   const uploaded = highlighted && query.data?.items.find((contract) => (contract.id ?? contract._id) === highlighted);
   const choices: { label: string; filter: DashboardContractFilter }[] = [
     { label: "Tất cả", filter: {} },
-    ...((reviewerMode || managerMode) ? [{ label: "Rủi ro cao", filter: { riskLevel: "high" } as DashboardContractFilter }, { label: "Đã có kết quả", filter: { status: "reviewed" } as DashboardContractFilter }] : []),
-    ...(!reviewerMode ? [{ label: "Chờ rà soát", filter: { status: "uploaded" } as DashboardContractFilter }] : []),
+    ...((expertMode || managerMode) ? [{ label: "Rủi ro cao", filter: { riskLevel: "high" } as DashboardContractFilter }, { label: "Đã có kết quả", filter: { status: "reviewed" } as DashboardContractFilter }] : []),
+    ...(!expertMode ? [{ label: "Chờ rà soát", filter: { status: "uploaded" } as DashboardContractFilter }] : []),
     { label: "AI đang xử lý", filter: { status: "processing" } },
   ];
   const statusNames = { uploaded: "Chờ rà soát", processing: "AI đang xử lý", reviewed: "Đã rà soát", archived: "Lưu trữ", unsupported: "Chưa hỗ trợ" };

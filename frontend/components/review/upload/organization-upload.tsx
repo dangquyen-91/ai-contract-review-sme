@@ -1,7 +1,7 @@
 "use client";
 
 import type { OrganizationWorkflow } from "@/hooks/use-organization-workflow";
-import { ReviewUploadWorkspace } from "@/components/review/review-upload-workspace";
+import { ReviewUploadWorkspace } from "@/components/review/upload/review-upload-workspace";
 import { businessTypeLabels } from "@/config/contract-display";
 
 export function OrganizationUpload({ workspace, showInlineRetry = false, showAiContext = true }: {

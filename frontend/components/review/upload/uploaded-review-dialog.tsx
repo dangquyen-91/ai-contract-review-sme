@@ -1,7 +1,7 @@
 "use client";
 
 import type { OrganizationWorkflow } from "@/hooks/use-organization-workflow";
-import { ContractConfirmationDialog } from "@/components/review/contract-confirmation-dialog";
+import { ContractConfirmationDialog } from "@/components/review/upload/contract-confirmation-dialog";
 
 export function UploadedReviewDialog({ workspace }: { workspace: OrganizationWorkflow }) {
   const { uploadedContract, stage, skipUploadedReview, clearUploadedContract, reviewUploadedContract } = workspace;

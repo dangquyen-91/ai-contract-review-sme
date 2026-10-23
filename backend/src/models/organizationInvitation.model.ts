@@ -1,6 +1,6 @@
 import { Schema, model } from 'mongoose';
 
-export const INVITATION_ROLES = ['manager', 'staff', 'reviewer'] as const;
+export const INVITATION_ROLES = ['manager', 'staff', 'expert'] as const;
 
 const schema = new Schema(
   {

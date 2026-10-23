@@ -70,8 +70,10 @@ export function ManagementSectionTable({
   const rows = useMemo(() => {
     const normalized = query.trim().toLocaleLowerCase("vi-VN");
     return config.rows
+      // Preserve each sample record's identity through filtering and sorting.
+      .map((row, sourceIndex) => ({ row, key: `${section}-${sourceIndex}` }))
       .filter(
-        (row) =>
+        ({ row }) =>
           (!status || row[config.statusIndex] === status) &&
           (!secondary || row[secondaryIndex] === secondary) &&
           (!extra ||
@@ -82,7 +84,7 @@ export function ManagementSectionTable({
             )),
       )
       .sort(
-        (left, right) =>
+        ({ row: left }, { row: right }) =>
           (sortDescending ? -1 : 1) * left[0].localeCompare(right[0], "vi-VN"),
       );
   }, [
@@ -149,8 +151,8 @@ export function ManagementSectionTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {visibleRows.map((row) => (
-                <tr key={row[0]} className="hover:bg-slate-50/80">
+              {visibleRows.map(({ row, key }) => (
+                <tr key={key} className="hover:bg-slate-50/80">
                   {row.map((cell, index) => (
                     <td
                       key={`${row[0]}-${index}`}

@@ -1,62 +1,23 @@
 "use client";
 
+import { ReviewAnalysisPane } from "@/components/review/results/review-analysis-pane";
+import { ContractDocumentText, FullDocument } from "@/components/review/document/contract-document-text";
 import { Button } from "@/components/ui/button";
 
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useContractText } from "@/hooks/use-contracts";
 import workspaceStyles from "@/styles/review/review-workspace.module.css";
 import { Icon } from "@/components/ui/icon";
-import { ContractChat } from "@/components/review/contract-chat";
-import { RiskDetails } from "@/components/review/risk-details";
-import { RiskFindingCard } from "@/components/review/risk-finding-card";
-import { ReviewResultHeader } from "@/components/review/review-result-header";
-import { OriginalContractPreview } from "@/components/review/original-contract-preview";
-import { KeyTerms } from "@/components/review/key-terms";
-import { RedactedDocument } from "@/components/review/redacted-document";
-import { DocumentDisclosureDialog } from "@/components/review/document-disclosure-dialog";
-import { ShareSummaryDialog } from "@/components/review/share-summary-dialog";
-import type { ContractReviewResult, RiskFinding } from "@/types/contracts";
-
-const severityLabels = { high: "Rủi ro cao", medium: "Rủi ro trung bình", low: "Rủi ro thấp" };
-
-const severityOrder = { high: 0, medium: 1, low: 2 };
-
-type ClausePosition = ContractReviewResult["clauses"][number];
-type LocatedClause = ClausePosition & { start: number; end: number };
-
-function locateClauses(clauses: ClausePosition[], text: string): LocatedClause[] {
-  let cursor = 0;
-  const located: LocatedClause[] = [];
-
-  for (const clause of [...clauses].sort((a, b) => a.index - b.index)) {
-    const { startOffset: start, endOffset: end } = clause;
-    if (start >= cursor && end > start && end <= text.length) {
-      located.push({ ...clause, start, end });
-      cursor = end;
-    }
-  }
-
-  return located;
-}
-
-function findingClauseIndex(finding: RiskFinding, clauses: ClausePosition[]): number | null {
-  if (finding.findingType === "missing_clause") return null;
-  const linked = clauses.find((clause) => (clause.id ?? clause._id) === finding.clauseId);
-  return linked?.index ?? finding.clause?.index ?? null;
-}
+import { ContractChat } from "@/components/review/results/contract-chat";
+import { ReviewResultHeader } from "@/components/review/results/review-result-header";
+import { OriginalContractPreview } from "@/components/review/document/original-contract-preview";
+import { KeyTerms } from "@/components/review/results/key-terms";
+import { RedactedDocument } from "@/components/review/document/redacted-document";
+import { DocumentDisclosureDialog } from "@/components/review/document/document-disclosure-dialog";
+import { ShareSummaryDialog } from "@/components/review/sharing/share-summary-dialog";
+import type { ContractReviewResult } from "@/types/contracts";
 
 type ReviewResultsProps = { result: ContractReviewResult; canAsk?: boolean; showAiContext?: boolean };
-
-function FullDocument({ query, children }: { query: ReturnType<typeof useContractText>; children: ReactNode }) {
-  if (query.isPending) return <p role="status" className="m-0 p-5 text-ui text-[#607087]">Đang tải văn bản đầy đủ…</p>;
-  if (query.isError || !query.data || query.data.redacted !== false) return <div role="alert" className="rounded-xl border border-[#f0d5aa] bg-[#fffbf3] p-5 text-ui leading-6 text-[#79581b]">
-    <p className="m-0 font-semibold">Chưa tải được văn bản đầy đủ</p>
-    <p className="mb-0 mt-1">Bạn có thể thử lại hoặc chọn “Văn bản đã che”.</p>
-    <Button variant="outline" size="sm" type="button" disabled={query.isFetching} onClick={() => { void query.refetch(); }} className="mt-3">{query.isFetching ? "Đang tải lại…" : "Tải lại văn bản đầy đủ"}</Button>
-  </div>;
-  if (!query.data.text.trim()) return <p role="status" className="m-0 p-5 text-ui text-[#607087]">Chưa có văn bản trích xuất để hiển thị.</p>;
-  return children;
-}
 
 export function ReviewResults(props: ReviewResultsProps) {
   return <ReviewResultsContent key={props.result.contract.id ?? props.result.contract._id} {...props} />;
@@ -67,23 +28,13 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
   const [originalTarget, setOriginalTarget] = useState<{ index: number; requestId: number } | null>(null);
   const [viewMode, setViewMode] = useState<"original" | "text" | "redacted">("redacted");
   const [disclosure, setDisclosure] = useState<{ mode: "text" | "original"; clauseIndex?: number } | null>(null);
-  const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
-  const [severityFilter, setSeverityFilter] = useState<"all" | RiskFinding["severity"]>("all");
   const [docxTextFallback, setDocxTextFallback] = useState(false);
   const [shareSummaryOpen, setShareSummaryOpen] = useState(false);
   const sectionId = useId();
-  const findings = result.findings;
-  const visibleFindings = findings
-    .filter((finding) => severityFilter === "all" || finding.severity === severityFilter)
-    .sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]
-      || (findingClauseIndex(a, result.clauses) ?? Number.MAX_SAFE_INTEGER)
-        - (findingClauseIndex(b, result.clauses) ?? Number.MAX_SAFE_INTEGER));
   const contractBodyRef = useRef<HTMLDivElement>(null);
   const savedScroll = useRef(0);
   const restoreScroll = useRef<number | null>(null);
   const clauses = useMemo(() => [...result.clauses].sort((a, b) => a.index - b.index), [result.clauses]);
-  const summaryComplete = result.contract.currentVersion?.summaryStatus === "completed";
-  const risksComplete = result.contract.currentVersion?.riskDetectionStatus === "completed";
   const contractId = result.contract.id ?? result.contract._id;
   const redactedQuery = useContractText(contractId ?? "", {
     redacted: true,
@@ -97,7 +48,6 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
     version: result.contract.updatedAt,
   });
   const text = fullQuery.isError ? "" : fullQuery.data?.text ?? "";
-  const located = useMemo(() => locateClauses(clauses, text), [clauses, text]);
   const originalClause = originalTarget ? clauses.find((clause) => clause.index === originalTarget.index) : undefined;
   const previewTarget = originalClause && originalTarget && text ? {
     text: text.slice(originalClause.startOffset, originalClause.endOffset), requestId: originalTarget.requestId,
@@ -155,60 +105,13 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
     else applyDocumentMode(mode, index);
   }
 
-  const contractParts = located.flatMap((clause, index) => {
-    const previousEnd = located[index - 1]?.end ?? 0;
-    const parts = [];
-    if (clause.start > previousEnd) {
-      parts.push(<span key={`gap-${previousEnd}`} className="whitespace-pre-wrap">{text.slice(previousEnd, clause.start)}</span>);
-    }
-    parts.push(
-      <span
-        key={`clause-${clause.index}`}
-        className={`${"whitespace-pre-wrap [scroll-margin-block:35px] rounded-[3px] focus:[outline:none]"} ${activeClause === clause.index ? "[background:#fff0bf] shadow-[0_0_0_4px_#fff0bf]" : ""}`}
-        data-clause-index={clause.index}
-        tabIndex={-1}
-      >{text.slice(clause.start, clause.end)}</span>,
-    );
-    return parts;
-  });
-  const finalEnd = located.at(-1)?.end ?? 0;
-  if (text && finalEnd < text.length) {
-    contractParts.push(<span key={`gap-${finalEnd}`} className="whitespace-pre-wrap">{text.slice(finalEnd)}</span>);
-  }
-
   return (
     <section className={`overflow-hidden border [background:#fff] shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)] rounded-[14px] border-solid border-[#e4e8ef] ${showAiContext ? workspaceStyles.workspace : ""}`}>
       {showAiContext && <p className="m-0 border-b border-[#dce7f6] bg-[#f4f8ff] px-5 py-3 text-ui leading-6 text-[#536881]">Kết quả do AI phân tích, chưa thể hiện phê duyệt của chuyên viên.</p>}
       <ReviewResultHeader result={result} onShareSummary={() => setShareSummaryOpen(true)} />
       {showAiContext && <nav className={workspaceStyles.navigation} aria-label="Điều hướng kết quả"><a href={`#${sectionId}-analysis`}>Tóm tắt & rủi ro</a><a href={`#${sectionId}-document`}>Nội dung hợp đồng</a></nav>}
       <div className={`${workspaceStyles.resultColumns} grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-stretch [@media_(max-width:_1080px)]:grid-cols-[1fr] ${workspaceStyles.splitPane}`}>
-        <div id={`${sectionId}-analysis`} className={`min-w-0 [border-right:1px_solid_#e4e8ef] [@media_(max-width:_1080px)]:[border-right:0] [@media_(max-width:_1080px)]:[border-bottom:1px_solid_#e4e8ef] ${workspaceStyles.analysisPane}`}>
-          <article className="[border-bottom:1px_solid_#e4e8ef] [background:#fbfcff] px-[22px] py-5 [&_h3]:text-ui-section [&_h3]:font-semibold [&_h3]:m-0 [&_p]:text-[#5e6e84] [&_p]:text-ui [&_p]:leading-[1.7] [&_p]:whitespace-pre-wrap [&_p]:mt-[9px] [&_p]:mb-0 [&_p]:mx-0 [&_ul]:text-[#5e6e84] [&_ul]:text-ui [&_ul]:leading-[1.7] [&_ul]:mt-[9px] [&_ul]:mb-0 [&_ul]:mx-0 [&_ul]:pl-[18px] [&_li_+_li]:mt-[5px]">
-            <h3>Tóm tắt điều hành</h3>
-            {result.contract.currentVersion?.summaryPoints?.length ?
-              <ul>{result.contract.currentVersion.summaryPoints.map((point, index) => <li key={index}>{point}</li>)}</ul> :
-              <p>{summaryComplete ? "Không có điểm tóm tắt để hiển thị." : "Tóm tắt chưa hoàn tất. Bạn có thể thử rà soát lại hợp đồng."}</p>}
-            {!!result.contract.currentVersion?.overallAssessment?.length && <div className="[border-top:1px_solid_#e4e8ef] mt-[15px] pt-3 [&_h4]:text-[#31445f] [&_h4]:text-ui-section [&_h4]:font-semibold [&_h4]:m-0"><h4>Đánh giá tổng quan</h4><ul>{result.contract.currentVersion.overallAssessment.map((point, index) => <li key={index}>{point}</li>)}</ul></div>}
-          </article>
-          <section className="px-[22px] pb-[25px] pt-5" aria-labelledby="review-findings-heading">
-            <div className="[&_h3]:text-ui-section [&_h3]:font-semibold [&_h3]:m-0 flex items-center gap-[7px] [&>_span]:grid [&>_span]:min-w-5 [&>_span]:h-5 [&>_span]:place-items-center [&>_span]:text-[#2859aa] [&>_span]:[background:#eaf1ff] [&>_span]:text-ui-caption [&>_span]:font-bold [&>_span]:rounded-[10px]"><h3 id="review-findings-heading">Điểm cần lưu ý</h3><span>{findings.length}</span></div>
-            {findings.length > 0 && <p className="mb-0 mt-2 text-ui-meta leading-5 text-muted-foreground">Sắp xếp theo mức độ: Cao → Trung bình → Thấp. Mỗi mục hiển thị ý chính; mở chi tiết để xem toàn bộ phân tích.</p>}
-            <div role="group" className={workspaceStyles.filters} aria-label="Lọc mức rủi ro">{(["all", "high", "medium", "low"] as const).map((severity) => <Button variant={severityFilter === severity ? "default" : "outline"} size="sm" type="button" key={severity} aria-pressed={severityFilter === severity} onClick={() => { setSeverityFilter(severity); setExpandedFinding(null); }}>{severity === "all" ? "Tất cả" : severityLabels[severity]} · {severity === "all" ? findings.length : findings.filter((finding) => finding.severity === severity).length}</Button>)}</div>
-            {visibleFindings.length ? <ul className="m-0 mt-4 grid list-none gap-3 p-0">{visibleFindings.map((finding) => {
-              const clauseIndex = findingClauseIndex(finding, clauses);
-              const canJump = clauseIndex !== null && clauses.some((clause) => clause.index === clauseIndex);
-              const findingKey = finding.id ?? finding._id ?? `${finding.title}-${findings.indexOf(finding)}`;
-              const expanded = expandedFinding === findingKey;
-              return <RiskFindingCard key={findingKey} finding={finding} expanded={expanded}
-                detailId={`${sectionId}-finding-${findings.indexOf(finding)}`}
-                onToggle={() => setExpandedFinding(expanded ? null : findingKey)}
-                onJump={canJump ? () => jumpToClause(clauseIndex) : undefined}
-                jumpLabel={`${finding.title}. ${isDocx ? "Xem vị trí trong file gốc" : "Xem vị trí trong văn bản đầy đủ"}`}>
-                <RiskDetails contractId={contractId} finding={finding} allowProposalEditing={isDocx && canJump} />
-              </RiskFindingCard>;
-            })}</ul> : <p className="text-[#66758a] text-ui mt-3.5 mb-0 mx-0">{severityFilter !== "all" ? "Không có rủi ro trong nhóm đang chọn." : risksComplete ? "Chưa phát hiện điểm rủi ro đáng kể." : "Đánh giá rủi ro chưa hoàn tất."}</p>}
-          </section>
-        </div>
+        <ReviewAnalysisPane result={result} sectionId={sectionId} isDocx={isDocx} onJumpToClause={jumpToClause} />
         <section className={`${workspaceStyles.documentPane} min-w-0 min-h-0 grid grid-rows-[auto_auto_minmax(0,1fr)] [@media_(max-width:_1080px)]:block`} id={`${sectionId}-document`} aria-label="Nội dung hợp đồng">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e4e8ef] bg-[#fbfcfe] px-4 py-2.5">
             <div className="min-w-0"><h3 className="m-0 text-ui-section font-semibold">Nội dung hợp đồng</h3><p className="mb-0 mt-1 max-w-[360px] truncate text-ui-meta text-[#778398]">{result.contract.currentVersion?.fileName ?? result.contract.title}</p></div>
@@ -231,7 +134,7 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
           <div className={`${workspaceStyles.documentBody} min-h-0 overflow-hidden [@media_(max-width:_1080px)]:h-[min(58vh,650px)] [@media_(max-width:_1080px)]:min-h-[390px]`}>
             {viewMode === "redacted" && isDocx && contractId && !docxTextFallback ? <OriginalContractPreview key="redacted-docx" redacted version={result.contract.updatedAt} contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} onTextFallback={() => setDocxTextFallback(true)} /> : showOriginal && contractId && mimeType ? originalTarget ? <FullDocument query={fullQuery}><OriginalContractPreview key="original-docx" version={result.contract.updatedAt} contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} target={previewTarget} /></FullDocument> : <OriginalContractPreview key="original-file" version={result.contract.updatedAt} contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} /> :
               <div ref={contractBodyRef} className="h-full overflow-y-auto scroll-smooth p-[26px] [@media_(max-width:_580px)]:p-[18px] motion-reduce:scroll-auto">
-                {viewMode === "redacted" ? <RedactedDocument data={redactedQuery.data} isPending={redactedQuery.isPending && Boolean(contractId)} isError={redactedQuery.isError} isFetching={redactedQuery.isFetching} onRetry={() => { void redactedQuery.refetch(); }} /> : <FullDocument query={fullQuery}><div className="text-[#263750] [font-family:Georgia,'Times_New_Roman',serif] text-ui-document leading-[1.85] [overflow-wrap:anywhere] whitespace-pre-wrap">{contractParts}</div></FullDocument>}
+                {viewMode === "redacted" ? <RedactedDocument data={redactedQuery.data} isPending={redactedQuery.isPending && Boolean(contractId)} isError={redactedQuery.isError} isFetching={redactedQuery.isFetching} onRetry={() => { void redactedQuery.refetch(); }} /> : <FullDocument query={fullQuery}><ContractDocumentText clauses={clauses} text={text} activeClause={activeClause} /></FullDocument>}
               </div>}
           </div>
         </section>

@@ -61,7 +61,7 @@ test('a new free organization reserves two invitation seats and accepts two memb
 
   const first = await createInvitation(owner.id, organization.id, { email: 'first@example.com', role: 'staff' });
   const firstToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
-  const second = await createInvitation(owner.id, organization.id, { email: 'second@example.com', role: 'reviewer' });
+  const second = await createInvitation(owner.id, organization.id, { email: 'second@example.com', role: 'expert' });
   const secondToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
   expect(await getSubscription(owner.id, organization.id)).toMatchObject({
     members: { count: 1, pending: 2, limit: 3, available: 0 },
@@ -74,7 +74,7 @@ test('a new free organization reserves two invitation seats and accepts two memb
   expect(await getSubscription(owner.id, organization.id)).toMatchObject({
     members: { count: 1, pending: 1, limit: 3, available: 1 },
   });
-  await createInvitation(owner.id, organization.id, { email: 'second@example.com', role: 'reviewer' });
+  await createInvitation(owner.id, organization.id, { email: 'second@example.com', role: 'expert' });
   const replacementToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
 
   const firstUser = await makeUser('first@example.com');

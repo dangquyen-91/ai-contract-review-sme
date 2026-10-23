@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes';
+import userManagementRoutes from './userManagement.routes';
 import contractRoutes from './contract.routes';
 import contractProfileRoutes from './contractProfile.routes';
 import legalSourceRoutes from './legalSource.routes';
@@ -13,6 +14,7 @@ const router = Router();
 router.get('/health', (_req, res) => res.json({ success: true, data: { status: 'ok' } }));
 
 router.use('/auth', authRoutes);
+router.use('/admin/userManagement', userManagementRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/invitations', invitationRoutes);
 router.get('/plans', listPlansHandler);

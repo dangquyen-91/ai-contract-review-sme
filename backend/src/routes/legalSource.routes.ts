@@ -21,13 +21,12 @@ import {
 
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAuth, requireRole('manager'));
 
 router.get('/', listLegalSourcesHandler);
 
 router.post(
   '/preview',
-  requireRole('administrator'),
   legalDocUpload.single('file'),
   validate({ body: previewLegalSourceSchema }),
   previewLegalSourceHandler,
@@ -35,7 +34,6 @@ router.post(
 
 router.post(
   '/',
-  requireRole('administrator'),
   aiLimiter,
   legalDocUpload.single('file'),
   validate({ body: createLegalSourceSchema }),
@@ -46,7 +44,6 @@ router.get('/:id', validate({ params: legalSourceIdParamSchema }), getLegalSourc
 
 router.post(
   '/:id/parts',
-  requireRole('administrator'),
   aiLimiter,
   legalDocUpload.single('file'),
   validate({ params: legalSourceIdParamSchema, body: previewLegalSourceSchema }),
@@ -55,14 +52,12 @@ router.post(
 
 router.post(
   '/:id/resume',
-  requireRole('administrator'),
   validate({ params: legalSourceIdParamSchema }),
   resumeLegalIngestionHandler,
 );
 
 router.delete(
   '/:id',
-  requireRole('administrator'),
   validate({ params: legalSourceIdParamSchema }),
   deleteLegalSourceHandler,
 );
