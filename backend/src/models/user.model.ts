@@ -11,6 +11,7 @@ const userSchema = new Schema(
     deletedAt: { type: Date, default: null },
     hasCompletedOnboarding: { type: Boolean, default: false },
     permissionsVersion: { type: Number, default: 0 },
+    authVersion: { type: Number, default: 0 },
     emailVerifiedAt: { type: Date, default: null },
     googleSubject: { type: String, unique: true, sparse: true, select: false },
   },

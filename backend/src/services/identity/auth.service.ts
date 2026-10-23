@@ -22,11 +22,15 @@ const ACCESS_TOKEN_TTL = env.JWT_ACCESS_EXPIRES_IN as SignOptions['expiresIn'];
 const REFRESH_TOKEN_TTL = env.JWT_REFRESH_EXPIRES_IN as SignOptions['expiresIn'];
 const REMEMBER_REFRESH_TOKEN_TTL = env.JWT_REFRESH_REMEMBER_EXPIRES_IN as SignOptions['expiresIn'];
 
-function signTokens(payload: AccessTokenPayload, remember = false) {
+function signTokens(payload: AccessTokenPayload, remember = false, authVersion = 0) {
   const accessToken = jwt.sign(payload, env.JWT_ACCESS_SECRET, { expiresIn: ACCESS_TOKEN_TTL });
-  const refreshToken = jwt.sign({ sub: payload.sub, remember }, env.JWT_REFRESH_SECRET, {
-    expiresIn: remember ? REMEMBER_REFRESH_TOKEN_TTL : REFRESH_TOKEN_TTL,
-  });
+  const refreshToken = jwt.sign(
+    { sub: payload.sub, remember, authVersion },
+    env.JWT_REFRESH_SECRET,
+    {
+      expiresIn: remember ? REMEMBER_REFRESH_TOKEN_TTL : REFRESH_TOKEN_TTL,
+    },
+  );
   return { accessToken, refreshToken };
 }
 
@@ -39,6 +43,7 @@ export function tokensForUser(user: HydratedDocument<User>, remember = false) {
       permissionsVersion: user.permissionsVersion ?? 0,
     },
     remember,
+    user.authVersion ?? 0,
   );
 }
 
@@ -90,23 +95,25 @@ export async function login(input: LoginInput) {
       permissionsVersion: user.permissionsVersion ?? 0,
     },
     input.remember === true,
+    user.authVersion ?? 0,
   );
   return { user, ...tokens };
 }
 
 export async function refresh(refreshToken: string, invitationToken?: string) {
-  let payload: { sub: string; remember?: boolean };
+  let payload: { sub: string; remember?: boolean; authVersion?: number };
   try {
     payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as {
       sub: string;
       remember?: boolean;
+      authVersion?: number;
     };
   } catch {
     throw AppError.unauthorized('Invalid or expired refresh token');
   }
 
   const user = await UserModel.findById(payload.sub).populate('roleId');
-  if (!user || !user.isActive) {
+  if (!user || !user.isActive || (payload.authVersion ?? 0) !== (user.authVersion ?? 0)) {
     throw AppError.unauthorized('Invalid refresh token');
   }
   if (!user.emailVerifiedAt) throw AppError.unauthorized('Verify your email by signing in again');
@@ -121,6 +128,7 @@ export async function refresh(refreshToken: string, invitationToken?: string) {
       permissionsVersion: user.permissionsVersion ?? 0,
     },
     payload.remember === true,
+    user.authVersion ?? 0,
   );
   return { user, ...tokens };
 }

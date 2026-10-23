@@ -1250,6 +1250,61 @@ components:
           description: Legal document to chunk and embed (pdf, docx, doc, or txt)
 
 paths:
+  /auth/forgot-password:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Request a password reset code by email
+      description: Returns the same acknowledgement for unknown, inactive and unverified accounts. Codes expire after 10 minutes. Resend cooldown is 60 seconds, with at most 5 sends per email per hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email, maxLength: 254 }
+      responses:
+        '202':
+          description: Request acknowledged; eligible accounts receive an email code.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      challengeId: { type: string, pattern: '^[a-f0-9]{64}$' }
+                      expiresAt: { type: string, format: date-time }
+                      resendAfterSeconds: { type: integer, example: 60 }
+                      message: { type: string }
+        '400': { description: Invalid email }
+        '429': { description: Send or IP rate limit reached }
+        '503': { description: Email delivery is not configured }
+  /auth/reset-password:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Set a new password using the emailed reset code
+      description: Consumes the code once and revokes previous access and refresh tokens. Five incorrect attempts block the challenge. Does not sign the user in or change their organization or role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, code, password]
+              properties:
+                challengeId: { type: string, pattern: '^[a-f0-9]{64}$' }
+                code: { type: string, pattern: '^\d{6}$' }
+                password: { type: string, minLength: 12, description: Maximum 72 UTF-8 bytes. }
+      responses:
+        '200': { description: Password changed. Sign in again with the new password. }
+        '400': { description: Invalid password or invalid, expired or consumed code }
+        '429': { description: Attempt or IP rate limit reached }
   /organizations/{id}/payments:
     parameters:
       - $ref: '#/components/parameters/PaymentOrganizationId'
