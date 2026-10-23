@@ -21,6 +21,7 @@ export const contractStatusLabels: Record<ContractStatus, string> = {
   processing: "AI đang xử lý",
   reviewed: "Đã rà soát",
   archived: "Lưu trữ",
+  unsupported: "Chưa hỗ trợ",
 };
 
 export const contractRiskLabels: Record<ContractRiskLevel, string> = {
@@ -35,6 +36,7 @@ export const contractStatusClasses: Record<ContractStatus, string> = {
   processing: "text-[#1557ae] bg-[#e7f0ff]",
   reviewed: "text-[#206c59] bg-[#e8f5f1]",
   archived: "text-[#6a7280] bg-[#eff1f3]",
+  unsupported: "text-[#875a00] bg-[#fff4dc]",
 };
 
 export const contractRiskClasses: Record<ContractRiskLevel, string> = {
@@ -45,7 +47,7 @@ export const contractRiskClasses: Record<ContractRiskLevel, string> = {
 };
 
 export const contractStatusTones: Record<ContractStatus, "neutral" | "info" | "success"> = {
-  uploaded: "neutral", processing: "info", reviewed: "success", archived: "neutral",
+  uploaded: "neutral", processing: "info", reviewed: "success", archived: "neutral", unsupported: "neutral",
 };
 
 export const contractRiskTones: Record<ContractRiskLevel, "danger" | "warning" | "success" | "neutral"> = {

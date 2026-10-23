@@ -20,10 +20,10 @@ export function reviewErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Vui lòng thử lại sau.";
 }
 
-export function useReviewWorkflow({ access, initialType, personal = false, reviewPath }: { access: Access; initialType: DashboardContract["type"]; personal?: boolean; reviewPath?: string }) {
+export function useReviewWorkflow({ access, initialType, personal = false, reviewPath }: { access: Access; initialType: string; personal?: boolean; reviewPath?: string }) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
-  const [contractType, setContractType] = useState<DashboardContract["type"]>(initialType);
+  const [contractType, setContractType] = useState<string>(initialType);
   const [ourParty, setOurParty] = useState("");
   const [industry, setIndustry] = useState("");
   const [uploadedContract, setUploadedContract] = useState<{ id: string; title: string } | null>(null);

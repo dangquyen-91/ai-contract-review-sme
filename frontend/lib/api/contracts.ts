@@ -89,6 +89,28 @@ export const contractsApi = {
     return apiRequest<ContractReviewRun>({ url: `/reviews/${reviewId}`, signal });
   },
 
+  cancelReviewRun(reviewId: string) {
+    return apiRequest<ContractReviewRun>({ url: `/reviews/${reviewId}/cancel`, method: "POST", data: {} });
+  },
+
+  retryReviewRun(reviewId: string, idempotencyKey: string, signal?: AbortSignal) {
+    return apiRequest<ContractReviewRun>({
+      url: `/reviews/${reviewId}/retry`,
+      method: "POST",
+      data: {},
+      headers: { "Idempotency-Key": idempotencyKey },
+      signal,
+    });
+  },
+
+  confirmProfile(contractId: string, profile: { type: string; ourParty?: string }) {
+    return apiRequest<DashboardContract>({ url: `/contracts/${contractId}/profile`, method: "PATCH", data: profile });
+  },
+
+  retryClassification(contractId: string) {
+    return apiRequest<DashboardContract>({ url: `/contracts/${contractId}/classify`, method: "POST", data: {} });
+  },
+
   listReviewRuns(contractId: string, signal?: AbortSignal) {
     return apiRequest<ContractReviewRun[]>({ url: `/contracts/${contractId}/reviews`, signal });
   },

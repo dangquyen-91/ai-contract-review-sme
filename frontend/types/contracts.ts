@@ -1,11 +1,31 @@
-export type ContractStatus = "uploaded" | "processing" | "reviewed" | "archived";
+export type ContractStatus = "uploaded" | "processing" | "reviewed" | "archived" | "unsupported";
 export type ContractRiskLevel = "high" | "medium" | "low" | "none";
+
+export type ClassificationOutcome = "supported" | "unsupported_type" | "not_contract" | "not_allowed_for_account";
+
+export type ContractClassification = {
+  status: "pending" | "running" | "completed" | "failed";
+  outcome?: ClassificationOutcome;
+  detectedLabel?: string;
+  type?: string;
+  ourParty?: string;
+  confidence?: number;
+  parties?: { name: string; partyCode?: string }[];
+  source?: "ai" | "user";
+  error?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  confirmedAt?: string;
+};
 
 export type DashboardContract = {
   id?: string;
   _id?: string;
   title: string;
-  type: string;
+  type?: string;
+  ourParty?: string;
+  industry?: string;
+  classification?: ContractClassification;
   status: ContractStatus;
   overallRiskLevel: ContractRiskLevel;
   currentVersion?: {
@@ -100,10 +120,22 @@ export type ContractReviewResult = {
   clauses: Pick<ContractClause, "id" | "_id" | "index" | "startOffset" | "endOffset">[];
 };
 
+export type ReviewErrorCode =
+  | "AI_OVERLOADED"
+  | "EXTRACTION_TIMEOUT"
+  | "EXTRACTION_FAILED"
+  | "CONTRACT_DELETED"
+  | "CREDIT_EXPIRED"
+  | "CANCELLED"
+  | "UNKNOWN";
+
 export type ContractReviewRun = {
   _id: string;
   contractId: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  errorCode?: ReviewErrorCode;
+  cancelRequested?: boolean;
+  result?: { partial?: boolean; summaryPoints?: string[]; clauseCount?: number; findingCounts?: { high: number; medium: number; low: number } };
   currentStage?: "waiting_for_extraction" | "segmentation" | "summary" | "risk_detection";
   stageDetail?: string;
   stages?: {

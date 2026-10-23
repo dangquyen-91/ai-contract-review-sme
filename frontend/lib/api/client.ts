@@ -5,16 +5,18 @@ import type { RefreshTokenResult } from "@/types/auth";
 export class ApiClientError extends Error {
   readonly status?: number;
   readonly code?: string;
+  readonly serverCode?: string;
   readonly details?: ApiFieldErrors;
 
   constructor(
     message: string,
-    options: { status?: number; code?: string; details?: ApiFieldErrors } = {},
+    options: { status?: number; code?: string; serverCode?: string; details?: ApiFieldErrors } = {},
   ) {
     super(message);
     this.name = "ApiClientError";
     this.status = options.status;
     this.code = options.code;
+    this.serverCode = options.serverCode;
     this.details = options.details;
   }
 }
@@ -67,6 +69,7 @@ function normalizeApiError(error: unknown): ApiClientError {
   return new ApiClientError(message, {
     status: error.response?.status,
     code: error.code,
+    serverCode: responseError?.code,
     details: responseError?.details,
   });
 }
