@@ -6,10 +6,24 @@ import type { CreateInvitationInput } from "@/types/invitations";
 
 import { invitationKeys } from "@/lib/query-keys/invitations";
 import { isApiClientError } from "@/lib/api/client";
+import { dashboardKeys } from "@/lib/query-keys/dashboard";
 
 
 export function useOrganizationMembers(orgId: string, page: number) {
   return useQuery({ queryKey: invitationKeys.members(orgId, page), queryFn: () => invitationsApi.members(orgId, page), retry: false });
+}
+
+export function useRemoveMemberMutation(orgId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => invitationsApi.removeMember(orgId, userId),
+    onSuccess: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: invitationKeys.membersBase(orgId) }),
+      queryClient.invalidateQueries({ queryKey: invitationKeys.invitationsBase(orgId) }),
+      queryClient.invalidateQueries({ queryKey: invitationKeys.subscription(orgId) }),
+      queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+    ]),
+  });
 }
 
 export function useOrganizationInvitations(orgId: string, page: number) {
