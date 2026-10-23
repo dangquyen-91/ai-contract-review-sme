@@ -7,6 +7,7 @@ export type DashboardOrganization = {
   name: string;
   taxCode: string | null;
   address: string | null;
+  industry?: string | null;
 };
 
 export type DashboardData = {

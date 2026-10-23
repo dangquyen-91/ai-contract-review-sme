@@ -16,6 +16,14 @@ export function useUpdateOrganization(id: string) {
   });
 }
 
+export function useUpdateOrganizationIndustry(id: string) {
+  const client = useQueryClient();
+  return useMutation<Organization, ApiClientError, string | null>({
+    mutationFn: (industry) => organizationsApi.updateIndustry(id, industry),
+    onSuccess: () => client.invalidateQueries({ queryKey: dashboardKeys.all }),
+  });
+}
+
 export function useDeleteOrganization(id: string) {
   return useMutation({ mutationFn: () => organizationsApi.remove(id) });
 }
