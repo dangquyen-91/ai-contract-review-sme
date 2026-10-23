@@ -2,8 +2,11 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { useContractReviewResult, useReviewContractMutation, useUploadContractMutation } from "@/hooks/use-contracts";import { isApiClientError } from "@/lib/api/client";
+import { useContractReviewResult, useReviewContractMutation, useUploadContractMutation } from "@/hooks/use-contracts";
+import { contractsApi } from "@/lib/api/contracts";
+import { isApiClientError } from "@/lib/api/client";
 import { isReviewCancelled, readReviewSession } from "@/lib/review-session";
+import { serverCodeMessage } from "@/lib/review-error-codes";
 import { reviewBlockReason, reviewBlockedMessage, type ReviewBlockReason } from "@/lib/review-failure";
 import type { ContractReviewRun, DashboardContract } from "@/types/contracts";
 
@@ -13,10 +16,18 @@ type Access = { upload: boolean; review: boolean };
 export function reviewErrorMessage(error: unknown) {
   const blocked = reviewBlockReason(error);
   if (blocked) return reviewBlockedMessage(blocked);
+  if (isApiClientError(error) && error.serverCode) {
+    const known = serverCodeMessage(error.serverCode);
+    if (known) return known;
+  }
   if (isApiClientError(error) && error.status === 409) {
     return "Hợp đồng đang được phân tích ở một phiên khác. Vui lòng thử lại sau khi quá trình đó hoàn tất.";
   }
   return error instanceof Error ? error.message : "Vui lòng thử lại sau.";
+}
+
+function failedRun(error: unknown) {
+  return error instanceof Error && error.name === "ReviewRunError" ? (error as Error & { review: ContractReviewRun }).review : null;
 }
 
 export function useReviewWorkflow({ access, reviewPath }: { access: Access; reviewPath?: string }) {
@@ -35,6 +46,7 @@ export function useReviewWorkflow({ access, reviewPath }: { access: Access; revi
   const [retryKind, setRetryKind] = useState<"load" | "run">("run");
   const [reviewError, setReviewError] = useState("");
   const [reviewBlocked, setReviewBlocked] = useState<ReviewBlockReason | null>(null);
+  const [cancelling, setCancelling] = useState(false);
   const uploadContractMutation = useUploadContractMutation();
   const reviewContractMutation = useReviewContractMutation();
   const resultQuery = useContractReviewResult(selectedContractId);
@@ -76,6 +88,28 @@ export function useReviewWorkflow({ access, reviewPath }: { access: Access; revi
     }
   }
 
+  function notifyFailedRun(error: unknown) {
+    const run = failedRun(error);
+    if (!run) return false;
+    setReviewError((error as Error).message);
+    if (run.status === "cancelled") toast.success("Đã dừng rà soát", { description: "Lượt rà soát đã được hoàn lại." });
+    else toast.error("AI chưa hoàn tất rà soát", { description: (error as Error).message });
+    return true;
+  }
+
+  async function cancelReview() {
+    const reviewId = reviewProgress?._id;
+    if (!reviewId || cancelling || (reviewProgress.status !== "queued" && reviewProgress.status !== "running")) return;
+    setCancelling(true);
+    try {
+      setReviewProgress(await contractsApi.cancelReviewRun(reviewId));
+    } catch (error) {
+      toast.error("Chưa dừng được rà soát", { description: reviewErrorMessage(error) });
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   async function runReview(contractId: string, focus = "", resumeOnly = false) {
     setSelectedContractId(contractId);
     setRetryKind("run");
@@ -105,6 +139,7 @@ export function useReviewWorkflow({ access, reviewPath }: { access: Access; revi
       if (isReviewCancelled(error)) return;
       setPendingReviewId(contractId);
       setPendingReviewFocus(focus);
+      if (notifyFailedRun(error)) return;
       const blocked = reviewBlockReason(error);
       setReviewError(blocked ? reviewBlockedMessage(blocked) : "Hợp đồng đã tải lên thành công. Chưa hoàn tất phân tích; bạn không cần tải lại tài liệu.");
       toast.error(blocked ? "Chưa bắt đầu rà soát" : "Đã tải lên, nhưng AI chưa hoàn tất", { description: reviewErrorMessage(error) });
@@ -137,6 +172,7 @@ export function useReviewWorkflow({ access, reviewPath }: { access: Access; revi
     } catch (error) {
       if (isReviewCancelled(error)) return false;
       setPendingReviewId(contractId);
+      if (notifyFailedRun(error)) return true;
       const blocked = kind === "run" ? reviewBlockReason(error) : null;
       setReviewError(blocked ? reviewBlockedMessage(blocked) : kind === "load" ? "Chưa tải được kết quả đã lưu. Hãy thử tải lại kết quả hoặc quay về danh sách." : "Chưa hoàn tất phân tích hợp đồng. Tài liệu vẫn được giữ trong tổ chức.");
       toast.error(blocked ? "Chưa bắt đầu rà soát" : "Chưa thể rà soát hợp đồng", { description: reviewErrorMessage(error) });
@@ -156,11 +192,12 @@ export function useReviewWorkflow({ access, reviewPath }: { access: Access; revi
       } else await runReview(pendingReviewId, pendingReviewFocus);
     } catch (error) {
       if (isReviewCancelled(error)) return;
+      if (notifyFailedRun(error)) return;
       const blocked = retryKind === "run" ? reviewBlockReason(error) : null;
       setReviewError(blocked ? reviewBlockedMessage(blocked) : retryKind === "load" ? "Chưa tải được kết quả. Bạn có thể thử lại hoặc quay về danh sách." : "Phân tích chưa hoàn tất. Tài liệu vẫn được giữ; bạn có thể thử lại sau.");
       toast.error(blocked ? "Chưa bắt đầu rà soát" : "AI chưa thể hoàn tất rà soát", { description: reviewErrorMessage(error) });
     }
   }
 
-  return { file, title, setTitle, uploadedContract, setUploadedContract, reviewResult, reviewProgress, reviewResultRef, reviewTimelineRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, runReview, reviewUploadedContract, reviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing: reviewContractMutation.isPending, loadingResult: resultQuery.isLoadingResult, reconnecting: reviewContractMutation.reconnecting };
+  return { file, title, setTitle, uploadedContract, setUploadedContract, cancelReview, cancelling, reviewResult, reviewProgress, reviewResultRef, reviewTimelineRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, runReview, reviewUploadedContract, reviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing: reviewContractMutation.isPending, loadingResult: resultQuery.isLoadingResult, reconnecting: reviewContractMutation.reconnecting };
 }

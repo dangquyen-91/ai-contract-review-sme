@@ -34,7 +34,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
   const returnScroll = useRef<number | null>(null);
   const openedReviewRequest = useRef<string | null>(null);
   const { data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel } = useDashboardWorkspace();
-  const { file, title, setTitle, uploadedContract, setUploadedContract, reviewResult, reviewProgress, reviewResultRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, reviewUploadedContract, reviewExisting: performReviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing, loadingResult, reconnecting } = useDashboardReviewWorkflow();
+  const { file, title, setTitle, uploadedContract, setUploadedContract, cancelReview, cancelling, reviewResult, reviewProgress, reviewResultRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, reviewUploadedContract, reviewExisting: performReviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing, loadingResult, reconnecting } = useDashboardReviewWorkflow();
   const openReview = useEffectEvent(performReviewExisting);
   const loadContract = useLoadContract();
 
@@ -122,7 +122,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
     selectTab("upload");
     void performReviewExisting(contract, rerun);
   }
-  return { activeTab, searchParams, contractFilter, data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel, selectTab, backToWork, skipUploadedReview, clearUploadedContract, reviewExisting, file, title, setTitle, uploadedContract, reviewResult, reviewProgress, reviewResultRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, reviewUploadedContract, retryReview, workflowComplete, reviewing, loadingResult, reconnecting };
+  return { activeTab, searchParams, contractFilter, data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel, selectTab, backToWork, skipUploadedReview, clearUploadedContract, reviewExisting, cancelReview, cancelling, file, title, setTitle, uploadedContract, reviewResult, reviewProgress, reviewResultRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, reviewUploadedContract, retryReview, workflowComplete, reviewing, loadingResult, reconnecting };
 }
 
 export type OrganizationWorkflow = ReturnType<typeof useOrganizationWorkflow>;
