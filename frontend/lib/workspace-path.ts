@@ -1,3 +1,4 @@
+import { routes } from "@/config/routes";
 import type { AuthUser } from "@/types/auth";
 
 export function needsOnboarding(user: AuthUser) {
@@ -8,12 +9,7 @@ export function needsOnboarding(user: AuthUser) {
 
 export function workspacePath(user: AuthUser | null) {
   if (!user) return "/dang-nhap";
-  if (user.role === "administrator") return "/dashboard/admin";
-  if (user.role === "staff") return "/dashboard/staff";
-  if (user.role === "expert") return "/dashboard/expert";
-  if (user.role === "manager") return "/dashboard/manager";
+  if (["administrator", "manager", "staff", "expert"].includes(user.role)) return routes.home(user.role);
   if (needsOnboarding(user)) return "/chon-to-chuc";
-  return ["owner", "manager"].includes(user.role)
-    ? "/dashboard/owner"
-    : "/dashboard/user";
+  return user.role === "user" ? routes.reviewWorkspace : routes.dashboard;
 }

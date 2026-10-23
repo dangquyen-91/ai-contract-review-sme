@@ -1,9 +1,11 @@
+import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 import { isSameOriginRequest } from "@/lib/request-origin";
 
 export async function proxyPayment(request: NextRequest, orgId: string, orderCode?: string, action?: "sync" | "cancel") {
-  const token = request.cookies.get("lawscan_access")?.value;
-  if (!token) return NextResponse.json({ success: false, error: { message: "Vui lòng đăng nhập để quản lý thanh toán." } }, { status: 401 });
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const token = session.accessToken;
   if (!/^[a-f\d]{24}$/i.test(orgId) || (orderCode !== undefined && (!/^[1-9]\d{0,15}$/.test(orderCode) || !Number.isSafeInteger(Number(orderCode))))) {
     return NextResponse.json({ success: false, error: { message: "Mã thanh toán không hợp lệ." } }, { status: 400 });
   }

@@ -30,7 +30,7 @@ function failedRun(error: unknown) {
   return error instanceof Error && error.name === "ReviewRunError" ? (error as Error & { review: ContractReviewRun }).review : null;
 }
 
-export function useReviewWorkflow({ access, reviewPath }: { access: Access; reviewPath?: string }) {
+export function useReviewWorkflow({ access }: { access: Access }) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [uploadedContract, setUploadedContract] = useState<{ id: string; title: string } | null>(null);
@@ -117,7 +117,7 @@ export function useReviewWorkflow({ access, reviewPath }: { access: Access; revi
     setReviewBlocked(null);
     setReviewProgress(null);
     activeReviewRequest.current = contractId;
-    window.history.replaceState(window.history.state, "", `${reviewPath ?? window.location.pathname}?${new URLSearchParams({ contract: contractId, reviewMode: "resume" })}`);
+    window.history.replaceState(window.history.state, "", `/contract/${encodeURIComponent(contractId)}?reviewMode=resume`);
     try { await reviewContractMutation.mutateAsync({ contractId, analysisFocus: focus.trim() || undefined, resumeOnly, onProgress: (review) => {
       setReviewProgress(review);
       if (review.status === "completed") setRetryKind("load");

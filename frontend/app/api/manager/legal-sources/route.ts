@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/admin-session";
+import { getApiSession } from "@/lib/auth/api-session";
 import { mutateLegalSource } from "@/lib/api/legal-source-proxy";
 
 export async function POST(request: Request) {
@@ -8,13 +8,9 @@ export async function POST(request: Request) {
 
 export async function GET() {
   try {
-    const session = await getAdminSession();
-    if (!session)
-      return NextResponse.json(
-        { success: false, error: { message: "Vui lòng đăng nhập lại." } },
-        { status: 401 },
-      );
-    if (session.role !== "manager")
+    const session = await getApiSession();
+    if (session.error) return session.error;
+    if (session.user.role !== "manager")
       return NextResponse.json(
         { success: false, error: { message: "Bạn không có quyền quản lý kho pháp lý." } },
         { status: 403 },

@@ -1,11 +1,13 @@
+import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 import { encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
 import { rememberedCookieAge, tokenMaxAge } from "@/lib/token-expiry";
 import type { AuthUser } from "@/types/auth";
 
 export async function POST(request: NextRequest) {
-  const accessToken = request.cookies.get("lawscan_access")?.value;
-  if (!accessToken) return NextResponse.json({ success: false, error: { message: "Vui lòng đăng nhập để chấp nhận lời mời." } }, { status: 401 });
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const accessToken = session.accessToken;
   try {
     const { token } = await request.json() as { token?: string };
     if (!token || !/^[a-f\d]{64}$/.test(token)) return NextResponse.json({ success: false, error: { message: "Liên kết lời mời không hợp lệ." } }, { status: 400 });

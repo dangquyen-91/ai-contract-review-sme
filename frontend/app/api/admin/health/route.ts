@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/admin-session";
+import { getApiSession } from "@/lib/auth/api-session";
 
 export async function GET() {
   try {
-    const session = await getAdminSession();
-    if (!session)
-      return NextResponse.json(
-        { success: false, error: { message: "Vui lòng đăng nhập lại." } },
-        { status: 401 },
-      );
-    if (session.role !== "administrator")
+    const session = await getApiSession();
+    if (session.error) return session.error;
+    if (session.user.role !== "administrator")
       return NextResponse.json(
         { success: false, error: { message: "Bạn không có quyền quản trị." } },
         { status: 403 },

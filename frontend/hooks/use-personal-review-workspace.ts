@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { toast } from "sonner";
 import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
@@ -12,6 +12,7 @@ import { isReviewCancelled } from "@/lib/review-session";
 export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { contractId: routeContractId } = useParams<{ contractId?: string }>();
   const workflow = useDashboardReviewWorkflow();
   const { reviewExisting, setUploadedContract } = workflow;
   const openedReviewRequest = useRef<string | null>(null);
@@ -19,7 +20,7 @@ export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) 
   const openReview = useEffectEvent(reviewExisting);
 
   useEffect(() => {
-    const contractId = searchParams.get("contract");
+    const contractId = routeContractId ?? searchParams.get("contract");
     if (!contractId) {
       openedReviewRequest.current = null;
       return;
@@ -48,11 +49,11 @@ export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) 
       cancelled = true;
       if (!initiated && openedReviewRequest.current === contractId) openedReviewRequest.current = null;
     };
-  }, [data, searchParams, workflow.activeReviewRequest, loadContract]);
+  }, [data, routeContractId, searchParams, workflow.activeReviewRequest, loadContract]);
 
   return {
     workflow,
-    onViewAll: () => router.push(`/dashboard/${data.role === "administrator" ? "admin" : data.role}/contract`),
+    onViewAll: () => router.push("/contract"),
     onDismissUpload: () => {
       setUploadedContract(null);
       toast.success("Đã tải hợp đồng lên");
