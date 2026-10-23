@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Building2, Check, Mail, Pencil, Plus, RefreshCw, Search, LockKeyhole, LockKeyholeOpen, Users, X } from "lucide-react";
+import { Building2, Check, Mail, Pencil, Plus, RefreshCw, Search, LockKeyhole, LockKeyholeOpen, Trash2, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import { getUserRoleLabel, userRoleOptions } from "@/lib/user-role";
 import { useManagedUsers, useSetManagedUserStatus } from "@/hooks/use-user-management";
 import type { ManagedUser, ManagedUserRole, UserListParams } from "@/types/user-management";
 import { UserEditor } from "./user-editor";
+import { DeleteUserDialog } from "./delete-user-dialog";
 import styles from "@/styles/user_management/user-management.module.css";
 const selectClass = "h-11 rounded-lg border border-input bg-card px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30";
 
@@ -21,7 +22,7 @@ function initials(name: string) {
   return name.trim().split(/\s+/).slice(-2).map((part) => part.charAt(0)).join("").toLocaleUpperCase("vi-VN") || "?";
 }
 
-export function UserManagement() {
+export function UserManagement({ currentUserId }: { currentUserId: string }) {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [role, setRole] = useState<ManagedUserRole | "">("");
@@ -29,6 +30,7 @@ export function UserManagement() {
   const [page, setPage] = useState(1);
   const [editor, setEditor] = useState<ManagedUser | "new" | null>(null);
   const [statusTarget, setStatusTarget] = useState<ManagedUser | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ManagedUser | null>(null);
   const list = useManagedUsers({ search, role, status, page, limit: userManagementPageSize });
   const allUsers = useManagedUsers({ search: "", role: "", status: "", page: 1, limit: userManagementPageSize });
   const statusMutation = useSetManagedUserStatus();
@@ -73,7 +75,15 @@ export function UserManagement() {
                 <TableCell><span className={`${styles.role} ${user.role === "administrator" ? styles.adminRole : ""}`}>{getUserRoleLabel(user.role)}</span></TableCell>
                 <TableCell><div className={`${styles.organization} ${!user.organization ? styles.noOrganization : ""}`}>{user.organization && <Building2 size={15} aria-hidden="true" />}<span>{user.organization?.name ?? "Chưa có tổ chức"}</span></div></TableCell>
                 <TableCell><Badge className={styles.status} variant={user.isActive ? "success" : "neutral"}><span className={user.isActive ? styles.activeDot : styles.inactiveDot} />{user.isActive ? "Hoạt động" : "Tạm khóa"}</Badge></TableCell>
-                <TableCell><div className={styles.actions}><Button size="sm" variant="ghost" aria-label={`Xem / Sửa ${user.name}`} className={styles.editButton} onClick={() => setEditor(user)}><Pencil aria-hidden="true" /><span>Xem / Sửa</span></Button><Button size="icon-sm" variant="ghost" aria-label={`${user.isActive ? "Khóa" : "Bỏ khóa"} ${user.name}`} title={`${user.isActive ? "Khóa" : "Bỏ khóa"} ${user.name}`} disabled={statusMutation.isPending} className={styles.lockButton} onClick={() => { statusMutation.reset(); setStatusTarget(user); }}>{user.isActive ? <LockKeyhole aria-hidden="true" /> : <LockKeyholeOpen aria-hidden="true" />}</Button></div></TableCell>
+                <TableCell><div className={styles.actions}>
+                  <Button size="sm" variant="ghost" aria-label={`Xem / Sửa ${user.name}`} className={styles.editButton} onClick={() => setEditor(user)}><Pencil aria-hidden="true" /><span>Xem / Sửa</span></Button>
+                  <Button size="icon-sm" variant="ghost" aria-label={`${user.isActive ? "Khóa" : "Bỏ khóa"} ${user.name}`} title={`${user.isActive ? "Khóa" : "Bỏ khóa"} ${user.name}`} disabled={statusMutation.isPending} className={styles.lockButton} onClick={() => { statusMutation.reset(); setStatusTarget(user); }}>{user.isActive ? <LockKeyhole aria-hidden="true" /> : <LockKeyholeOpen aria-hidden="true" />}</Button>
+                  <Button size="icon-sm" variant="ghost" aria-label={`Xóa tài khoản ${user.name}`}
+                    title={user.id === currentUserId ? "Bạn không thể xóa tài khoản của mình." : user.role === "owner" ? "Cần chuyển quyền sở hữu trước khi xóa tài khoản Owner." : `Xóa tài khoản ${user.name}`}
+                    disabled={user.id === currentUserId || user.role === "owner" || statusMutation.isPending}
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setDeleteTarget(user)}><Trash2 aria-hidden="true" /></Button>
+                </div></TableCell>
               </TableRow>)}</TableBody>
             </Table>
             {list.data.users.length === 0 && <div className={styles.empty}><span className={styles.emptyIcon}><Search size={24} aria-hidden="true" /></span><h3>{hasFilters ? "Không tìm thấy người dùng" : "Chưa có người dùng"}</h3><p>{hasFilters ? "Thử từ khóa khác hoặc xóa bộ lọc để xem toàn bộ danh sách." : "Thêm tài khoản đầu tiên để bắt đầu quản lý người dùng."}</p><Button size="sm" variant="outline" onClick={hasFilters ? clearFilters : () => setEditor("new")}>{hasFilters ? "Xóa bộ lọc" : "Thêm người dùng"}</Button></div>}
@@ -91,6 +101,11 @@ export function UserManagement() {
         </>}
     </div>
     {editor && <UserEditor key={editor === "new" ? "new" : editor.id} user={editor === "new" ? null : editor} close={() => setEditor(null)} saved={() => setPage(1)} />}
+    {deleteTarget && <DeleteUserDialog key={deleteTarget.id} user={deleteTarget}
+      close={() => setDeleteTarget(null)} deleted={() => {
+        setDeleteTarget(null);
+        if (list.data?.users.length === 1 && page > 1) setPage(page - 1);
+      }} />}
     <Dialog open={Boolean(statusTarget)} onOpenChange={(open) => { if (!open && !statusMutation.isPending) setStatusTarget(null); }}><DialogContent busy={statusMutation.isPending}>
       <DialogTitle>{statusTarget?.isActive ? "Khóa tài khoản?" : "Bỏ khóa tài khoản?"}</DialogTitle><DialogDescription>{statusTarget?.isActive ? <>Tài khoản {statusTarget.email} sẽ bị tạm khóa và không thể truy cập hệ thống. Tài khoản và dữ liệu hợp đồng vẫn được giữ lại.</> : <>Tài khoản {statusTarget?.email} sẽ được hoạt động trở lại và có thể truy cập hệ thống.</>}</DialogDescription>
       {statusMutation.isError && <p role="alert" className="text-sm text-destructive">{statusMutation.error.message}</p>}

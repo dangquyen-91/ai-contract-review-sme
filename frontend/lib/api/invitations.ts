@@ -1,6 +1,6 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
 import type { AuthSession } from "@/types/auth";
-import type { CreateInvitationInput, InvitationPreview, MemberSubscription, OrganizationInvitation, OrganizationMember, PageResult } from "@/types/invitations";
+import type { CreateInvitationInput, InvitationPreview, MemberSubscription, OrganizationInvitation, OrganizationMember, PageResult, ReceivedInvitation } from "@/types/invitations";
 
 type PaginatedResponse<T> = { data: T[]; meta: { page: number; total: number; totalPages?: number; limit: number } };
 
@@ -11,6 +11,15 @@ async function list<T>(url: string, page: number): Promise<PageResult<T>> {
 }
 
 export const invitationsApi = {
+  received(signal?: AbortSignal) {
+    return apiRequest<ReceivedInvitation[]>({ url: "/invitations/received", signal });
+  },
+  acceptReceived(invitationId: string) {
+    return apiRequest<AuthSession>({ url: "/invitations/accept", method: "POST", data: { invitationId } });
+  },
+  declineReceived(invitationId: string) {
+    return apiRequest<{ declined: boolean }>({ url: "/invitations/received", method: "POST", data: { invitationId } });
+  },
   members(orgId: string, page = 1) {
     return list<OrganizationMember>(`/organizations/${orgId}/members`, page);
   },

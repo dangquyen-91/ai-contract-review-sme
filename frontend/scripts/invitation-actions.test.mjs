@@ -232,6 +232,7 @@ test('member removal refreshes member lists, revoked invitations, capacity and d
     '@/lib/api/client': {},
     '@/lib/query-keys/invitations': { invitationKeys: { membersBase: id => ['org-members', id], invitationsBase: id => ['org-invitations', id], subscription: id => ['org-subscription', id] } },
     '@/lib/query-keys/dashboard': { dashboardKeys: { all: ['dashboard'] } },
+    '@/lib/session-cache': { clearSessionCache: async () => {} },
   });
   const mutation = useRemoveMemberMutation('org-1');
   await mutation.mutationFn('member-1'); await mutation.onSuccess();

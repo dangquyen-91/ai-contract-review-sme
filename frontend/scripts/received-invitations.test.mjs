@@ -18,25 +18,37 @@ function harness({ data = [], error, request = async () => ({ user: { role: 'sta
     },
     'next/navigation': { useRouter: () => ({ replace: path => calls.push(path), refresh: () => calls.push('refresh') }) },
     '@tanstack/react-query': {
-      useQueryClient: () => ({}),
+      useQueryClient: () => ({ invalidateQueries: async () => calls.push('refetch') }),
       useQuery: () => ({ data, error, refetch: async () => calls.push('refetch') }),
-      useMutation: options => ({ isPending: false, mutateAsync: options.mutationFn }),
+      useMutation: options => ({ isPending: false, mutateAsync: async input => {
+        const result = await options.mutationFn(input);
+        await options.onSuccess?.(result, input);
+        return result;
+      } }),
     },
     sonner: { toast: { success() {}, error: () => calls.push('error') } },
     '@/components/ui/button': { Button: props => jsx.jsx('button', props) },
     '@/components/ui/icon': { Icon: () => null },
-    '@/lib/api/client': { apiRequest: async input => { calls.push(input); return request(input); } },
+    '@/lib/api/client': { apiClient: {}, apiRequest: async input => { calls.push(input); return request(input); } },
     '@/lib/session-cache': { clearSessionCache: async () => calls.push('clear') },
     '@/lib/workspace-path': { workspacePath: () => '/dashboard/staff' },
   };
-  const source = ts.transpileModule(fs.readFileSync(new URL('../components/invitations/received-invitations.tsx', import.meta.url), 'utf8'), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText;
-  const exports = {};
-  vm.runInNewContext(source, { exports, Intl, Date, Error, require: name => {
-    if (!(name in deps)) throw new Error(`Unexpected dependency: ${name}`);
-    return deps[name];
-  } });
+  function load(file) {
+    const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
+    }).outputText;
+    const exports = {};
+    vm.runInNewContext(source, { exports, Intl, Date, Error, require: name => {
+      if (!(name in deps)) throw new Error(`Unexpected dependency: ${name}`);
+      return deps[name];
+    } });
+    return exports;
+  }
+  deps['@/lib/api/invitations'] = load('../lib/api/invitations.ts');
+  deps['@/lib/query-keys/invitations'] = load('../lib/query-keys/invitations.ts');
+  deps['@/lib/query-keys/dashboard'] = { dashboardKeys: { all: ['dashboard'] } };
+  deps['@/hooks/use-invitations'] = load('../hooks/use-invitations.ts');
+  const exports = load('../components/invitations/received-invitations.tsx');
   return { calls, render: () => { cursor = 0; return exports.ReceivedInvitations(); } };
 }
 function find(node, predicate) {
@@ -78,6 +90,25 @@ test('declining refreshes notifications without changing the active organization
   assert.equal(ctx.calls[0].url, '/invitations/received');
   assert.equal(ctx.calls[0].data.invitationId, data[0].id);
   assert.deepEqual(ctx.calls.slice(1), ['refetch']);
+});
+
+test('failed inbox actions preserve the session and allow retry', async () => {
+  for (const buttonIndex of [0, 1]) {
+    let fail = true;
+    const ctx = harness({ data, request: async () => {
+      if (fail) throw new Error('Invitation unavailable');
+      return { user: { role: 'staff' } };
+    } });
+    await find(ctx.render(), n => n.type === 'button')[buttonIndex].props.onClick();
+    await new Promise(setImmediate);
+    assert.deepEqual(ctx.calls.slice(1), ['error']);
+    assert.equal(find(ctx.render(), n => n.type === 'button')[buttonIndex].props.disabled, false);
+    fail = false;
+    await find(ctx.render(), n => n.type === 'button')[buttonIndex].props.onClick();
+    await new Promise(setImmediate);
+    assert.equal(ctx.calls.filter(call => typeof call === 'object').length, 2);
+    assert.deepEqual(ctx.calls.slice(3), buttonIndex === 0 ? ['clear', '/dashboard/staff', 'refresh'] : ['refetch']);
+  }
 });
 
 function proxyRoute(file, fetch, authenticated = true) {
