@@ -45,3 +45,17 @@ export function useSetManagedUserStatus() {
     },
   });
 }
+
+export function useDeleteManagedUser() {
+  const client = useQueryClient();
+  return useMutation<void, ApiClientError, string>({
+    mutationFn: userManagementApi.remove,
+    retry: false,
+    onSuccess: async (_, id) => {
+      const queryKey = userManagementKeys.detail(id);
+      await client.cancelQueries({ queryKey, exact: true });
+      client.removeQueries({ queryKey, exact: true });
+      await client.invalidateQueries({ queryKey: userManagementKeys.lists });
+    },
+  });
+}

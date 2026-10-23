@@ -104,13 +104,16 @@ test('avatar proxy enforces upload limits and forwards the file without a client
 
 test('saving profile mutations updates shared identity data and invalidates dashboard summaries', async () => {
   const calls = [];
-  const { useProfileUpdates } = load('../hooks/use-profile.ts', {
+  const { useProfileUpdates, useChangeProfilePassword } = load('../hooks/use-profile.ts', {
     '@tanstack/react-query': { useQueryClient: () => ({ setQueryData: (key, value) => calls.push({ key: [...key], value }), invalidateQueries: async options => calls.push({ invalidate: [...options.queryKey] }) }), useMutation: options => options },
-    '@/lib/api/profile': { profileApi: { update() {}, avatar() {}, removeAvatar() {} } },
+    '@/lib/api/profile': { profileApi: { update() {}, avatar() {}, removeAvatar() {}, changePassword() {} } },
     '@/lib/query-keys/dashboard': { dashboardKeys: { all: ['dashboard'] } },
+    '@/lib/session-cache': { clearSessionCache: async () => calls.push({ clearSessionCache: true }) },
   });
   await useProfileUpdates().update.onSuccess(profile);
   assert.equal(calls[0].value.user.name, profile.user.name);
   assert.deepEqual(calls[0].key, ['account-profile']);
   assert.deepEqual(calls[1].invalidate, ['dashboard']);
+  await useChangeProfilePassword().onSuccess();
+  assert.deepEqual(calls[2], { clearSessionCache: true });
 });

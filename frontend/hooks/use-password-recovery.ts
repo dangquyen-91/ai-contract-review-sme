@@ -4,18 +4,32 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { authApi } from "@/lib/api/auth";
 import { clearSessionCache } from "@/lib/session-cache";
+import { authMutationKeys } from "@/lib/query-keys/auth";
 
 export function usePasswordRecovery() {
   const client = useQueryClient();
   const lock = useRef(false);
-  const [challenge, setChallenge] = useState<{ challengeId: string; email: string; expiresAt: string } | null>(null);
+  const [challenge, setChallenge] = useState<{
+    challengeId: string;
+    email: string;
+    expiresAt: string;
+  } | null>(null);
   const [retryAt, setRetryAt] = useState(0);
   const [remaining, setRemaining] = useState(0);
   const [done, setDone] = useState(false);
-  const request = useMutation({ mutationFn: authApi.forgotPassword, retry: false });
-  const reset = useMutation({ mutationFn: authApi.resetPassword, retry: false });
+  const request = useMutation({
+    mutationKey: authMutationKeys.forgotPassword,
+    mutationFn: authApi.forgotPassword,
+    retry: false,
+  });
+  const reset = useMutation({
+    mutationKey: authMutationKeys.resetPassword,
+    mutationFn: authApi.resetPassword,
+    retry: false,
+  });
   useEffect(() => {
-    const update = () => setRemaining(Math.max(0, Math.ceil((retryAt - Date.now()) / 1000)));
+    const update = () =>
+      setRemaining(Math.max(0, Math.ceil((retryAt - Date.now()) / 1000)));
     const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
   }, [retryAt]);
@@ -25,8 +39,13 @@ export function usePasswordRecovery() {
     lock.current = true;
     reset.reset();
     try {
-      const result = await request.mutateAsync(email.trim().toLowerCase());
-      setChallenge({ challengeId: result.challengeId, email: email.trim().toLowerCase(), expiresAt: result.expiresAt });
+      const normalizedEmail = email.trim().toLowerCase();
+      const result = await request.mutateAsync(normalizedEmail);
+      setChallenge({
+        challengeId: result.challengeId,
+        email: normalizedEmail,
+        expiresAt: result.expiresAt,
+      });
       setRemaining(result.resendAfterSeconds);
       setRetryAt(Date.now() + result.resendAfterSeconds * 1000);
       return true;
@@ -37,7 +56,11 @@ export function usePasswordRecovery() {
     if (!challenge || busy || lock.current || done) return false;
     lock.current = true;
     try {
-      await reset.mutateAsync({ challengeId: challenge.challengeId, ...values });
+      await reset.mutateAsync({
+        challengeId: challenge.challengeId,
+        code: values.code,
+        password: values.password,
+      });
       setDone(true);
       setChallenge(null);
       await clearSessionCache(client);
@@ -51,5 +74,14 @@ export function usePasswordRecovery() {
     request.reset(); reset.reset();
     // Keep the server's resend deadline even when the user returns to email entry.
   }
-  return { challenge, remaining, done, busy, error: request.error?.message || reset.error?.message, send, submit, changeEmail };
+  return {
+    challenge,
+    remaining,
+    done,
+    busy,
+    error: request.error?.message || reset.error?.message,
+    send,
+    submit,
+    changeEmail,
+  };
 }

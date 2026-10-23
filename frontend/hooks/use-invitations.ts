@@ -7,6 +7,34 @@ import type { CreateInvitationInput } from "@/types/invitations";
 import { invitationKeys } from "@/lib/query-keys/invitations";
 import { isApiClientError } from "@/lib/api/client";
 import { dashboardKeys } from "@/lib/query-keys/dashboard";
+import { clearSessionCache } from "@/lib/session-cache";
+
+export function useReceivedInvitations() {
+  return useQuery({
+    queryKey: invitationKeys.received,
+    queryFn: ({ signal }) => invitationsApi.received(signal),
+    retry: false,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useAcceptReceivedInvitationMutation() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: invitationsApi.acceptReceived,
+    retry: false,
+    onSuccess: () => clearSessionCache(client),
+  });
+}
+
+export function useDeclineReceivedInvitationMutation() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: invitationsApi.declineReceived,
+    retry: false,
+    onSuccess: () => client.invalidateQueries({ queryKey: invitationKeys.received }),
+  });
+}
 
 
 export function useOrganizationMembers(orgId: string, page: number) {
