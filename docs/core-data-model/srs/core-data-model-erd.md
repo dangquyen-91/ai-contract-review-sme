@@ -1,7 +1,7 @@
 ---
 type: srs-erd
 feature: core-data-model
-updated: 2026-10-20
+updated: 2026-10-23
 ---
 
 # core-data-model — Entity Relationship Diagram
@@ -75,403 +75,409 @@ erDiagram
     REVIEW_PACKAGE |o--o{ USAGE_RUN : ""
 
     ORGANIZATION {
-        string id PK
-        string name
-        string tax_code
-        string address
-        boolean is_personal
+        ObjectId _id PK
+        String name
+        String taxCode
+        String address
+        Boolean isPersonal
+        String industry
     }
 
     USER {
-        string id PK
-        string org_id FK
-        string role_id FK
-        string name
-        string email UK
-        boolean is_active
-        boolean has_completed_onboarding
-        int permissions_version
-        datetime email_verified_at
-        string google_subject UK
+        ObjectId _id PK
+        ObjectId orgId FK
+        ObjectId roleId FK
+        String name
+        String email UK
+        Boolean isActive
+        Date deletedAt
+        Boolean hasCompletedOnboarding
+        Number permissionsVersion
+        Date emailVerifiedAt
+        String googleSubject UK
     }
 
     ROLE {
-        string id PK
-        string code UK
-        string name
-        string description
-        boolean is_system_role
+        ObjectId _id PK
+        String code UK
+        String name
+        String description
+        Boolean isSystemRole
     }
 
     ORG_INVITATION {
-        string id PK
-        string org_id FK
-        string email
-        string role
-        string invited_by FK
-        string status
-        datetime expires_at
-        string accepted_by FK
-        datetime accepted_at
+        ObjectId _id PK
+        ObjectId orgId FK
+        String email
+        String role
+        ObjectId invitedBy FK
+        String status
+        Date expiresAt
+        ObjectId acceptedBy FK
+        Date acceptedAt
     }
 
     EMAIL_VERIFY {
-        string id PK
-        string email UK
-        string name
-        string user_id FK
-        boolean remember
-        datetime expires_at
-        datetime last_sent_at
-        datetime window_started_at
-        int sent_count
-        int attempts
-        boolean ready
-        boolean consumed
-        datetime purge_at
+        ObjectId _id PK
+        String email UK
+        String name
+        ObjectId userId FK
+        Boolean remember
+        Date expiresAt
+        Date lastSentAt
+        Date windowStartedAt
+        Number sentCount
+        Number attempts
+        Boolean ready
+        Boolean consumed
+        Date purgeAt
     }
 
     PLAN {
-        string id PK
-        string code UK
-        string name
-        string audience
-        decimal price
-        string currency
-        int analysis_limit
-        int chat_limit
-        int member_limit
+        ObjectId _id PK
+        String code UK
+        String name
+        String audience
+        Number price
+        String currency
+        Number analysisLimit
+        Number chatLimit
+        Number memberLimit
     }
 
     ORG_SUB {
-        string id PK
-        string org_id FK
-        string scheduled_plan_code FK
-        datetime scheduled_effective_at
+        ObjectId _id PK
+        ObjectId orgId FK, UK
+        ScheduledDowngrade scheduledDowngrade FK "embedded: planCode, effectiveAt"
     }
 
     SUB_PERIOD {
-        string id PK
-        string org_id FK
-        string key UK
-        string plan_code FK
-        datetime starts_at
-        datetime ends_at
-        datetime cancelled_at
-        string payment_reference UK
-        string payment_action
-        int analysis_used
-        int analysis_reserved
-        int chat_used
-        int chat_reserved
+        ObjectId _id PK
+        ObjectId orgId FK
+        String key UK
+        PlanSnapshot plan FK "embedded copy of PLAN"
+        Date startsAt
+        Date endsAt
+        Date cancelledAt
+        String paymentReference UK
+        String paymentAction
+        Number analysisUsed
+        Number analysisReserved
+        Number chatUsed
+        Number chatReserved
     }
 
     USAGE_RUN {
-        string id PK
-        string org_id FK
-        string user_id FK
-        string contract_id FK
-        string period_id FK
-        string package_id FK
-        string kind
-        string idempotency_key
-        string fingerprint
-        string status
-        datetime lease_expires_at
-        string error
+        ObjectId _id PK
+        ObjectId orgId FK
+        ObjectId userId FK
+        ObjectId contractId FK
+        ObjectId periodId FK
+        ObjectId packageId FK "planned"
+        String kind
+        String idempotencyKey
+        String fingerprint
+        String status
+        Date leaseExpiresAt
+        String error
     }
 
     PAYMENT {
-        string id PK
-        int order_code UK
-        string org_id FK
-        string created_by FK
-        string idempotency_key
-        string plan_code FK
-        string action
-        decimal amount
-        string currency
-        string status
-        boolean is_open
-        string payment_link_id
-        string checkout_url
-        string qr_code
-        datetime expires_at
-        datetime paid_at
-        datetime fulfilled_at
-        string subscription_period_id FK
-        string fulfillment_error
-        string provider_error
+        ObjectId _id PK
+        Number orderCode UK
+        ObjectId orgId FK
+        ObjectId createdBy FK
+        String idempotencyKey
+        String planCode FK
+        String action
+        Number amount
+        String currency
+        String status
+        Boolean isOpen
+        String paymentLinkId
+        String checkoutUrl
+        String qrCode
+        Date expiresAt
+        Date paidAt
+        Date fulfilledAt
+        ObjectId subscriptionPeriodId FK
+        String fulfillmentError
+        String providerError
     }
 
     CONTRACT {
-        string id PK
-        string org_id FK
-        string uploaded_by FK
-        string title
-        string type FK
-        string our_party
-        string industry FK
-        string status
+        ObjectId _id PK
+        ObjectId orgId FK
+        ObjectId uploadedBy FK
+        String title
+        String type FK
+        String ourParty
+        String industry FK
+        String status
+        Classification classification "embedded"
     }
 
     CONTRACT_VER {
-        string id PK
-        string contract_id FK
-        int version_number
-        string created_by FK
-        string file_name
-        string mime_type
-        string file_format
-        string file_key
-        string extracted_text
-        string extraction_status
-        string extraction_error
-        datetime extraction_started_at
-        string extraction_progress
-        string extraction_quality
-        string redaction_summary
-        string segmentation_status
-        string segmentation_error
-        datetime segmentation_started_at
-        string risk_detection_status
-        string risk_detection_error
-        datetime risk_detection_started_at
-        string summary_status
-        string summary_error
-        datetime summary_started_at
-        string overall_risk_level
-        string overall_assessment
-        string summary_points
-        string key_terms
-        datetime key_terms_extracted_at
-        string analysis_focus
+        ObjectId _id PK
+        ObjectId contractId FK
+        Number versionNumber
+        ObjectId createdBy FK
+        String fileName
+        String mimeType
+        String fileFormat
+        String fileKey
+        String fileResourceType
+        String fileDeliveryType
+        String extractedText
+        String extractionStatus
+        String extractionError
+        Date extractionStartedAt
+        ExtractionProgress extractionProgress "embedded"
+        ExtractionQuality extractionQuality "embedded"
+        RedactionSummary redactionSummary "embedded"
+        String segmentationStatus
+        String segmentationError
+        Date segmentationStartedAt
+        String riskDetectionStatus
+        String riskDetectionError
+        Date riskDetectionStartedAt
+        String summaryStatus
+        String summaryError
+        Date summaryStartedAt
+        String overallRiskLevel
+        String[] overallAssessment
+        String[] summaryPoints
+        KeyTerm[] keyTerms "embedded"
+        Date keyTermsExtractedAt
+        String analysisFocus
     }
 
     CLAUSE {
-        string id PK
-        string contract_version_id FK
-        string org_id FK
-        int index
-        string title
-        string text
-        int start_offset
-        int end_offset
-        string clause_type_id FK
-        string summary
+        ObjectId _id PK
+        ObjectId contractVersionId FK
+        ObjectId orgId FK
+        Number index
+        String title
+        String text
+        Number startOffset
+        Number endOffset
+        ObjectId clauseTypeId FK
+        String summary
     }
 
     CLAUSE_TYPE {
-        string id PK
-        string code UK
-        string name
-        string description
+        ObjectId _id PK
+        String code UK
+        String name
+        String description
     }
 
     CT_PROFILE {
-        string id PK
-        string code UK
-        string aliases
-        string name
-        string prompt_label
-        string segment
-        string parties
-        string governing_laws
-        string legal_source_codes FK
-        string clause_categories FK
-        string mandatory_clauses FK
-        string industry_rules FK
-        string redaction_policy
+        ObjectId _id PK
+        String code UK
+        String[] aliases
+        String name
+        String promptLabel
+        String segment
+        Party[] parties "embedded"
+        String[] governingLaws
+        String[] legalSourceCodes FK
+        String[] clauseCategories FK
+        String[] mandatoryClauses FK
+        IndustryRule[] industryRules FK "embedded"
+        String[] redactionPolicy
     }
 
     INDUSTRY {
-        string id PK
-        string code UK
-        string name
+        ObjectId _id PK
+        String code UK
+        String name
     }
 
     RISK_FINDING {
-        string id PK
-        string contract_version_id FK
-        string org_id FK
-        string clause_id FK
-        string expected_clause_type_id FK
-        string finding_type
-        string severity
-        string title
-        string problem
-        string consequences
-        string legal_basis
-        string recommendations
-        string proposed_revision
-        string status
-        string detected_by
-        string rule_code
-        int rule_version
+        ObjectId _id PK
+        ObjectId contractVersionId FK
+        ObjectId orgId FK
+        ObjectId clauseId FK
+        ObjectId expectedClauseTypeId FK
+        String findingType
+        String severity
+        String title
+        String[] problem
+        String[] consequences
+        LegalBasis[] legalBasis "embedded"
+        String[] recommendations
+        ProposedRevision proposedRevision "embedded"
+        String status
+        String detectedBy
+        String ruleCode
+        Number ruleVersion
     }
 
     REVIEW {
-        string id PK
-        string contract_id FK
-        string version_id FK
-        string org_id FK
-        string requested_by FK
-        string idempotency_key
-        string usage_run_id FK
-        string status
-        boolean active_lock
-        string current_stage
-        string stage_detail
-        string stages
-        string analysis_focus
-        string error
-        datetime started_at
-        datetime finished_at
-        string result
+        ObjectId _id PK
+        ObjectId contractId FK
+        ObjectId versionId FK
+        ObjectId orgId FK
+        ObjectId requestedBy FK
+        String idempotencyKey
+        ObjectId usageRunId FK
+        String status
+        Boolean activeLock
+        String currentStage
+        String stageDetail
+        StageStatus stages "embedded"
+        String analysisFocus
+        String error
+        String errorCode
+        Boolean cancelRequested
+        Date startedAt
+        Date finishedAt
+        ReviewResult result "embedded"
     }
 
     CHAT_MESSAGE {
-        string id PK
-        string contract_version_id FK
-        string org_id FK
-        string user_id FK
-        string role
-        string content
+        ObjectId _id PK
+        ObjectId contractVersionId FK
+        ObjectId orgId FK
+        ObjectId userId FK
+        String role
+        String content
     }
 
     LEGAL_SOURCE {
-        string id PK
-        string code UK
-        string title
-        string document_number
-        string source_type
-        string status
-        string issuing_body
-        string citation_label
-        date issued_date
-        date effective_date
-        date expiry_date
-        string coverage
-        string ingestion
-        string parts
+        ObjectId _id PK
+        String code UK
+        String title
+        String documentNumber
+        String sourceType
+        String status
+        String issuingBody
+        String citationLabel
+        Date issuedDate
+        Date effectiveDate
+        Date expiryDate
+        LegalCoverage coverage "embedded"
+        LegalIngestion ingestion "embedded"
+        LegalSourcePart[] parts "embedded"
     }
 
     LEGAL_CHUNK {
-        string id PK
-        string legal_source_id FK
-        int order
-        string chunk_text
-        string article_ref
-        int article_number
-        string article_key
-        string article_title
-        int clause_from
-        int clause_to
-        string hierarchy
+        ObjectId _id PK
+        ObjectId legalSourceId FK
+        Number order
+        String chunkText
+        String articleRef
+        Number articleNumber
+        String articleKey
+        String articleTitle
+        Number clauseFrom
+        Number clauseTo
+        LegalHeading[] hierarchy "embedded"
     }
 
     RISK_CITATION {
-        string id PK
-        string risk_finding_id FK
-        string legal_knowledge_chunk_id FK
-        decimal relevance_score
+        ObjectId _id PK
+        ObjectId riskFindingId FK
+        ObjectId legalKnowledgeChunkId FK
+        Number relevanceScore
     }
 
     EXPERT_REVIEW {
-        string id PK
-        string review_id FK
-        string org_id FK
-        string reviewer_id FK
-        string status
-        string decision_note
-        datetime assigned_at
-        datetime started_at
-        datetime completed_at
+        ObjectId _id PK "planned"
+        ObjectId reviewId FK
+        ObjectId orgId FK
+        ObjectId reviewerId FK
+        String status
+        String decisionNote
+        Date assignedAt
+        Date startedAt
+        Date completedAt
     }
 
     EXPERT_ACTION {
-        string id PK
-        string expert_review_id FK
-        string risk_finding_id FK
-        string action
-        string reason
-        string before
-        string after
+        ObjectId _id PK "planned"
+        ObjectId expertReviewId FK
+        ObjectId riskFindingId FK
+        String action
+        String reason
+        Mixed before
+        Mixed after
     }
 
     COMMENT {
-        string id PK
-        string expert_review_id FK
-        string author_id FK
-        string clause_id FK
-        string risk_finding_id FK
-        string content
+        ObjectId _id PK "planned"
+        ObjectId expertReviewId FK
+        ObjectId authorId FK
+        ObjectId clauseId FK
+        ObjectId riskFindingId FK
+        String content
     }
 
     REPORT {
-        string id PK
-        string org_id FK
-        string review_id FK
-        string format
-        boolean masked
-        boolean expert_verified
-        string file_key
-        string created_by FK
+        ObjectId _id PK "planned"
+        ObjectId orgId FK
+        ObjectId reviewId FK
+        String format
+        Boolean masked
+        Boolean expertVerified
+        String fileKey
+        ObjectId createdBy FK
     }
 
     REVIEW_PACKAGE {
-        string id PK
-        string org_id FK
-        string contract_id FK
-        string payment_id FK
-        string source
-        int reviews_granted
-        int reviews_used
-        string status
+        ObjectId _id PK "planned"
+        ObjectId orgId FK
+        ObjectId contractId FK
+        ObjectId paymentId FK
+        String source
+        Number reviewsGranted
+        Number reviewsUsed
+        String status
     }
 
     STD_TEMPLATE {
-        string id PK
-        string contract_type FK
-        string name
-        int version
-        string file_key
-        string created_by FK
-        string status
-        datetime published_at
+        ObjectId _id PK "planned"
+        String contractType FK
+        String name
+        Number version
+        String fileKey
+        ObjectId createdBy FK
+        String status
+        Date publishedAt
     }
 
     STD_CLAUSE {
-        string id PK
-        string template_id FK
-        int order
-        string clause_type_id FK
-        string title
-        string text
+        ObjectId _id PK "planned"
+        ObjectId templateId FK
+        Number order
+        ObjectId clauseTypeId FK
+        String title
+        String text
     }
 
     AUDIT_LOG {
-        string id PK
-        string org_id FK
-        string user_id FK
-        string action
-        string target_type
-        string target_id
-        string result
-        string ip_address
-        string user_agent
-        string metadata
+        ObjectId _id PK "planned"
+        ObjectId orgId FK
+        ObjectId userId FK
+        String action
+        String targetType
+        ObjectId targetId
+        String result
+        String ipAddress
+        String userAgent
+        Mixed metadata
     }
 
     NOTIFICATION {
-        string id PK
-        string user_id FK
-        string org_id FK
-        string type
-        string title
-        string body
-        string link
-        datetime read_at
+        ObjectId _id PK "planned"
+        ObjectId userId FK
+        ObjectId orgId FK
+        String type
+        String title
+        String body
+        String link
+        Date readAt
     }
 ```
 
@@ -513,18 +519,19 @@ erDiagram
 
 ## Notes & Assumptions
 
-- **Every entity has created/updated timestamps** — not repeated in each entity.
-- **Links matched by code, not by foreign key:** `CONTRACT.type` matches `CT_PROFILE.code` or one of its aliases; `CONTRACT.industry` matches `INDUSTRY.code`; `CT_PROFILE` points to `LEGAL_SOURCE`, `CLAUSE_TYPE` and `INDUSTRY` via code lists; `PAYMENT.plan_code` and `ORG_SUB.scheduled_plan_code` match `PLAN.code`. Changing a code in a catalog entity breaks these links.
-- **SUB_PERIOD snapshots the full plan details** (price, limits) at grant time — changing price/limits on PLAN does not affect running periods.
-- **N:N relationships drawn without a junction table:** `CT_PROFILE` with `LEGAL_SOURCE` / `CLAUSE_TYPE` / `INDUSTRY` is stored as code lists inside `CT_PROFILE`; `RISK_FINDING` with `LEGAL_CHUNK` is stored as a list in `RISK_FINDING.legal_basis`. Only `RISK_CITATION` is a real link entity, with an extra relevance score.
-- **Attributes marked "group" / "list"** are embedded data in the parent entity, not separate entities: extraction/OCR results, redaction summary, key terms, proposed revision, review result snapshot, legal document coverage and ingestion progress, parent headings of a legal chunk.
-- **`CONTRACT_VER.key_terms` points to `CLAUSE`** of the same version — not drawn as a separate line to keep the diagram readable.
-- **`org_id` is repeated on CLAUSE, RISK_FINDING, REVIEW, CHAT_MESSAGE and USAGE_RUN** to scope data per organization; the diagram only draws the main ownership relationships.
-- **Two kinds of risk finding:** `clause_risk` is tied to one `CLAUSE`; `missing_clause` has no `CLAUSE` and points to the missing clause type (`expected_clause_type_id`).
-- **At most 1 running review per contract** (`REVIEW.active_lock`) and at most 1 reserved analysis credit per contract; **at most 1 open payment order per organization** (`PAYMENT.is_open`).
+- **Types follow the mongoose models:** every entity is a MongoDB collection keyed by `ObjectId _id`; field names are the camelCase names used in code; `Number` covers both integers and decimals (VND amounts are whole numbers); `Mixed` is free-form data. A type marked `"embedded"` (e.g. `LegalBasis[]`, `ReviewResult`) is a sub-document stored inside the parent, not a separate collection.
+- **Every entity has `createdAt` / `updatedAt` timestamps** — not repeated in each entity.
+- **Links matched by code, not by `ObjectId`:** `CONTRACT.type` matches `CT_PROFILE.code` or one of its aliases; `CONTRACT.industry` and `ORGANIZATION.industry` match `INDUSTRY.code`; `CT_PROFILE` points to `LEGAL_SOURCE`, `CLAUSE_TYPE` and `INDUSTRY` via code lists; `PAYMENT.planCode`, `ORG_SUB.scheduledDowngrade.planCode` and `SUB_PERIOD.plan.code` match `PLAN.code`; `STD_TEMPLATE.contractType` matches `CT_PROFILE.code`. These fields are marked `FK` but hold a `String` code. Changing a code in a catalog entity breaks these links.
+- **SUB_PERIOD snapshots the full plan details** (`plan`: code, price, limits) at grant time — changing price/limits on PLAN does not affect running periods.
+- **N:N relationships drawn without a junction table:** `CT_PROFILE` with `LEGAL_SOURCE` / `CLAUSE_TYPE` / `INDUSTRY` is stored as code lists inside `CT_PROFILE`; `RISK_FINDING` with `LEGAL_CHUNK` is stored as `legalKnowledgeChunkIds` inside each `RISK_FINDING.legalBasis` item. Only `RISK_CITATION` is a real link entity, with an extra relevance score.
+- **Embedded sub-documents:** extraction progress/quality, redaction summary and key terms on `CONTRACT_VER`; automatic classification on `CONTRACT`; legal basis and proposed revision on `RISK_FINDING`; stage statuses and result snapshot on `REVIEW`; coverage, ingestion progress and uploaded parts on `LEGAL_SOURCE`; parent headings on `LEGAL_CHUNK`; parties and industry rules on `CT_PROFILE`; scheduled downgrade on `ORG_SUB`; plan snapshot on `SUB_PERIOD`.
+- **`CONTRACT_VER.keyTerms[].clauseId` points to `CLAUSE`** of the same version — not drawn as a separate line to keep the diagram readable.
+- **`orgId` is repeated on CLAUSE, RISK_FINDING, REVIEW, CHAT_MESSAGE and USAGE_RUN** to scope data per organization; the diagram only draws the main ownership relationships.
+- **Two kinds of risk finding:** `clause_risk` is tied to one `CLAUSE`; `missing_clause` has no `CLAUSE` and points to the missing clause type (`expectedClauseTypeId`).
+- **At most 1 running review per contract** (`REVIEW.activeLock`) and at most 1 reserved analysis credit per contract; **at most 1 open payment order per organization** (`PAYMENT.isOpen`); **1 subscription record per organization** (`ORG_SUB.orgId` is unique).
 - **Each REVIEW holds exactly 1 USAGE_RUN of kind analysis**; chats also go through USAGE_RUN (kind chat), but CHAT_MESSAGE does not store a link to the charged run.
-- **Not included in the ERD:** hashed passwords/OTPs/tokens, semantic search data of legal chunks, raw results stored on USAGE_RUN.
-- **Planned entities** (REVIEW_PACKAGE, EXPERT_REVIEW, EXPERT_ACTION, COMMENT, REPORT, STD_TEMPLATE, STD_CLAUSE, AUDIT_LOG, NOTIFICATION; marked `planned` on their `id`) are not in code yet — their attributes are a proposed design covering audit log, report export, standard template comparison and lawyer verification from the project scope. `USAGE_RUN.package_id` and the `review_package` value of `PAYMENT.action` are planned additions to existing entities.
-- **STD_TEMPLATE overlaps with `LEGAL_SOURCE.source_type = standard_template`:** STD_TEMPLATE is meant for clause-by-clause comparison against a contract; LEGAL_SOURCE stays the source for legal-basis lookup. Decide whether standard templates live in one place or both.
-- **Expert-added findings:** when a lawyer adds a missed risk (`EXPERT_ACTION.action = add_missing`), a new RISK_FINDING is created, so `RISK_FINDING.detected_by` will need an `expert` value.
+- **Not included in the ERD:** hashed passwords/OTPs/tokens (`passwordHash`, `otpHash`, `challengeHash`, `invitationHash`, `tokenHash`), the `embedding` vector of legal chunks, and the raw `result` stored on USAGE_RUN.
+- **Planned entities** (REVIEW_PACKAGE, EXPERT_REVIEW, EXPERT_ACTION, COMMENT, REPORT, STD_TEMPLATE, STD_CLAUSE, AUDIT_LOG, NOTIFICATION; marked `"planned"` on their `_id`) are not in code yet — their attributes are a proposed design covering audit log, report export, standard template comparison and lawyer verification from the project scope. `USAGE_RUN.packageId` and the `review_package` value of `PAYMENT.action` are planned additions to existing entities.
+- **STD_TEMPLATE overlaps with `LEGAL_SOURCE.sourceType = standard_template`:** STD_TEMPLATE is meant for clause-by-clause comparison against a contract; LEGAL_SOURCE stays the source for legal-basis lookup. Decide whether standard templates live in one place or both.
+- **Expert-added findings:** when a lawyer adds a missed risk (`EXPERT_ACTION.action = add_missing`), a new RISK_FINDING is created, so `RISK_FINDING.detectedBy` will need an `expert` value.
 - **Review package billing:** each contract gets an included package of 5 reviews; from the 6th review the user buys another package (PAYMENT with `review_package` action). A review charges the package through USAGE_RUN.
