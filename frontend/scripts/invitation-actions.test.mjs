@@ -130,7 +130,7 @@ test('Account switching submits logout once and remains locked until navigation'
 
 test('Invitation form follows mutation pending and duplicate submissions are prevented', async () => {
   const request = deferred(); let count = 0;
-  const create = { isPending: false, mutateAsync: () => { count++; return request.promise; } };
+  const create = { isPending: false, mutateAsync: (input) => { assert.equal(input.role, 'staff'); count++; return request.promise; } };
   const ctx = harness('../components/members/members-workspace.tsx', { create, revoke: {} });
   const props = { orgId: 'org-1', organizationName: 'Test' };
   find(ctx.render(props), (node) => node.type === 'button')[0].props.onClick();

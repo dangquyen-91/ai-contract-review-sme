@@ -1608,7 +1608,7 @@ paths:
               required: [email, role]
               properties:
                 email: { type: string, format: email }
-                role: { type: string, enum: [manager, staff, expert] }
+                role: { type: string, enum: [staff] }
       responses:
         '201': { description: Invitation metadata after Brevo API acceptance (not proof of inbox delivery); no token or tokenHash }
         '400': { description: Invalid email or role }

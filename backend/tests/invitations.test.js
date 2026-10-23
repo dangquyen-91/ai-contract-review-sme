@@ -115,7 +115,7 @@ afterAll(async () => {
 });
 
 test('owner sends normalized email; registration, preview, acceptance and member listing work', async () => {
-  const invitation = await invite('NEW-MEMBER@EXAMPLE.COM', 'expert');
+  const invitation = await invite('NEW-MEMBER@EXAMPLE.COM', 'staff');
   expect(sendInvitationEmail.mock.calls.at(-1)[0].email).toBe('new-member@example.com');
   expect(JSON.stringify(invitation.data)).not.toContain(invitation.token);
   const stored = await Invitations.findById(invitation.data.id).select('+tokenHash');
@@ -148,12 +148,12 @@ test('owner sends normalized email; registration, preview, acceptance and member
   expect(result.status).toBe(200);
   expect(result.body.data.user).toMatchObject({
     orgId: org.id,
-    role: 'expert',
+    role: 'staff',
     hasCompletedOnboarding: true,
   });
   expect(jwt.verify(result.body.data.accessToken, process.env.JWT_ACCESS_SECRET)).toMatchObject({
     orgId: org.id,
-    role: 'expert',
+    role: 'staff',
   });
   expect((await Invitations.findById(stored.id)).status).toBe('accepted');
   const members = await request(app)
@@ -186,13 +186,16 @@ test('non-owner, cross-organization owner and invalid roles cannot invite', asyn
       .send({ email: 'forbidden@example.com', role: 'staff' });
     expect(response.status).toBe(403);
   }
-  for (const role of ['owner', 'administrator']) {
+  const deliveriesBefore = sendInvitationEmail.mock.calls.length;
+  for (const role of ['owner', 'administrator', 'manager', 'expert', 'user']) {
     const response = await request(app)
-      .post(`/api/v1/organizations/${org.id}/invitations`)
-      .set('Authorization', ownerToken)
+      .post(`/api/v1/organizations/${another.id}/invitations`)
+      .set('Authorization', bearer(otherOwner))
       .send({ email: 'forbidden@example.com', role });
     expect(response.status).toBe(400);
   }
+  expect(sendInvitationEmail.mock.calls.length).toBe(deliveriesBefore);
+  expect(await Invitations.countDocuments({ email: 'forbidden@example.com' })).toBe(0);
 });
 
 test('wrong email, expired invitation and revoked invitation cannot be accepted', async () => {
@@ -216,11 +219,11 @@ test('personal workspace user can be invited and joins only after acceptance', a
   const user = await makeUser('user', personal._id);
   await UserModel.updateOne({ _id: user.id }, { $set: { hasCompletedOnboarding: true } });
   const oldToken = bearer(user);
-  const invitation = await invite(user.email, 'expert');
+  const invitation = await invite(user.email, 'staff');
   expect((await UserModel.findById(user.id)).orgId.toString()).toBe(personal.id);
   const result = await accept(user, invitation.token);
   expect(result.status).toBe(200);
-  expect(result.body.data.user).toMatchObject({ orgId: org.id, role: 'expert' });
+  expect(result.body.data.user).toMatchObject({ orgId: org.id, role: 'staff' });
   expect((await UserModel.findById(user.id)).permissionsVersion).toBe(1);
   expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
   expect(await OrganizationModel.exists({ _id: personal._id, isPersonal: true })).toBeTruthy();
@@ -267,7 +270,7 @@ test('duplicate pending invitations are blocked; email failure permits retry', a
   const duplicate = await request(app)
     .post(`/api/v1/organizations/${org.id}/invitations`)
     .set('Authorization', ownerToken)
-    .send({ email: invitation.email, role: 'manager' });
+    .send({ email: invitation.email, role: 'staff' });
   expect(duplicate.status).toBe(409);
   const { AppError } = require('../dist/errors/AppError');
   sendInvitationEmail.mockRejectedValueOnce(new AppError('Email provider unavailable', 502));
@@ -342,7 +345,7 @@ test.each([false, true])(
     const second = await request(app)
       .post(`/api/v1/organizations/${otherOrg.id}/invitations`)
       .set('Authorization', bearer(otherOwner))
-      .send({ email: first.email, role: 'manager' });
+      .send({ email: first.email, role: 'staff' });
     expect(second.status).toBe(201);
     const secondToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
     const personal = hasPersonal

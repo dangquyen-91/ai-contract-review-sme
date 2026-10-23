@@ -12,7 +12,6 @@ import { Icon } from "@/components/ui/icon";
 import { MemberCapacityDialog } from "@/components/members/member-capacity-dialog";
 import { useCreateInvitationMutation, useMemberSubscription, useOrganizationInvitations, useOrganizationMembers, useRevokeInvitationMutation } from "@/hooks/use-invitations";
 import { isApiClientError } from "@/lib/api/client";
-import type { InvitationRole } from "@/types/invitations";
 
 const errorMessage = (error: unknown) => isApiClientError(error) ? error.message : "Không thể xử lý yêu cầu. Vui lòng thử lại.";
 
@@ -25,7 +24,6 @@ export function MembersWorkspace({ orgId, organizationName }: { orgId: string; o
   const [showInvite, setShowInvite] = useState(false);
   const [showCapacity, setShowCapacity] = useState(false);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<InvitationRole>("staff");
   const submitting = createInvitation.isPending;
   const revoking = revokeInvitation.isPending ? revokeInvitation.variables ?? null : null;
   const actionLocks = useRef({ send: false, revoke: false });
@@ -62,7 +60,7 @@ export function MembersWorkspace({ orgId, organizationName }: { orgId: string; o
     }
     actionLocks.current.send = true;
     try {
-      await createInvitation.mutateAsync({ email: email.trim().toLowerCase(), role });
+      await createInvitation.mutateAsync({ email: email.trim().toLowerCase(), role: "staff" });
       setShowInvite(false);
       setEmail("");
       setPage(1);
@@ -117,6 +115,6 @@ export function MembersWorkspace({ orgId, organizationName }: { orgId: string; o
       {current.data && current.data.pages > 1 && <div className="flex items-center justify-between border-t border-[#e9edf3] px-6 py-4 text-[13px] text-[#738198]"><span>Trang {page} / {current.data.pages}</span><div className="flex gap-2"><Button variant="outline" size="sm" type="button"  disabled={page <= 1} onClick={() => setPage(page - 1)}>Trước</Button><Button variant="outline" size="sm" type="button"  disabled={page >= current.data.pages} onClick={() => setPage(page + 1)}>Sau</Button></div></div>}
     </section>
 
-    {showInvite && <InvitationFormDialog organizationName={organizationName} email={email} role={role} submitting={submitting} onEmailChange={setEmail} onRoleChange={setRole} onSubmit={sendInvitation} onClose={() => setShowInvite(false)} />}
+    {showInvite && <InvitationFormDialog organizationName={organizationName} email={email} submitting={submitting} onEmailChange={setEmail} onSubmit={sendInvitation} onClose={() => setShowInvite(false)} />}
   </div>;
 }

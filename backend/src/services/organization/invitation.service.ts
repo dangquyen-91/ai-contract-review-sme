@@ -80,6 +80,9 @@ export async function createInvitation(
   input: CreateInvitationInput,
 ) {
   const organization = await requireOwner(userId, orgId);
+  if (input.role !== 'staff') {
+    throw AppError.badRequest('Owners can only invite staff members');
+  }
   ensureInvitationEmailConfigured();
   const existing = await UserModel.findOne({ email: input.email });
   await assertCanJoinOrganization(existing?.orgId?.toString(), orgId);
