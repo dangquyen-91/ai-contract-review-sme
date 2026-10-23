@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { OrganizationInvitationModel } from '../../models/organizationInvitation.model';
 import { ContractModel } from '../../models/contract.model';
 import { OrganizationModel } from '../../models/organization.model';
+import { IndustryModel } from '../../models/industry.model';
 import { UserModel } from '../../models/user.model';
 import { getRoleByCode } from '../identity/role.service';
 import {
@@ -69,6 +70,9 @@ export async function updateOrganization(
   input: UpdateOrganizationInput,
 ) {
   ensureOrganizationAccess(organizationId, userOrganizationId);
+  if (input.industry && !(await IndustryModel.exists({ code: input.industry }))) {
+    throw AppError.badRequest(`Unknown industry: ${input.industry}`);
+  }
   const organization = await OrganizationModel.findByIdAndUpdate(
     organizationId,
     { $set: input },

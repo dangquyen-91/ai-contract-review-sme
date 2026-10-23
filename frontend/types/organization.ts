@@ -9,6 +9,7 @@ export type Organization = {
   name: string;
   taxCode: string | null;
   address: string | null;
+  industry?: string | null;
   createdAt: string;
   updatedAt: string;
 };

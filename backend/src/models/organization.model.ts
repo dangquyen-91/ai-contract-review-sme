@@ -6,6 +6,7 @@ const organizationSchema = new Schema(
     taxCode: { type: String, trim: true },
     address: { type: String, trim: true },
     isPersonal: { type: Boolean, default: false },
+    industry: { type: String },
   },
   { timestamps: true },
 );

@@ -98,6 +98,7 @@ export async function getShareSummary(
   const findings = await RiskFindingModel.find({ contractVersionId: version._id, orgId }).select(
     'severity title recommendations',
   );
+  if (!contract.type) throw AppError.conflict('Complete the analysis before creating a share summary.');
   const profile = await resolveContractProfile(contract.type);
   return buildShareSummary({
     contractType: profile.name,

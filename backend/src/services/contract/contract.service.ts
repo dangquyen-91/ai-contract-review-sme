@@ -20,6 +20,7 @@ import {
 import { enqueueExtraction, waitForExtraction } from './extractionWorker.service';
 import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
 import { resolveContractProfile, validateContractContext } from './contractProfile.service';
+import { redactionPolicyFor } from './redactionPolicy.service';
 import { createRedactor, SensitiveDataType } from '../ai/redaction.service';
 import { DOCX_MIME, redactDocx } from './docxRedaction.service';
 
@@ -35,6 +36,11 @@ interface CreateContractParams {
   waitForExtraction: boolean;
 }
 
+function titleFromFileName(fileName?: string) {
+  const base = fileName?.replace(/\.[^.]+$/, '').trim();
+  return base && base.length >= 2 ? base.slice(0, 300) : 'Hợp đồng chưa đặt tên';
+}
+
 export async function createContract({
   orgId,
   uploadedBy,
@@ -42,8 +48,9 @@ export async function createContract({
   file,
   waitForExtraction: shouldWait,
 }: CreateContractParams) {
-  const profile = await resolveContractProfile(input.type);
-  await validateContractContext(profile, input);
+  const profile = input.type ? await resolveContractProfile(input.type) : undefined;
+  if (profile) await validateContractContext(profile, input);
+  else if (input.ourParty) throw AppError.badRequest('ourParty requires a contract type');
 
   const stored = file ? await uploadContractFile(file.buffer, orgId, file.name) : undefined;
 
@@ -54,10 +61,13 @@ export async function createContract({
     const contract = await ContractModel.create({
       orgId,
       uploadedBy,
-      title: input.title,
-      type: profile.code,
+      title: input.title ?? titleFromFileName(file?.name),
+      type: profile?.code,
       ourParty: input.ourParty,
       industry: input.industry,
+      classification: profile
+        ? { status: 'completed', outcome: 'supported', type: profile.code, ourParty: input.ourParty, source: 'user', confirmedAt: new Date() }
+        : { status: 'pending' },
     });
     contractId = contract._id;
 
@@ -216,8 +226,7 @@ export async function getContractText(orgId: string, id: string, redacted = fals
   let shownText = text;
   let redactionSpans: { type: SensitiveDataType; start: number; end: number }[] = [];
   if (redacted && text) {
-    const profile = await resolveContractProfile(contract.type);
-    const redactor = createRedactor(text, profile.redactionPolicy as SensitiveDataType[]);
+    const redactor = createRedactor(text, await redactionPolicyFor(contract.type));
     if (redactionMode === 'partial') {
       const preview = redactor.maskForDisplay(text);
       shownText = preview.text;
@@ -241,9 +250,8 @@ export async function getRedactedContractDocx(orgId: string, id: string) {
   if (version.mimeType !== DOCX_MIME) throw AppError.badRequest('Redacted file preview is supported only for DOCX');
   const file = storedFileOf(version);
   if (!file) throw AppError.notFound('This contract has no uploaded file');
-  const profile = await resolveContractProfile(contract.type);
   return {
-    buffer: await redactDocx(await downloadContractFile(file), version.extractedText ?? '', profile.redactionPolicy as SensitiveDataType[]),
+    buffer: await redactDocx(await downloadContractFile(file), version.extractedText ?? '', await redactionPolicyFor(contract.type)),
     fileName: `${(version.fileName ?? 'contract.docx').replace(/\.docx$/i, '')}-redacted.docx`,
   };
 }

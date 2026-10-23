@@ -1,11 +1,12 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
+import { AppError } from '../errors/AppError';
 import { ok } from '../utils/ApiResponse';
 import { getOrganizationUser } from '../middlewares/auth.middleware';
 import { openSseStream } from '../utils/sse';
 import * as reviewService from '../services/review/review.service';
 import * as contractService from '../services/contract/contract.service';
-import { assertBusinessReviewContract, assertPersonalReviewContract } from '../services/contract/personalReviewPolicy';
+import { assertAccountReviewPolicy } from '../services/contract/personalReviewPolicy';
 import { subscribeToReview } from '../services/review/reviewWorker.service';
 import { getIdempotencyKey } from '../validations/subscription.validation';
 
@@ -14,8 +15,10 @@ const STREAM_POLL_MS = 5000;
 export const startReviewHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
   const contract = await contractService.getContractById(user.orgId, req.params.id);
-  if (user.role === 'user') assertPersonalReviewContract(contract.type, contract.ourParty);
-  else assertBusinessReviewContract(contract.type);
+  if (!contract.type) {
+    throw AppError.conflict('Confirm the contract type before starting a review', 'CONTRACT_NOT_CONFIRMED');
+  }
+  assertAccountReviewPolicy(user.role === 'user', contract.type, contract.ourParty);
   const { review, replayed } = await reviewService.startReview({
     orgId: user.orgId,
     userId: user.sub,
@@ -25,6 +28,24 @@ export const startReviewHandler = asyncHandler(async (req: Request, res: Respons
   });
   res.set('Location', `/api/v1/reviews/${review._id}`);
   ok(res, { ...review, replayed }, replayed ? 200 : 202);
+});
+
+export const cancelReviewHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getOrganizationUser(req);
+  ok(res, await reviewService.cancelReview(user.orgId, req.params.reviewId));
+});
+
+export const retryReviewHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getOrganizationUser(req);
+  const review = await reviewService.retryReview({
+    orgId: user.orgId,
+    userId: user.sub,
+    reviewId: req.params.reviewId,
+    idempotencyKey: getIdempotencyKey(req),
+    isPersonal: user.role === 'user',
+  });
+  res.set('Location', `/api/v1/reviews/${review._id}`);
+  ok(res, review, 202);
 });
 
 export const listReviewsHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -64,7 +85,7 @@ export const streamReviewHandler = asyncHandler(async (req: Request, res: Respon
         lastSent = snapshot;
         stream.send('review', review);
       }
-      if (review.status === 'completed' || review.status === 'failed') {
+      if (review.status === 'completed' || review.status === 'failed' || review.status === 'cancelled') {
         stream.send('done', { status: review.status });
         finish();
       }

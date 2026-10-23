@@ -16,7 +16,7 @@ export function ReviewWorkflowProvider({ children, initialRole }: { children: Re
   const role = data?.role ?? initialRole;
   const reviewPath = `/dashboard/${role === "administrator" ? "admin" : role}/review`;
   const router = useRouter();
-  const workflow = useReviewWorkflow({ access, initialType: role === "user" ? "life_insurance" : "service", personal: role === "user", reviewPath });
+  const workflow = useReviewWorkflow({ access, reviewPath });
   useReviewTimelineScroll(workflow.timelineScrollRequest, workflow.reviewTimelineRef);
   const contract = workflow.reviewResult?.contract;
   const contractId = contract?.id ?? contract?._id;

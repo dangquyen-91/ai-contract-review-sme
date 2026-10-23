@@ -20,6 +20,8 @@ export function ReviewTimeline(props: TimelineInput & {
   roleLabel: string;
   access: { upload: boolean; review: boolean; administer: boolean };
   onRetry: () => void;
+  onCancel?: () => void;
+  cancelling?: boolean;
   role?: string;
 }) {
   const id = useId();
@@ -37,9 +39,11 @@ export function ReviewTimeline(props: TimelineInput & {
   const aiMotion = !live ? "idle" : retrying ? "retrying"
     : props.review?.status === "running" && model.steps.slice(0, 3).some((step) => step.state === "running") ? "running" : "idle";
   const showError = Boolean(props.error && !busy && !props.blocked);
+  const unfinished = props.review?.status === "failed" || props.review?.status === "cancelled";
+  const partialSummary = unfinished && props.review?.result?.partial ? props.review.result.summaryPoints ?? [] : [];
   const stateLabel = (state: StepState) => state === "pending" && props.blocked ? "Chưa bắt đầu"
     : state === "failed" && model.retrying ? "Chờ thử lại"
-    : state === "running" && props.review?.status === "failed" ? "Chưa hoàn tất"
+    : state === "running" && (props.review?.status === "failed" || props.review?.status === "cancelled") ? "Chưa hoàn tất"
     : state === "running" && model.interrupted ? "Trạng thái lần cuối" : labels[state];
 
   return <aside className="grid min-w-0 gap-4" aria-labelledby={`${id}-title`}>
@@ -48,6 +52,7 @@ export function ReviewTimeline(props: TimelineInput & {
         <div className="min-w-0"><h2 id={`${id}-title`} className="m-0 text-ui-card font-semibold">Quy trình AI</h2><p className="mb-0 mt-1 text-ui-meta text-[#607087]" aria-live="off">{elapsed ? `Thời gian xử lý: ${elapsed}` : "Theo dõi trạng thái từ hệ thống"}</p></div>
       </header>
       <p role="status" className={`${styles.message} mb-0 mt-4 rounded-lg bg-[#f6f8fc] p-3 text-ui leading-6 text-[#536881]`}>{model.message}</p>
+      {props.onCancel && live && (props.review?.status === "queued" || props.review?.status === "running") && <Button variant="outline" size="sm" type="button" className="mt-3" onClick={props.onCancel} loading={props.cancelling} disabled={Boolean(props.review.cancelRequested)}>{props.review.cancelRequested ? "Đang dừng…" : "Dừng rà soát"}</Button>}
       {props.blocked && !busy && <ReviewBlockedNotice reason={props.blocked} role={props.role ?? "staff"} />}
       <ol className={styles.steps}>
         {model.steps.map((step, index) => {
@@ -66,7 +71,8 @@ export function ReviewTimeline(props: TimelineInput & {
         </li>;
         })}
       </ol>
-      {showError && <div role="alert" className="mt-4 rounded-lg border border-[#edc4cd] bg-[#fff5f6] p-3 text-ui leading-6 text-[#a53348]"><p className="m-0">{props.error}</p><Button variant="outline" size="sm" type="button" onClick={props.onRetry} className="mt-3">{props.failureKind === "load" ? "Tải lại kết quả" : props.review?.status === "failed" ? "Thử rà soát lại" : "Tiếp tục theo dõi"}</Button><p className="mb-0 mt-2 text-ui-meta">{props.failureKind === "load" ? "Tải lại kết quả không tạo lượt AI mới." : props.review?.status === "failed" ? "Thử lại một lượt thất bại có thể tạo lượt AI mới." : "Tiếp tục yêu cầu đã lưu, không cần tải lại tệp."}</p></div>}
+      {showError && <div role="alert" className="mt-4 rounded-lg border border-[#edc4cd] bg-[#fff5f6] p-3 text-ui leading-6 text-[#a53348]"><p className="m-0">{props.error}</p><Button variant="outline" size="sm" type="button" onClick={props.onRetry} className="mt-3">{props.failureKind === "load" ? "Tải lại kết quả" : unfinished ? "Thử lại từ bước chưa xong" : "Tiếp tục theo dõi"}</Button><p className="mb-0 mt-2 text-ui-meta">{props.failureKind === "load" ? "Tải lại kết quả không tạo lượt AI mới." : unfinished ? "Chỉ chạy lại các bước chưa hoàn tất. Lượt rà soát chỉ bị trừ khi hoàn tất." : "Tiếp tục yêu cầu đã lưu, không cần tải lại tệp."}</p>
+        {partialSummary.length > 0 && <div className="mt-3 rounded-md border border-[#f1d6dc] bg-white p-2.5 text-[#536881]"><p className="m-0 text-ui-meta font-semibold text-[#263750]">Phần đã hoàn tất · Tóm tắt</p><ul className="mb-0 mt-1.5 grid list-disc gap-1 pl-4 text-ui-meta leading-5">{partialSummary.map((point) => <li key={point}>{point}</li>)}</ul></div>}</div>}
     <footer className={styles.permissions} aria-label="Quyền hiện tại">
       <p className="m-0 text-ui-meta text-[#607087]">Quyền hiện tại · <strong className="font-semibold text-[#263750]">{props.roleLabel}</strong></p>
       <ul className="text-ui-meta">{[{ label: "Tải hợp đồng", allowed: props.access.upload }, { label: "Chạy AI review", allowed: props.access.review }, ...(props.access.administer ? [{ label: "Quản trị tổ chức", allowed: true }] : [])].map((permission) => <li key={permission.label} className="flex items-center gap-2 text-[#607087]"><Icon name={permission.allowed ? "check" : "lock"} className={`h-3.5 w-3.5 ${permission.allowed ? "text-[#23705a]" : "text-[#718096]"}`} />{permission.label}</li>)}</ul>
