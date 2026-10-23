@@ -180,6 +180,7 @@ export async function completeEmailVerification(
       if (!user || user.passwordHash !== stored.passwordHash)
         return { error: AppError.unauthorized('Account changed. Sign in again.') };
       user.emailVerifiedAt = user.emailVerifiedAt ?? new Date();
+      user.hasPassword = true;
       await user.save({ session });
     } else {
       if (await UserModel.exists({ email: stored.email }).session(session))
@@ -191,6 +192,7 @@ export async function completeEmailVerification(
             email: stored.email,
             name: stored.name,
             passwordHash: stored.passwordHash,
+            hasPassword: true,
             roleId: role._id,
             emailVerifiedAt: new Date(),
           },

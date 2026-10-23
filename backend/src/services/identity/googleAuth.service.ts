@@ -62,7 +62,7 @@ export async function googleLogin(input: z.infer<typeof googleLoginSchema>) {
           isActive: true,
           $or: [{ googleSubject: { $exists: false } }, { googleSubject: payload.sub }],
         },
-        { $set: { googleSubject: payload.sub } },
+        { $set: { googleSubject: payload.sub, hasPassword: user.hasPassword ?? true } },
         { new: true },
       ).populate('roleId');
       if (!linked) throw AppError.conflict('Account changed. Please sign in again.');
@@ -74,6 +74,7 @@ export async function googleLogin(input: z.infer<typeof googleLoginSchema>) {
           email,
           name: (payload.name || email.split('@')[0]).slice(0, 100),
           googleSubject: payload.sub,
+          hasPassword: false,
           emailVerifiedAt: new Date(),
           // A Google-only account has no user-known password; existing password auth stays unchanged.
           passwordHash: await bcrypt.hash(randomBytes(32).toString('hex'), 10),

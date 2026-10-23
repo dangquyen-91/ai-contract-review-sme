@@ -120,6 +120,18 @@ test('unknown, inactive and unverified emails have the same public response and 
   }
 });
 
+test('Google-only accounts can establish a password by email without changing their Google link or organization', async () => {
+  const user = await account({ googleSubject: 'password-setup-google', hasPassword: false });
+  const flow = await start(user);
+  expect((await reset(flow)).status).toBe(200);
+  const saved = await UserModel.findById(user.id).select('+googleSubject');
+  expect(saved.hasPassword).toBe(true);
+  expect(saved.googleSubject).toBe('password-setup-google');
+  expect(saved.orgId).toBeUndefined();
+  const login = await post('login', { email: user.email, password: newPassword });
+  expect(login.status).toBe(200);
+});
+
 test('five incorrect attempts block even the correct code, and expired codes fail', async () => {
   const flow = await start(await account());
   const wrong = { ...flow, code: flow.code === '000000' ? '111111' : '000000' };

@@ -7,6 +7,7 @@ import legalSourceRoutes from './legalSource.routes';
 import organizationRoutes from './organization.routes';
 import reviewRoutes from './review.routes';
 import invitationRoutes from './invitation.routes';
+import profileRoutes from './profile.routes';
 import { listPlansHandler } from '../controllers/subscription.controller';
 
 const router = Router();
@@ -14,6 +15,7 @@ const router = Router();
 router.get('/health', (_req, res) => res.json({ success: true, data: { status: 'ok' } }));
 
 router.use('/auth', authRoutes);
+router.use('/profile', profileRoutes);
 router.use('/admin/userManagement', userManagementRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/invitations', invitationRoutes);

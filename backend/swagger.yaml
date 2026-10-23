@@ -1250,6 +1250,83 @@ components:
           description: Legal document to chunk and embed (pdf, docx, doc, or txt)
 
 paths:
+  /profile:
+    get:
+      tags: [Auth]
+      summary: Get the signed-in user's profile
+      description: Available to all active verified users, including users without an organization. Returns public account information, phone, avatar, authentication methods and organization. Never returns password hashes, Google subject IDs or storage keys.
+      responses:
+        '200': { description: Current user's profile }
+        '401': { description: Authentication required }
+    patch:
+      tags: [Auth]
+      summary: Update own name and phone
+      description: Email, role, organization and account status cannot be changed through this endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [name]
+              properties:
+                name: { type: string, minLength: 2, maxLength: 100 }
+                phone: { type: string, maxLength: 20, description: Optional phone with 8 to 15 digits; empty string clears it. }
+      responses:
+        '200': { description: Updated profile }
+        '400': { description: Invalid fields }
+        '401': { description: Authentication required }
+  /profile/avatar:
+    post:
+      tags: [Auth]
+      summary: Upload own avatar
+      description: JPG, PNG or WebP up to 2 MB. The image is re-encoded to a 512 by 512 WebP and stored in Cloudinary. Replaced images are removed after the account is updated.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [avatar]
+              properties:
+                avatar: { type: string, format: binary }
+      responses:
+        '200': { description: Profile with the new avatar }
+        '400': { description: Invalid image }
+        '401': { description: Authentication required }
+        '409': { description: Avatar changed concurrently; reload before retrying }
+        '413': { description: Image exceeds 2 MB }
+        '429': { description: Too many requests }
+        '502': { description: Image upload failed }
+        '503': { description: Image storage is not configured }
+    delete:
+      tags: [Auth]
+      summary: Remove own avatar
+      responses:
+        '200': { description: Profile with avatar removed }
+        '401': { description: Authentication required }
+  /profile/password:
+    post:
+      tags: [Auth]
+      summary: Change password using the current password
+      description: Revokes all previous access and refresh tokens. Google-only users set their first password using the email password recovery flow. Does not change organization or role.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 12, description: Maximum 72 UTF-8 bytes; must differ from current password. }
+      responses:
+        '200': { description: Password changed; sign in again }
+        '400': { description: Incorrect current password or invalid new password }
+        '401': { description: Authentication required }
+        '429': { description: Too many requests }
   /auth/forgot-password:
     post:
       tags: [Auth]

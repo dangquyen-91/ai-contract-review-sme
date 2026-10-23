@@ -125,7 +125,7 @@ export async function resetPassword(challengeId: string, code: string, password:
     await UserModel.updateOne(
       { _id: user._id },
       {
-        $set: { passwordHash: await bcrypt.hash(password, 10) },
+        $set: { passwordHash: await bcrypt.hash(password, 10), hasPassword: true },
         $inc: { authVersion: 1, permissionsVersion: 1 },
       },
       { session },
