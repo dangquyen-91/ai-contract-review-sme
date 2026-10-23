@@ -1332,7 +1332,7 @@ paths:
       tags: [Auth]
       security: []
       summary: Request a password reset code by email
-      description: Returns the same acknowledgement for unknown, inactive and unverified accounts. Codes expire after 10 minutes. Resend cooldown is 60 seconds, with at most 5 sends per email per hour.
+      description: Returns the same acknowledgement for all addresses; only existing active accounts receive email, including unverified accounts. A successful reset also verifies email ownership. Codes expire after 10 minutes. Resend cooldown is 60 seconds, with at most 5 sends per email per hour.
       requestBody:
         required: true
         content:

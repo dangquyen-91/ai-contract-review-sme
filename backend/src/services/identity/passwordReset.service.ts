@@ -25,7 +25,7 @@ export async function requestPasswordReset(email: string) {
   const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 10 * MINUTE);
-  const user = await UserModel.findOne({ email, isActive: true, emailVerifiedAt: { $ne: null } });
+  const user = await UserModel.findOne({ email, isActive: true });
   try {
     // Keep the same throttling and public response for registered and unknown addresses.
     await mongoose.connection.transaction(async (session) => {
@@ -83,7 +83,7 @@ export async function requestPasswordReset(email: string) {
     challengeId,
     expiresAt,
     resendAfterSeconds: 60,
-    message: 'Nếu email đã được đăng ký và xác minh, bạn sẽ nhận được mã đặt lại mật khẩu.',
+    message: 'Nếu email thuộc tài khoản đang hoạt động, bạn sẽ nhận được mã đặt lại mật khẩu.',
   };
 }
 
@@ -119,13 +119,17 @@ export async function resetPassword(challengeId: string, code: string, password:
       _id: stored.userId,
       email: stored.email,
       isActive: true,
-      emailVerifiedAt: { $ne: null },
     }).session(session);
     if (!user || (user.authVersion ?? 0) !== stored.authVersion) return { error: invalid() };
     await UserModel.updateOne(
       { _id: user._id },
       {
-        $set: { passwordHash: await bcrypt.hash(password, 10), hasPassword: true },
+        // Consuming the emailed OTP proves ownership, including for legacy unverified accounts.
+        $set: {
+          passwordHash: await bcrypt.hash(password, 10),
+          hasPassword: true,
+          emailVerifiedAt: user.emailVerifiedAt ?? new Date(),
+        },
         $inc: { authVersion: 1, permissionsVersion: 1 },
       },
       { session },

@@ -28,7 +28,7 @@ export function PasswordRecoveryForm({ loginHref }: { loginHref: string }) {
       <p role="status" className="my-5 text-sm leading-6 text-[#65748b]">Mật khẩu đã được cập nhật. Các phiên đăng nhập cũ đã kết thúc. Hãy đăng nhập lại bằng mật khẩu mới.</p>
       <Button asChild className="w-full"><Link href={loginHref}>Đăng nhập</Link></Button>
     </> : <>
-      <p className="mb-6 mt-3 text-sm leading-6 text-[#65748b]">{workflow.challenge ? <>Nếu email <strong className="break-all">{workflow.challenge.email}</strong> đã được đăng ký và xác minh, mã 6 số sẽ được gửi đến hộp thư. Mã có hiệu lực trong 10 phút. Kiểm tra cả thư rác.</> : "Nhập email đã đăng ký để nhận mã xác minh và đặt lại mật khẩu."}</p>
+      <p className="mb-6 mt-3 text-sm leading-6 text-[#65748b]">{workflow.challenge ? <>Nếu email <strong className="break-all">{workflow.challenge.email}</strong> thuộc tài khoản đang hoạt động, mã 6 số sẽ được gửi đến hộp thư. Mã có hiệu lực trong 10 phút. Kiểm tra cả thư rác.</> : "Nhập email đã đăng ký để nhận mã xác minh và đặt lại mật khẩu."}</p>
       {workflow.error && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{workflow.error}</p>}
       {!workflow.challenge ? <form noValidate onSubmit={emailForm.handleSubmit(async ({ email }) => { await workflow.send(email); })} className="grid gap-5">
         <AuthInput id="recovery-email" label="Email" icon="mail" type="email" inputMode="email" autoComplete="email" maxLength={254} placeholder="ban@example.com" error={emailErrors.email?.message} {...emailForm.register("email")} />

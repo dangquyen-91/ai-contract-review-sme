@@ -100,12 +100,11 @@ test('reset hashes the password, consumes the OTP and revokes old access and ref
   expect((await post('refresh', { refreshToken: login.body.data.refreshToken })).status).toBe(200);
 });
 
-test('unknown, inactive and unverified emails have the same public response and send no email', async () => {
+test('unknown and inactive emails have the same public response and send no email', async () => {
   const known = await start(await account());
   const knownError = await reset({ ...known, code: known.code === '000000' ? '111111' : '000000' });
   const inactive = await account({ isActive: false });
-  const unverified = await account({ emailVerifiedAt: null });
-  for (const email of [`unknown-${++sequence}@example.com`, inactive.email, unverified.email]) {
+  for (const email of [`unknown-${++sequence}@example.com`, inactive.email]) {
     const before = sendEmail.mock.calls.length;
     const result = await post('forgot-password', { email });
     expect(result.status).toBe(202);
@@ -118,6 +117,24 @@ test('unknown, inactive and unverified emails have the same public response and 
     expect(invalid.status).toBe(knownError.status);
     expect(invalid.body.error.message).toBe(knownError.body.error.message);
   }
+});
+
+test('active unverified accounts receive recovery email and are verified only after a correct OTP', async () => {
+  const user = await account({ emailVerifiedAt: null });
+  const flow = await start(user);
+  expect(sendEmail.mock.calls.at(-1)[0].to).toBe(user.email);
+  expect((await UserModel.findById(user.id)).emailVerifiedAt).toBeNull();
+  const wrong = { ...flow, code: flow.code === '000000' ? '111111' : '000000' };
+  expect((await reset(wrong)).status).toBe(400);
+  expect((await UserModel.findById(user.id)).emailVerifiedAt).toBeNull();
+  expect((await reset(flow)).status).toBe(200);
+  const saved = await UserModel.findById(user.id);
+  expect(saved.emailVerifiedAt).toBeInstanceOf(Date);
+  expect(saved.orgId).toBeUndefined();
+  expect((await reset(flow)).status).toBe(400);
+  const login = await post('login', { email: user.email, password: newPassword });
+  expect(login.status).toBe(200);
+  expect(login.body.data.accessToken).toEqual(expect.any(String));
 });
 
 test('Google-only accounts can establish a password by email without changing their Google link or organization', async () => {
