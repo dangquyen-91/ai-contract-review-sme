@@ -11,6 +11,7 @@
     "test:workflows": "node --test scripts/session-workflows.test.mjs",
     "test:invitations": "node --test scripts/invitation-actions.test.mjs scripts/no-organization-dashboard.test.mjs scripts/received-invitations.test.mjs",
     "test:otp": "node --test scripts/email-verification-route.test.mjs",
+    "test:password-recovery": "node --test scripts/password-recovery.test.mjs",
     "test:payments": "node --test scripts/payment-workflow.test.mjs",
     "test:payments:browser": "node scripts/payment-browser-check.mjs",
     "test:users": "node scripts/user-management-smoke.cjs"

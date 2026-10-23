@@ -6,7 +6,7 @@ import type { AuthUser } from "@/types/auth";
 import { isSameOriginRequest } from "@/lib/request-origin";
 import { emailVerificationCookie, emailVerificationCookieAge, encodeEmailVerification } from "@/lib/email-verification-session";
 
-const allowedActions = new Set(["login", "register", "refresh", "logout", "verify-email", "resend-verification", "google"]);
+const allowedActions = new Set(["login", "register", "refresh", "logout", "verify-email", "resend-verification", "google", "forgot-password", "reset-password"]);
 
 export async function GET(request: NextRequest, context: RouteContext<"/api/auth/[action]">) {
   const { action } = await context.params;
@@ -51,6 +51,10 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
   try {
     const isRefresh = action === "refresh";
     const requestBody = isRefresh ? {} : await request.json();
+    const passwordRecovery = action === "forgot-password" || action === "reset-password";
+    if (passwordRecovery && !isSameOriginRequest(request)) {
+      return NextResponse.json({ success: false, error: { message: "Yêu cầu không hợp lệ. Vui lòng tải lại trang." } }, { status: 403 });
+    }
     if (action === "google") {
       const nonce = request.cookies.get("lawscan_google_nonce")?.value;
       if (!isSameOriginRequest(request) || !nonce || requestBody.nonce !== nonce) {
@@ -82,6 +86,16 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
     if (!upstream.ok) {
       const response = NextResponse.json(payload, { status: upstream.status });
       if (isRefresh && upstream.status === 401) clearSessionCookies(response, secure);
+      return response;
+    }
+
+    if (passwordRecovery) {
+      const response = NextResponse.json(payload, { status: upstream.status });
+      response.headers.set("Cache-Control", "no-store");
+      if (action === "reset-password") {
+        clearSessionCookies(response, secure);
+        response.cookies.set(emailVerificationCookie, "", { ...cookieOptions(secure), maxAge: 0 });
+      }
       return response;
     }
 
