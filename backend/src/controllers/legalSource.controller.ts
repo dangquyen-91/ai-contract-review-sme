@@ -3,7 +3,11 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import { AppError } from '../errors/AppError';
 import * as legalSourceService from '../services/legal/legalSource.service';
-import { CreateLegalSourceInput, PreviewLegalSourceInput } from '../validations/legalSource.validation';
+import {
+  CreateLegalSourceInput,
+  PreviewLegalSourceInput,
+  UpdateLegalSourceInput,
+} from '../validations/legalSource.validation';
 
 function uploadedFile(req: Request) {
   if (!req.file) throw AppError.badRequest('A file is required');
@@ -52,7 +56,11 @@ export const getLegalSourceHandler =asyncHandler(async (req: Request, res: Respo
   ok(res, await legalSourceService.getLegalSource(req.params.id));
 });
 
-export const deleteLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
+export const updateLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, await legalSourceService.updateLegalSource(req.params.id, req.body as UpdateLegalSourceInput));
+});
+
+export const deleteLegalSourceHandler =asyncHandler(async (req: Request, res: Response) => {
   await legalSourceService.deleteLegalSource(req.params.id);
   res.status(204).send();
 });

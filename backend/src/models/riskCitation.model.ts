@@ -9,6 +9,10 @@ const riskCitationSchema = new Schema(
       required: true,
     },
     relevanceScore: { type: Number, required: true },
+    citationLabel: { type: String },
+    sourceTitle: { type: String },
+    articleRef: { type: String },
+    chunkText: { type: String },
   },
   { timestamps: true },
 );

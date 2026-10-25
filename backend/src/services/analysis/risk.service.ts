@@ -120,6 +120,39 @@ async function extractKeyTermsSafely(
   }
 }
 
+interface ChunkSnapshot {
+  citationLabel: string;
+  sourceTitle: string;
+  articleRef?: string;
+  chunkText: string;
+}
+
+async function loadChunkSnapshots(chunkIds: string[]): Promise<Map<string, ChunkSnapshot>> {
+  const ids = [...new Set(chunkIds)];
+  if (ids.length === 0) return new Map();
+  const chunks = await LegalKnowledgeChunkModel.find({ _id: { $in: ids } }).select(
+    'legalSourceId articleRef chunkText',
+  );
+  const sourceIds = [...new Set(chunks.map((c) => c.legalSourceId.toString()))];
+  const sources = await LegalSourceModel.find({ _id: { $in: sourceIds } }).select('title citationLabel');
+  const sourceById = new Map(sources.map((s) => [s._id.toString(), s]));
+
+  return new Map(
+    chunks.map((chunk) => {
+      const source = sourceById.get(chunk.legalSourceId.toString());
+      return [
+        chunk._id.toString(),
+        {
+          citationLabel: source?.citationLabel ?? 'Unknown',
+          sourceTitle: source?.title ?? 'Unknown',
+          articleRef: chunk.articleRef ?? undefined,
+          chunkText: chunk.chunkText,
+        },
+      ];
+    }),
+  );
+}
+
 async function attachCitations<T extends { _id: unknown; toObject: () => Record<string, unknown> }>(
   findings: T[],
 ) {
@@ -148,29 +181,29 @@ async function attachCitations<T extends { _id: unknown; toObject: () => Record<
     return findings.map((f) => ({ ...withClause(f), citations: [] }));
   }
 
-  const chunkIds = [...new Set(citations.map((c) => c.legalKnowledgeChunkId.toString()))];
-  const chunks = await LegalKnowledgeChunkModel.find({ _id: { $in: chunkIds } });
-  const sourceIds = [...new Set(chunks.map((c) => c.legalSourceId.toString()))];
-  const sources = await LegalSourceModel.find({ _id: { $in: sourceIds } });
-
-  const chunkById = new Map(chunks.map((c) => [c._id.toString(), c]));
-  const sourceById = new Map(sources.map((s) => [s._id.toString(), s]));
+  const current = await loadChunkSnapshots(citations.map((c) => c.legalKnowledgeChunkId.toString()));
 
   const citationsByFindingId = new Map<string, Record<string, unknown>[]>();
   for (const citation of citations) {
-    const chunk = chunkById.get(citation.legalKnowledgeChunkId.toString());
-    if (!chunk) continue;
-    const source = sourceById.get(chunk.legalSourceId.toString());
+    const chunkId = citation.legalKnowledgeChunkId.toString();
+    const live = current.get(chunkId);
+    const snapshot: ChunkSnapshot | undefined = citation.chunkText
+      ? {
+          citationLabel: citation.citationLabel ?? 'Unknown',
+          sourceTitle: citation.sourceTitle ?? 'Unknown',
+          articleRef: citation.articleRef ?? undefined,
+          chunkText: citation.chunkText,
+        }
+      : live;
+    if (!snapshot) continue;
 
     const key = citation.riskFindingId.toString();
     const list = citationsByFindingId.get(key) ?? [];
     list.push({
-      legalKnowledgeChunkId: chunk._id.toString(),
-      citationLabel: source?.citationLabel ?? 'Unknown',
-      sourceTitle: source?.title ?? 'Unknown',
-      articleRef: chunk.articleRef,
-      chunkText: chunk.chunkText,
+      legalKnowledgeChunkId: chunkId,
+      ...snapshot,
       relevanceScore: citation.relevanceScore,
+      inKnowledgeBase: Boolean(live),
     });
     citationsByFindingId.set(key, list);
   }
@@ -422,6 +455,7 @@ export async function detectRisks(
     const oldFindingIds = await RiskFindingModel.find({
       contractVersionId: version._id,
     }).distinct('_id');
+    const snapshots = await loadChunkSnapshots(pending.flatMap((p) => p.chunkIds));
 
     const inserted = pending.length > 0 ? await RiskFindingModel.insertMany(pending.map((p) => p.doc)) : [];
 
@@ -434,6 +468,7 @@ export async function detectRisks(
         riskFindingId: finding._id,
         legalKnowledgeChunkId: chunkId,
         relevanceScore: scoreByChunkId.get(chunkId) ?? 1,
+        ...snapshots.get(chunkId),
       })),
     );
     if (citationDocs.length > 0) {

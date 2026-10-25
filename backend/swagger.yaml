@@ -941,6 +941,10 @@ components:
           description: 'e.g. "Dieu 418, Khoan 2"'
         chunkText:
           type: string
+          description: citationLabel, sourceTitle, articleRef and chunkText are the text as it was when the review ran, so they survive later edits or deletion of the legal source. Citations saved before this snapshot existed are read from the knowledge base instead and disappear if their chunk was deleted.
+        inKnowledgeBase:
+          type: boolean
+          description: False when the cited chunk has since been deleted from the knowledge base (the legal source was deleted)
         relevanceScore:
           type: number
           description: Retrieval relevance (0-1). Excerpts are found by hybrid search (Atlas Vector Search + Atlas Search full text, fused by reciprocal rank); 1 means ranked first by both. Articles linked directly (a rule citation, or an article the LLM named that was not retrieved) have 1.
@@ -3310,10 +3314,94 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    patch:
+      tags: [LegalKB]
+      summary: Update a legal source's metadata or legal status without re-uploading it
+      description: |
+        Manager only. JSON body; send at least one field. null clears an optional field (documentNumber, issuingBody, issuedDate, effectiveDate, expiryDate, expectedArticleCount). code cannot be changed because contract profiles and legal rules reference it.
+        Setting status to repealed removes the source from legal search and from citation checks of new reviews right away; earlier reviews keep the excerpts they cited. A new citationLabel is used for new citations, but the stored embeddings keep the old label until the source is uploaded again.
+        expectedArticleCount recomputes the coverage report.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                title:
+                  type: string
+                  minLength: 2
+                  maxLength: 300
+                documentNumber:
+                  type: string
+                  nullable: true
+                  maxLength: 60
+                sourceType:
+                  type: string
+                  enum: [law, decree, circular, resolution, standard_template]
+                status:
+                  type: string
+                  enum: [in_force, amended, repealed, not_yet_effective]
+                citationLabel:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                issuingBody:
+                  type: string
+                  nullable: true
+                  maxLength: 200
+                issuedDate:
+                  type: string
+                  format: date
+                  nullable: true
+                effectiveDate:
+                  type: string
+                  format: date
+                  nullable: true
+                expiryDate:
+                  type: string
+                  format: date
+                  nullable: true
+                  description: Must be after effectiveDate (the stored one when effectiveDate is not sent)
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  nullable: true
+            example:
+              status: repealed
+              expiryDate: '2025-01-01'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSource'
+        '400':
+          description: Validation failed (unknown field, empty body, or expiryDate not after effectiveDate)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       tags: [LegalKB]
       summary: Delete a legal source and all of its chunks (also stops a running ingestion)
-      description: Manager only.
+      description: Manager only. Risk findings of earlier reviews keep the excerpts they cited (stored with the citation) and show them with inKnowledgeBase=false.
       responses:
         '204':
           description: Deleted

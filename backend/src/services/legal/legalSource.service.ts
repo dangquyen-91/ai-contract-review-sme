@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { LegalSourceModel } from '../../models/legalSource.model';
 import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model';
-import { CreateLegalSourceInput } from '../../validations/legalSource.validation';
+import { CreateLegalSourceInput, UpdateLegalSourceInput } from '../../validations/legalSource.validation';
 import { AnalyzedLegalText, analyzeLegalText, extractLegalText } from './legalKnowledgeIngest.service';
 import { buildLegalCoverage, LegalChunkDraft } from './legalDocumentParser.service';
 import { isLegalIngestionJobAlive, queueLegalIngestion } from './legalIngestionWorker.service';
@@ -266,6 +266,45 @@ export async function listLegalSourceCatalog() {
         : null,
     };
   });
+}
+
+export async function updateLegalSource(id: string, input: UpdateLegalSourceInput) {
+  const source = await LegalSourceModel.findById(id);
+  if (!source) throw AppError.notFound('Legal source not found');
+  const { expectedArticleCount, ...fields } = input;
+
+  const effectiveDate = fields.effectiveDate === undefined ? source.effectiveDate : fields.effectiveDate;
+  const expiryDate = fields.expiryDate === undefined ? source.expiryDate : fields.expiryDate;
+  if (effectiveDate && expiryDate && expiryDate <= effectiveDate) {
+    throw AppError.badRequest('expiryDate must be after effectiveDate');
+  }
+
+  const set: Record<string, unknown> = {};
+  const unset: Record<string, ''> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === null) unset[key] = '';
+    else if (value !== undefined) set[key] = value;
+  }
+  if (expectedArticleCount !== undefined) {
+    set.coverage = await coverageOfStoredChunks(
+      source._id,
+      source.coverage?.headingCount ?? 0,
+      expectedArticleCount ?? undefined,
+    );
+  }
+
+  await LegalSourceModel.updateOne(
+    { _id: source._id },
+    {
+      ...(Object.keys(set).length ? { $set: set } : {}),
+      ...(Object.keys(unset).length ? { $unset: unset } : {}),
+    },
+    { runValidators: true },
+  );
+  if (fields.status && fields.status !== source.status) {
+    logger.info('Legal source status changed', { legalSourceId: id, from: source.status, to: fields.status });
+  }
+  return getLegalSource(source.id);
 }
 
 export async function deleteLegalSource(id: string) {

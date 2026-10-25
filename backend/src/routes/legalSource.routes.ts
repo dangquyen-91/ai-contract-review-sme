@@ -13,11 +13,13 @@ import {
   listLegalSourcesHandler,
   previewLegalSourceHandler,
   resumeLegalIngestionHandler,
+  updateLegalSourceHandler,
 } from '../controllers/legalSource.controller';
 import {
   createLegalSourceSchema,
   legalSourceIdParamSchema,
   previewLegalSourceSchema,
+  updateLegalSourceSchema,
 } from '../validations/legalSource.validation';
 
 const router = Router();
@@ -44,6 +46,12 @@ router.post(
 );
 
 router.get('/:id', validate({ params: legalSourceIdParamSchema }), getLegalSourceHandler);
+
+router.patch(
+  '/:id',
+  validate({ params: legalSourceIdParamSchema, body: updateLegalSourceSchema }),
+  updateLegalSourceHandler,
+);
 
 router.post(
   '/:id/parts',
