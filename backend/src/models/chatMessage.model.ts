@@ -3,6 +3,16 @@ import { decryptOnSerialize, encryptedString } from '../utils/fieldEncryption';
 
 export const CHAT_ROLES = ['user', 'assistant'] as const;
 
+const chatLegalSourceSchema = new Schema(
+  {
+    legalKnowledgeChunkId: { type: Types.ObjectId, ref: 'LegalKnowledgeChunk', required: true },
+    citationLabel: { type: String, required: true },
+    sourceTitle: { type: String, required: true },
+    articleRef: { type: String },
+  },
+  { _id: false },
+);
+
 const chatMessageSchema = new Schema(
   {
     contractVersionId: {
@@ -15,6 +25,7 @@ const chatMessageSchema = new Schema(
     userId: { type: Types.ObjectId, ref: 'User', required: true },
     role: { type: String, enum: CHAT_ROLES, required: true },
     content: { type: String, required: true, ...encryptedString },
+    legalSources: { type: [chatLegalSourceSchema], default: undefined },
   },
   { timestamps: true, ...decryptOnSerialize },
 );

@@ -812,9 +812,47 @@ components:
           enum: [user, assistant]
         content:
           type: string
+        legalSources:
+          type: array
+          description: Assistant messages only - the legal excerpts that were given to the model for this answer. Absent on messages saved before legal search was added to chat.
+          items:
+            $ref: '#/components/schemas/ChatLegalSource'
         createdAt:
           type: string
           format: date-time
+
+    ChatLegalSource:
+      type: object
+      properties:
+        legalKnowledgeChunkId:
+          type: string
+        citationLabel:
+          type: string
+          example: Luật Thương mại 2005
+        sourceTitle:
+          type: string
+        articleRef:
+          type: string
+          example: Điều 301
+
+    ChatReply:
+      type: object
+      properties:
+        reply:
+          type: string
+        legalSources:
+          type: array
+          description: Legal excerpts retrieved for the question and given to the model (up to 4, searched within the contract type's governing laws). The model is told to name the article it relies on and not to cite anything else. May be absent on an idempotent replay of an answer saved before legal search was added to chat.
+          items:
+            $ref: '#/components/schemas/ChatLegalSource'
+        legalRetrievalStatus:
+          type: string
+          enum: [ok, degraded, no_sources, unavailable]
+          description: Same meaning as ContractVersion.legalRetrievalStatus, for this question's legal search
+        runId:
+          type: string
+        replayed:
+          type: boolean
 
     RiskFinding:
       type: object
@@ -2766,7 +2804,7 @@ paths:
       summary: Ask a follow-up question about the contract
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
-      description: Requires clauses to be segmented. The answer is grounded in the contract's clauses, summary, risk findings and analysisFocus, plus the last 10 chat messages. Both the question and the answer are saved. Rate-limited (AI cost control).
+      description: Requires clauses to be segmented. The answer is grounded in the contract's clauses, summary, risk findings (with their legal basis) and analysisFocus, the last 10 chat messages, and up to 4 legal excerpts found for the question in the legal knowledge base. The legal search runs after the chat credit is reserved. Both the question and the answer are saved. Rate-limited (AI cost control).
       requestBody:
         required: true
         content:
@@ -2785,10 +2823,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  reply:
-                    type: string
+                $ref: '#/components/schemas/ChatReply'
         '400':
           description: Clauses not segmented yet, or LLM not configured
           content:
@@ -2818,7 +2853,7 @@ paths:
       description: |
         Use `fetch` (not `EventSource`). Events:
         - `token` `{ "text": string }` - next chunk of the answer
-        - `done` `{ reply, runId, replayed }` - the exchange is saved and chat quota finalized
+        - `done` `{ reply, legalSources, legalRetrievalStatus, runId, replayed }` (see ChatReply) - the exchange is saved and chat quota finalized
         - `error` `{ "status": number, "message": string }`
         A `: ping` comment line is sent every 15s to keep proxies from closing an idle connection - SSE clients must ignore lines starting with `:`. Closing the connection cancels the LLM call; if the answer had already finished generating, it is still saved.
         Rate-limited (AI cost control).
