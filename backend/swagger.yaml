@@ -15,6 +15,7 @@ tags:
   - name: Payments
   - name: Contracts
   - name: ContractProfiles
+  - name: ContractDrafts
   - name: Reviews
   - name: LegalKB
 
@@ -45,6 +46,34 @@ components:
       bearerFormat: JWT
 
   schemas:
+    DraftRevision:
+      type: object
+      additionalProperties: false
+      required: [revision]
+      properties:
+        revision: { type: integer, minimum: 0 }
+    CreateContractDraft:
+      type: object
+      additionalProperties: false
+      required: [templateCode, title, ourParty, input]
+      properties:
+        templateCode: { type: string, enum: [labor, service, sales] }
+        title: { type: string, minLength: 2, maxLength: 200 }
+        ourParty: { type: string, description: employer for labor; provider/client for service; seller/buyer for sales }
+        input:
+          type: object
+          description: String values keyed by template fields (at most 40 keys). Ordinary values have a 4000-character limit. lineItems is a JSON string of up to 20 objects with name, unit, quantity and unitPrice strings (16000-character limit). Partial drafts are allowed; generation and submission require valid complete data and matching item totals.
+          additionalProperties: { type: string, maxLength: 16000 }
+    UpdateContractDraft:
+      type: object
+      additionalProperties: false
+      required: [revision, title, ourParty, input, content]
+      properties:
+        revision: { type: integer, minimum: 0 }
+        title: { type: string, minLength: 2, maxLength: 200 }
+        ourParty: { type: string }
+        input: { type: object, description: Same limits and lineItems representation as CreateContractDraft, additionalProperties: { type: string, maxLength: 16000 } }
+        content: { type: string, maxLength: 80000 }
     Payment:
       type: object
       properties:
@@ -70,7 +99,8 @@ components:
         audience: { type: string, enum: [personal, business] }
         price: { type: integer, description: Full monthly price in VND }
         currency: { type: string, enum: [VND] }
-        analysisLimit: { type: integer }
+        analysisLimit: { type: integer, description: Review credits per period; each review costs ceil(document pages / 5) }
+        draftingLimit: { type: integer, description: Separate AI drafting credits per period; 50 Starter and 150 Pro by default; 0 for personal plans }
         chatLimit: { type: integer }
         memberLimit: { type: integer, description: Includes Owner }
     UsageCounter:
@@ -112,6 +142,25 @@ components:
           $ref: '#/components/schemas/UsageCounter'
         chat:
           $ref: '#/components/schemas/UsageCounter'
+        drafting:
+          $ref: '#/components/schemas/UsageCounter'
+        reviewPagesPerUnit: { type: integer, enum: [5] }
+    ReviewBillingConfirmation:
+      type: object
+      additionalProperties: false
+      required: [versionId, units]
+      properties:
+        versionId: { type: string, description: Version ID from the latest contract detail reviewBilling quote }
+        units: { type: integer, minimum: 1, description: Confirmed credit count; server recalculates from stored page count }
+    ReviewBillingQuote:
+      type: object
+      properties:
+        versionId: { type: string }
+        pageCount: { type: integer, nullable: true }
+        pagesPerUnit: { type: integer, enum: [5] }
+        units: { type: integer, nullable: true }
+        ready: { type: boolean }
+        reason: { type: string, nullable: true }
     Error:
       type: object
       properties:
@@ -334,6 +383,8 @@ components:
     Contract:
       type: object
       properties:
+        reviewBilling:
+          $ref: '#/components/schemas/ReviewBillingQuote'
         id:
           type: string
         title:
@@ -1250,6 +1301,170 @@ components:
           description: Legal document to chunk and embed (pdf, docx, doc, or txt)
 
 paths:
+  /contract-drafts/templates:
+    get:
+      tags: [ContractDrafts]
+      summary: List business contract template definitions and company defaults
+      description: Business Owner/Staff only. Personal accounts and personal workspaces are rejected. Includes fields, party choices, version and legal reference basis.
+      responses:
+        '200': { description: Template catalog and organization defaults }
+        '403': { description: Caller is not an active business Owner/Staff }
+  /contract-drafts:
+    get:
+      tags: [ContractDrafts]
+      summary: List drafts within the business organization
+      description: Owner sees organization drafts; Staff sees only their own. Twenty drafts per page, newest first.
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+      responses:
+        '200': { description: items, total, page and pages inside data }
+    post:
+      tags: [ContractDrafts]
+      summary: Create a business contract draft with immutable template/company snapshots
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateContractDraft' }
+      responses:
+        '201': { description: Draft with revision zero }
+        '400': { description: Invalid fields or party choice }
+  /contract-drafts/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+    get:
+      tags: [ContractDrafts]
+      summary: Read a draft and its original template
+      responses:
+        '200': { description: Draft details }
+        '404': { description: Not found or outside the caller's scope }
+    patch:
+      tags: [ContractDrafts]
+      summary: Save a draft with optimistic revision checking
+      description: Only draft state is editable. Changing form values clears generated content to avoid using mismatched clauses. Approved and submitted drafts are read-only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateContractDraft' }
+      responses:
+        '200': { description: Saved draft with incremented revision }
+        '409': { description: Stale revision, generation in progress or read-only state }
+  /contract-drafts/{id}/generate:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [ContractDrafts]
+      summary: Generate AI additions within a fixed Vietnamese template frame
+      description: Requires complete valid fields. Uses identity masking, structured output validation, a 90-second model timeout and an expiring generation lease. Does not start a contract review.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftRevision' }
+      responses:
+        '200': { description: Generated draft and notes for human review }
+        '400': { description: Missing or inconsistent form data }
+        '409': { description: Stale revision or active generation }
+        '429': { description: AI request rate limit reached }
+        '502': { description: Invalid AI output }
+        '503': { description: AI is not configured }
+  /contract-drafts/{id}/copy-latest:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [ContractDrafts]
+      summary: Copy existing input into a new draft with the latest template
+      description: Keeps the original document and its approval unchanged. Staff can copy only their own drafts; Owner can copy drafts in their organization. Content must be generated again on the new draft.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftRevision' }
+      responses:
+        '201': { description: New editable draft with latest template snapshot }
+        '404': { description: Draft not accessible }
+        '409': { description: Stale revision }
+  /contract-drafts/{id}/decision:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [ContractDrafts]
+      summary: Submit, approve or return a draft
+      description: Staff can submit their own draft. Only Owner can approve or return. A return requires a reason. Approval locks the content and is not an electronic signature.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [revision, action]
+              properties:
+                revision: { type: integer, minimum: 0 }
+                action: { type: string, enum: [submit, approve, return] }
+                note: { type: string, maxLength: 1000 }
+      responses:
+        '200': { description: Updated draft }
+        '403': { description: Owner role required }
+        '409': { description: Stale revision or invalid state transition }
+  /contract-drafts/{id}/export:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [ContractDrafts]
+      summary: Export an approved draft as Owner or its Staff creator
+      description: Requires active membership in the draft organization and Owner approval. Staff can export only drafts they created. Both DOCX and print exports enforce these permissions.
+      parameters:
+        - in: query
+          name: format
+          schema: { type: string, enum: [docx, print], default: docx }
+      responses:
+        '200':
+          description: DOCX attachment or JSON title/content for the protected browser print page
+          content:
+            application/vnd.openxmlformats-officedocument.wordprocessingml.document:
+              schema: { type: string, format: binary }
+            application/json:
+              schema: { type: object }
+        '403': { description: Active business membership required }
+        '404': { description: Draft not found or outside permitted organization/creator scope }
+        '409': { description: Draft has not been approved }
+  /contract-drafts/{id}/publish:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [ContractDrafts]
+      summary: Transfer an approved draft to the existing review workflow, Owner only
+      description: Creates one ordinary uploaded contract with a private DOCX and completed text extraction. Repeated calls return the linked contract. Requires file storage; does not automatically start AI review.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftRevision' }
+      responses:
+        '200': { description: Linked contractId }
+        '409': { description: Stale revision or draft not approved }
   /profile:
     get:
       tags: [Auth]
@@ -2839,9 +3054,9 @@ paths:
       tags: [Reviews]
       summary: Start a full review in the background
       description: |
-        Queues segmentation, summary and risk detection as one review run and returns 202 immediately. Follow it with GET /reviews/{reviewId}/events (SSE) or by polling GET /reviews/{reviewId}. If the upload is still being extracted, the review waits for it. Only one review can run per contract at a time. Rate-limited (AI cost control).
+        Queues segmentation, summary and risk detection as one review run and returns 202 immediately. Follow it with GET /reviews/{reviewId}/events (SSE) or by polling GET /reviews/{reviewId}. Extraction and page counting must finish before starting. Only one review can run per contract at a time. Rate-limited (AI cost control).
 
-        A review costs one `analysis` credit. The credit is reserved when the review is queued, consumed when it completes and released if it fails. Sending the same Idempotency-Key again returns the same review (200, `replayed: true`) without using another credit.
+        A review costs ceil(pageCount / 5) analysis credits for both personal and business accounts. All credits are reserved before queueing, consumed atomically with the saved completed result and released in full on failure, cancellation or lease expiry. Missing page counts or truncated documents cannot start a review. Sending the same Idempotency-Key again returns the same review (200, replayed true) without another charge. Optional billing confirms the quote from contract detail; version or unit changes return 409.
       parameters:
         - in: header
           name: Idempotency-Key
@@ -2859,6 +3074,8 @@ paths:
                 analysisFocus:
                   type: string
                   maxLength: 1000
+                billing:
+                  $ref: '#/components/schemas/ReviewBillingConfirmation'
       responses:
         '202':
           description: Review queued
@@ -3009,10 +3226,19 @@ paths:
       tags: [Reviews]
       summary: Retry a failed or cancelled review from the failed stage
       description: |
-        Re-runs only the stages that did not complete, on the same review. Reserves one analysis credit, charged only if the review completes.
+        Re-runs only the stages that did not complete, on the same review. Reserves ceil(pageCount / 5) analysis credits for the entire document, charged only if the review completes; the prior failed attempt was refunded.
         Roles - administrator, owner, manager, staff, expert, user.
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                billing:
+                  $ref: '#/components/schemas/ReviewBillingConfirmation'
       responses:
         '202':
           description: Queued again; follow GET /reviews/{reviewId}/events
