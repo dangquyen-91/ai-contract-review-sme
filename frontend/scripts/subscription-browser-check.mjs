@@ -154,7 +154,7 @@ try {
         for (const plan of plans.filter((item) => item.audience === audience)) {
           assert.ok(result.text.includes(plan.name));
           assert.ok(result.text.includes(plan.price.toLocaleString('vi-VN')));
-          assert.ok(result.text.includes(`${plan.analysisLimit.toLocaleString('vi-VN')} lượt phân tích`));
+          assert.ok(result.text.includes(`${plan.analysisLimit.toLocaleString('vi-VN')} lượt rà soát`));
           assert.ok(result.text.includes(`${plan.chatLimit.toLocaleString('vi-VN')} lượt chat`));
         }
         for (const card of result.cards) {
