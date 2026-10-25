@@ -1,6 +1,6 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
-import type { ContractShareSummary } from "@/types/contracts";
+import type { ContractShareSummary, ReviewBillingConfirmation } from "@/types/contracts";
 import { readContractStream } from "@/lib/api/contract-stream";
 import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyTerms, ContractListResult, ContractProfile, ContractReviewResult, ContractReviewRun, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
@@ -75,11 +75,11 @@ export const contractsApi = {
     });
   },
 
-  startReview(contractId: string, idempotencyKey: string, analysisFocus?: string, signal?: AbortSignal) {
+  startReview(contractId: string, idempotencyKey: string, analysisFocus?: string, signal?: AbortSignal, billing?: ReviewBillingConfirmation) {
     return apiRequest<ContractReviewRun>({
       url: `/contracts/${contractId}/reviews`,
       method: "POST",
-      data: analysisFocus ? { analysisFocus } : {},
+      data: { ...(analysisFocus ? { analysisFocus } : {}), ...(billing ? { billing } : {}) },
       headers: { "Idempotency-Key": idempotencyKey },
       signal,
     });
@@ -93,11 +93,11 @@ export const contractsApi = {
     return apiRequest<ContractReviewRun>({ url: `/reviews/${reviewId}/cancel`, method: "POST", data: {} });
   },
 
-  retryReviewRun(reviewId: string, idempotencyKey: string, signal?: AbortSignal) {
+  retryReviewRun(reviewId: string, idempotencyKey: string, signal?: AbortSignal, billing?: ReviewBillingConfirmation) {
     return apiRequest<ContractReviewRun>({
       url: `/reviews/${reviewId}/retry`,
       method: "POST",
-      data: {},
+      data: billing ? { billing } : {},
       headers: { "Idempotency-Key": idempotencyKey },
       signal,
     });

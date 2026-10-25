@@ -3,7 +3,8 @@ import { SubscriptionPlanPicker } from "./subscription-plan-picker";
 const faqs = [
   ["Gói cá nhân và tổ chức khác nhau thế nào?", "Gói cá nhân dành cho một tài khoản. Gói tổ chức chia sẻ hạn mức phân tích và chat cho các thành viên; số thành viên tối đa đã bao gồm Owner."],
   ["Gói miễn phí có những hạn mức nào?", "Chọn mục Cá nhân để xem giá và hạn mức Personal Free hiện tại. Hạn mức miễn phí được cấp theo tháng, không phải bản mẫu hợp đồng."],
-  ["Hạn mức phân tích và chat được tính thế nào?", "Phân tích hợp đồng và chat là hai hạn mức riêng. Hạn mức áp dụng trong mỗi kỳ gói; chi tiết số lượt được hiển thị trên từng thẻ gói."],
+  ["Lượt rà soát được tính thế nào?", "Mỗi lượt rà soát tối đa 5 trang, làm tròn lên theo từng tài liệu: 1–5 trang dùng 1 lượt, 6–10 trang dùng 2 lượt. Áp dụng cho cả cá nhân và doanh nghiệp. Số lượt được thông báo trước khi chạy; lỗi hoặc hủy trước khi hoàn tất sẽ hoàn lại lượt đã giữ."],
+  ["Tạo hợp đồng theo mẫu có tốn lượt không?", "Điền mẫu, lưu nháp, sửa thủ công, duyệt và tải Word/PDF không trừ lượt. Mỗi lần AI soạn hoặc tạo lại thành công dùng 1 lượt soạn riêng của tổ chức. Soạn xong rồi chạy rà soát sẽ tính thêm lượt rà soát theo số trang."],
   ["Tổ chức chưa mua gói có được mời thành viên không?", "Tổ chức chưa mua gói có thể có tối đa 3 thành viên, bao gồm Owner. Đây là giới hạn thành viên mặc định, không phải gói phân tích miễn phí cho tổ chức."],
   ["Chọn gói ở đây có bị thu tiền không?", "Bạn có thể xem và xác nhận gói trước khi chuyển sang payOS. Chỉ giao dịch được hệ thống xác nhận mới cấp quyền lợi. Gia hạn nối tiếp kỳ hiện tại; nâng cấp thu đủ giá và bắt đầu kỳ mới, không bảo lưu quyền lợi gói cũ."],
 ];
