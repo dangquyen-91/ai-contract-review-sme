@@ -1,5 +1,5 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
-import { RISK_LEVELS } from './contractVersion.model';
+import { LEGAL_RETRIEVAL_STATUSES, RISK_LEVELS } from './contractVersion.model';
 import { RISK_DETECTED_BY, RISK_FINDING_TYPES, RISK_SEVERITIES } from './riskFinding.model';
 
 export const REVIEW_STATUSES = ['queued', 'running', 'completed', 'failed', 'cancelled'] as const;
@@ -50,6 +50,7 @@ const reviewResultSchema = new Schema(
       low: { type: Number, default: 0 },
     },
     findings: { type: [findingSnapshotSchema], default: [] },
+    legalRetrievalStatus: { type: String, enum: LEGAL_RETRIEVAL_STATUSES },
     partial: { type: Boolean, default: false },
   },
   { _id: false },

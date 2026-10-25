@@ -163,6 +163,7 @@ async function buildReviewResult(versionId: string) {
     summaryPoints: version?.summaryPoints ?? [],
     clauseCount: clauses.length,
     findingCounts: counts,
+    legalRetrievalStatus: version?.legalRetrievalStatus ?? undefined,
     findings: findings
       .map((f) => {
         const clause = f.clauseId ? clauseById.get(f.clauseId.toString()) : undefined;
@@ -192,7 +193,13 @@ async function buildPartialResult(versionId: string, stages: ReviewStages) {
     ...(summaryDone ? {} : { summaryPoints: [] }),
     ...(riskDone
       ? {}
-      : { overallRiskLevel: 'none', overallAssessment: [], findingCounts: { high: 0, medium: 0, low: 0 }, findings: [] }),
+      : {
+          overallRiskLevel: 'none',
+          overallAssessment: [],
+          findingCounts: { high: 0, medium: 0, low: 0 },
+          findings: [],
+          legalRetrievalStatus: undefined,
+        }),
     partial: true,
   };
 }

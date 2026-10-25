@@ -47,6 +47,8 @@ export const RISK_DETECTION_STATUSES = ['pending', 'processing', 'completed', 'f
 
 export const SUMMARY_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
 
+export const LEGAL_RETRIEVAL_STATUSES = ['ok', 'degraded', 'no_sources', 'unavailable'] as const;
+
 const keyTermSchema = new Schema(
   {
     key: { type: String, required: true },
@@ -92,6 +94,7 @@ const contractVersionSchema = new Schema(
     },
     riskDetectionError: { type: String },
     riskDetectionStartedAt: { type: Date },
+    legalRetrievalStatus: { type: String, enum: LEGAL_RETRIEVAL_STATUSES },
     overallAssessment: { type: [String], default: [] },
     keyTerms: { type: [keyTermSchema], default: undefined },
     keyTermsExtractedAt: { type: Date },

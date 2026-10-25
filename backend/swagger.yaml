@@ -452,6 +452,10 @@ components:
           type: string
           format: date-time
           description: When the last risk detection run started (same 10-minute stale rule as segmentation)
+        legalRetrievalStatus:
+          type: string
+          enum: [ok, degraded, no_sources, unavailable]
+          description: How the legal knowledge search went during the last risk detection. ok = vector and text search both ran. degraded = only one of them ran. no_sources = the legal knowledge base has no searchable source. unavailable = the search failed, so the findings were written without legal excerpts (rule checks still ran). Absent until risk detection completes, and cleared when clauses are re-segmented.
         overallAssessment:
           type: array
           items:
@@ -571,6 +575,10 @@ components:
                   type: integer
                 low:
                   type: integer
+            legalRetrievalStatus:
+              type: string
+              enum: [ok, degraded, no_sources, unavailable]
+              description: Copied from the contract version (see ContractVersion.legalRetrievalStatus). Absent when risk detection did not finish.
             findings:
               type: array
               items:

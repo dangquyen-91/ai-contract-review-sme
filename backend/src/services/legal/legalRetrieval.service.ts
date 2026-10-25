@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { LegalKnowledgeChunkModel, EMBEDDING_DIMENSIONS } from '../../models/legalKnowledgeChunk.model';
 import { LegalSourceModel } from '../../models/legalSource.model';
 import { LEGAL_BASIS_VERIFICATIONS } from '../../models/riskFinding.model';
+import { LEGAL_RETRIEVAL_STATUSES } from '../../models/contractVersion.model';
 import { logger } from '../../config/logger';
 import { embedTexts } from '../ai/llm.service';
 import { LEGAL_CHUNK_TEXT_INDEX_NAME, LEGAL_CHUNK_VECTOR_INDEX_NAME } from './legalKnowledgeIngest.service';
@@ -32,6 +33,13 @@ interface ChunkHit {
 export interface LegalSearchOptions {
   legalSourceCodes?: string[];
   signal?: AbortSignal;
+}
+
+export type LegalRetrievalStatus = (typeof LEGAL_RETRIEVAL_STATUSES)[number];
+
+export interface LegalSearchResult {
+  matches: LegalChunkMatch[][];
+  status: LegalRetrievalStatus;
 }
 
 const SEARCHABLE_SOURCE = { status: { $ne: 'repealed' } };
@@ -109,12 +117,12 @@ export async function searchLegalChunks(
   queryTexts: string[],
   topKPerQuery: number,
   { legalSourceCodes, signal }: LegalSearchOptions = {},
-): Promise<LegalChunkMatch[][]> {
-  if (queryTexts.length === 0) return [];
+): Promise<LegalSearchResult> {
+  if (queryTexts.length === 0) return { matches: [], status: 'ok' };
 
   try {
     const legalSourceIds = await resolveLegalSearchScope(legalSourceCodes);
-    if (legalSourceIds.length === 0) return queryTexts.map(() => []);
+    if (legalSourceIds.length === 0) return { matches: queryTexts.map(() => []), status: 'no_sources' };
 
     const candidates = Math.max(topKPerQuery * 4, 10);
     const [vectors, textResults] = await Promise.allSettled([
@@ -147,7 +155,9 @@ export async function searchLegalChunks(
     const sources = sourceIds.length ? await LegalSourceModel.find({ _id: { $in: sourceIds } }) : [];
     const sourceById = new Map(sources.map((s) => [s._id.toString(), s]));
 
-    return fusedPerQuery.map((results) =>
+    const status: LegalRetrievalStatus =
+      vectors.status === 'fulfilled' && textResults.status === 'fulfilled' ? 'ok' : 'degraded';
+    const matches = fusedPerQuery.map((results) =>
       results.map(({ hit, score, retrievers }) => {
         const source = sourceById.get(String(hit.legalSourceId));
         return {
@@ -163,13 +173,14 @@ export async function searchLegalChunks(
         };
       }),
     );
+    return { matches, status };
   } catch (err) {
     if (signal?.aborted) throw err;
     logger.warn('Legal chunk search failed, continuing without citations', {
       error: err instanceof Error ? err.message : String(err),
       queryCount: queryTexts.length,
     });
-    return queryTexts.map(() => []);
+    return { matches: queryTexts.map(() => []), status: 'unavailable' };
   }
 }
 

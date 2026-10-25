@@ -13,7 +13,12 @@ import {
   LlmFinding,
   LlmProposedRevision,
 } from './riskDetection.service';
-import { searchLegalChunks, LegalChunkMatch, verifyLegalBasis } from '../legal/legalRetrieval.service';
+import {
+  searchLegalChunks,
+  LegalChunkMatch,
+  LegalRetrievalStatus,
+  verifyLegalBasis,
+} from '../legal/legalRetrieval.service';
 import {
   claimStage,
   getCurrentVersion,
@@ -59,8 +64,12 @@ async function buildLegalExcerpts(
   redactor: Redactor,
   legalSourceCodes: string[],
   signal?: AbortSignal,
-): Promise<{ excerpts: LegalExcerptInput[]; metaByNumber: Map<number, LegalExcerptMeta> }> {
-  const perClauseMatches = await searchLegalChunks(
+): Promise<{
+  excerpts: LegalExcerptInput[];
+  metaByNumber: Map<number, LegalExcerptMeta>;
+  retrievalStatus: LegalRetrievalStatus;
+}> {
+  const { matches: perClauseMatches, status: retrievalStatus } = await searchLegalChunks(
     clauses.map((c) => redactor.mask(c.text)),
     LEGAL_EXCERPTS_PER_CLAUSE,
     { legalSourceCodes, signal },
@@ -90,7 +99,7 @@ async function buildLegalExcerpts(
     number++;
   }
 
-  return { excerpts, metaByNumber };
+  return { excerpts, metaByNumber, retrievalStatus };
 }
 
 async function extractKeyTermsSafely(
@@ -251,7 +260,7 @@ export async function detectRisks(
     );
 
     onProgress?.('retrieving_legal_sources');
-    const [{ excerpts, metaByNumber }, keyTerms] = await Promise.all([
+    const [{ excerpts, metaByNumber, retrievalStatus }, keyTerms] = await Promise.all([
       buildLegalExcerpts(clauses, redactor, reviewContext.legalSourceCodes, signal),
       extractKeyTermsSafely(
         reviewContext,
@@ -442,6 +451,7 @@ export async function detectRisks(
           overallRiskLevel,
           overallAssessment,
           riskDetectionStatus: 'completed',
+          legalRetrievalStatus: retrievalStatus,
           keyTerms: keyTerms.map((t) => ({
             key: t.key,
             numberValue: t.numberValue,
