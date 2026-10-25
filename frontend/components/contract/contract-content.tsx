@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
@@ -26,7 +27,7 @@ export function ContractContent({ data, access, onReview, isReviewing = false }:
     if (!contractId) return;
     router.push(`/contract/${encodeURIComponent(contractId)}${rerun ? "?rerun=1" : ""}`);
   }
-  return <ContractsView contracts={data.contracts} totalContracts={data.totalContracts} scope={`${data.role}:${data.organization.id}`} workspaceReady={Boolean(data.organization.id)} canDelete={["administrator", "owner", "manager", "staff", "user"].includes(data.role)} canReview={access.review} onReview={onReview ?? openReview} isReviewing={isReviewing} />;
+  return <ContractsView contracts={data.contracts} totalContracts={data.totalContracts} scope={`${data.role}:${data.organization.id}`} workspaceReady={Boolean(data.organization.id)} canDraft={Boolean(data.organization.id) && ["owner", "staff"].includes(data.role)} canDelete={["administrator", "owner", "manager", "staff", "user"].includes(data.role)} canReview={access.review} onReview={onReview ?? openReview} isReviewing={isReviewing} />;
 }
 
 const contractListParams = { page: paginationPageParser, search: parseAsString.withDefault(""), status: parseAsString.withDefault(""), riskLevel: parseAsString.withDefault("") };
@@ -53,7 +54,7 @@ function ContractSearchForm({ search, onSearch }: { search: string; onSearch: (v
   </form>;
 }
 
-function ContractsView({ contracts, totalContracts, scope, workspaceReady, canReview, onReview, isReviewing, canDelete }: { contracts: DashboardContract[]; totalContracts: number; scope: string; workspaceReady: boolean; canReview: boolean; canDelete: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean }) {
+function ContractsView({ contracts, totalContracts, scope, workspaceReady, canDraft, canReview, onReview, isReviewing, canDelete }: { contracts: DashboardContract[]; totalContracts: number; scope: string; workspaceReady: boolean; canDraft: boolean; canReview: boolean; canDelete: boolean; onReview: (contract: DashboardContract, rerun?: boolean) => void; isReviewing: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -80,6 +81,7 @@ function ContractsView({ contracts, totalContracts, scope, workspaceReady, canRe
   return <>
     <section className="flex items-end justify-between gap-7 max-[580px]:items-start max-[580px]:flex-col">
       <div><p className="text-[10px] font-bold uppercase tracking-wide text-[#2864dc]">Kho tài liệu</p><h1 className="mt-2 text-[clamp(30px,3vw,42px)] font-bold leading-tight">Tất cả hợp đồng</h1><p className="mt-2 text-sm text-[#6b778c]">Theo dõi trạng thái xử lý và mức rủi ro của các hợp đồng.</p></div>
+      {canDraft && <Button asChild><Link href="/contract-drafts"><Icon name="document" className="size-4" />Tạo từ mẫu</Link></Button>}
     </section>
     <section className="mt-7 min-w-0 overflow-hidden rounded-[14px] border border-[color:var(--line)] bg-white shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)]">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-[color:var(--line)] px-[21px] py-[18px]">

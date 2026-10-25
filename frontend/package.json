@@ -14,6 +14,8 @@
     "test:password-recovery": "node --test scripts/password-recovery.test.mjs",
     "test:profile": "node --test scripts/profile.test.mjs",
     "test:profile:browser": "node scripts/profile-browser-check.mjs",
+    "test:contract-drafts": "node --test scripts/contract-drafts.test.mjs",
+    "test:contract-drafts:browser": "node scripts/contract-drafts-browser-check.mjs",
     "test:payments": "node --test scripts/payment-workflow.test.mjs",
     "test:payments:browser": "node scripts/payment-browser-check.mjs",
     "test:users": "node scripts/user-management-smoke.cjs",
