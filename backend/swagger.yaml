@@ -1081,6 +1081,9 @@ components:
           type: string
           description: Unique stable code that contract profiles use to reference this source
           example: commercial_law_2005
+        inCatalog:
+          type: boolean
+          description: True when code is one of GET /kb/legal-sources/catalog. False means no contract profile scopes to this source and no legal rule cites it.
         title:
           type: string
           example: Luật Thương mại 2005
@@ -3179,6 +3182,60 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/catalog:
+    get:
+      tags: [LegalKB]
+      summary: List the legal source codes that contract profiles and legal rules depend on
+      description: |
+        Manager only. Contract profiles scope the legal search by these codes, and the built-in legal rules cite them. A legal source uploaded under any other code is still searchable, but no profile scopes to it and no rule can cite it. Upload a law the system relies on under the matching code here.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    code:
+                      type: string
+                      example: commercial_law_2005
+                    label:
+                      type: string
+                      example: Luật Thương mại 2005
+                    usedByProfiles:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          code:
+                            type: string
+                          name:
+                            type: string
+                    ruleCodes:
+                      type: array
+                      description: Legal rules that cite this source; their citations can only be verified once it is uploaded
+                      items:
+                        type: string
+                      example: [LTM_PENALTY_CAP]
+                    legalSource:
+                      type: object
+                      nullable: true
+                      description: The uploaded source with this code, or null if none has been uploaded yet
+                      properties:
+                        _id:
+                          type: string
+                        title:
+                          type: string
+                        status:
+                          type: string
+                          enum: [in_force, amended, repealed, not_yet_effective]
+                        ingestionStatus:
+                          type: string
+                          nullable: true
+                          enum: [queued, running, paused, completed, failed]
 
   /kb/legal-sources/preview:
     post:

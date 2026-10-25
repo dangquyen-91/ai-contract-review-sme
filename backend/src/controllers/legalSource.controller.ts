@@ -44,7 +44,11 @@ export const listLegalSourcesHandler = asyncHandler(async (_req: Request, res: R
   ok(res, sources);
 });
 
-export const getLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
+export const listLegalSourceCatalogHandler = asyncHandler(async (_req: Request, res: Response) => {
+  ok(res, await legalSourceService.listLegalSourceCatalog());
+});
+
+export const getLegalSourceHandler =asyncHandler(async (req: Request, res: Response) => {
   ok(res, await legalSourceService.getLegalSource(req.params.id));
 });
 

@@ -9,6 +9,7 @@ import {
   createLegalSourceHandler,
   deleteLegalSourceHandler,
   getLegalSourceHandler,
+  listLegalSourceCatalogHandler,
   listLegalSourcesHandler,
   previewLegalSourceHandler,
   resumeLegalIngestionHandler,
@@ -24,6 +25,8 @@ const router = Router();
 router.use(requireAuth, requireRole('manager'));
 
 router.get('/', listLegalSourcesHandler);
+
+router.get('/catalog', listLegalSourceCatalogHandler);
 
 router.post(
   '/preview',

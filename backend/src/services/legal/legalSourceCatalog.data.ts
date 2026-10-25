@@ -10,3 +10,6 @@ export const LEGAL_SOURCE_CATALOG = {
 } as const;
 
 export type LegalSourceCode = keyof typeof LEGAL_SOURCE_CATALOG;
+
+export const isCatalogLegalSourceCode = (code: string): code is LegalSourceCode =>
+  Object.hasOwn(LEGAL_SOURCE_CATALOG, code);
