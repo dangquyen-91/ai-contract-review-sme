@@ -6,6 +6,9 @@ import { createRedactor } from '../ai/redaction.service';
 import { SENSITIVE_DATA_TYPES } from '../../models/contractProfile.model';
 import { ContractTemplate, getTemplate, TemplateCode } from './templates';
 import { displayMoney, lineItemsTable } from './line-items';
+import { buildLaborStudioTemplate } from './studioTemplate.labor';
+import { studioText, type StudioNode } from './studioDocument';
+import { studioParagraph, studioTextNode } from './studioNodes';
 
 const resultSchema = z.object({
   sections: z.array(z.object({ key: z.string(), addition: z.string().max(3000) }).strict()).max(12),
@@ -23,6 +26,19 @@ const responseSchema = {
 const privateFields = new Set(['companyName', 'companyTaxCode', 'companyAddress', 'representative', 'authorization', 'partnerName', 'partnerAddress', 'partnerIdentifier', 'partnerRepresentative', 'partnerBirthDate', 'partnerIdIssuedDate', 'partnerIdIssuedPlace']);
 
 export function renderDraftDocument(code: TemplateCode, input: Record<string, string>, companyName: string, ourParty: string, additions: Map<string, string> = new Map(), template: ContractTemplate = getTemplate(code)) {
+  if (code === 'labor' && template.version >= 4) {
+    const document = buildLaborStudioTemplate(template, input, companyName);
+    const content: StudioNode[] = [];
+    let sectionIndex = -1;
+    const addComment = () => { const addition = additions.get(template.sections[sectionIndex]?.key); if (addition) content.push(studioParagraph([studioTextNode(addition)])); };
+    for (const node of document.content) {
+      const article = node.type === 'heading' && node.content?.[0]?.text?.startsWith('ĐIỀU ');
+      if (article || node.type === 'table') { addComment(); if (article) sectionIndex++; else sectionIndex = -1; }
+      content.push(node);
+    }
+    document.content = content;
+    return studioText(document, template);
+  }
   const values = { ...input };
   for (const field of template.fields) {
     if (field.options) values[field.key] = field.options.find(option => option.value === input[field.key])?.label ?? input[field.key];

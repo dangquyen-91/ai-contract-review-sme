@@ -3,12 +3,13 @@ import { ContractTemplate, getTemplate, TemplateCode } from '../services/draftin
 import { validateLineItems } from '../services/drafting/line-items';
 
 export const draftIdSchema = z.object({ id: z.string().regex(/^[a-f\d]{24}$/i) });
-const inputSchema = z.record(z.string().trim().max(16000)).refine(value => Object.keys(value).length <= 40 && Object.entries(value).every(([key, text]) => key === 'lineItems' || text.length <= 4000));
+const inputSchema = z.record(z.string().trim().max(16000)).refine(value => Object.keys(value).length <= 64 && Object.entries(value).every(([key, text]) => key === 'lineItems' || text.length <= 4000));
 export const createDraftSchema = z.object({
   templateCode: z.enum(['labor', 'service', 'sales']),
   title: z.string().trim().min(2).max(200),
   ourParty: z.string().min(1).max(30),
   input: inputSchema,
+  editorMode: z.literal('studio').optional(),
 }).strict();
 export const revisionSchema = z.object({ revision: z.number().int().min(0) }).strict();
 export const updateDraftSchema = revisionSchema.extend({
@@ -16,6 +17,7 @@ export const updateDraftSchema = revisionSchema.extend({
   input: inputSchema,
   ourParty: z.string().min(1).max(30),
   content: z.string().max(80000),
+  document: z.unknown().optional(),
 }).strict();
 export const draftDecisionSchema = revisionSchema.extend({ action: z.enum(['submit', 'approve', 'return']), note: z.string().trim().max(1000).default('') }).strict();
 export type DraftInput = z.infer<typeof createDraftSchema>;

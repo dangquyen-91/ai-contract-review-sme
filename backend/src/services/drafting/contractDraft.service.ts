@@ -17,12 +17,16 @@ import { createDraftDocx } from './docx.service';
 import { deleteContractFile, uploadContractFile } from '../contract/storage.service';
 import { countDocxPages } from '../contract/documentPageCount.service';
 import { reserveUsage, finishUsage } from '../billing/usage.service';
+import { buildStudioTemplate, legacyStudioDocument } from './studioTemplate';
+import { normalizeStudioDocument, studioInput, studioText } from './studioDocument';
+import { createStudioDocx } from './studioDocx.service';
 
 type Draft = InferSchemaType<typeof ContractDraftModel.schema>;
 const lockLifetime = 120_000;
+const draftPageSize = 20;
 const unlocked = () => ({ $or: [{ generationStartedAt: null }, { generationStartedAt: { $lte: new Date(Date.now() - lockLifetime) } }] });
 
-async function requireBusiness(actor: AccessTokenPayload) {
+export async function requireBusiness(actor: AccessTokenPayload) {
   if (!actor.orgId || !['owner', 'staff'].includes(actor.role)) throw AppError.forbidden('Chức năng này chỉ dành cho Owner và Staff trong doanh nghiệp.');
   const member = await UserModel.findOne({ _id: actor.sub, orgId: actor.orgId, isActive: true }).populate('roleId');
   if (!member || (member.roleId as unknown as { code: string })?.code !== actor.role) throw AppError.forbidden('Quyền truy cập tổ chức đã thay đổi.');
@@ -30,20 +34,21 @@ async function requireBusiness(actor: AccessTokenPayload) {
   if (!organization || organization.isPersonal) throw AppError.forbidden('Tài khoản chưa thuộc doanh nghiệp.');
   return organization;
 }
-function scope(actor: AccessTokenPayload, id?: string): FilterQuery<Draft> {
-  return { orgId: actor.orgId, ...(id ? { _id: id } : {}), ...(actor.role === 'staff' ? { createdBy: actor.sub } : {}) };
+export function scope(actor: AccessTokenPayload, id?: string): FilterQuery<Draft> {
+  return { orgId: actor.orgId, deletedAt: null, ...(id ? { _id: id } : {}), ...(actor.role === 'staff' ? { createdBy: actor.sub } : {}) };
 }
 function view(draft: InstanceType<typeof ContractDraftModel>) {
   return {
-    id: draft.id, title: draft.title, templateCode: draft.templateCode, templateVersion: draft.templateVersion,
+    ...draftSummary(draft), templateVersion: draft.templateVersion,
     template: JSON.parse(draft.templateJson),
     ourParty: draft.ourParty, input: JSON.parse(draft.inputJson), organization: JSON.parse(draft.organizationJson),
-    content: draft.content, status: draft.status, revision: draft.revision,
-    createdBy: draft.createdBy.toString(), createdAt: draft.createdAt, updatedAt: draft.updatedAt,
+    content: draft.content,
+    document: draft.documentJson ? JSON.parse(draft.documentJson) : null,
+    createdAt: draft.createdAt,
     notes: JSON.parse(draft.notes || '[]'), decisionNote: draft.decisionNote,
     generatedAt: draft.generatedAt, generatedByModel: draft.generatedByModel,
     generationStartedAt: draft.generationStartedAt,
-    approvedAt: draft.approvedAt, contractId: draft.contractId?.toString() ?? null,
+    approvedAt: draft.approvedAt,
   };
 }
 function validateInput(code: TemplateCode, input: Record<string, string>, ourParty: string, complete = false, template: ContractTemplate = getTemplate(code)) {
@@ -51,7 +56,7 @@ function validateInput(code: TemplateCode, input: Record<string, string>, ourPar
   const errors = inputErrors(code, input, complete, template);
   if (errors.length) throw AppError.badRequest(errors.join('. '));
 }
-async function findDraft(actor: AccessTokenPayload, id: string) {
+export async function findDraft(actor: AccessTokenPayload, id: string) {
   const draft = await ContractDraftModel.findOne(scope(actor, id));
   if (!draft) throw AppError.notFound('Không tìm thấy bản nháp hợp đồng.');
   return draft;
@@ -68,10 +73,27 @@ export async function listDrafts(actor: AccessTokenPayload, page: number) {
   await requireBusiness(actor);
   const filter = scope(actor);
   const [items, total] = await Promise.all([
-    ContractDraftModel.find(filter).select('title templateCode status revision createdBy updatedAt contractId generationStartedAt').sort({ updatedAt: -1, _id: -1 }).skip((page - 1) * 20).limit(20),
+    ContractDraftModel.find(filter).select('title templateCode status revision createdBy updatedAt contractId pinnedAt').sort({ pinnedAt: -1, updatedAt: -1, _id: -1 }).skip((page - 1) * draftPageSize).limit(draftPageSize),
     ContractDraftModel.countDocuments(filter),
   ]);
-  return { items: items.map(draft => ({ id: draft.id, title: draft.title, templateCode: draft.templateCode, status: draft.status, revision: draft.revision, createdBy: draft.createdBy.toString(), updatedAt: draft.updatedAt, contractId: draft.contractId?.toString() ?? null })), total, page, pages: Math.max(1, Math.ceil(total / 20)) };
+  return { items: items.map(draftSummary), total, page, pages: Math.max(1, Math.ceil(total / draftPageSize)) };
+}
+function draftSummary(draft: InstanceType<typeof ContractDraftModel>) {
+  return { id: draft.id, title: draft.title, templateCode: draft.templateCode, status: draft.status, revision: draft.revision, createdBy: draft.createdBy.toString(), updatedAt: draft.updatedAt, contractId: draft.contractId?.toString() ?? null, pinnedAt: draft.pinnedAt ?? null };
+}
+export async function pinDraft(actor: AccessTokenPayload, id: string, pinned: boolean) {
+  await requireBusiness(actor);
+  const existing = await findDraft(actor, id);
+  if (Boolean(existing.pinnedAt) === pinned) return draftSummary(existing);
+  const draft = await ContractDraftModel.findOneAndUpdate(scope(actor, id), { $set: { pinnedAt: pinned ? new Date() : null } }, { new: true, timestamps: false });
+  if (!draft) throw AppError.notFound('Không tìm thấy bản nháp hợp đồng.');
+  return draftSummary(draft);
+}
+export async function deleteDraft(actor: AccessTokenPayload, id: string, revision: number) {
+  await requireBusiness(actor); await findDraft(actor, id);
+  const result = await ContractDraftModel.updateOne({ ...scope(actor, id), revision, status: 'draft', ...unlocked() }, { $set: { deletedAt: new Date(), deletedBy: actor.sub, pinnedAt: null }, $unset: { generationToken: '', generationStartedAt: '' }, $inc: { revision: 1 } });
+  if (!result.modifiedCount) throw AppError.conflict('Chỉ xóa bản nháp chưa gửi duyệt, không đang xử lý AI và chưa thay đổi. Hãy làm mới danh sách rồi thử lại.');
+  return { id };
 }
 export async function getDraft(actor: AccessTokenPayload, id: string) {
   await requireBusiness(actor);
@@ -80,13 +102,16 @@ export async function getDraft(actor: AccessTokenPayload, id: string) {
 export async function createDraft(actor: AccessTokenPayload, input: DraftInput) {
   const organization = await requireBusiness(actor);
   const defaults = Object.fromEntries(getTemplate(input.templateCode).fields.filter(field => field.defaultValue).map(field => [field.key, field.defaultValue!])) as Record<string, string>;
-  const values = { ...defaults, companyAddress: organization.address ?? '', companyTaxCode: organization.taxCode ?? '', ...input.input };
+  const values = { ...defaults, ...(getTemplate(input.templateCode).fields.some(field => field.key === 'companyName') ? { companyName: organization.name } : {}), companyAddress: organization.address ?? '', ...(getTemplate(input.templateCode).fields.some(field => field.key === 'companyTaxCode') ? { companyTaxCode: organization.taxCode ?? '' } : {}), ...input.input };
   validateInput(input.templateCode, values, input.ourParty);
+  const template = getTemplate(input.templateCode);
+  const document = input.editorMode === 'studio' ? buildStudioTemplate(template, values, organization.name, input.ourParty) : null;
   const draft = await ContractDraftModel.create({
     orgId: actor.orgId, createdBy: actor.sub, title: input.title,
     templateCode: input.templateCode, templateVersion: getTemplate(input.templateCode).version, ourParty: input.ourParty,
     templateJson: JSON.stringify(getTemplate(input.templateCode)),
     inputJson: JSON.stringify(values), organizationJson: JSON.stringify({ name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }),
+    ...(document ? { documentJson: JSON.stringify(document), content: studioText(document, template) } : {}),
   });
   return view(draft);
 }
@@ -94,14 +119,38 @@ export async function updateDraft(actor: AccessTokenPayload, id: string, input: 
   await requireBusiness(actor);
   const existing = await findDraft(actor, id);
   if (existing.revision !== input.revision) throw AppError.conflict('Bản nháp đã thay đổi. Vui lòng tải lại.');
-  validateInput(existing.templateCode as TemplateCode, input.input, input.ourParty, false, JSON.parse(existing.templateJson));
-  const changed = existing.ourParty !== input.ourParty || JSON.stringify(JSON.parse(existing.inputJson)) !== JSON.stringify(input.input);
+  const template = JSON.parse(existing.templateJson) as ContractTemplate;
+  const document = input.document !== undefined ? normalizeStudioDocument(input.document, template) : null;
+  if (existing.documentJson && !document) throw AppError.badRequest('Vui lòng lưu bằng trình soạn văn bản trực tiếp.');
+  if (document && input.ourParty !== existing.ourParty) throw AppError.badRequest('Vai trò giao kết được chọn khi mở mẫu. Hãy tạo bản mới nếu cần đổi vai trò.');
+  const values = document ? studioInput(document, input.input) : input.input;
+  if (document && existing.documentJson) {
+    const previousFields = studioInput(JSON.parse(existing.documentJson));
+    const currentFields = studioInput(document);
+    for (const key of Object.keys(previousFields)) if (!(key in currentFields)) values[key] = '';
+  }
+  validateInput(existing.templateCode as TemplateCode, values, input.ourParty, false, template);
+  const changed = existing.ourParty !== input.ourParty || JSON.stringify(JSON.parse(existing.inputJson)) !== JSON.stringify(values);
+  const content = document ? studioText(document, template) : changed ? '' : input.content;
+  if (content.length > 80000) throw AppError.badRequest('Nội dung hợp đồng quá dài. Vui lòng rút gọn.');
   const draft = await ContractDraftModel.findOneAndUpdate({ ...scope(actor, id), status: 'draft', revision: input.revision, ...unlocked() }, {
-    $set: { title: input.title, ourParty: input.ourParty, inputJson: JSON.stringify(input.input), content: changed ? '' : input.content, ...(changed ? { generatedAt: null, generatedByModel: null, notes: '[]' } : {}) },
+    $set: { title: input.title, ourParty: input.ourParty, inputJson: JSON.stringify(values), content, ...(document ? { documentJson: JSON.stringify(document) } : {}), ...(changed ? { generatedAt: null, generatedByModel: null, notes: '[]' } : {}) },
     $inc: { revision: 1 }, $unset: { generationToken: 1, generationStartedAt: 1 },
   }, { new: true });
   if (!draft) throw AppError.conflict('Bản nháp đã thay đổi, đang tạo bằng AI hoặc không còn ở trạng thái chỉnh sửa. Vui lòng tải lại.');
   return view(draft);
+}
+
+export async function openStudio(actor: AccessTokenPayload, id: string, revision: number) {
+  await requireBusiness(actor);
+  const draft = await findDraft(actor, id);
+  if (draft.documentJson) return view(draft);
+  const template = JSON.parse(draft.templateJson) as ContractTemplate;
+  const document = draft.content.trim() ? legacyStudioDocument(draft.content, template) : buildStudioTemplate(template, JSON.parse(draft.inputJson), JSON.parse(draft.organizationJson).name, draft.ourParty);
+  if (draft.status !== 'draft') return { ...view(draft), document };
+  const updated = await ContractDraftModel.findOneAndUpdate({ ...scope(actor, id), revision, status: 'draft', ...unlocked() }, { $set: { documentJson: JSON.stringify(document), content: studioText(document, template) }, $inc: { revision: 1 } }, { new: true });
+  if (!updated) throw AppError.conflict('Bản nháp đã thay đổi. Vui lòng tải lại.');
+  return view(updated);
 }
 
 export async function copyToLatestTemplate(actor: AccessTokenPayload, id: string, revision: number) {
@@ -112,12 +161,13 @@ export async function copyToLatestTemplate(actor: AccessTokenPayload, id: string
   const template = getTemplate(code);
   const oldInput = JSON.parse(draft.inputJson) as Record<string, string>;
   const input = Object.fromEntries(template.fields.filter(field => oldInput[field.key] !== undefined).map(field => [field.key, oldInput[field.key]]));
-  return createDraft(actor, { templateCode: code, title: `${draft.title.slice(0, 180)} (mẫu v${template.version})`, ourParty: draft.ourParty, input });
+  return createDraft(actor, { templateCode: code, title: `${draft.title.slice(0, 180)} (mẫu v${template.version})`, ourParty: draft.ourParty, input, ...(draft.documentJson ? { editorMode: 'studio' as const } : {}) });
 }
 export async function generateDraft(actor: AccessTokenPayload, id: string, revision: number) {
   await requireBusiness(actor);
   const existing = await findDraft(actor, id);
   if (existing.revision !== revision) throw AppError.conflict('Bản nháp đã thay đổi. Vui lòng tải lại.');
+  if (existing.documentJson) throw AppError.badRequest('Hãy dùng trợ lý AI bên cạnh văn bản để đề xuất chỉnh sửa.');
   const code = existing.templateCode as TemplateCode;
   const input = JSON.parse(existing.inputJson) as Record<string, string>;
   validateInput(code, input, existing.ourParty, true, JSON.parse(existing.templateJson));
@@ -167,7 +217,10 @@ export async function exportDraft(actor: AccessTokenPayload, id: string) {
   await requireBusiness(actor);
   const draft = await findDraft(actor, id);
   if (draft.status !== 'approved') throw AppError.conflict('Owner cần duyệt bản nháp trước khi xuất hợp đồng.');
-  return { content: draft.content, title: draft.title, buffer: await createDraftDocx(draft.content) };
+  return { content: draft.content, title: draft.title, document: draft.documentJson ? JSON.parse(draft.documentJson) : null, template: JSON.parse(draft.templateJson), buffer: await draftDocx(draft) };
+}
+function draftDocx(draft: InstanceType<typeof ContractDraftModel>) {
+  return draft.documentJson ? createStudioDocx(JSON.parse(draft.documentJson), JSON.parse(draft.templateJson)) : createDraftDocx(draft.content);
 }
 export async function publishDraft(actor: AccessTokenPayload, id: string, revision: number) {
   await requireBusiness(actor); requireOwner(actor);
@@ -175,7 +228,7 @@ export async function publishDraft(actor: AccessTokenPayload, id: string, revisi
   if (draft.contractId) return { contractId: draft.contractId.toString() };
   if (draft.status !== 'approved' || draft.revision !== revision) throw AppError.conflict('Vui lòng duyệt và tải lại bản nháp trước khi chuyển sang rà soát.');
   const filename = `hop-dong-${draft.templateCode}-${draft.id}.docx`;
-  const buffer = await createDraftDocx(draft.content);
+  const buffer = await draftDocx(draft);
   const pageCount = await countDocxPages(buffer);
   const stored = await uploadContractFile(buffer, actor.orgId!, filename);
   try {

@@ -12,8 +12,12 @@ const schema = new Schema({
   inputJson: { type: String, required: true, ...encryptedString },
   organizationJson: { type: String, required: true, ...encryptedString },
   content: { type: String, default: '', ...encryptedString },
+  documentJson: { type: String, default: '', ...encryptedString },
   status: { type: String, enum: ['draft', 'pending_approval', 'approved'], default: 'draft', required: true },
   revision: { type: Number, default: 0, required: true },
+  pinnedAt: { type: Date, default: null },
+  deletedAt: { type: Date, default: null },
+  deletedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   generatedAt: Date,
   generatedByModel: String,
   notes: { type: String, default: '[]', ...encryptedString },
@@ -25,4 +29,6 @@ const schema = new Schema({
   contractId: { type: Schema.Types.ObjectId, ref: 'Contract' },
 }, { timestamps: true, ...decryptOnSerialize });
 schema.index({ orgId: 1, createdBy: 1, updatedAt: -1 });
+schema.index({ orgId: 1, deletedAt: 1, pinnedAt: -1, updatedAt: -1, _id: -1 });
+schema.index({ orgId: 1, createdBy: 1, deletedAt: 1, pinnedAt: -1, updatedAt: -1, _id: -1 });
 export const ContractDraftModel = model('ContractDraft', schema);

@@ -9,6 +9,7 @@ export interface TemplateField {
   placeholder?: string;
   help?: string;
   defaultValue?: string;
+  token?: string;
 }
 export interface TemplateSection { key: string; title: string; body: string; guidance?: string }
 export interface FormGroup { key: string; title: string; description: string; step: 'parties' | 'terms'; fields: string[] }
@@ -22,8 +23,10 @@ export interface ContractTemplate {
   legalBasis: string;
   parties: { code: string; name: string }[];
   formGroups?: FormGroup[];
+  reviewNotes?: string[];
 }
 import { buildDetailedTemplate } from './templates.v2';
+import { buildLaborTemplate } from './templates.labor';
 
 const field = (key: string, label: string, kind: TemplateField['kind'] = 'text', required = true, group: TemplateField['group'] = 'terms'): TemplateField => ({ key, label, kind, required, group });
 const commonFields: TemplateField[] = [
@@ -116,7 +119,10 @@ const BASE_TEMPLATES: readonly ContractTemplate[] = [
   },
 ];
 
-export const CONTRACT_TEMPLATES: readonly ContractTemplate[] = BASE_TEMPLATES.map(buildDetailedTemplate);
+export const CONTRACT_TEMPLATES: readonly ContractTemplate[] = BASE_TEMPLATES.map(base => {
+  const detailed = buildDetailedTemplate(base);
+  return base.code === 'labor' ? buildLaborTemplate(detailed) : detailed;
+});
 
 export function getTemplate(code: TemplateCode) {
   return CONTRACT_TEMPLATES.find(template => template.code === code)!;
