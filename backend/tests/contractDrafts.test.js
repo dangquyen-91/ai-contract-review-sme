@@ -218,9 +218,9 @@ test('drafts retain the original template snapshot after a catalog update', asyn
   } finally { template.name = original; }
 });
 
-test('v2 forms cover each field once and distinguish labor parties from companies', () => {
+test('current forms cover each field once and distinguish labor parties from companies', () => {
   for (const template of CONTRACT_TEMPLATES) {
-    expect(template.version).toBe(2);
+    expect(template.version).toBe(template.code === 'labor' ? 4 : 2);
     const grouped = template.formGroups.flatMap(group => group.fields);
     expect(grouped.length).toBe(new Set(grouped).size);
     expect(grouped.slice().sort()).toEqual(template.fields.map(field => field.key).sort());
@@ -230,7 +230,7 @@ test('v2 forms cover each field once and distinguish labor parties from companie
   expect(labor.fields.find(field => field.key === 'partnerName').label).toBe('Họ và tên người lao động');
 });
 
-test('copying an old snapshot creates a new v2 draft without altering original content or approval', async () => {
+test('copying an old snapshot creates a current draft without altering original content or approval', async () => {
   const draft = await create(owner, 'labor');
   const stored = await Drafts.findById(draft.id);
   stored.templateVersion = 1;
@@ -242,7 +242,7 @@ test('copying an old snapshot creates a new v2 draft without altering original c
   const response = await call(owner, 'post', `/${draft.id}/copy-latest`).send({ revision: 0 });
   expect(response.status).toBe(201);
   expect(response.body.data.id).not.toBe(draft.id);
-  expect(response.body.data.templateVersion).toBe(2);
+  expect(response.body.data.templateVersion).toBe(4);
   expect(response.body.data.input.partnerName).toBe(draft.input.partnerName);
   expect(response.body.data.content).toBe(''); expect(response.body.data.status).toBe('draft');
   const original = await Drafts.findById(draft.id);

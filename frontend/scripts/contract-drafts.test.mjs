@@ -90,3 +90,26 @@ test('draft proxy returns a recoverable error if the server is unavailable', asy
   assert.equal(response.status, 503);
   assert.equal((await response.json()).success, false);
 });
+
+test('studio proxy supports scoped AI requests, proposal actions and legacy opening with origin protection', async () => {
+  const ctx = setup();
+  const message = { revision: 2, requestId: 'request-0001', message: 'Update this paragraph', blockIds: ['block-1'] };
+  assert.equal((await ctx.run([id, 'assistant'], 'POST', message)).status, 200);
+  assert.deepEqual(JSON.parse(ctx.calls[0].options.body), message);
+  assert.equal((await ctx.run([id, 'assistant'])).status, 200);
+  assert.equal((await ctx.run([id, 'studio'], 'POST', { revision: 2 })).status, 200);
+  assert.equal((await ctx.run([id, 'proposals', id], 'POST', { revision: 2, action: 'apply' })).status, 200);
+  assert.equal((await ctx.run([id, 'proposals', '../unsafe'], 'POST', {})).status, 404);
+  assert.equal((await ctx.run([id, 'proposals', id], 'GET')).status, 404);
+  assert.equal((await ctx.run([id, 'assistant'], 'POST', message, 'https://untrusted.example')).status, 403);
+});
+
+test('draft pin and deletion forward explicit intent and reject cross-origin requests', async () => {
+  const ctx = setup();
+  assert.equal((await ctx.run([id, 'pin'], 'PATCH', { pinned: true })).status, 200);
+  assert.deepEqual(JSON.parse(ctx.calls[0].options.body), { pinned: true });
+  assert.equal((await ctx.run([id], 'DELETE', { revision: 4 })).status, 200);
+  assert.deepEqual(JSON.parse(ctx.calls[1].options.body), { revision: 4 });
+  assert.equal((await ctx.run([id, 'pin'], 'POST', { pinned: true })).status, 404);
+  assert.equal((await ctx.run([id], 'DELETE', { revision: 4 }, 'https://untrusted.example')).status, 403);
+});
