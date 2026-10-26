@@ -125,16 +125,16 @@ async function waitForExtraction(job: Job<ReviewJobData>, versionId: string, sig
   for (;;) {
     signal.throwIfAborted();
     const version = await ContractVersionModel.findById(versionId).select('extractionStatus extractionProgress');
-    if (!version) throw reviewFailure('CONTRACT_DELETED', 'The contract was deleted');
+    if (!version) throw reviewFailure('CONTRACT_DELETED', 'Hợp đồng đã bị xóa.');
     if (version.extractionStatus === 'completed') return;
     if (version.extractionStatus === 'pending') {
-      throw reviewFailure('EXTRACTION_FAILED', 'The contract has no uploaded file to review');
+      throw reviewFailure('EXTRACTION_FAILED', 'Hợp đồng chưa có tệp để rà soát.');
     }
     if (version.extractionStatus !== 'processing') {
-      throw reviewFailure('EXTRACTION_FAILED', 'The contract text could not be extracted; upload the file again');
+      throw reviewFailure('EXTRACTION_FAILED', 'Chưa đọc được nội dung hợp đồng. Vui lòng tải lại tệp.');
     }
     if (Date.now() > deadline) {
-      throw reviewFailure('EXTRACTION_TIMEOUT', 'Timed out waiting for text extraction to finish', true);
+      throw reviewFailure('EXTRACTION_TIMEOUT', 'Đã quá thời gian chờ đọc nội dung hợp đồng. Vui lòng thử lại.', true);
     }
 
     const progress = version.extractionProgress;
@@ -238,7 +238,7 @@ async function recordFailure(job: Job<ReviewJobData>, err: unknown) {
   if (!finalAttempt) {
     await ReviewModel.updateOne(
       { _id: job.data.reviewId },
-      { $set: { error: message, errorCode: code, stageDetail: 'retrying after an error' } },
+      { $set: { error: message, errorCode: code, stageDetail: 'Đang thử lại sau lỗi' } },
     ).catch(() => undefined);
     return;
   }
@@ -265,12 +265,12 @@ function watchReview(reviewId: string, usageRunId: string) {
     if (!controller.signal.aborted) controller.abort(reason);
   };
   const stopLease = keepUsageLeaseAlive(usageRunId, () =>
-    abort(reviewFailure('CREDIT_EXPIRED', 'The analysis credit reservation expired; start a new review')),
+    abort(reviewFailure('CREDIT_EXPIRED', 'Lượt đã giữ hết thời gian xử lý. Vui lòng bắt đầu lại yêu cầu rà soát.')),
   );
   const cancelPoll = setInterval(() => {
     ReviewModel.exists({ _id: reviewId, cancelRequested: true })
       .then((requested) => {
-        if (requested) abort(reviewFailure('CANCELLED', 'The review was cancelled'));
+        if (requested) abort(reviewFailure('CANCELLED', 'Yêu cầu rà soát đã được hủy.'));
       })
       .catch(() => undefined);
   }, CANCEL_POLL_MS);
@@ -287,7 +287,7 @@ function watchReview(reviewId: string, usageRunId: string) {
 async function runReview(job: Job<ReviewJobData>): Promise<void> {
   const review = await ReviewModel.findById(job.data.reviewId);
   if (!review || !UNFINISHED_STATUSES.includes(review.status)) return;
-  if (review.cancelRequested) throw reviewFailure('CANCELLED', 'The review was cancelled');
+  if (review.cancelRequested) throw reviewFailure('CANCELLED', 'Yêu cầu rà soát đã được hủy.');
 
   const orgId = review.orgId.toString();
   const contractId = review.contractId.toString();
@@ -300,7 +300,7 @@ async function runReview(job: Job<ReviewJobData>): Promise<void> {
     result = await buildReviewResult(versionId);
   } else {
     if (!(await extendUsageLease(usageRunId))) {
-      throw reviewFailure('CREDIT_EXPIRED', 'The analysis credit reservation expired before the review started; start a new review');
+      throw reviewFailure('CREDIT_EXPIRED', 'Lượt đã giữ hết hạn trước khi bắt đầu xử lý. Vui lòng gửi lại yêu cầu rà soát.');
     }
     const credit = watchReview(job.data.reviewId, usageRunId);
     try {
@@ -308,7 +308,13 @@ async function runReview(job: Job<ReviewJobData>): Promise<void> {
       await runStages(job, review.stages, { orgId, contractId, analysisFocus, versionId }, credit.signal);
       credit.signal.throwIfAborted();
       result = await buildReviewResult(versionId);
-      await finishUsage(orgId, usageRunId, true, { reviewId: job.data.reviewId });
+      await finishUsage(orgId, usageRunId, true, { reviewId: job.data.reviewId }, async session => {
+        const completed = await ReviewModel.updateOne({ _id: review._id, usageRunId, status: { $in: UNFINISHED_STATUSES }, cancelRequested: { $ne: true } }, {
+          $set: { status: 'completed', finishedAt: new Date(), result },
+          $unset: { activeLock: '', currentStage: '', stageDetail: '', error: '', errorCode: '', cancelRequested: '' },
+        }, { session });
+        if (!completed.modifiedCount) throw reviewFailure('CANCELLED', 'Yêu cầu rà soát đã bị hủy trước khi hoàn tất.');
+      });
     } catch (err) {
       throw credit.signal.aborted ? credit.signal.reason : err;
     } finally {

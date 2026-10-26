@@ -1,9 +1,9 @@
 import { contractsApi } from "@/lib/api/contracts";
 import { ApiClientError } from "@/lib/api/client";
 import { reviewFailureCopy } from "@/lib/review-error-codes";
-import type { ContractReviewRun } from "@/types/contracts";
+import type { ContractReviewRun, ReviewBillingConfirmation } from "@/types/contracts";
 
-type Session = { key: string; reviewId?: string; analysisFocus?: string; blockedError?: string; retryKey?: string };
+type Session = { key: string; reviewId?: string; analysisFocus?: string; blockedError?: string; blockedCode?: string; retryKey?: string; billing?: ReviewBillingConfirmation };
 const storageKey = (id: string) => `lawscan_review_${id}`;
 export function clearReviewSession(id: string) { sessionStorage.removeItem(storageKey(id)); }
 export function isReviewCancelled(error: unknown) { return error instanceof Error && error.name === "AbortError"; }
@@ -40,13 +40,14 @@ function pause(ms: number, signal: AbortSignal) {
   });
 }
 
-export async function executeReview({ contractId, analysisFocus, resumeOnly = false, signal, onProgress, onConnection }: {
+export async function executeReview({ contractId, analysisFocus, resumeOnly = false, signal, onProgress, onConnection, beforeCharge }: {
   contractId: string;
   analysisFocus?: string;
   resumeOnly?: boolean;
   signal: AbortSignal;
   onProgress?: (review: ContractReviewRun) => void;
   onConnection?: (reconnecting: boolean) => void;
+  beforeCharge?: () => Promise<ReviewBillingConfirmation>;
 }) {
   signal.throwIfAborted();
   const deadline = Date.now() + 20 * 60_000;
@@ -71,6 +72,7 @@ export async function executeReview({ contractId, analysisFocus, resumeOnly = fa
   }
   async function retryFailedRun(failed: ContractReviewRun): Promise<ContractReviewRun | null> {
     const current = session!;
+    if (!current.retryKey && beforeCharge) current.billing = await beforeCharge();
     current.retryKey ??= crypto.randomUUID();
     sessionStorage.setItem(storageKey(contractId), JSON.stringify(current));
     const settle = (run: ContractReviewRun) => {
@@ -79,7 +81,7 @@ export async function executeReview({ contractId, analysisFocus, resumeOnly = fa
       return run;
     };
     try {
-      return settle(await request(() => contractsApi.retryReviewRun(failed._id, current.retryKey!, signal)));
+      return settle(await request(() => contractsApi.retryReviewRun(failed._id, current.retryKey!, signal, current.billing)));
     } catch (error) {
       if (!(error instanceof ApiClientError) || error.status !== 409) throw error;
       const latest = await request(() => contractsApi.getReviewRun(failed._id, signal));
@@ -89,7 +91,7 @@ export async function executeReview({ contractId, analysisFocus, resumeOnly = fa
     }
   }
   let session = readReviewSession(contractId);
-  if (resumeOnly && session?.blockedError) throw new ApiClientError(session.blockedError, { status: 403 });
+  if (resumeOnly && session?.blockedError) throw new ApiClientError(session.blockedError, { status: 403, serverCode: session.blockedCode });
   analysisFocus ??= session?.analysisFocus;
   let review: ContractReviewRun | undefined;
   if (session?.reviewId) {
@@ -113,13 +115,16 @@ export async function executeReview({ contractId, analysisFocus, resumeOnly = fa
   }
   if (!review) {
     session ??= { key: crypto.randomUUID(), analysisFocus };
+    if (!session.billing && beforeCharge) session.billing = await beforeCharge();
     delete session.blockedError;
+    delete session.blockedCode;
     // Persist before POST: a lost response must not generate another key/body.
     sessionStorage.setItem(storageKey(contractId), JSON.stringify(session));
-    try { review = await request(() => contractsApi.startReview(contractId, session!.key, session!.analysisFocus, signal)); }
+    try { review = await request(() => contractsApi.startReview(contractId, session!.key, session!.analysisFocus, signal, session!.billing)); }
     catch (error) {
       if (error instanceof ApiClientError && error.status === 403) {
         session.blockedError = error.message;
+        session.blockedCode = error.serverCode;
         sessionStorage.setItem(storageKey(contractId), JSON.stringify(session));
       }
       if (!(error instanceof ApiClientError) || error.status !== 409) throw error;

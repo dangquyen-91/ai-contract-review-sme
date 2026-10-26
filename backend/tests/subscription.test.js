@@ -94,7 +94,7 @@ async function user(role = 'user', orgId) {
     })
   ).populate('roleId');
 }
-async function workspace(personal = false) {
+async function workspace(personal = false, pages = 5) {
   const org = await OrganizationModel.create({ name: 'Workspace', isPersonal: personal });
   const owner = await user(personal ? 'user' : 'owner', org._id);
   const contract = await ContractModel.create({
@@ -109,6 +109,7 @@ async function workspace(personal = false) {
     versionNumber: 1,
     createdBy: owner._id,
     extractionStatus: 'completed',
+    extractionQuality: { method: 'text_layer', pageCount: pages, ocrPageCount: 0, lowConfidence: false },
     extractedText: 'A valid contract for analysis',
     segmentationStatus: 'completed',
   });
@@ -187,6 +188,98 @@ test('calendar reset is exactly Vietnam midnight and calendar months clamp end-o
   expect(addSubscriptionMonth(new Date('2028-01-30T17:00:00Z')).toISOString()).toBe(
     '2028-02-28T17:00:00.000Z',
   );
+});
+
+test('review units round up at five-page boundaries and unknown or partially extracted documents cannot be charged', () => {
+  const { reviewCost, requireReviewCost } = require('../dist/services/billing/reviewCost');
+  for (const [pageCount, units] of [[1, 1], [5, 1], [6, 2], [10, 2], [11, 3], [12, 3], [15, 3], [16, 4], [100, 20]]) expect(requireReviewCost({ extractionStatus: 'completed', extractionQuality: { pageCount } }).units).toBe(units);
+  for (const pageCount of [undefined, null, 0, -1, 1.5, NaN]) expect(reviewCost({ extractionStatus: 'completed', extractionQuality: { pageCount } }).ready).toBe(false);
+  expect(reviewCost({ extractionStatus: 'processing', extractionQuality: { pageCount: 12 } }).ready).toBe(false);
+  expect(() => requireReviewCost({ extractionStatus: 'completed', extractionQuality: { pageCount: 110, truncatedAtPage: 100 } })).toThrow();
+});
+
+test.each([true, false])('weighted review usage for personal=%s reserves and commits all units once', async personal => {
+  const w = await workspace(personal, 12);
+  if (!personal) await pay(w, 'business_starter');
+  const input = usage(w);
+  const reserved = await reserveUsage(input);
+  expect(reserved.run.units).toBe(3); expect(reserved.run.pageCount).toBe(12);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 0, reserved: 3 });
+  await finishUsage(w.org.id, reserved.run.id, true, { ok: true });
+  await finishUsage(w.org.id, reserved.run.id, true);
+  const replay = await reserveUsage(input);
+  expect(replay.replayed).toBe(true);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 3, reserved: 0 });
+});
+
+test('insufficient units, changed quotes and unknown pages never reserve a review', async () => {
+  const w = await workspace(true, 16);
+  await expect(reserveUsage(usage(w))).rejects.toMatchObject({ statusCode: 403, code: 'ANALYSIS_QUOTA_EXHAUSTED', message: expect.stringContaining('Không đủ lượt rà soát AI') });
+  await ContractVersionModel.updateOne({ contractId: w.contract.id }, { $set: { 'extractionQuality.pageCount': 12 } });
+  await expect(reserveUsage({ ...usage(w), confirmedUnits: 1 })).rejects.toMatchObject({ code: 'REVIEW_QUOTE_CHANGED' });
+  await ContractVersionModel.updateOne({ contractId: w.contract.id }, { $unset: { extractionQuality: 1 } });
+  await expect(reserveUsage(usage(w))).rejects.toMatchObject({ code: 'REVIEW_PAGE_COUNT_UNAVAILABLE' });
+  expect(await UsageRunModel.countDocuments({ orgId: w.org.id })).toBe(0);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 0, reserved: 0 });
+});
+
+test('review API exposes the page quote, rejects a changed confirmation and refunds all units on queue failure', async () => {
+  const w = await workspace(true, 12);
+  const detail = await request(app).get(`/api/v1/contracts/${w.contract.id}`).set('Authorization', bearer(w.owner));
+  expect(detail.status).toBe(200);
+  const billing = detail.body.data.reviewBilling;
+  expect(billing).toMatchObject({ ready: true, pageCount: 12, units: 3, pagesPerUnit: 5 });
+  const analyze = (key, units) => request(app).post(`/api/v1/contracts/${w.contract.id}/reviews`).set('Authorization', bearer(w.owner)).set('Idempotency-Key', key).send({ billing: { versionId: billing.versionId, units } });
+  expect((await analyze(randomUUID(), 1)).status).toBe(409);
+  const key = randomUUID();
+  expect((await analyze(key, 3)).status).toBe(202);
+  expect((await analyze(key, 3)).body.data.replayed).toBe(true);
+  const review = await ReviewModel.findOne({ contractId: w.contract.id });
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis.reserved).toBe(3);
+  await finishUsage(w.org.id, String(review.usageRunId), false);
+  await ReviewModel.updateOne({ _id: review.id }, { $set: { status: 'failed' }, $unset: { activeLock: 1 } });
+  enqueueReview.mockRejectedValueOnce(new Error('Queue unavailable'));
+  expect((await analyze(randomUUID(), 3)).status).toBe(500);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 0, reserved: 0, available: 3 });
+});
+
+test('failed commits and expired workers return all page-based units, including historical one-unit runs', async () => {
+  const w = await workspace(true, 12);
+  const first = await reserveUsage(usage(w));
+  await expect(finishUsage(w.org.id, first.run.id, true, {}, async () => { throw new Error('Result save failed'); })).rejects.toThrow('Result save failed');
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 0, reserved: 3 });
+  await finishUsage(w.org.id, first.run.id, false);
+  const stale = await reserveUsage(usage(w));
+  await UsageRunModel.updateOne({ _id: stale.run.id }, { $set: { leaseExpiresAt: new Date(0) } });
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 0, reserved: 0, available: 3 });
+  await ContractVersionModel.updateOne({ contractId: w.contract.id }, { $set: { 'extractionQuality.pageCount': 5 } });
+  const legacy = await reserveUsage(usage(w));
+  await UsageRunModel.collection.updateOne({ _id: legacy.run._id }, { $unset: { units: 1 }, $set: { leaseExpiresAt: new Date(0) } });
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis.reserved).toBe(0);
+});
+
+test('concurrent three-unit reviews of different contracts cannot overdraw the organization', async () => {
+  const w = await workspace(false, 12);
+  const period = await pay(w, 'business_starter');
+  await SubscriptionPeriodModel.updateOne({ _id: period.id }, { $set: { analysisUsed: 195 } });
+  const contract = await ContractModel.create({ title: 'Second', type: 'service', orgId: w.org.id, uploadedBy: w.owner.id });
+  await ContractVersionModel.create({ contractId: contract.id, versionNumber: 1, createdBy: w.owner.id, extractionStatus: 'completed', extractionQuality: { method: 'text_layer', pageCount: 12, ocrPageCount: 0, lowConfidence: false } });
+  const results = await Promise.allSettled([reserveUsage(usage(w)), reserveUsage({ ...usage(w), contractId: contract.id })]);
+  expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+  const winner = results.find(result => result.status === 'fulfilled').value;
+  await finishUsage(w.org.id, winner.run.id, false);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 195, reserved: 0, available: 5 });
+});
+
+test('catalog migration adds drafting benefits to old periods without resetting usage or configured limits', async () => {
+  const w = await workspace(); const period = await pay(w, 'business_starter');
+  await SubscriptionPeriodModel.collection.updateOne({ _id: period._id }, { $unset: { 'plan.draftingLimit': 1 }, $set: { analysisUsed: 17, 'plan.analysisLimit': 210 } });
+  await seedPlans();
+  let current = await getSubscription(w.owner.id, w.org.id);
+  expect(current.plan.draftingLimit).toBe(50); expect(current.analysis.used).toBe(17); expect(current.analysis.limit).toBe(210);
+  await SubscriptionPeriodModel.updateOne({ _id: period._id }, { $set: { 'plan.draftingLimit': 7 } });
+  await seedPlans(); current = await getSubscription(w.owner.id, w.org.id);
+  expect(current.plan.draftingLimit).toBe(7);
 });
 
 test('free usage resets at calendar boundary without rollover', async () => {

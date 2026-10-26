@@ -4,7 +4,8 @@ import { formatMoney, formatPlanNumber } from "@/lib/subscription-plans";
 export function SubscriptionPlanComparison({ plans }: { plans: SubscriptionPlan[] }) {
   const rows = [
     { label: "Giá mỗi tháng", values: plans.map((plan) => formatMoney(plan.price)) },
-    { label: "Lượt phân tích / kỳ tháng", values: plans.map((plan) => formatPlanNumber(plan.analysisLimit)) },
+    { label: "Lượt rà soát / kỳ tháng (1 lượt/5 trang)", values: plans.map((plan) => formatPlanNumber(plan.analysisLimit)) },
+    { label: "Lượt soạn hợp đồng AI / kỳ tháng", values: plans.map((plan) => plan.audience === 'business' ? formatPlanNumber(plan.draftingLimit ?? 0) : 'Chưa hỗ trợ') },
     { label: "Lượt chat / kỳ tháng", values: plans.map((plan) => formatPlanNumber(plan.chatLimit)) },
     { label: "Thành viên tối đa", values: plans.map((plan) => formatPlanNumber(plan.memberLimit)) },
     { label: "Phạm vi hạn mức", values: plans.map((plan) => plan.audience === "personal" ? "Cá nhân" : "Dùng chung tổ chức") },

@@ -10,7 +10,7 @@ import { useConfirmProfileMutation, useContractClassification, useContractProfil
 import { confirmationView, detectedNamesFor, LOW_CONFIDENCE, otherPartyNames, suggestedProfile } from "@/lib/contract-classification";
 import { classificationOutcomeCopy, serverCodeMessage } from "@/lib/review-error-codes";
 import { isApiClientError } from "@/lib/api/client";
-import type { ClassificationOutcome } from "@/types/contracts";
+import type { ClassificationOutcome, ReviewBillingConfirmation } from "@/types/contracts";
 
 type ContractConfirmationDialogProps = {
   contractId: string;
@@ -18,7 +18,7 @@ type ContractConfirmationDialogProps = {
   isReviewing: boolean;
   onDismiss: () => void;
   onDeleted: () => void;
-  onReview: (focus: string) => void;
+  onReview: (focus: string, billing?: ReviewBillingConfirmation) => void;
   orgId?: string;
   role?: string;
 };
@@ -121,7 +121,7 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
         return;
       }
     }
-    onReview(focus);
+    onReview(focus, contract?.reviewBilling?.ready && contract.reviewBilling.units !== null ? { versionId: contract.reviewBilling.versionId, units: contract.reviewBilling.units } : undefined);
   }
 
   const deleteButton = <Button variant="outline" size="sm" onClick={deleteFile} loading={remove.isPending} disabled={busy}>Xóa tệp</Button>;
@@ -171,6 +171,7 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
 
   const waiting = view === "reading" || view === "classifying";
   return <AnalysisFocusDialog contractTitle={contractTitle} orgId={orgId} role={role}
+    billing={contract.reviewBilling}
     isReviewing={busy}
     title={waiting ? "Đang chuẩn bị hợp đồng" : "Xác nhận hợp đồng"}
     description={`Đã tải lên “${contractTitle}”. Kiểm tra loại hợp đồng và vai trò của bạn trước khi rà soát.`}

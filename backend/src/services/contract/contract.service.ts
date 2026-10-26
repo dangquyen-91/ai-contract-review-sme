@@ -23,6 +23,7 @@ import { resolveContractProfile, validateContractContext } from './contractProfi
 import { redactionPolicyFor } from './redactionPolicy.service';
 import { createRedactor, SensitiveDataType } from '../ai/redaction.service';
 import { DOCX_MIME, redactDocx } from './docxRedaction.service';
+import { reviewCost } from '../billing/reviewCost';
 
 interface CreateContractParams {
   orgId: string;
@@ -179,7 +180,7 @@ export async function getContractById(orgId: string, id: string) {
     throw AppError.notFound('Contract not found');
   }
   const currentVersion = await getCurrentVersion(id);
-  return { ...contract.toObject(), currentVersion: currentVersion.toObject() };
+  return { ...contract.toObject(), currentVersion: currentVersion.toObject(), reviewBilling: { ...reviewCost(currentVersion), versionId: currentVersion.id } };
 }
 
 export async function deleteContract(orgId: string, id: string) {

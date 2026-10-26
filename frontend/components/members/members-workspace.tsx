@@ -72,7 +72,7 @@ export function MembersWorkspace({ orgId, organizationName }: { orgId: string; o
       setTab("invitations");
       toast.success("Đã gửi lời mời", { description: "Người nhận sẽ thấy liên kết trong email của họ." });
     } catch (error) {
-      if (isApiClientError(error) && error.status === 403 && /^Member limit reached\b/i.test(error.message)) {
+      if (isApiClientError(error) && error.status === 403 && (error.serverCode === 'MEMBER_LIMIT_REACHED' || /^Member limit reached\b|^Đã đạt giới hạn thành viên/i.test(error.message))) {
         setShowInvite(false);
         setShowCapacity(true);
       } else toast.error(errorMessage(error));

@@ -8,6 +8,7 @@ import organizationRoutes from './organization.routes';
 import reviewRoutes from './review.routes';
 import invitationRoutes from './invitation.routes';
 import profileRoutes from './profile.routes';
+import contractDraftRoutes from './contractDraft.routes';
 import { listPlansHandler } from '../controllers/subscription.controller';
 
 const router = Router();
@@ -16,6 +17,7 @@ router.get('/health', (_req, res) => res.json({ success: true, data: { status: '
 
 router.use('/auth', authRoutes);
 router.use('/profile', profileRoutes);
+router.use('/contract-drafts', contractDraftRoutes);
 router.use('/admin/users', userManagementRoutes);
 // Compatibility alias for existing clients.
 router.use('/admin/userManagement', userManagementRoutes);

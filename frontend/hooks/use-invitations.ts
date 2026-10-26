@@ -75,7 +75,7 @@ export function useCreateInvitationMutation(orgId: string) {
       queryClient.invalidateQueries({ queryKey: invitationKeys.subscription(orgId) }),
     ]),
     onError: (error) => {
-      if (isApiClientError(error) && error.status === 403 && /^Member limit reached\b/i.test(error.message)) {
+      if (isApiClientError(error) && error.status === 403 && (error.serverCode === 'MEMBER_LIMIT_REACHED' || /^Member limit reached\b|^Đã đạt giới hạn thành viên/i.test(error.message))) {
         return queryClient.invalidateQueries({ queryKey: invitationKeys.subscription(orgId) });
       }
     },

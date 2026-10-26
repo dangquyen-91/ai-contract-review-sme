@@ -46,6 +46,7 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
     { key: "overview", href: organizationDashboardPath(role), label: "Tổng quan", icon: "building", group: role === "owner" ? "Quản lý tổ chức" : "Không gian làm việc", mobile: true, workspaceTab: true },
     { key: "upload", href: organizationDashboardPath(role, "upload"), label: role === "expert" ? "Rà soát hợp đồng" : "Tải & rà soát", icon: role === "expert" ? "shield" : "upload", mobile: true, workspaceTab: true },
     { key: "contracts", href: organizationDashboardPath(role, "contracts"), label: "Hợp đồng", icon: "document", count: true, mobile: true, workspaceTab: true },
+    ...(["owner", "staff"].includes(role) ? [{ key: "drafts", href: "/contract-drafts", label: "Tạo hợp đồng", icon: "document" as const, mobile: true }] : []),
     ...(role === "owner" ? [
       { key: "administration", href: organizationDashboardPath(role, "administration"), label: "Quản trị", icon: "team" as const, mobile: true, workspaceTab: true },
       { key: "members", href: organizationDashboardPath(role, "members"), label: "Thành viên & lời mời", icon: "team" as const, mobile: true, workspaceTab: true },

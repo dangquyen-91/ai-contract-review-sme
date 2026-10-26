@@ -1,0 +1,10 @@
+import type { StudioDocument } from './template-studio';
+export type TemplateCode = 'labor' | 'service' | 'sales';
+export type DraftStatus = 'draft' | 'pending_approval' | 'approved';
+export type TemplateField = { key: string; label: string; kind: 'text' | 'textarea' | 'date' | 'number' | 'select' | 'items'; required: boolean; group: 'parties' | 'terms'; options?: { value: string; label: string }[]; placeholder?: string; help?: string; defaultValue?: string; token?: string };
+export type DraftFormGroup = { key: string; title: string; description: string; step: 'parties' | 'terms'; fields: string[] };
+export type ContractTemplate = { code: TemplateCode; name: string; description: string; version: number; fields: TemplateField[]; formGroups?: DraftFormGroup[]; legalBasis: string; reviewNotes?: string[]; parties: { code: string; name: string }[] };
+export type DraftSummary = { pinnedAt?: string | null; id: string; title: string; templateCode: TemplateCode; status: DraftStatus; revision: number; createdBy: string; updatedAt: string; contractId: string | null };
+export type ContractDraft = DraftSummary & { templateVersion: number; template: ContractTemplate; ourParty: string; input: Record<string, string>; organization: { name: string; address: string; taxCode: string }; content: string; document?: StudioDocument | null; notes: string[]; decisionNote: string; generatedAt?: string; generationStartedAt?: string; approvedAt?: string };
+export type DraftCatalog = { templates: ContractTemplate[]; organization: { name: string; address: string; taxCode: string }; role: 'owner' | 'staff' };
+export type DraftList = { items: DraftSummary[]; total: number; page: number; pages: number };

@@ -1,85 +1,80 @@
 import { createHash } from 'crypto';
-import mongoose from 'mongoose';
+import mongoose, { ClientSession } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { UsageRunModel, SubscriptionPeriodModel } from '../../models/subscription.model';
-import { UserModel } from '../../models/user.model';
-import { ContractModel } from '../../models/contract.model';
+import { assertUsageAvailable, type UsageKind } from './usagePolicy';
+import { assertUsageAccess, assertNoActiveReview, calculateUsageCost } from './usageAccess.service';
 import { lockSubscriptionOrganization, resolveSubscription } from './subscription.service';
 
 export interface UsageInput {
   orgId: string;
   userId: string;
-  contractId: string;
-  kind: 'analysis' | 'chat';
+  contractId?: string;
+  draftId?: string;
+  versionId?: string;
+  confirmedUnits?: number;
+  kind: UsageKind;
   idempotencyKey: string;
   payload: unknown;
 }
 const LEASE_MS = 5 * 60 * 1000;
 
-export async function reserveUsage(input: UsageInput, now = new Date(), leaseMs = LEASE_MS) {
-  const fingerprint = createHash('sha256')
+function usageFingerprint(input: UsageInput) {
+  return createHash('sha256')
     .update(
       JSON.stringify({
         userId: input.userId,
         contractId: input.contractId,
+        draftId: input.draftId,
+        versionId: input.versionId,
         payload: input.payload,
       }),
     )
     .digest('hex');
+}
+
+async function findCompletedRun(input: UsageInput, fingerprint: string, session: ClientSession) {
+  const existing = await UsageRunModel.findOne({
+    orgId: input.orgId,
+    kind: input.kind,
+    idempotencyKey: input.idempotencyKey,
+  })
+    .select('+result')
+    .session(session);
+  if (!existing) return null;
+  if (existing.fingerprint !== fingerprint) {
+    throw AppError.conflict(
+      'Mã yêu cầu đã được dùng cho thao tác khác. Vui lòng tải lại và thử lại.',
+    );
+  }
+  if (existing.status === 'succeeded') return existing;
+  if (existing.status === 'reserved') {
+    throw AppError.conflict('Yêu cầu đang được xử lý. Vui lòng chờ hoàn tất.');
+  }
+  throw AppError.conflict('Yêu cầu trước chưa thành công. Vui lòng bắt đầu lại thao tác.');
+}
+
+export async function reserveUsage(input: UsageInput, now = new Date(), leaseMs = LEASE_MS) {
+  const fingerprint = usageFingerprint(input);
   return mongoose.connection.transaction(async (session) => {
     await lockSubscriptionOrganization(input.orgId, session);
-    const user = await UserModel.exists({
-      _id: input.userId,
-      orgId: input.orgId,
-      isActive: true,
-    }).session(session);
-    if (!user) throw AppError.forbidden('Organization access denied');
-    if (
-      !(await ContractModel.exists({ _id: input.contractId, orgId: input.orgId }).session(session))
-    ) {
-      throw AppError.notFound('Contract not found');
-    }
+    await assertUsageAccess(input, session);
     const { period } = await resolveSubscription(input.orgId, session, now);
-    const existing = await UsageRunModel.findOne({
-      orgId: input.orgId,
-      kind: input.kind,
-      idempotencyKey: input.idempotencyKey,
-    })
-      .select('+result')
-      .session(session);
-    if (existing) {
-      if (existing.fingerprint !== fingerprint)
-        throw AppError.conflict('Idempotency key was used for another request');
-      if (existing.status === 'succeeded') return { run: existing, replayed: true };
-      throw AppError.conflict(
-        existing.status === 'reserved'
-          ? 'Request is already running'
-          : 'Request failed. Use a new idempotency key to retry.',
-      );
+    const existing = await findCompletedRun(input, fingerprint, session);
+    if (existing) return { run: existing, replayed: true };
+    if (!period) {
+      const message =
+        input.kind === 'drafting'
+          ? 'Cần gói doanh nghiệp đang hoạt động để soạn hợp đồng bằng AI.'
+          : 'Cần gói dịch vụ AI đang hoạt động để thực hiện thao tác này.';
+      throw AppError.forbidden(message, 'AI_PLAN_REQUIRED');
     }
-    if (!period) throw new AppError('An active Business plan is required to use AI', 403);
-    if (
-      input.kind === 'analysis' &&
-      (await UsageRunModel.exists({
-        orgId: input.orgId,
-        contractId: input.contractId,
-        kind: 'analysis',
-        status: 'reserved',
-      }).session(session))
-    ) {
-      throw AppError.conflict('A complete analysis is already running for this contract');
-    }
-    const used = input.kind === 'analysis' ? period.analysisUsed : period.chatUsed;
-    const reserved = input.kind === 'analysis' ? period.analysisReserved : period.chatReserved;
-    const limit = input.kind === 'analysis' ? period.plan.analysisLimit : period.plan.chatLimit;
-    if (used + reserved >= limit)
-      throw new AppError(
-        `${input.kind} quota exhausted. Upgrade your plan or wait for the next period.`,
-        403,
-      );
+    const cost = await calculateUsageCost(input, session);
+    await assertNoActiveReview(input, session);
+    assertUsageAvailable(period, input.kind, cost.units);
     await SubscriptionPeriodModel.updateOne(
       { _id: period._id },
-      { $inc: { [`${input.kind}Reserved`]: 1 } },
+      { $inc: { [`${input.kind}Reserved`]: cost.units } },
       { session },
     );
     const [run] = await UsageRunModel.create(
@@ -88,6 +83,8 @@ export async function reserveUsage(input: UsageInput, now = new Date(), leaseMs 
           orgId: input.orgId,
           userId: input.userId,
           contractId: input.contractId,
+          draftId: input.draftId,
+          ...cost,
           periodId: period._id,
           kind: input.kind,
           idempotencyKey: input.idempotencyKey,
@@ -130,30 +127,34 @@ export async function finishUsage(
   runId: string,
   success: boolean,
   result?: unknown,
+  commit?: (session: ClientSession) => Promise<void>,
 ) {
   return mongoose.connection.transaction(async (session) => {
     await lockSubscriptionOrganization(orgId, session);
     const run = await UsageRunModel.findOne({ _id: runId, orgId }).session(session);
-    if (!run) throw AppError.notFound('Usage run not found');
+    if (!run) throw AppError.notFound('Không tìm thấy yêu cầu sử dụng AI.');
     if (run.status === 'succeeded') return;
     if (run.status !== 'reserved' || run.leaseExpiresAt <= new Date()) {
       if (success)
-        throw AppError.conflict('AI request lease expired; its result cannot be finalized');
+        throw AppError.conflict(
+          'Yêu cầu AI đã hết thời gian xử lý. Kết quả chưa được lưu; vui lòng thử lại.',
+        );
       if (run.status !== 'reserved') return;
     }
+    if (success && commit) await commit(session);
     await SubscriptionPeriodModel.updateOne(
       { _id: run.periodId },
       {
         $inc: {
-          [`${run.kind}Reserved`]: -1,
-          ...(success ? { [`${run.kind}Used`]: 1 } : {}),
+          [`${run.kind}Reserved`]: -(run.units ?? 1),
+          ...(success ? { [`${run.kind}Used`]: run.units ?? 1 } : {}),
         },
       },
       { session },
     );
     run.status = success ? 'succeeded' : 'failed';
     if (success) run.result = result;
-    else run.error = 'Request failed or was cancelled; reserved quota released';
+    else run.error = 'Yêu cầu thất bại hoặc đã bị hủy; các lượt đã giữ được hoàn lại.';
     await run.save({ session });
   });
 }

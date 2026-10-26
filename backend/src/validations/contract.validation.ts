@@ -56,6 +56,7 @@ export const shareSummaryQuerySchema = z.object({
 
 export const analysisFocusBodySchema = z.object({
   analysisFocus: z.string().trim().min(1).max(1000).optional(),
+    billing: z.object({ versionId: z.string().regex(/^[a-f\d]{24}$/i), units: z.number().int().positive() }).strict().optional(),
 });
 
 export const chatMessageBodySchema = z.object({
