@@ -10,6 +10,8 @@ The complete document must be extracted and have a positive integer page count. 
 
 ## Drafting credits
 
+Với trình soạn trực tiếp mới, mở mẫu và thêm phụ lục không gọi AI. Mỗi yêu cầu chat hoàn tất và lưu đề xuất thành công dùng một lượt soạn, kể cả khi người dùng bỏ qua đề xuất. Áp dụng đề xuất, đính kèm tài liệu, nhập giọng nói, chỉnh tay và tải file không tính thêm lượt. Yêu cầu lỗi được hoàn lượt; gửi lại cùng mã yêu cầu đã thành công trả kết quả cũ và không trừ thêm. Xem [luồng trình soạn mẫu](../contract-template-studio.md).
+
 Each successful AI generation or regeneration costs 1 drafting credit. Current default limits are 50 per Business Starter period and 150 per Business Pro period, shared by Owner and Staff. Personal drafting is not enabled and its drafting limit is 0. AI input validation failures, provider failures, expired attempts and failed result saves do not consume credits. Editing forms/text, autosave, copying drafts, approval, DOCX/PDF downloads and transferring a draft to the contract repository do not consume AI credits. Running a review after transfer is a separate action charged by page count.
 
 Plan prices, review-credit limits, chat limits and seat limits remain unchanged. The new catalog benefit is `draftingLimit`. `seedPlans()` backfills only missing drafting limits in existing plan records and subscription snapshots; it does not reset usage or overwrite configured limits. Existing `analysisUsed` values are not retroactively recalculated. These rules apply to new requests after deployment. Renewals and upgrades follow the existing payment activation rules.

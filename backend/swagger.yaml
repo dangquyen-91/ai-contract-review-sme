@@ -60,9 +60,10 @@ components:
         templateCode: { type: string, enum: [labor, service, sales] }
         title: { type: string, minLength: 2, maxLength: 200 }
         ourParty: { type: string, description: employer for labor; provider/client for service; seller/buyer for sales }
+        editorMode: { type: string, enum: [studio], description: Opens the structured template immediately without AI usage. Omit only for legacy clients. }
         input:
           type: object
-          description: String values keyed by template fields (at most 40 keys). Ordinary values have a 4000-character limit. lineItems is a JSON string of up to 20 objects with name, unit, quantity and unitPrice strings (16000-character limit). Partial drafts are allowed; generation and submission require valid complete data and matching item totals.
+          description: String values keyed by template fields (at most 64 keys). Ordinary values have a 4000-character limit. lineItems is a JSON string of up to 20 objects with name, unit, quantity and unitPrice strings (16000-character limit). Partial drafts are allowed; generation and submission require valid complete data and matching item totals.
           additionalProperties: { type: string, maxLength: 16000 }
     UpdateContractDraft:
       type: object
@@ -74,6 +75,34 @@ components:
         ourParty: { type: string }
         input: { type: object, description: Same limits and lineItems representation as CreateContractDraft, additionalProperties: { type: string, maxLength: 16000 } }
         content: { type: string, maxLength: 80000 }
+        document:
+          type: object
+          description: Structured studio JSON. Required when editing a studio draft. Server validates nodes and derives input/content; maximum 300000 serialized characters, 4000 nodes and depth 16. Supports paragraphs, headings, lists, unmerged tables and linked template fields.
+          additionalProperties: true
+    DraftAssistantRequest:
+      type: object
+      additionalProperties: false
+      required: [revision, requestId, message]
+      properties:
+        revision: { type: integer, minimum: 0 }
+        requestId: { type: string, minLength: 8, maxLength: 100, pattern: '^[a-zA-Z0-9_-]+$' }
+        message: { type: string, minLength: 2, maxLength: 5000 }
+        blockIds:
+          type: array
+          maxItems: 20
+          description: Optional selected block IDs restricting proposal scope.
+          items: { type: string, maxLength: 80, pattern: '^[a-zA-Z0-9_-]+$' }
+        references:
+          type: array
+          maxItems: 3
+          description: Optional reference text, at most 24000 characters in total. Included in masked AI context and encrypted proposal storage; must remain identical when replaying requestId.
+          items:
+            type: object
+            additionalProperties: false
+            required: [name, text]
+            properties:
+              name: { type: string, minLength: 1, maxLength: 150 }
+              text: { type: string, minLength: 1, maxLength: 12000 }
     Payment:
       type: object
       properties:
@@ -1313,7 +1342,7 @@ paths:
     get:
       tags: [ContractDrafts]
       summary: List drafts within the business organization
-      description: Owner sees organization drafts; Staff sees only their own. Twenty drafts per page, newest first.
+      description: Owner sees organization drafts; Staff sees only their own. Twenty drafts per page. Pinned drafts come first (most recently pinned first), followed by updatedAt and ID descending. Deleted drafts are excluded. Each summary includes nullable pinnedAt.
       parameters:
         - in: query
           name: page
@@ -1343,10 +1372,23 @@ paths:
       responses:
         '200': { description: Draft details }
         '404': { description: Not found or outside the caller's scope }
+    delete:
+      tags: [ContractDrafts]
+      summary: Remove an editable draft from the list
+      description: Soft deletion within the caller's organization/creator scope. Requires the current revision, draft status and no active AI generation. Deleted drafts cannot be read or edited through draft endpoints. Does not delete a published contract or refund prior AI usage.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftRevision' }
+      responses:
+        '200': { description: Removed draft ID }
+        '404': { description: Draft not found or outside permitted scope }
+        '409': { description: Revision changed, active AI generation, submitted or approved draft }
     patch:
       tags: [ContractDrafts]
       summary: Save a draft with optimistic revision checking
-      description: Only draft state is editable. Changing form values clears generated content to avoid using mismatched clauses. Approved and submitted drafts are read-only.
+      description: Only draft state is editable. Studio documents retain formatting and derive text and linked field values from structured JSON. Removing a field clears its stored value. Legacy form-only edits clear generated content. Approved and submitted drafts are read-only.
       requestBody:
         required: true
         content:
@@ -1355,6 +1397,29 @@ paths:
       responses:
         '200': { description: Saved draft with incremented revision }
         '409': { description: Stale revision, generation in progress or read-only state }
+  /contract-drafts/{id}/pin:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    patch:
+      tags: [ContractDrafts]
+      summary: Pin or unpin a draft within the caller's scope
+      description: Persists organization-wide pin ordering. Staff can modify only their own drafts. Does not change the editing revision or last content update time. Repeated requests for the same state retain the existing pin timestamp.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [pinned]
+              properties:
+                pinned: { type: boolean }
+      responses:
+        '200': { description: Updated draft summary with pinnedAt }
+        '404': { description: Draft not found or outside permitted scope }
   /contract-drafts/{id}/generate:
     parameters:
       - in: path
@@ -1364,6 +1429,7 @@ paths:
     post:
       tags: [ContractDrafts]
       summary: Generate AI additions within a fixed Vietnamese template frame
+      deprecated: true
       description: Requires complete valid fields. Uses identity masking, structured output validation, a 90-second model timeout and an expiring generation lease. Does not start a contract review.
       requestBody:
         required: true
@@ -1377,6 +1443,101 @@ paths:
         '429': { description: AI request rate limit reached }
         '502': { description: Invalid AI output }
         '503': { description: AI is not configured }
+  /contract-drafts/{id}/studio:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [ContractDrafts]
+      summary: Open a legacy draft in the direct template editor
+      description: Editable drafts are migrated with revision checking. Approved or pending drafts receive a read-only derived document without changing stored approval. Does not use AI credits.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftRevision' }
+      responses:
+        '200': { description: Draft with structured document }
+        '409': { description: Stale revision or active generation }
+  /contract-drafts/{id}/reference:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    post:
+      tags: [ContractDrafts]
+      summary: Extract text from a reference attachment within the caller's draft scope
+      description: Accepts text PDF, DOCX or UTF-8 TXT up to 2 MB and 12000 extracted characters. PDF limit is 20 pages; scanned images require prior OCR. Returns name and text without calling AI or storing the original file.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200': { description: Extracted reference name and text }
+        '400': { description: Unsupported, unreadable or oversized attachment }
+        '404': { description: Draft not found or outside caller scope }
+  /contract-drafts/{id}/assistant:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+    get:
+      tags: [ContractDrafts]
+      summary: Read the latest 50 assistant proposals in chronological order
+      responses:
+        '200': { description: Proposal history within the caller's draft scope }
+    post:
+      tags: [ContractDrafts]
+      summary: Request a scoped AI proposal without changing the contract
+      description: Uses one drafting credit when the proposal is successfully saved. Failure refunds reserved credit. Replaying the same requestId and payload returns the existing proposal without additional AI usage. Proposal includes baseRevision, userMessage, message, changes with trusted before/after values, status and createdAt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DraftAssistantRequest' }
+      responses:
+        '200': { description: Saved proposal awaiting explicit application }
+        '409': { description: Stale revision, request ID conflict or another AI request in progress }
+        '429': { description: AI rate limit reached }
+        '502': { description: Invalid or out-of-scope AI output; credit refunded }
+        '503': { description: AI unavailable }
+  /contract-drafts/{id}/proposals/{proposalId}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: proposalId
+        required: true
+        schema: { type: string }
+    post:
+      tags: [ContractDrafts]
+      summary: Apply or dismiss an AI proposal without further credit usage
+      description: Applying requires the original draft revision and editable state. Applied proposals replay idempotently. Dismissing never edits the contract.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [revision, action]
+              properties:
+                revision: { type: integer, minimum: 0 }
+                action: { type: string, enum: [apply, dismiss] }
+      responses:
+        '200': { description: Current draft after action }
+        '409': { description: Proposal or document has changed; request a new proposal }
   /contract-drafts/{id}/copy-latest:
     parameters:
       - in: path
@@ -1438,7 +1599,7 @@ paths:
           schema: { type: string, enum: [docx, print], default: docx }
       responses:
         '200':
-          description: DOCX attachment or JSON title/content for the protected browser print page
+          description: DOCX attachment or JSON title/content/document/template for the protected browser print page
           content:
             application/vnd.openxmlformats-officedocument.wordprocessingml.document:
               schema: { type: string, format: binary }
