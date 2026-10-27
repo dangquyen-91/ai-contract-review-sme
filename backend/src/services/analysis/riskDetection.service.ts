@@ -89,12 +89,19 @@ export interface RiskDetectionResult {
   overallAssessment: string[];
   findings: LlmFinding[];
   ruleRevisions: LlmRuleRevision[];
+  coveredMissingCodes: string[];
 }
 
 const stringList = z.array(z.string()).nullable().optional();
 
+const normalizeForMatch = (value: string) => value.normalize('NFC').replace(/\s+/g, ' ').trim().toLowerCase();
+
 const findingResultSchema = z.object({
   overallAssessment: stringList,
+  coveredMissingClauses: z
+    .array(z.object({ code: z.string(), clauseIndex: z.number().int(), quote: z.string() }))
+    .nullable()
+    .optional(),
   ruleRevisions: z
     .array(
       z.object({
@@ -143,6 +150,18 @@ const responseSchema = {
   type: Type.OBJECT,
   properties: {
     overallAssessment: stringArraySchema,
+    coveredMissingClauses: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          code: { type: Type.STRING },
+          clauseIndex: { type: Type.INTEGER },
+          quote: { type: Type.STRING },
+        },
+        required: ['code', 'clauseIndex', 'quote'],
+      },
+    },
     ruleRevisions: {
       type: Type.ARRAY,
       items: {
@@ -238,7 +257,7 @@ function buildPrompt(
           .map((m) => `- code="${m.code}": ${m.name} (${m.description})`)
           .join(
             '\n',
-          )}\nFor EACH of them, add one finding with "missingClauseCode" set to its code and "clauseIndex" omitted. Its "proposedRevision.originalText" must be omitted and "proposedRevision.revisedText" must be a full ready-to-insert clause drafted in Vietnamese.`
+          )}\nClauses can be misclassified, so first check whether another clause actually covers each of them. If one does, do NOT add a finding for it; add an item to "coveredMissingClauses" with its "code", the "clauseIndex" of the covering clause and a "quote" copied verbatim from that clause that shows it. For EACH remaining one, add one finding with "missingClauseCode" set to its code and "clauseIndex" omitted. Its "proposedRevision.originalText" must be omitted and "proposedRevision.revisedText" must be a full ready-to-insert clause drafted in Vietnamese.`
       : '';
 
   const riskCatalogBlock = `\n\nRisk catalog (code (allowed severities): meaning):\n${LLM_RISK_CODES.map(
@@ -358,5 +377,24 @@ export async function detectContractRisks(
     });
   }
 
-  return { overallAssessment: (parsed.data.overallAssessment ?? []).map(unmask), findings, ruleRevisions };
+  const clauseTextByIndex = new Map(clauses.map((c) => [c.index, normalizeForMatch(c.text)]));
+  const coveredMissingCodes = [
+    ...new Set(
+      (parsed.data.coveredMissingClauses ?? [])
+        .filter(
+          (c) =>
+            validMissingCodes.has(c.code) &&
+            normalizeForMatch(unmask(c.quote)).length > 0 &&
+            clauseTextByIndex.get(c.clauseIndex)?.includes(normalizeForMatch(unmask(c.quote))),
+        )
+        .map((c) => c.code),
+    ),
+  ];
+
+  return {
+    overallAssessment: (parsed.data.overallAssessment ?? []).map(unmask),
+    findings,
+    ruleRevisions,
+    coveredMissingCodes,
+  };
 }

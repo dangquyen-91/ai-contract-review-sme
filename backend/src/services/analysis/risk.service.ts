@@ -312,7 +312,12 @@ export async function detectRisks(
 
     signal?.throwIfAborted();
     onProgress?.('analyzing_clauses');
-    const { overallAssessment, findings: llmFindings, ruleRevisions } = await detectContractRisks(
+    const {
+      overallAssessment,
+      findings: llmFindings,
+      ruleRevisions,
+      coveredMissingCodes: llmCoveredMissingCodes,
+    } = await detectContractRisks(
       reviewContext,
       clauses.map((c) => ({ index: c.index, category: c.clauseTypeId.code, text: c.text })),
       excerpts,
@@ -349,7 +354,13 @@ export async function detectRisks(
     const toLegalBasis = (finding: LlmFinding) => legalBasisByFinding.get(finding) ?? [];
 
     const pending: { doc: Record<string, unknown>; chunkIds: string[] }[] = [];
-    const coveredMissingCodes = new Set<string>();
+    const coveredMissingCodes = new Set<string>(llmCoveredMissingCodes);
+    if (llmCoveredMissingCodes.length > 0) {
+      logger.info('Mandatory clause types covered by misclassified clauses', {
+        contractId,
+        codes: llmCoveredMissingCodes,
+      });
+    }
 
     const revisionByRule = new Map(ruleRevisions.map((r) => [r.ruleCode, r]));
     for (const finding of ruleFindings) {
