@@ -690,7 +690,10 @@ components:
                     type: string
                   detectedBy:
                     type: string
-                    enum: [rule, llm, hybrid]
+                    enum: [rule, llm, hybrid, checklist]
+                  riskCode:
+                    type: string
+                    description: See RiskFinding.riskCode
                   ruleCode:
                     type: string
         createdAt:
@@ -1035,8 +1038,13 @@ components:
           enum: [open, acknowledged, dismissed, resolved]
         detectedBy:
           type: string
-          enum: [rule, llm, hybrid]
-          description: rule = a fixed legal rule (ruleCode is set) or a missing mandatory clause the LLM did not describe; llm = found by the LLM; hybrid = a missing clause found by the taxonomy check and described by the LLM
+          enum: [rule, llm, hybrid, checklist]
+          description: rule = a fixed legal rule fired (ruleCode is set); llm = found by the LLM; hybrid = a missing clause found by the taxonomy check and described by the LLM; checklist = a missing clause found by the taxonomy check that the LLM did not describe (generic text). Findings saved before checklist existed may still use rule for that last case.
+        riskCode:
+          type: string
+          enum: [UNLAWFUL_TERM, MISSING_MANDATORY_FORM, UNILATERAL_TERMINATION, AUTO_RENEWAL, EXCESSIVE_PENALTY, LIABILITY_LIMITATION, ONE_SIDED_INDEMNITY, UNFAVORABLE_PAYMENT, ONE_SIDED_OBLIGATION, BROAD_EXCLUSION, IP_DATA_RISK, UNFAVORABLE_DISPUTE_FORUM, VAGUE_SCOPE, AMBIGUOUS_TERM, MISSING_CLAUSE, MISSING_PROTECTION, OTHER]
+          description: Stable risk type from the risk catalog, used to compare findings across reviews and to measure accuracy per risk type. Fixed legal rules are UNLAWFUL_TERM, missing clauses are MISSING_CLAUSE, and LLM findings pick a code (OTHER when none fits, capped at medium). The severity of LLM findings is kept within the range allowed for the code. Absent on findings saved before the catalog existed.
+          example: UNILATERAL_TERMINATION
         ruleCode:
           type: string
           description: Set when detectedBy is rule and a legal rule fired, e.g. LTM_PENALTY_CAP, BLLD_PROBATION_WAGE
