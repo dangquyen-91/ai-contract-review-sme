@@ -8,17 +8,13 @@ import { RiskCitationModel } from '../../models/riskCitation.model';
 import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model';
 import { LegalSourceModel } from '../../models/legalSource.model';
 import {
-  detectContractRisks,
+  assessContractLevel,
+  detectClauseBatchRisks,
   LegalExcerptInput,
   LlmFinding,
   LlmProposedRevision,
 } from './riskDetection.service';
-import {
-  searchLegalChunks,
-  LegalChunkMatch,
-  LegalRetrievalStatus,
-  verifyLegalBasis,
-} from '../legal/legalRetrieval.service';
+import { searchLegalChunks, LegalRetrievalStatus, verifyLegalBasis } from '../legal/legalRetrieval.service';
 import {
   claimStage,
   getCurrentVersion,
@@ -30,7 +26,7 @@ import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from '../contract/contractProfile.service';
 import { createRedactor, Redactor } from '../ai/redaction.service';
 import { ExtractedKeyTerm, extractKeyTerms } from './keyTermExtraction.service';
-import { evaluateLegalRules, hasLegalRules, resolveRuleCitations } from '../legal/legalRules.service';
+import { evaluateLegalRules, hasLegalRules, resolveRuleCitations, RuleFinding } from '../legal/legalRules.service';
 import { ReviewContext } from '../contract/contractProfile.service';
 import { logger } from '../../config/logger';
 
@@ -45,7 +41,11 @@ const MISSING_CLAUSE_SEVERITY: (typeof RISK_LEVELS)[number] = 'medium';
 
 const LEGAL_EXCERPTS_PER_CLAUSE = 3;
 
-const MAX_LEGAL_EXCERPTS = 15;
+const MAX_BATCH_CLAUSES = 10;
+
+const MAX_BATCH_CHARS = 15000;
+
+const BATCH_CONCURRENCY = 3;
 
 interface LegalExcerptMeta {
   chunkId: string;
@@ -59,13 +59,13 @@ interface PopulatedClauseType {
   description: string;
 }
 
-async function buildLegalExcerpts(
+async function buildClauseExcerpts(
   clauses: { text: string }[],
   redactor: Redactor,
   legalSourceCodes: string[],
   signal?: AbortSignal,
 ): Promise<{
-  excerpts: LegalExcerptInput[];
+  excerptsByClause: LegalExcerptInput[][];
   metaByNumber: Map<number, LegalExcerptMeta>;
   retrievalStatus: LegalRetrievalStatus;
 }> {
@@ -75,32 +75,55 @@ async function buildLegalExcerpts(
     { legalSourceCodes, signal },
   );
 
-  const candidates = perClauseMatches
-    .flatMap((matches) => matches.map((match, rank) => ({ match, rank })))
-    .sort((a, b) => a.rank - b.rank || b.match.score - a.match.score);
-
-  const matchByChunkId = new Map<string, LegalChunkMatch>();
-  for (const { match } of candidates) {
-    if (matchByChunkId.size >= MAX_LEGAL_EXCERPTS) break;
-    if (!matchByChunkId.has(match.chunkId)) matchByChunkId.set(match.chunkId, match);
-  }
-
-  const excerpts: LegalExcerptInput[] = [];
+  const numberByChunkId = new Map<string, number>();
   const metaByNumber = new Map<number, LegalExcerptMeta>();
-  let number = 1;
-  for (const match of matchByChunkId.values()) {
-    excerpts.push({
-      number,
-      citationLabel: match.citationLabel,
-      articleRef: match.articleRef,
-      text: match.chunkText,
-    });
-    metaByNumber.set(number, { chunkId: match.chunkId, score: match.score });
-    number++;
-  }
+  const excerptsByClause = clauses.map((_, i) =>
+    (perClauseMatches[i] ?? []).map((match) => {
+      let number = numberByChunkId.get(match.chunkId);
+      if (number === undefined) {
+        number = numberByChunkId.size + 1;
+        numberByChunkId.set(match.chunkId, number);
+        metaByNumber.set(number, { chunkId: match.chunkId, score: match.score });
+      }
+      return { number, citationLabel: match.citationLabel, articleRef: match.articleRef, text: match.chunkText };
+    }),
+  );
 
-  return { excerpts, metaByNumber, retrievalStatus };
+  return { excerptsByClause, metaByNumber, retrievalStatus };
 }
+
+function toBatches<T extends { text: string }>(items: T[]): T[][] {
+  const batches: T[][] = [];
+  let current: T[] = [];
+  let chars = 0;
+  for (const item of items) {
+    if (current.length > 0 && (current.length >= MAX_BATCH_CLAUSES || chars + item.text.length > MAX_BATCH_CHARS)) {
+      batches.push(current);
+      current = [];
+      chars = 0;
+    }
+    current.push(item);
+    chars += item.text.length;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        results[i] = await task(items[i]);
+      }
+    }),
+  );
+  return results;
+}
+
+const ruleRiskCode = (finding: RuleFinding) => finding.rule.riskCode ?? 'UNLAWFUL_TERM';
 
 async function extractKeyTermsSafely(
   context: ReviewContext,
@@ -293,8 +316,8 @@ export async function detectRisks(
     );
 
     onProgress?.('retrieving_legal_sources');
-    const [{ excerpts, metaByNumber, retrievalStatus }, keyTerms] = await Promise.all([
-      buildLegalExcerpts(clauses, redactor, reviewContext.legalSourceCodes, signal),
+    const [{ excerptsByClause, metaByNumber, retrievalStatus }, keyTerms] = await Promise.all([
+      buildClauseExcerpts(clauses, redactor, reviewContext.legalSourceCodes, signal),
       extractKeyTermsSafely(
         reviewContext,
         clauses.map((c) => ({ index: c.index, text: c.text })),
@@ -310,23 +333,61 @@ export async function detectRisks(
     const ruleFindings = evaluateLegalRules(reviewContext, keyTerms ?? []);
     const ruleChunkIds = await resolveRuleCitations(ruleFindings);
 
+    const analysisFocus = version.analysisFocus ?? undefined;
+    const clauseInputs = clauses.map((c) => ({ index: c.index, category: c.clauseTypeId.code, text: c.text }));
+    const ruleInputs = ruleFindings.map((r) => ({
+      ruleCode: r.rule.code,
+      clauseIndex: r.clauseIndex,
+      title: r.title,
+      problem: r.problem,
+    }));
+
     signal?.throwIfAborted();
     onProgress?.('analyzing_clauses');
-    const {
-      overallAssessment,
-      findings: llmFindings,
-      ruleRevisions,
-      coveredMissingCodes: llmCoveredMissingCodes,
-    } = await detectContractRisks(
+    const batchResults = await mapWithConcurrency(
+      toBatches(clauseInputs.map((c, i) => ({ ...c, excerpts: excerptsByClause[i] }))),
+      BATCH_CONCURRENCY,
+      (batch) => {
+        const indexes = new Set(batch.map((c) => c.index));
+        return detectClauseBatchRisks(
+          reviewContext,
+          batch,
+          ruleInputs.filter((r) => r.clauseIndex !== undefined && indexes.has(r.clauseIndex)),
+          analysisFocus,
+          redactor,
+          signal,
+        );
+      },
+    );
+    const clauseFindings = batchResults.flatMap((r) => r.findings);
+
+    signal?.throwIfAborted();
+    const contractLevel = await assessContractLevel(
       reviewContext,
-      clauses.map((c) => ({ index: c.index, category: c.clauseTypeId.code, text: c.text })),
-      excerpts,
+      clauseInputs,
       missingTaxonomy.map((t) => ({ code: t.code, name: t.name, description: t.description })),
-      ruleFindings.map((r) => ({ ruleCode: r.rule.code, clauseIndex: r.clauseIndex, title: r.title, problem: r.problem })),
-      version.analysisFocus ?? undefined,
+      ruleInputs.filter((r) => r.clauseIndex === undefined),
+      [
+        ...ruleFindings.map((r) => ({
+          clauseIndex: r.clauseIndex,
+          riskCode: ruleRiskCode(r),
+          severity: r.severity,
+          title: r.title,
+        })),
+        ...clauseFindings.map((f) => ({
+          clauseIndex: f.clauseIndex,
+          riskCode: f.riskCode,
+          severity: f.severity,
+          title: f.title,
+        })),
+      ],
+      analysisFocus,
       redactor,
       signal,
     );
+    const { overallAssessment, coveredMissingCodes: llmCoveredMissingCodes } = contractLevel;
+    const llmFindings = [...clauseFindings, ...contractLevel.findings];
+    const ruleRevisions = [...batchResults.flatMap((r) => r.ruleRevisions), ...contractLevel.ruleRevisions];
 
     const clauseByIndex = new Map(clauses.map((c) => [c.index, c]));
 
@@ -387,7 +448,7 @@ export async function detectRisks(
           ],
           proposedRevision: resolveProposedRevision(revisionByRule.get(finding.rule.code), clause?.text),
           detectedBy: 'rule' as const,
-          riskCode: finding.rule.riskCode ?? 'UNLAWFUL_TERM',
+          riskCode: ruleRiskCode(finding),
           ruleCode: finding.rule.code,
           ruleVersion: finding.rule.version,
         },
