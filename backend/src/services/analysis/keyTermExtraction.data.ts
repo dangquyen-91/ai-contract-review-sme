@@ -186,6 +186,16 @@ export const KEY_TERMS = {
     label: 'Không tham gia bảo hiểm xã hội bắt buộc',
     description: 'true when the contract says the employee will not join compulsory social insurance, or receives the contribution as cash in the salary instead.',
   },
+  wage_in_foreign_currency: {
+    type: 'boolean',
+    label: 'Lương ghi hoặc trả bằng ngoại tệ',
+    description: 'true when the wage is stated or paid in a foreign currency (USD, EUR, ...); false when it is stated and paid in Vietnamese dong (VND). Omit it when the contract states no wage.',
+  },
+  employee_is_foreigner: {
+    type: 'boolean',
+    label: 'Người lao động là người nước ngoài',
+    description: 'true when the contract shows the employee is a foreign national (non-Vietnamese nationality, foreign passport, work permit); false when it shows Vietnamese nationality or a Vietnamese citizen ID (CCCD/CMND). Omit it when the contract does not show the nationality.',
+  },
 } satisfies Record<string, Omit<KeyTermDefinition, 'key'>>;
 
 export type KeyTermKey = keyof typeof KEY_TERMS;
@@ -227,6 +237,8 @@ export const KEY_TERMS_BY_PROFILE: Record<string, KeyTermDefinition[]> = {
     'employee_deposit_required',
     'monetary_fines',
     'social_insurance_excluded',
+    'wage_in_foreign_currency',
+    'employee_is_foreigner',
   ]),
   life_insurance: [],
 };

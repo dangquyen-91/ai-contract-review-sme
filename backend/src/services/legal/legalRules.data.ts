@@ -590,4 +590,35 @@ export const LEGAL_RULES: LegalRule[] = [
       };
     },
   },
+  {
+    code: 'BLLD_WAGE_FOREIGN_CURRENCY',
+    version: 1,
+    profiles: ['labor'],
+    severity: 'high',
+    anchor: 'wage_in_foreign_currency',
+    legalBasis:
+      'Điều 95 khoản 2 Bộ luật Lao động 2019: tiền lương ghi trong hợp đồng lao động và tiền lương trả cho người lao động bằng tiền Đồng Việt Nam, trường hợp người lao động là người nước ngoài tại Việt Nam thì có thể bằng ngoại tệ.',
+    citations: [{ sourceCode: BLLD, article: 95, clause: 2, verifyText: 'bằng tiền Đồng Việt Nam' }],
+    evaluate(t) {
+      const foreigner = t.bool('employee_is_foreigner');
+      if (t.bool('wage_in_foreign_currency') !== true || foreigner === true) return null;
+      return {
+        severity: foreigner === false ? 'high' : 'medium',
+        title: 'Tiền lương ghi hoặc trả bằng ngoại tệ',
+        problem: [
+          foreigner === false
+            ? 'Hợp đồng ghi hoặc trả lương bằng ngoại tệ cho người lao động không phải người nước ngoài; luật chỉ cho phép trả bằng ngoại tệ với người lao động nước ngoài tại Việt Nam.'
+            : 'Hợp đồng ghi hoặc trả lương bằng ngoại tệ nhưng không thể hiện người lao động là người nước ngoài; luật chỉ cho phép trả bằng ngoại tệ với người lao động nước ngoài tại Việt Nam.',
+        ],
+        consequences: [
+          'Nếu người lao động không phải người nước ngoài, điều khoản tiền lương trái quy định và người sử dụng lao động có thể bị xử phạt vi phạm hành chính.',
+          'Khi tỷ giá biến động, số tiền lương thực nhận và cơ sở đóng bảo hiểm, tính thuế dễ phát sinh tranh chấp.',
+        ],
+        recommendations: [
+          'Ghi và trả lương bằng Đồng Việt Nam.',
+          'Nếu người lao động là người nước ngoài, ghi rõ quốc tịch và giấy phép lao động trong hợp đồng.',
+        ],
+      };
+    },
+  },
 ];
