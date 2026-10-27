@@ -359,7 +359,10 @@ export async function detectRisks(
         );
       },
     );
-    const clauseFindings = batchResults.flatMap((r) => r.findings);
+    const ruleClauseIndexes = new Set(ruleFindings.map((r) => r.clauseIndex).filter((i) => i !== undefined));
+    const clauseFindings = batchResults
+      .flatMap((r) => r.findings)
+      .filter((f) => f.clauseIndex === undefined || !ruleClauseIndexes.has(f.clauseIndex));
 
     signal?.throwIfAborted();
     const contractLevel = await assessContractLevel(
