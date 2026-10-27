@@ -15,14 +15,12 @@ import { startBackgroundWorkers, stopBackgroundWork } from './services/workers.s
 import { OrganizationInvitationModel } from './models/organizationInvitation.model';
 import { initializeSubscriptionModels } from './models/subscription.model';
 import { seedPlans } from './services/billing/subscription.service';
-import { EmailVerificationModel } from './models/emailVerification.model';
 import { PaymentModel } from './models/payment.model';
 
 async function bootstrap() {
   await connectDB();
   await assertRedisReachable();
   await OrganizationInvitationModel.init();
-  await EmailVerificationModel.init();
   await PaymentModel.init();
   await initializeSubscriptionModels();
   await seedPlans();

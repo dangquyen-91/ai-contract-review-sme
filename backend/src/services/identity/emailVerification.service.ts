@@ -1,23 +1,32 @@
-import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'crypto';
 import mongoose from 'mongoose';
-import { EmailVerificationModel } from '../../models/emailVerification.model';
 import { UserModel } from '../../models/user.model';
-import { env } from '../../config/env';
 import { AppError } from '../../errors/AppError';
 import { ensureEmailConfigured, sendEmail } from '../email/email.service';
 import { getPendingInvitation } from '../organization/invitation.service';
 import { getRoleByCode } from './role.service';
+import {
+  activateChallenge,
+  attemptChallenge,
+  hashSecret,
+  issueChallenge,
+  OtpPolicy,
+  readChallenge,
+} from './otpChallenge.service';
 
-const LIFETIME_MS = 10 * 60_000;
-const COOLDOWN_MS = 60_000;
-const HOUR_MS = 60 * 60_000;
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
 const MAX_ATTEMPTS = 5;
-const hash = (value: string) => createHash('sha256').update(value).digest('hex');
-const hashOtp = (challengeHash: string, code: string) =>
-  createHmac('sha256', env.JWT_ACCESS_SECRET)
-    .update(`email-verification:${challengeHash}:${code}`)
-    .digest('hex');
-const secrets = '+challengeHash +otpHash +passwordHash +invitationHash';
+
+const POLICY: OtpPolicy = {
+  namespace: 'email-verification',
+  purpose: 'email-verification',
+  codeLifetimeMs: 10 * MINUTE_MS,
+  retentionMs: 24 * HOUR_MS,
+  cooldownMs: MINUTE_MS,
+  sendWindowMs: HOUR_MS,
+  maxSendsPerWindow: 5,
+  maxAttempts: MAX_ATTEMPTS,
+};
 
 interface VerificationAccount {
   email: string;
@@ -28,28 +37,37 @@ interface VerificationAccount {
   invitationToken?: string;
 }
 
+interface PendingAccount {
+  name: string;
+  passwordHash: string;
+  userId?: string;
+  remember: boolean;
+}
+
+const invitationBinding = (invitationToken?: string) =>
+  invitationToken ? hashSecret(invitationToken) : '';
+const unavailable = () =>
+  AppError.badRequest('Verification request is no longer available. Start again.');
+const invitationMismatch = () =>
+  AppError.badRequest('Invitation does not match this verification request');
+const tooManyAttempts = () => new AppError('Too many incorrect codes. Request a new code.', 429);
+
 export async function startEmailVerification(account: VerificationAccount) {
   return issue(account);
 }
 
 export async function resendEmailVerification(challengeId: string, invitationToken?: string) {
-  const stored = await EmailVerificationModel.findOne({
-    challengeHash: hash(challengeId),
-    consumed: false,
-  }).select(secrets);
-  if (!stored || !stored.passwordHash || !stored.name)
-    throw AppError.badRequest('Verification request is no longer available. Start again.');
-  if ((stored.invitationHash ?? '') !== (invitationToken ? hash(invitationToken) : '')) {
-    throw AppError.badRequest('Invitation does not match this verification request');
-  }
+  const stored = await readChallenge<PendingAccount>(POLICY, challengeId);
+  if (!stored || !stored.data.passwordHash || !stored.data.name) throw unavailable();
+  if (stored.bind !== invitationBinding(invitationToken)) throw invitationMismatch();
   if (invitationToken) await getPendingInvitation(invitationToken, stored.email);
   return issue(
     {
       email: stored.email,
-      name: stored.name,
-      passwordHash: stored.passwordHash,
-      userId: stored.userId?.toString(),
-      remember: stored.remember,
+      name: stored.data.name,
+      passwordHash: stored.data.passwordHash,
+      userId: stored.data.userId,
+      remember: stored.data.remember,
       invitationToken,
     },
     challengeId,
@@ -58,75 +76,36 @@ export async function resendEmailVerification(challengeId: string, invitationTok
 
 async function issue(account: VerificationAccount, previousChallengeId?: string) {
   ensureEmailConfigured();
-  const challengeId = previousChallengeId ?? randomBytes(32).toString('hex');
-  const challengeHash = hash(challengeId);
-  const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + LIFETIME_MS);
-  try {
-    await mongoose.connection.transaction(async (session) => {
-      const stored = await EmailVerificationModel.findOneAndUpdate(
-        { email: account.email },
-        { $setOnInsert: { email: account.email, purgeAt: new Date(now.getTime() + 24 * HOUR_MS) } },
-        { session, upsert: true, new: true },
-      ).select(secrets);
-      if (
-        previousChallengeId &&
-        (stored.consumed || stored.challengeHash !== hash(previousChallengeId))
-      ) {
-        throw AppError.badRequest('Verification request is no longer available. Start again.');
-      }
-      if (stored.lastSentAt && now.getTime() - stored.lastSentAt.getTime() < COOLDOWN_MS) {
-        throw new AppError('Please wait 60 seconds before requesting another code', 429);
-      }
-      if (!stored.windowStartedAt || now.getTime() - stored.windowStartedAt.getTime() >= HOUR_MS) {
-        stored.windowStartedAt = now;
-        stored.sentCount = 0;
-      }
-      if (stored.sentCount >= 5)
-        throw new AppError('Email verification limit reached. Try again in one hour.', 429);
-      stored.set({
-        challengeHash,
-        otpHash: hashOtp(challengeHash, code),
-        name: account.name,
-        passwordHash: account.passwordHash,
-        userId: account.userId ?? null,
-        invitationHash: account.invitationToken ? hash(account.invitationToken) : null,
-        remember: account.remember === true,
-        expiresAt,
-        lastSentAt: now,
-        attempts: 0,
-        ready: false,
-        consumed: false,
-        purgeAt: new Date(now.getTime() + 24 * HOUR_MS),
-      });
-      stored.sentCount += 1;
-      await stored.save({ session });
-    });
-  } catch (error) {
-    if ((error as { code?: number }).code === 11000)
-      throw new AppError(
-        'A verification request is already being processed. Try again later.',
-        429,
-      );
-    throw error;
+  const outcome = await issueChallenge<PendingAccount>(POLICY, {
+    email: account.email,
+    data: {
+      name: account.name,
+      passwordHash: account.passwordHash,
+      userId: account.userId,
+      remember: account.remember === true,
+    },
+    bind: invitationBinding(account.invitationToken),
+    previousChallengeId,
+  });
+  if (outcome.status !== 'issued') {
+    if (outcome.status === 'stale') throw unavailable();
+    throw outcome.status === 'cooldown'
+      ? new AppError('Please wait 60 seconds before requesting another code', 429)
+      : new AppError('Email verification limit reached. Try again in one hour.', 429);
   }
+
   await sendEmail({
     to: account.email,
     subject: 'Mã xác minh email — AI Contract Review',
-    text: `Mã xác minh của bạn: ${code}\n\nMã có hiệu lực trong 10 phút. Không chia sẻ mã với người khác. Nếu bạn không yêu cầu, hãy bỏ qua email này.`,
+    text: `Mã xác minh của bạn: ${outcome.code}\n\nMã có hiệu lực trong 10 phút. Không chia sẻ mã với người khác. Nếu bạn không yêu cầu, hãy bỏ qua email này.`,
   });
-  const activated = await EmailVerificationModel.updateOne(
-    { email: account.email, challengeHash, otpHash: hashOtp(challengeHash, code), consumed: false },
-    { $set: { ready: true } },
-  );
-  if (!activated.matchedCount)
+  if (!(await activateChallenge(POLICY, outcome.challengeId, outcome.code)))
     throw AppError.conflict('A newer verification request exists. Use the latest code.');
   return {
     verificationRequired: true as const,
-    challengeId,
+    challengeId: outcome.challengeId,
     email: account.email,
-    expiresAt,
+    expiresAt: outcome.expiresAt,
     resendAfterSeconds: 60,
   };
 }
@@ -136,77 +115,51 @@ export async function completeEmailVerification(
   code: string,
   invitationToken?: string,
 ) {
-  const challengeHash = hash(challengeId);
-  const outcome = await mongoose.connection.transaction(async (session) => {
-    const stored = await EmailVerificationModel.findOne({ challengeHash })
-      .select(secrets)
-      .session(session);
-    if (
-      !stored ||
-      stored.consumed ||
-      !stored.ready ||
-      !stored.expiresAt ||
-      stored.expiresAt <= new Date()
-    ) {
-      return {
-        error: AppError.badRequest('Verification code expired or unavailable. Request a new code.'),
-      };
-    }
-    if ((stored.invitationHash ?? '') !== (invitationToken ? hash(invitationToken) : '')) {
-      return { error: AppError.badRequest('Invitation does not match this verification request') };
-    }
-    if (stored.attempts >= MAX_ATTEMPTS)
-      return { error: new AppError('Too many incorrect codes. Request a new code.', 429) };
-    const expected = Buffer.from(stored.otpHash ?? '', 'hex');
-    const supplied = Buffer.from(hashOtp(challengeHash, code), 'hex');
-    if (expected.length !== supplied.length || !timingSafeEqual(expected, supplied)) {
-      stored.attempts += 1;
-      await stored.save({ session });
-      return {
-        error: new AppError(
-          stored.attempts >= MAX_ATTEMPTS
-            ? 'Too many incorrect codes. Request a new code.'
-            : 'Incorrect verification code',
-          stored.attempts >= MAX_ATTEMPTS ? 429 : 400,
-        ),
-      };
-    }
-    if (invitationToken) await getPendingInvitation(invitationToken, stored.email, session);
-    let user;
-    if (stored.userId) {
-      user = await UserModel.findOne({ _id: stored.userId, email: stored.email, isActive: true })
+  const attempt = await attemptChallenge<PendingAccount>(POLICY, challengeId, code, {
+    bind: invitationBinding(invitationToken),
+  });
+  if (attempt.status === 'mismatch') throw invitationMismatch();
+  if (attempt.status === 'locked') throw tooManyAttempts();
+  if (attempt.status === 'wrong') {
+    throw attempt.attempts >= MAX_ATTEMPTS
+      ? tooManyAttempts()
+      : AppError.badRequest('Incorrect verification code');
+  }
+  if (attempt.status !== 'ok')
+    throw AppError.badRequest('Verification code expired or unavailable. Request a new code.');
+
+  const { email, data: pending } = attempt;
+  const user = await mongoose.connection.transaction(async (session) => {
+    if (invitationToken) await getPendingInvitation(invitationToken, email, session);
+    if (pending.userId) {
+      const existing = await UserModel.findOne({ _id: pending.userId, email, isActive: true })
         .select('+passwordHash')
         .session(session);
-      if (!user || user.passwordHash !== stored.passwordHash)
-        return { error: AppError.unauthorized('Account changed. Sign in again.') };
-      user.emailVerifiedAt = user.emailVerifiedAt ?? new Date();
-      user.hasPassword = true;
-      await user.save({ session });
-    } else {
-      if (await UserModel.exists({ email: stored.email }).session(session))
-        return { error: AppError.conflict('Email already registered') };
-      const role = await getRoleByCode('user');
-      [user] = await UserModel.create(
-        [
-          {
-            email: stored.email,
-            name: stored.name,
-            passwordHash: stored.passwordHash,
-            hasPassword: true,
-            roleId: role._id,
-            emailVerifiedAt: new Date(),
-          },
-        ],
-        { session },
-      );
+      if (!existing || existing.passwordHash !== pending.passwordHash)
+        throw AppError.unauthorized('Account changed. Sign in again.');
+      existing.emailVerifiedAt = existing.emailVerifiedAt ?? new Date();
+      existing.hasPassword = true;
+      await existing.save({ session });
+      return existing;
     }
-    stored.consumed = true;
-    stored.otpHash = undefined;
-    stored.passwordHash = undefined;
-    await stored.save({ session });
-    await user.populate('roleId');
-    return { user, remember: stored.remember };
+    if (await UserModel.exists({ email }).session(session))
+      throw AppError.conflict('Email already registered');
+    const role = await getRoleByCode('user');
+    const [created] = await UserModel.create(
+      [
+        {
+          email,
+          name: pending.name,
+          passwordHash: pending.passwordHash,
+          hasPassword: true,
+          roleId: role._id,
+          emailVerifiedAt: new Date(),
+        },
+      ],
+      { session },
+    );
+    return created;
   });
-  if (outcome.error) throw outcome.error;
-  return { user: outcome.user!, remember: outcome.remember === true };
+  await user.populate('roleId');
+  return { user, remember: pending.remember === true };
 }
