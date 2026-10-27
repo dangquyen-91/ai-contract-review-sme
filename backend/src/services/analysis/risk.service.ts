@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { ClauseModel } from '../../models/clause.model';
 import { ContractModel } from '../../models/contract.model';
-import { ContractVersionModel, RISK_LEVELS } from '../../models/contractVersion.model';
+import { ContractVersionModel, RISK_LEVELS, RULE_CHECK_STATUSES } from '../../models/contractVersion.model';
 import { RiskFindingModel } from '../../models/riskFinding.model';
 import { RiskCitationModel } from '../../models/riskCitation.model';
 import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model';
@@ -30,7 +30,7 @@ import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from '../contract/contractProfile.service';
 import { createRedactor, Redactor } from '../ai/redaction.service';
 import { ExtractedKeyTerm, extractKeyTerms } from './keyTermExtraction.service';
-import { evaluateLegalRules, resolveRuleCitations } from '../legal/legalRules.service';
+import { evaluateLegalRules, hasLegalRules, resolveRuleCitations } from '../legal/legalRules.service';
 import { ReviewContext } from '../contract/contractProfile.service';
 import { logger } from '../../config/logger';
 
@@ -107,7 +107,7 @@ async function extractKeyTermsSafely(
   clauses: { index: number; text: string }[],
   redactor: Redactor,
   signal?: AbortSignal,
-): Promise<ExtractedKeyTerm[]> {
+): Promise<ExtractedKeyTerm[] | null> {
   try {
     return await extractKeyTerms(context, clauses, redactor, signal);
   } catch (err) {
@@ -116,7 +116,7 @@ async function extractKeyTermsSafely(
       profile: context.profileCode,
       error: err instanceof Error ? err.message : String(err),
     });
-    return [];
+    return null;
   }
 }
 
@@ -302,7 +302,12 @@ export async function detectRisks(
         signal,
       ),
     ]);
-    const ruleFindings = evaluateLegalRules(reviewContext, keyTerms);
+    const ruleCheckStatus: (typeof RULE_CHECK_STATUSES)[number] = !hasLegalRules(reviewContext.profileCode)
+      ? 'not_applicable'
+      : keyTerms
+        ? 'ok'
+        : 'skipped';
+    const ruleFindings = evaluateLegalRules(reviewContext, keyTerms ?? []);
     const ruleChunkIds = await resolveRuleCitations(ruleFindings);
 
     signal?.throwIfAborted();
@@ -487,7 +492,8 @@ export async function detectRisks(
           overallAssessment,
           riskDetectionStatus: 'completed',
           legalRetrievalStatus: retrievalStatus,
-          keyTerms: keyTerms.map((t) => ({
+          ruleCheckStatus,
+          keyTerms: (keyTerms ?? []).map((t) => ({
             key: t.key,
             numberValue: t.numberValue,
             booleanValue: t.booleanValue,

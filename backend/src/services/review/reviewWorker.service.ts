@@ -164,6 +164,7 @@ async function buildReviewResult(versionId: string) {
     clauseCount: clauses.length,
     findingCounts: counts,
     legalRetrievalStatus: version?.legalRetrievalStatus ?? undefined,
+    ruleCheckStatus: version?.ruleCheckStatus ?? undefined,
     findings: findings
       .map((f) => {
         const clause = f.clauseId ? clauseById.get(f.clauseId.toString()) : undefined;
@@ -199,6 +200,7 @@ async function buildPartialResult(versionId: string, stages: ReviewStages) {
           findingCounts: { high: 0, medium: 0, low: 0 },
           findings: [],
           legalRetrievalStatus: undefined,
+          ruleCheckStatus: undefined,
         }),
     partial: true,
   };

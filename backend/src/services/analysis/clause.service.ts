@@ -88,6 +88,7 @@ export async function segmentClauses(orgId: string, contractId: string, signal?:
           summaryError: '',
           riskDetectionError: '',
           legalRetrievalStatus: '',
+          ruleCheckStatus: '',
         },
       },
     );

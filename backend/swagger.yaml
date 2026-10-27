@@ -536,6 +536,10 @@ components:
           type: string
           enum: [ok, degraded, no_sources, unavailable]
           description: How the legal knowledge search went during the last risk detection. ok = vector and text search both ran. degraded = only one of them ran. no_sources = the legal knowledge base has no searchable source. unavailable = the search failed, so the findings were written without legal excerpts (rule checks still ran). Absent until risk detection completes, and cleared when clauses are re-segmented.
+        ruleCheckStatus:
+          type: string
+          enum: [ok, skipped, not_applicable]
+          description: Whether the fixed legal rule checks (detectedBy rule) ran during the last risk detection. ok = key terms were extracted and every rule for this contract type was evaluated. skipped = key term extraction failed, so no rule ran and the findings come from the LLM and the missing-clause check only. not_applicable = this contract type has no fixed legal rules yet. Absent until risk detection completes, and cleared when clauses are re-segmented.
         overallAssessment:
           type: array
           items:
@@ -659,6 +663,10 @@ components:
               type: string
               enum: [ok, degraded, no_sources, unavailable]
               description: Copied from the contract version (see ContractVersion.legalRetrievalStatus). Absent when risk detection did not finish.
+            ruleCheckStatus:
+              type: string
+              enum: [ok, skipped, not_applicable]
+              description: Copied from the contract version (see ContractVersion.ruleCheckStatus). Absent when risk detection did not finish.
             findings:
               type: array
               items:
