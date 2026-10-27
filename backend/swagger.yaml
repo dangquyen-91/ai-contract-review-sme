@@ -614,6 +614,10 @@ components:
               enum: [pending, running, completed, failed]
         analysisFocus:
           type: string
+        aiModel:
+          type: string
+          example: gemini-3.1-flash-lite
+          description: Gemini model that ran the latest attempt of this review (GEMINI_MODEL at the time). Absent until the worker starts the review.
         error:
           type: string
           description: Last error message (English, for logs); set while an automatic retry is pending or when the review failed or was cancelled

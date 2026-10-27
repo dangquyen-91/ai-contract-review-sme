@@ -75,6 +75,7 @@ const reviewSchema = new Schema(
       riskDetection: stageStatus,
     },
     analysisFocus: { type: String },
+    aiModel: { type: String },
     error: { type: String },
     errorCode: { type: String, enum: REVIEW_ERROR_CODES },
     cancelRequested: { type: Boolean },

@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { Job, Queue, UnrecoverableError } from 'bullmq';
 import { addJobWithTimeout, createQueue, createQueueEvents, createWorker } from '../../config/queue';
+import { env } from '../../config/env';
 import { logger } from '../../config/logger';
 import { AppError } from '../../errors/AppError';
 import { ClauseModel } from '../../models/clause.model';
@@ -313,7 +314,11 @@ async function runReview(job: Job<ReviewJobData>): Promise<void> {
     }
     const credit = watchReview(job.data.reviewId, usageRunId);
     try {
-      await updateReview(job, { status: 'running', startedAt: review.startedAt ?? new Date() }, ['error']);
+      await updateReview(
+        job,
+        { status: 'running', startedAt: review.startedAt ?? new Date(), aiModel: env.GEMINI_MODEL },
+        ['error'],
+      );
       await runStages(job, review.stages, { orgId, contractId, analysisFocus, versionId }, credit.signal);
       credit.signal.throwIfAborted();
       result = await buildReviewResult(versionId);
