@@ -7,6 +7,7 @@ export const LEGAL_SOURCE_CATALOG = {
   housing_law_2023: 'Luật Nhà ở 2023',
   land_law_2024: 'Luật Đất đai 2024',
   insurance_business_law_2022: 'Luật Kinh doanh bảo hiểm 2022',
+  foreign_exchange_ordinance_2005: 'Pháp lệnh Ngoại hối 2005',
 } as const;
 
 export type LegalSourceCode = keyof typeof LEGAL_SOURCE_CATALOG;

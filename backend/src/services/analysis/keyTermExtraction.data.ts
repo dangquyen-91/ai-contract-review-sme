@@ -36,6 +36,11 @@ export const KEY_TERMS = {
     description: 'Interest charged on late payment, converted to percent per year (a monthly rate x 12, a daily rate x 365), e.g. 0.1%/day -> 36.5.',
     ...percent,
   },
+  price_in_foreign_currency: {
+    type: 'boolean',
+    label: 'Ghi giá hoặc thanh toán bằng ngoại tệ',
+    description: 'true when the contract states a price, contract value or payment in a foreign currency (USD, EUR, ...), or converts or adjusts the price by a foreign currency amount; false when every amount is in Vietnamese dong (VND). Omit it when the contract states no price.',
+  },
   deposit_percent: {
     type: 'number',
     label: 'Tiền đặt cọc (% giá bán)',
@@ -191,9 +196,9 @@ const definitionsOf = (keys: KeyTermKey[]): KeyTermDefinition[] =>
 const CIVIL_PENALTY_TERMS: KeyTermKey[] = ['penalty_agreed', 'damages_also_claimable', 'late_payment_interest_percent_per_year'];
 
 export const KEY_TERMS_BY_PROFILE: Record<string, KeyTermDefinition[]> = {
-  sales: definitionsOf(['penalty_percent']),
-  service: definitionsOf(['penalty_percent']),
-  office_lease: definitionsOf(CIVIL_PENALTY_TERMS),
+  sales: definitionsOf(['penalty_percent', 'late_payment_interest_percent_per_year', 'price_in_foreign_currency']),
+  service: definitionsOf(['penalty_percent', 'late_payment_interest_percent_per_year', 'price_in_foreign_currency']),
+  office_lease: definitionsOf([...CIVIL_PENALTY_TERMS, 'price_in_foreign_currency']),
   housing_purchase: definitionsOf([
     ...CIVIL_PENALTY_TERMS,
     'deposit_percent',

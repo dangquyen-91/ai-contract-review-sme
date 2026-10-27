@@ -45,6 +45,7 @@ const BLDS = 'civil_code_2015';
 const BLLD = 'labor_code_2019';
 const KDBDS = 'real_estate_business_law_2023';
 const NHA_O = 'housing_law_2023';
+const NGOAI_HOI = 'foreign_exchange_ordinance_2005';
 
 export const LEGAL_RULES: LegalRule[] = [
   {
@@ -69,6 +70,59 @@ export const LEGAL_RULES: LegalRule[] = [
         recommendations: [
           'Điều chỉnh mức phạt vi phạm xuống không quá 8% giá trị phần nghĩa vụ hợp đồng bị vi phạm.',
           'Nếu cần bù đắp tổn thất lớn hơn, thoả thuận rõ quyền yêu cầu bồi thường thiệt hại thay vì nâng mức phạt.',
+        ],
+      };
+    },
+  },
+  {
+    code: 'LTM_LATE_INTEREST_CAP',
+    version: 1,
+    profiles: ['sales', 'service'],
+    severity: 'medium',
+    anchor: 'late_payment_interest_percent_per_year',
+    legalBasis:
+      'Điều 306 Luật Thương mại 2005 cho phép đòi lãi chậm thanh toán theo thoả thuận, "trừ trường hợp có thoả thuận khác hoặc pháp luật có quy định khác"; Điều 357 khoản 2 và Điều 468 khoản 1 Bộ luật Dân sự 2015 giới hạn lãi suất chậm trả theo thoả thuận không quá 20%/năm, phần vượt quá không có hiệu lực.',
+    citations: [
+      { sourceCode: LTM, article: 306, verifyText: 'pháp luật có quy định khác' },
+      { sourceCode: BLDS, article: 357, clause: 2, verifyText: 'Điều 468' },
+      { sourceCode: BLDS, article: 468, clause: 1, verifyText: '20%/năm' },
+    ],
+    evaluate(t) {
+      const rate = t.num('late_payment_interest_percent_per_year');
+      if (rate === undefined || rate <= 20) return null;
+      return {
+        title: `Lãi chậm thanh toán ${fmt(rate)}%/năm vượt mức 20%/năm`,
+        problem: [
+          `Hợp đồng tính lãi chậm thanh toán tương đương ${fmt(rate)}%/năm. Theo cách áp dụng phổ biến, lãi chậm trả trong hợp đồng thương mại cũng bị giới hạn 20%/năm theo Bộ luật Dân sự.`,
+        ],
+        consequences: ['Khi có tranh chấp, Toà án có thể chỉ chấp nhận mức lãi tối đa 20%/năm; phần vượt quá có nguy cơ không được bảo vệ.'],
+        recommendations: ['Đặt lãi chậm thanh toán không quá 20%/năm (khoảng 1,67%/tháng) để tránh tranh chấp về hiệu lực.'],
+      };
+    },
+  },
+  {
+    code: 'FX_PRICE_IN_FOREIGN_CURRENCY',
+    version: 1,
+    profiles: ['sales', 'service', 'office_lease'],
+    severity: 'medium',
+    anchor: 'price_in_foreign_currency',
+    legalBasis:
+      'Điều 22 Pháp lệnh Ngoại hối 2005 (sửa đổi, bổ sung năm 2013): trên lãnh thổ Việt Nam, mọi giao dịch, thanh toán, niêm yết, quảng cáo, báo giá, định giá, ghi giá trong hợp đồng, thỏa thuận và các hình thức tương tự khác của người cư trú, người không cư trú không được thực hiện bằng ngoại hối, trừ các trường hợp được phép theo quy định của Ngân hàng Nhà nước Việt Nam (Điều 4 Thông tư 32/2013/TT-NHNN).',
+    citations: [{ sourceCode: NGOAI_HOI, article: 22, verifyText: 'ghi giá trong hợp đồng' }],
+    evaluate(t) {
+      if (t.bool('price_in_foreign_currency') !== true) return null;
+      return {
+        title: 'Hợp đồng ghi giá hoặc thanh toán bằng ngoại tệ',
+        problem: [
+          'Hợp đồng ghi giá, giá trị hoặc thanh toán bằng ngoại tệ. Pháp lệnh Ngoại hối cấm ghi giá trong hợp đồng và thanh toán bằng ngoại hối trên lãnh thổ Việt Nam, trừ các trường hợp được Ngân hàng Nhà nước cho phép.',
+        ],
+        consequences: [
+          'Nếu không thuộc trường hợp được phép, việc ghi giá và thanh toán bằng ngoại tệ vi phạm quy định quản lý ngoại hối và có thể bị xử phạt vi phạm hành chính.',
+          'Khi có tranh chấp, hiệu lực của điều khoản giá và cách quy đổi tỷ giá dễ bị tranh cãi.',
+        ],
+        recommendations: [
+          'Ghi giá và thanh toán bằng Đồng Việt Nam.',
+          'Nếu thuộc trường hợp được phép theo Điều 4 Thông tư 32/2013/TT-NHNN (ví dụ một bên là người không cư trú, doanh nghiệp chế xuất, uỷ thác xuất nhập khẩu), ghi rõ căn cứ đó trong hợp đồng.',
         ],
       };
     },
@@ -101,6 +155,7 @@ export const LEGAL_RULES: LegalRule[] = [
     version: 1,
     profiles: ['office_lease', 'housing_purchase'],
     severity: 'medium',
+    riskCode: 'MISSING_PROTECTION',
     anchor: 'penalty_agreed',
     legalBasis:
       'Điều 418 khoản 3 Bộ luật Dân sự 2015: trường hợp các bên có thoả thuận về phạt vi phạm nhưng không thoả thuận về việc vừa phải chịu phạt vi phạm vừa phải bồi thường thiệt hại thì bên vi phạm nghĩa vụ chỉ phải chịu phạt vi phạm.',
@@ -120,6 +175,7 @@ export const LEGAL_RULES: LegalRule[] = [
     version: 1,
     profiles: ['housing_purchase'],
     severity: 'medium',
+    riskCode: 'ONE_SIDED_OBLIGATION',
     anchor: 'buyer_forfeits_deposit',
     legalBasis:
       'Điều 328 khoản 2 Bộ luật Dân sự 2015: nếu bên nhận đặt cọc từ chối việc giao kết, thực hiện hợp đồng thì phải trả cho bên đặt cọc tài sản đặt cọc và một khoản tiền tương đương giá trị tài sản đặt cọc, trừ trường hợp có thoả thuận khác.',
@@ -222,13 +278,16 @@ export const LEGAL_RULES: LegalRule[] = [
   },
   {
     code: 'HOUSING_NOTARIZATION',
-    version: 1,
+    version: 2,
     profiles: ['housing_purchase'],
     severity: 'high',
     riskCode: 'MISSING_MANDATORY_FORM',
     legalBasis:
-      'Điều 164 Luật Nhà ở 2023: hợp đồng mua bán nhà ở phải được công chứng hoặc chứng thực, trừ trường hợp bên bán là tổ chức kinh doanh bất động sản (khi đó do các bên thoả thuận).',
-    citations: [{ sourceCode: NHA_O, article: 164, verifyText: 'công chứng' }],
+      'Điều 164 khoản 1 Luật Nhà ở 2023: mua bán nhà ở phải thực hiện công chứng hoặc chứng thực hợp đồng, trừ các trường hợp tại khoản 2 (nhà ở thuộc tài sản công; nhà ở xã hội, nhà ở cho lực lượng vũ trang nhân dân, nhà ở phục vụ tái định cư mà một bên là tổ chức). Điều 44 Luật Kinh doanh bất động sản 2023: hợp đồng mà ít nhất một bên là doanh nghiệp kinh doanh bất động sản được công chứng, chứng thực theo yêu cầu của các bên (khoản 4); hợp đồng mua bán nhà ở mà các bên là cá nhân phải công chứng hoặc chứng thực (khoản 5).',
+    citations: [
+      { sourceCode: NHA_O, article: 164, clause: 1, verifyText: 'phải thực hiện công chứng hoặc chứng thực' },
+      { sourceCode: KDBDS, article: 44, clause: 5, verifyText: 'phải công chứng hoặc chứng thực' },
+    ],
     evaluate(t) {
       if (t.bool('seller_is_developer') !== false || t.bool('notarization_agreed') !== false) return null;
       return {
