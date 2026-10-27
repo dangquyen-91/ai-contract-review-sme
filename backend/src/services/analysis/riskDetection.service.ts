@@ -1,10 +1,31 @@
 import { Type } from '@google/genai';
 import { z } from 'zod';
-import { RISK_SEVERITIES } from '../../models/riskFinding.model';
+import { RISK_CODES, RISK_SEVERITIES } from '../../models/riskFinding.model';
 import { AppError } from '../../errors/AppError';
 import { generateJson } from '../ai/llm.service';
 import { describeReviewContext, ReviewContext } from '../contract/contractProfile.service';
 import { placeholderInstruction, Redactor } from '../ai/redaction.service';
+import { RISK_CATALOG, RiskCode } from './riskCatalog.data';
+
+type Severity = (typeof RISK_SEVERITIES)[number];
+
+const SEVERITY_RANK: Record<Severity, number> = { low: 0, medium: 1, high: 2 };
+
+const LLM_RISK_CODES = RISK_CODES.filter((code) => code !== 'MISSING_CLAUSE');
+
+function resolveRiskCode(value: string | null | undefined): RiskCode {
+  return LLM_RISK_CODES.find((code) => code === value) ?? 'OTHER';
+}
+
+function clampSeverity(code: RiskCode, severity: Severity): Severity {
+  const allowed = RISK_CATALOG[code].severities;
+  if (allowed.includes(severity)) return severity;
+  return allowed.reduce((best, s) =>
+    Math.abs(SEVERITY_RANK[s] - SEVERITY_RANK[severity]) < Math.abs(SEVERITY_RANK[best] - SEVERITY_RANK[severity])
+      ? s
+      : best,
+  );
+}
 
 export interface ClauseInput {
   index: number;
@@ -54,7 +75,8 @@ export interface LlmFinding {
   // Exactly one of clauseIndex / missingClauseCode is set.
   clauseIndex?: number;
   missingClauseCode?: string;
-  severity: (typeof RISK_SEVERITIES)[number];
+  riskCode: RiskCode;
+  severity: Severity;
   title: string;
   problem: string[];
   consequences: string[];
@@ -88,6 +110,7 @@ const findingResultSchema = z.object({
     z.object({
       clauseIndex: z.number().int().nullable().optional(),
       missingClauseCode: z.string().nullable().optional(),
+      riskCode: z.string().nullable().optional(),
       severity: z.enum(RISK_SEVERITIES),
       title: z.string().min(1),
       problem: stringList,
@@ -140,6 +163,7 @@ const responseSchema = {
         properties: {
           clauseIndex: { type: Type.INTEGER, nullable: true },
           missingClauseCode: { type: Type.STRING, nullable: true },
+          riskCode: { type: Type.STRING, nullable: true, enum: [...LLM_RISK_CODES] },
           severity: { type: Type.STRING, enum: [...RISK_SEVERITIES] },
           title: { type: Type.STRING },
           problem: stringArraySchema,
@@ -217,6 +241,10 @@ function buildPrompt(
           )}\nFor EACH of them, add one finding with "missingClauseCode" set to its code and "clauseIndex" omitted. Its "proposedRevision.originalText" must be omitted and "proposedRevision.revisedText" must be a full ready-to-insert clause drafted in Vietnamese.`
       : '';
 
+  const riskCatalogBlock = `\n\nRisk catalog (code (allowed severities): meaning):\n${LLM_RISK_CODES.map(
+    (code) => `- ${code} (${RISK_CATALOG[code].severities.join(', ')}): ${RISK_CATALOG[code].description}`,
+  ).join('\n')}`;
+
   const industryBlock =
     context.industryChecks.length > 0
       ? `\n\nFor the "${context.industryName}" industry, also check these points:\n${context.industryChecks
@@ -234,6 +262,7 @@ Rules:
 - Write every Vietnamese field ("title", "problem", "consequences", "legalBasis", "recommendations", "reason", "overallAssessment") with full Vietnamese diacritics, even if the contract text itself has none. Only "originalText" and "revisedText" follow the contract's own language and spelling style.
 - Only report real, specific risks. Do not invent findings for clauses that are fair and standard.
 - "severity" must be exactly one of: ${RISK_SEVERITIES.join(', ')}.
+- "riskCode": for a finding about an existing clause, the code from the risk catalog below that best matches it. Use OTHER only when no code fits. "severity" must be one of the severities listed for that code. Omit "riskCode" for findings with "missingClauseCode".
 - "title" is a short (max ~15 words) Vietnamese label for the finding.
 - "problem": 1-3 Vietnamese bullet strings explaining what exactly is wrong or ambiguous in the clause.
 - "consequences": 1-3 Vietnamese bullet strings on practical consequences (disputes, financial loss, difficulty proving obligations) for the user.
@@ -241,7 +270,7 @@ Rules:
 - "recommendations": 1-3 Vietnamese bullet strings on how to fix the clause.
 - "proposedRevision": for an existing clause, "originalText" MUST be copied verbatim from the clause text (the sentence(s) to replace), "revisedText" is the replacement text in the same language as the contract, "reason" is one short Vietnamese sentence on why the change helps.
 - "overallAssessment": 2-5 Vietnamese bullet strings giving an overall evaluation of the contract (completeness, which party it favors, the most serious risks).
-- If there are no risks and nothing is missing, return an empty "findings" array.${focusBlock}${industryBlock}${legalContextBlock}${missingBlock}${ruleBlock}${redactionNote}
+- If there are no risks and nothing is missing, return an empty "findings" array.${riskCatalogBlock}${focusBlock}${industryBlock}${legalContextBlock}${missingBlock}${ruleBlock}${redactionNote}
 
 Clauses:
 """
@@ -287,11 +316,13 @@ export async function detectContractRisks(
     const missingClauseCode = f.missingClauseCode ?? undefined;
     if (missingClauseCode && !validMissingCodes.has(missingClauseCode)) continue;
     if (!missingClauseCode && f.clauseIndex == null) continue;
+    const riskCode: RiskCode = missingClauseCode ? 'MISSING_CLAUSE' : resolveRiskCode(f.riskCode);
 
     findings.push({
       clauseIndex: missingClauseCode ? undefined : (f.clauseIndex ?? undefined),
       missingClauseCode,
-      severity: f.severity,
+      riskCode,
+      severity: clampSeverity(riskCode, f.severity),
       title: unmask(f.title),
       problem: (f.problem ?? []).map(unmask),
       consequences: (f.consequences ?? []).map(unmask),

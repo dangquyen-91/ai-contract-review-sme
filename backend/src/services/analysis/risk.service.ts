@@ -376,6 +376,7 @@ export async function detectRisks(
           ],
           proposedRevision: resolveProposedRevision(revisionByRule.get(finding.rule.code), clause?.text),
           detectedBy: 'rule' as const,
+          riskCode: finding.rule.riskCode ?? 'UNLAWFUL_TERM',
           ruleCode: finding.rule.code,
           ruleVersion: finding.rule.version,
         },
@@ -387,6 +388,7 @@ export async function detectRisks(
       const base = {
         contractVersionId: version._id,
         orgId,
+        riskCode: finding.riskCode,
         severity: finding.severity,
         title: finding.title,
         problem: finding.problem,
@@ -443,7 +445,8 @@ export async function detectRisks(
           problem: [
             `Hợp đồng loại này thường cần có điều khoản về "${taxonomy.name}" (${taxonomy.description}), nhưng không tìm thấy điều khoản nào thuộc loại này trong hợp đồng.`,
           ],
-          detectedBy: 'rule' as const,
+          detectedBy: 'checklist' as const,
+          riskCode: 'MISSING_CLAUSE' as const,
         },
         chunkIds: [],
       });

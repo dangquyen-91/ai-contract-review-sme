@@ -1,6 +1,7 @@
 import type { RISK_SEVERITIES } from '../../models/riskFinding.model';
 import type { ReviewContext } from '../contract/contractProfile.service';
 import type { KeyTermKey } from '../analysis/keyTermExtraction.data';
+import type { RiskCode } from '../analysis/riskCatalog.data';
 
 export type Severity = (typeof RISK_SEVERITIES)[number];
 
@@ -30,6 +31,7 @@ export interface LegalRule {
   version: number;
   profiles: string[];
   severity: Severity;
+  riskCode?: RiskCode;
   anchor?: KeyTermKey;
   legalBasis: string;
   citations: RuleCitation[];
@@ -223,6 +225,7 @@ export const LEGAL_RULES: LegalRule[] = [
     version: 1,
     profiles: ['housing_purchase'],
     severity: 'high',
+    riskCode: 'MISSING_MANDATORY_FORM',
     legalBasis:
       'Điều 164 Luật Nhà ở 2023: hợp đồng mua bán nhà ở phải được công chứng hoặc chứng thực, trừ trường hợp bên bán là tổ chức kinh doanh bất động sản (khi đó do các bên thoả thuận).',
     citations: [{ sourceCode: NHA_O, article: 164, verifyText: 'công chứng' }],
