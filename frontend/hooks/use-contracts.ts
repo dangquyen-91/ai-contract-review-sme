@@ -7,12 +7,15 @@ import { dashboardKeys } from "@/lib/query-keys/dashboard";
 import { contractsApi } from "@/lib/api/contracts";
 import { ApiClientError } from "@/lib/api/client";
 import { isAwaitingClassification } from "@/lib/contract-classification";
+import { confirmReviewCost } from '@/lib/confirm-review-cost';
+import type { ReviewBillingConfirmation } from '@/types/contracts';
 import type { ChatStreamEvent, ContractListResult, ContractReviewResult, ContractReviewRun, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
 import { contractKeys, contractMutationKeys } from "@/lib/query-keys/contracts";
 import type { DashboardContractFilter } from "@/types/dashboard";
 
 type ReviewContractVariables = {
+  billing?: ReviewBillingConfirmation;
   contractId: string;
   analysisFocus?: string;
   resumeOnly?: boolean;
@@ -225,12 +228,12 @@ export function useReviewContractMutation() {
   useEffect(() => () => controller.current?.abort(), []);
   const mutation = useMutation<ContractReviewResult, Error, ReviewContractVariables>({
     mutationKey: contractMutationKeys.review,
-    mutationFn: async ({ contractId, analysisFocus, onProgress, resumeOnly }) => {
+    mutationFn: async ({ contractId, analysisFocus, onProgress, resumeOnly, billing }) => {
       controller.current?.abort();
       const request = new AbortController();
       controller.current = request;
       setReconnecting(false);
-      try { return await executeReview({ contractId, analysisFocus, resumeOnly, signal: request.signal, onProgress, onConnection: setReconnecting }); }
+      try { return await executeReview({ contractId, analysisFocus, resumeOnly, signal: request.signal, onProgress, onConnection: setReconnecting, beforeCharge: () => billing ? Promise.resolve(billing) : confirmReviewCost(contractId) }); }
       finally { if (!request.signal.aborted) setReconnecting(false); }
     },
     onSuccess: (result, { contractId }) => queryClient.setQueryData(contractKeys.result(contractId), result),

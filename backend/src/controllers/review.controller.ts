@@ -16,7 +16,7 @@ export const startReviewHandler = asyncHandler(async (req: Request, res: Respons
   const user = getOrganizationUser(req);
   const contract = await contractService.getContractById(user.orgId, req.params.id);
   if (!contract.type) {
-    throw AppError.conflict('Confirm the contract type before starting a review', 'CONTRACT_NOT_CONFIRMED');
+    throw AppError.conflict('Vui lòng xác nhận loại hợp đồng trước khi bắt đầu rà soát.', 'CONTRACT_NOT_CONFIRMED');
   }
   assertAccountReviewPolicy(user.role === 'user', contract.type, contract.ourParty);
   const { review, replayed } = await reviewService.startReview({
@@ -25,6 +25,7 @@ export const startReviewHandler = asyncHandler(async (req: Request, res: Respons
     contractId: req.params.id,
     idempotencyKey: getIdempotencyKey(req),
     analysisFocus: req.body?.analysisFocus,
+    billing: req.body?.billing,
   });
   res.set('Location', `/api/v1/reviews/${review._id}`);
   ok(res, { ...review, replayed }, replayed ? 200 : 202);
@@ -43,6 +44,7 @@ export const retryReviewHandler = asyncHandler(async (req: Request, res: Respons
     reviewId: req.params.reviewId,
     idempotencyKey: getIdempotencyKey(req),
     isPersonal: user.role === 'user',
+    billing: req.body?.billing,
   });
   res.set('Location', `/api/v1/reviews/${review._id}`);
   ok(res, review, 202);

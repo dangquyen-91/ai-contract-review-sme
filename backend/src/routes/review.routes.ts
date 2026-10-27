@@ -10,6 +10,7 @@ import {
   streamReviewHandler,
 } from '../controllers/review.controller';
 import { reviewIdParamSchema } from '../validations/review.validation';
+import { analysisFocusBodySchema } from '../validations/contract.validation';
 
 const router = Router();
 
@@ -30,7 +31,7 @@ router.post(
   '/:reviewId/retry',
   requireRole(...CONTRACT_REVIEW_ROLES),
   aiLimiter,
-  validate({ params: reviewIdParamSchema }),
+  validate({ params: reviewIdParamSchema, body: analysisFocusBodySchema }),
   retryReviewHandler,
 );
 

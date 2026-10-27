@@ -24,7 +24,7 @@ function toReviewResponse(review: HydratedDocument<Review>) {
 
 async function assertContractAccess(orgId: string, contractId: string) {
   const contract = await ContractModel.exists({ _id: contractId, orgId });
-  if (!contract) throw AppError.notFound('Contract not found');
+  if (!contract) throw AppError.notFound('Không tìm thấy hợp đồng.');
 }
 
 async function releaseReviewCredit(orgId: string, usageRunId: unknown) {
@@ -45,7 +45,7 @@ async function releaseLostActiveReview(orgId: string, contractId: string) {
     {
       $set: {
         status: 'failed',
-        error: 'The background job for this review was lost',
+        error: 'Tác vụ rà soát đã bị gián đoạn. Vui lòng thử lại.',
         errorCode: 'UNKNOWN',
         finishedAt: new Date(),
       },
@@ -59,7 +59,7 @@ async function findReplay(orgId: string, contractId: string, idempotencyKey: str
   const existing = await ReviewModel.findOne({ orgId, idempotencyKey });
   if (!existing) return null;
   if (existing.contractId.toString() !== contractId) {
-    throw AppError.conflict('Idempotency key was used for another request');
+    throw AppError.conflict('Mã yêu cầu đã được dùng cho hợp đồng khác. Vui lòng tải lại và thử lại.');
   }
   return existing;
 }
@@ -70,24 +70,26 @@ interface StartReviewParams {
   contractId: string;
   idempotencyKey: string;
   analysisFocus?: string;
+  billing?: { versionId: string; units: number };
 }
 
-export async function startReview({ orgId, userId, contractId, idempotencyKey, analysisFocus }: StartReviewParams) {
+export async function startReview({ orgId, userId, contractId, idempotencyKey, analysisFocus, billing }: StartReviewParams) {
   await assertContractAccess(orgId, contractId);
   const replay = await findReplay(orgId, contractId, idempotencyKey);
   if (replay) return { review: toReviewResponse(replay), replayed: true };
 
   const version = await getCurrentVersion(contractId);
+  if (billing && billing.versionId !== version.id) throw AppError.conflict('Phiên bản hợp đồng đã thay đổi. Vui lòng kiểm tra lại số trang.', 'REVIEW_QUOTE_CHANGED');
   if (version.extractionStatus === 'pending') {
-    throw AppError.badRequest('The contract has no uploaded file to review');
+    throw AppError.badRequest('Hợp đồng chưa có tệp để rà soát. Vui lòng tải tệp lên trước.');
   }
   if (version.extractionStatus === 'failed' || version.extractionStatus === 'unsupported') {
-    throw AppError.badRequest('The contract text could not be extracted; upload the file again');
+    throw AppError.badRequest('Chưa đọc được nội dung hợp đồng. Vui lòng tải lại tệp.');
   }
 
   await releaseLostActiveReview(orgId, contractId);
   const active = await ReviewModel.findOne({ contractId, activeLock: true }).select('_id');
-  if (active) throw AppError.conflict(`A review is already running for this contract (review ${active.id})`);
+  if (active) throw AppError.conflict('Hợp đồng đang được rà soát. Vui lòng chờ yêu cầu hiện tại hoàn tất.', 'REVIEW_RUNNING');
 
   const { run, replayed } = await reserveUsage(
     {
@@ -95,13 +97,15 @@ export async function startReview({ orgId, userId, contractId, idempotencyKey, a
       userId,
       contractId,
       kind: 'analysis',
+      versionId: version.id,
+      confirmedUnits: billing?.units,
       idempotencyKey,
       payload: { versionId: version.id, analysisFocus: analysisFocus ?? '', via: 'review' },
     },
     new Date(),
     REVIEW_LEASE_MS,
   );
-  if (replayed) throw AppError.conflict('Idempotency key was used for another request');
+  if (replayed) throw AppError.conflict('Mã yêu cầu đã được dùng cho thao tác khác. Vui lòng tải lại và thử lại.');
 
   let review: HydratedDocument<Review>;
   try {
@@ -120,7 +124,7 @@ export async function startReview({ orgId, userId, contractId, idempotencyKey, a
     if ((err as { code?: number }).code === 11000) {
       const racedReplay = await findReplay(orgId, contractId, idempotencyKey);
       if (racedReplay) return { review: toReviewResponse(racedReplay), replayed: true };
-      throw AppError.conflict('A review is already running for this contract');
+      throw AppError.conflict('Hợp đồng đang được rà soát. Vui lòng chờ yêu cầu hiện tại hoàn tất.', 'REVIEW_RUNNING');
     }
     throw err;
   }
@@ -140,14 +144,14 @@ const STAGE_KEYS = ['segmentation', 'summary', 'riskDetection'] as const;
 
 export async function cancelReview(orgId: string, reviewId: string) {
   const review = await ReviewModel.findOne({ _id: reviewId, orgId });
-  if (!review) throw AppError.notFound('Review not found');
+  if (!review) throw AppError.notFound('Không tìm thấy yêu cầu rà soát.');
   const requested = await ReviewModel.updateOne(
     { _id: review._id, status: { $in: ['queued', 'running'] } },
     { $set: { cancelRequested: true } },
   );
-  if (!requested.matchedCount) throw AppError.conflict('The review has already finished', 'REVIEW_FINISHED');
+  if (!requested.matchedCount) throw AppError.conflict('Yêu cầu rà soát đã kết thúc.', 'REVIEW_FINISHED');
   if (await removeIdleReviewJob(review.id)) {
-    await finishUnsuccessfulReview(review.id, 'CANCELLED', 'The review was cancelled');
+    await finishUnsuccessfulReview(review.id, 'CANCELLED', 'Yêu cầu rà soát đã được hủy.');
   }
   return getReview(orgId, reviewId);
 }
@@ -158,32 +162,34 @@ interface RetryReviewParams {
   reviewId: string;
   idempotencyKey: string;
   isPersonal: boolean;
+  billing?: { versionId: string; units: number };
 }
 
-export async function retryReview({ orgId, userId, reviewId, idempotencyKey, isPersonal }: RetryReviewParams) {
+export async function retryReview({ orgId, userId, reviewId, idempotencyKey, isPersonal, billing }: RetryReviewParams) {
   const review = await ReviewModel.findOne({ _id: reviewId, orgId });
-  if (!review) throw AppError.notFound('Review not found');
+  if (!review) throw AppError.notFound('Không tìm thấy yêu cầu rà soát.');
   if (!RETRYABLE_STATUSES.includes(review.status)) {
-    throw AppError.conflict('Only failed or cancelled reviews can be retried', 'REVIEW_NOT_RETRYABLE');
+    throw AppError.conflict('Chỉ có thể thử lại yêu cầu rà soát đã thất bại hoặc bị hủy.', 'REVIEW_NOT_RETRYABLE');
   }
   const contractId = review.contractId.toString();
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
-  if (!contract) throw AppError.notFound('Contract not found');
+  if (!contract) throw AppError.notFound('Không tìm thấy hợp đồng.');
   if (!contract.type) {
-    throw AppError.conflict('Confirm the contract type before starting a review', 'CONTRACT_NOT_CONFIRMED');
+    throw AppError.conflict('Vui lòng xác nhận loại hợp đồng trước khi bắt đầu rà soát.', 'CONTRACT_NOT_CONFIRMED');
   }
   assertAccountReviewPolicy(isPersonal, contract.type, contract.ourParty);
   const version = await getCurrentVersion(contractId);
   if (version.id !== review.versionId.toString()) {
-    throw AppError.conflict('The contract has a newer version; start a new review', 'REVIEW_OUTDATED');
+    throw AppError.conflict('Hợp đồng đã có phiên bản mới. Vui lòng bắt đầu lượt rà soát mới.', 'REVIEW_OUTDATED');
   }
+  if (billing && billing.versionId !== version.id) throw AppError.conflict('Phiên bản hợp đồng đã thay đổi. Vui lòng kiểm tra lại số trang.', 'REVIEW_QUOTE_CHANGED');
 
   await releaseLostActiveReview(orgId, contractId);
   if (await ReviewModel.exists({ contractId, activeLock: true })) {
-    throw AppError.conflict('A review is already running for this contract', 'REVIEW_RUNNING');
+    throw AppError.conflict('Hợp đồng đang được rà soát. Vui lòng chờ yêu cầu hiện tại hoàn tất.', 'REVIEW_RUNNING');
   }
   if (!(await removeIdleReviewJob(review.id))) {
-    throw AppError.conflict('The previous attempt is still finishing; try again in a moment', 'REVIEW_BUSY');
+    throw AppError.conflict('Yêu cầu trước vẫn đang kết thúc. Vui lòng thử lại sau ít phút.', 'REVIEW_BUSY');
   }
 
   const { run, replayed } = await reserveUsage(
@@ -192,13 +198,15 @@ export async function retryReview({ orgId, userId, reviewId, idempotencyKey, isP
       userId,
       contractId,
       kind: 'analysis',
+      versionId: version.id,
+      confirmedUnits: billing?.units,
       idempotencyKey,
       payload: { reviewId, retry: true },
     },
     new Date(),
     REVIEW_LEASE_MS,
   );
-  if (replayed) throw AppError.conflict('Idempotency key was used for another request');
+  if (replayed) throw AppError.conflict('Mã yêu cầu đã được dùng cho thao tác khác. Vui lòng tải lại và thử lại.');
 
   const resetStages = Object.fromEntries(
     STAGE_KEYS.filter((key) => review.stages?.[key] !== 'completed').map((key) => [`stages.${key}`, 'pending']),
@@ -224,13 +232,13 @@ export async function retryReview({ orgId, userId, reviewId, idempotencyKey, isP
   } catch (err) {
     await releaseReviewCredit(orgId, run._id);
     if ((err as { code?: number }).code === 11000) {
-      throw AppError.conflict('A review is already running for this contract', 'REVIEW_RUNNING');
+      throw AppError.conflict('Hợp đồng đang được rà soát. Vui lòng chờ yêu cầu hiện tại hoàn tất.', 'REVIEW_RUNNING');
     }
     throw err;
   }
   if (!retried) {
     await releaseReviewCredit(orgId, run._id);
-    throw AppError.conflict('Only failed or cancelled reviews can be retried', 'REVIEW_NOT_RETRYABLE');
+    throw AppError.conflict('Chỉ có thể thử lại yêu cầu rà soát đã thất bại hoặc bị hủy.', 'REVIEW_NOT_RETRYABLE');
   }
 
   try {
@@ -257,6 +265,6 @@ export async function listReviews(orgId: string, contractId: string) {
 
 export async function getReview(orgId: string, reviewId: string) {
   const review = await ReviewModel.findOne({ _id: reviewId, orgId });
-  if (!review) throw AppError.notFound('Review not found');
+  if (!review) throw AppError.notFound('Không tìm thấy yêu cầu rà soát.');
   return toReviewResponse(review);
 }

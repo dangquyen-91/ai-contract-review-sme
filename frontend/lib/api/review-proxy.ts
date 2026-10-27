@@ -25,7 +25,7 @@ export async function proxyReviewAction(request: NextRequest, reviewId: string, 
           "Content-Type": "application/json",
           ...(action === "retry" && idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
         },
-        body: "{}",
+        body: action === 'retry' ? (await request.text()) || '{}' : '{}',
         cache: "no-store",
       },
     );

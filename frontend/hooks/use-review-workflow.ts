@@ -8,7 +8,7 @@ import { isApiClientError } from "@/lib/api/client";
 import { isReviewCancelled, readReviewSession } from "@/lib/review-session";
 import { serverCodeMessage } from "@/lib/review-error-codes";
 import { reviewBlockReason, reviewBlockedMessage, type ReviewBlockReason } from "@/lib/review-failure";
-import type { ContractReviewRun, DashboardContract } from "@/types/contracts";
+import type { ContractReviewRun, DashboardContract, ReviewBillingConfirmation } from "@/types/contracts";
 
 type ReviewStage = "idle" | "uploading" | "reviewing" | "done";
 type Access = { upload: boolean; review: boolean };
@@ -114,7 +114,7 @@ export function useReviewWorkflow({ access, workspaceReady = true }: { access: A
     }
   }
 
-  async function runReview(contractId: string, focus = "", resumeOnly = false) {
+  async function runReview(contractId: string, focus = "", resumeOnly = false, billing?: ReviewBillingConfirmation) {
     setSelectedContractId(contractId);
     setRetryKind("run");
     setReviewError("");
@@ -122,7 +122,7 @@ export function useReviewWorkflow({ access, workspaceReady = true }: { access: A
     setReviewProgress(null);
     activeReviewRequest.current = contractId;
     window.history.replaceState(window.history.state, "", `/contract/${encodeURIComponent(contractId)}?reviewMode=resume`);
-    try { await reviewContractMutation.mutateAsync({ contractId, analysisFocus: focus.trim() || undefined, resumeOnly, onProgress: (review) => {
+    try { await reviewContractMutation.mutateAsync({ contractId, analysisFocus: focus.trim() || undefined, resumeOnly, billing, onProgress: (review) => {
       setReviewProgress(review);
       if (review.status === "completed") setRetryKind("load");
     } }); }
@@ -132,13 +132,13 @@ export function useReviewWorkflow({ access, workspaceReady = true }: { access: A
     setWorkflowComplete(true);
   }
 
-  async function reviewUploadedContract(focus: string) {
+  async function reviewUploadedContract(focus: string, billing?: ReviewBillingConfirmation) {
     if (!uploadedContract) return;
     const contractId = uploadedContract.id;
     setTitle(uploadedContract.title);
     setUploadedContract(null);
     setTimelineScrollRequest((request) => request + 1);
-    try { await runReview(contractId, focus); }
+    try { await runReview(contractId, focus, false, billing); }
     catch (error) {
       if (isReviewCancelled(error)) return;
       setPendingReviewId(contractId);

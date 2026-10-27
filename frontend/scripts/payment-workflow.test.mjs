@@ -67,7 +67,12 @@ test('password, Google and OTP destinations preserve payment context and priorit
 });
 
 function proxy(fetch) {
-  return load('../lib/api/payment-proxy.ts', { 'next/server': { NextRequest, NextResponse }, '@/lib/request-origin': originCheck }, { fetch }).proxyPayment;
+  let activeRequest;
+  const handler = load('../lib/api/payment-proxy.ts', {
+    'next/server': { NextRequest, NextResponse }, '@/lib/request-origin': originCheck,
+    '@/lib/auth/api-session': { getApiSession: async () => activeRequest?.cookies.get('lawscan_access')?.value ? { accessToken: activeRequest.cookies.get('lawscan_access').value } : { error: NextResponse.json({ success: false }, { status: 401 }) } },
+  }, { fetch }).proxyPayment;
+  return (request, ...args) => { activeRequest = request; return handler(request, ...args); };
 }
 function req(method, body, headers = {}) {
   return new NextRequest(`http://localhost:3000/api/organizations/${order.orgId}/payments`, {

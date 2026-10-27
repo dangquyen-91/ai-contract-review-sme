@@ -9,6 +9,7 @@ export type SubscriptionPlan = {
   price: number;
   currency: "VND";
   analysisLimit: number;
+  draftingLimit: number;
   chatLimit: number;
   memberLimit: number;
 };
@@ -22,4 +23,6 @@ export type OrganizationSubscription = {
   members: { count: number; pending: number; limit: number; available: number };
   analysis: { used: number; reserved: number; limit: number; available: number };
   chat: { used: number; reserved: number; limit: number; available: number };
+  drafting: { used: number; reserved: number; limit: number; available: number };
+  reviewPagesPerUnit: number;
 };

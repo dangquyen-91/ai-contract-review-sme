@@ -15,8 +15,9 @@ export function describePlan(plan: SubscriptionPlan) {
     recommended: plan.code === "business_starter",
     featureHeading: "Hạn mức trong mỗi kỳ tháng",
     features: [
-      `${formatPlanNumber(plan.analysisLimit)} lượt phân tích hợp đồng`,
+      `${formatPlanNumber(plan.analysisLimit)} lượt rà soát · 1 lượt/5 trang`,
       `${formatPlanNumber(plan.chatLimit)} lượt chat về hợp đồng`,
+      ...(!personal ? [`${formatPlanNumber(plan.draftingLimit ?? 0)} lượt soạn hợp đồng AI`] : []),
       personal ? `${formatPlanNumber(plan.memberLimit)} tài khoản cá nhân` : `Tối đa ${formatPlanNumber(plan.memberLimit)} thành viên, bao gồm Owner`,
       personal ? "Hạn mức riêng cho không gian cá nhân" : "Hạn mức dùng chung trong tổ chức",
     ],

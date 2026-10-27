@@ -9,7 +9,7 @@ const contractId = 'contract-1';
 const storageKey = `lawscan_review_${contractId}`;
 const completed = { _id: 'review-1', status: 'completed' };
 class ApiClientError extends Error {
-  constructor(status, options) { super(typeof status === 'number' || status === undefined ? `HTTP ${status}` : status); this.status = options?.status ?? status; }
+  constructor(status, options) { super(typeof status === 'number' || status === undefined ? `HTTP ${status}` : status); this.status = options?.status ?? status; this.serverCode = options?.serverCode; }
 }
 function setup(overrides = {}, saved) {
   const storage = new Map(saved ? [[storageKey, typeof saved === 'string' ? saved : JSON.stringify(saved)]] : []);
@@ -41,6 +41,33 @@ function setup(overrides = {}, saved) {
   };
 }
 const posts = (context) => context.calls.filter((call) => call.method === 'startReview');
+
+test('Vietnamese quota errors retain their reason after reload without submitting another AI request', async () => {
+  const context = setup({ startReview: () => { throw new ApiClientError('Không đủ lượt rà soát AI.', { status: 403, serverCode: 'ANALYSIS_QUOTA_EXHAUSTED' }); } });
+  await assert.rejects(context.run(), error => error.serverCode === 'ANALYSIS_QUOTA_EXHAUSTED');
+  const saved = context.read();
+  assert.equal(saved.blockedCode, 'ANALYSIS_QUOTA_EXHAUSTED');
+  const resumed = setup({}, saved);
+  await assert.rejects(resumed.run({ resumeOnly: true }), error => error.serverCode === 'ANALYSIS_QUOTA_EXHAUSTED' && error.message === 'Không đủ lượt rà soát AI.');
+  assert.equal(posts(resumed).length, 0);
+});
+
+test('page-cost confirmation is persisted and reused after a lost response without another approval or charge', async () => {
+  let attempts = 0, confirmations = 0;
+  const billing = { versionId: 'a'.repeat(24), units: 3 };
+  const context = setup({ startReview: (...args) => { assert.equal(args[4].units, 3); if (++attempts === 1) throw new ApiClientError(503); return completed; } });
+  await context.run({ beforeCharge: async () => { confirmations++; return billing; } });
+  assert.equal(attempts, 2); assert.equal(confirmations, 1);
+  assert.equal(posts(context)[0].args[1], posts(context)[1].args[1]);
+});
+
+test('viewing a running review needs no page-cost confirmation and declining a new review sends no POST', async () => {
+  const resumed = setup({}, { key: 'saved', reviewId: completed._id });
+  await resumed.run({ beforeCharge: async () => { throw new Error('Must not confirm an existing run'); } });
+  const fresh = setup();
+  await assert.rejects(fresh.run({ beforeCharge: async () => { throw new Error('Declined'); } }), /Declined/);
+  assert.equal(posts(fresh).length, 0);
+});
 
 test('SSE completes the saved run without polling or creating another review', async () => {
   const progress = [];

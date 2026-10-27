@@ -1,4 +1,5 @@
 export type ContractStatus = "uploaded" | "processing" | "reviewed" | "archived" | "unsupported";
+export type ReviewBillingConfirmation = { versionId: string; units: number };
 export type ContractRiskLevel = "high" | "medium" | "low" | "none";
 
 export type ClassificationOutcome = "supported" | "unsupported_type" | "not_contract" | "not_allowed_for_account";
@@ -19,6 +20,8 @@ export type ContractClassification = {
 };
 
 export type DashboardContract = {
+  orgId?: string;
+  reviewBilling?: { versionId: string; pageCount: number | null; pagesPerUnit: number; units: number | null; ready: boolean; reason: string | null };
   id?: string;
   _id?: string;
   title: string;

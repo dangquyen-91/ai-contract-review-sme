@@ -15,6 +15,7 @@ export const planFields = {
   price: { type: Number, required: true, min: 0 },
   currency: { type: String, enum: ['VND'], default: 'VND', required: true },
   analysisLimit: { type: Number, required: true, min: 0 },
+  draftingLimit: { type: Number, default: 0, min: 0 },
   chatLimit: { type: Number, required: true, min: 0 },
   memberLimit: { type: Number, required: true, min: 1 },
 } as const;
@@ -54,6 +55,8 @@ const periodSchema = new Schema(
     paymentAction: { type: String, enum: ['purchase', 'renew', 'upgrade', 'downgrade'] },
     analysisUsed: { type: Number, default: 0, required: true },
     analysisReserved: { type: Number, default: 0, required: true },
+    draftingUsed: { type: Number, default: 0, required: true },
+    draftingReserved: { type: Number, default: 0, required: true },
     chatUsed: { type: Number, default: 0, required: true },
     chatReserved: { type: Number, default: 0, required: true },
   },
@@ -66,9 +69,13 @@ const usageRunSchema = new Schema(
   {
     orgId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    contractId: { type: Schema.Types.ObjectId, ref: 'Contract', required: true },
+    contractId: { type: Schema.Types.ObjectId, ref: 'Contract' },
+    draftId: { type: Schema.Types.ObjectId, ref: 'ContractDraft' },
     periodId: { type: Schema.Types.ObjectId, ref: 'SubscriptionPeriod', required: true },
-    kind: { type: String, enum: ['analysis', 'chat'], required: true },
+    kind: { type: String, enum: ['analysis', 'chat', 'drafting'], required: true },
+    units: { type: Number, default: 1, min: 1, required: true },
+    pageCount: { type: Number, min: 1 },
+    versionId: { type: Schema.Types.ObjectId, ref: 'ContractVersion' },
     idempotencyKey: { type: String, required: true },
     fingerprint: { type: String, required: true },
     status: {
