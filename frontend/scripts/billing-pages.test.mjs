@@ -13,7 +13,7 @@ function setup({ pages = 12, units = 3, available = 10, ready = true, active = t
     '@/lib/api/client': { ApiClientError },
   };
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/confirm-review-cost.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/review/confirm-review-cost.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   vm.runInNewContext(source, { exports, DOMException, Error, require: name => deps[name], window: { confirm: message => { confirmations.push(message); return accept; } } });
   return { run: () => exports.confirmReviewCost('contract'), confirmations, calls };
 }
@@ -36,7 +36,7 @@ test('billing errors are Vietnamese and classified by stable codes, including ol
   await assert.rejects(setup({ available: 2 }).run(), error => error.serverCode === 'ANALYSIS_QUOTA_EXHAUSTED' && /^Không đủ lượt rà soát AI/.test(error.message));
   await assert.rejects(setup({ active: false }).run(), error => error.serverCode === 'AI_PLAN_REQUIRED' && /^Cần gói dịch vụ AI/.test(error.message));
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/review-failure.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/review/review-failure.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   vm.runInNewContext(source, { exports, require: () => ({ isApiClientError: error => error?.status === 403 }) });
   for (const error of [{ serverCode: 'ANALYSIS_QUOTA_EXHAUSTED', message: 'Thông báo đã thay đổi' }, { message: 'Không đủ lượt rà soát AI.' }, { message: 'analysis quota exhausted' }]) assert.equal(exports.reviewBlockReason({ status: 403, ...error }), 'quota');
   for (const error of [{ serverCode: 'AI_PLAN_REQUIRED', message: 'Thông báo đã thay đổi' }, { message: 'Cần gói dịch vụ AI đang hoạt động.' }, { message: 'An active Business plan is required to use AI' }]) assert.equal(exports.reviewBlockReason({ status: 403, ...error }), 'plan');

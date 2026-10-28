@@ -1,4 +1,4 @@
-import { formatMoney } from "@/lib/subscription-plans";
+import { formatMoney } from "@/lib/subscription/subscription-plans";
 import type { PaymentOrder } from "@/types/payment";
 
 export function PaymentOrderDetails({

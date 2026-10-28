@@ -2,10 +2,10 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { clearSessionCache } from "@/lib/session-cache";
+import { clearSessionCache } from "@/lib/auth/session-cache";
 import { authApi } from "@/lib/api/auth";
 import { isApiClientError } from "@/lib/api/client";
-import { authDestination } from "@/lib/auth-return";
+import { authDestination } from "@/lib/auth/auth-return";
 import type { EmailVerificationOptions } from "@/types/auth";
 function errorMessage(error: unknown) {
   if (!isApiClientError(error))

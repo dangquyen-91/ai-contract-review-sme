@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useSubscriptionPlans } from "@/hooks/subscription/use-subscription-plans";
-import { describePlan } from "@/lib/subscription-plans";
+import { describePlan } from "@/lib/subscription/subscription-plans";
 import type { PlanAudience, PlanCode } from "@/types/subscription";
 import { SubscriptionAudienceSwitch } from "./subscription-audience-switch";
 import { SubscriptionPlanCard } from "./subscription-plan-card";

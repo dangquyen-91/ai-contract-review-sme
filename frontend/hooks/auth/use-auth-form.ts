@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 import { useAuthMutation } from "@/hooks/auth/use-auth";
 import { isApiClientError } from "@/lib/api/client";
-import { authDestination, emailVerificationNavigation } from "@/lib/auth-return";
+import { authDestination, emailVerificationNavigation } from "@/lib/auth/auth-return";
 import { authFormSchema } from "@/schemas/auth.schema";
 import type {
   AuthFormValues,

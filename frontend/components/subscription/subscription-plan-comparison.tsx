@@ -1,5 +1,5 @@
 import type { SubscriptionPlan } from "@/types/subscription";
-import { formatMoney, formatPlanNumber } from "@/lib/subscription-plans";
+import { formatMoney, formatPlanNumber } from "@/lib/subscription/subscription-plans";
 
 export function SubscriptionPlanComparison({ plans }: { plans: SubscriptionPlan[] }) {
   const rows = [

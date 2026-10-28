@@ -1,6 +1,6 @@
 import { contractsApi } from "@/lib/api/contracts";
 import { ApiClientError } from "@/lib/api/client";
-import { reviewFailureCopy } from "@/lib/review-error-codes";
+import { reviewFailureCopy } from "@/lib/review/review-error-codes";
 import type { ContractReviewRun, ReviewBillingConfirmation } from "@/types/contracts";
 
 type Session = { key: string; reviewId?: string; analysisFocus?: string; blockedError?: string; blockedCode?: string; retryKey?: string; billing?: ReviewBillingConfirmation };

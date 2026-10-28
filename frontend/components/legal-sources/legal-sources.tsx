@@ -16,8 +16,8 @@ import { LegalSourceMetrics } from "./legal-source-metrics";
 import { LegalSourceStatusFilters } from "./legal-source-status-filters";
 import { LegalSourceCharts } from "./legal-source-charts";
 import { LegalSourceAttentionList } from "./legal-source-attention-list";
-import { getLegalSourceAnalytics } from "@/lib/legal-source-analytics";
-import type { SourceGroup } from "@/lib/legal-source-filtering";
+import { getLegalSourceAnalytics } from "@/lib/legal-sources/legal-source-analytics";
+import type { SourceGroup } from "@/lib/legal-sources/legal-source-filtering";
 import { LegalSourceDetailDialog } from "./legal-source-detail-dialog";
 import type { LegalSource } from "@/types/legal-sources";
 

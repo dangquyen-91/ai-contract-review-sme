@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { clearReviewSession, executeReview } from "@/lib/review-session";
+import { clearReviewSession, executeReview } from "@/lib/review/review-session";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dashboardKeys } from "@/lib/query-keys/dashboard";
 import { contractsApi } from "@/lib/api/contracts";
 import { ApiClientError } from "@/lib/api/client";
-import { isAwaitingClassification } from "@/lib/contract-classification";
-import { confirmReviewCost } from '@/lib/confirm-review-cost';
+import { isAwaitingClassification } from "@/lib/contracts/contract-classification";
+import { confirmReviewCost } from '@/lib/review/confirm-review-cost';
 import type { ReviewBillingConfirmation } from '@/types/contracts';
 import type { ChatStreamEvent, ContractListResult, ContractReviewResult, ContractReviewRun, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 

@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { invitationsApi } from "@/lib/api/invitations";
-import { invitationError } from "@/lib/invitation-error";
+import { invitationError } from "@/lib/invitations/invitation-error";
 import { invitationKeys } from "@/lib/query-keys/invitations";
 
 export function useAuthInvitation(invitationToken?: string) {

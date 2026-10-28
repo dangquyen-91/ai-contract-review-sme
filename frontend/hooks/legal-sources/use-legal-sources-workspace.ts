@@ -6,7 +6,7 @@ import { useLegalSources, useRemoveLegalSourceMutation } from "@/hooks/legal-sou
 import { usePaginationPage } from "@/hooks/shared/use-pagination-page";
 import type { LegalSource } from "@/types/legal-sources";
 
-import { normalizeLegalSearch, matchesSourceGroup, type SourceGroup, type SourceFilters } from "@/lib/legal-source-filtering";
+import { normalizeLegalSearch, matchesSourceGroup, type SourceGroup, type SourceFilters } from "@/lib/legal-sources/legal-source-filtering";
 const emptyFilters: SourceFilters = { status: "all", issuingBody: "", issuedFrom: "", issuedTo: "" };
 
 export function useLegalSourcesWorkspace() {

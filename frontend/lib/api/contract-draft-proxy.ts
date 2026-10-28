@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
-import { isSameOriginRequest } from "@/lib/request-origin";
+import { isSameOriginRequest } from "@/lib/api/request-origin";
 
 const draftIdPattern = /^[a-f\d]{24}$/i;
 const postActions = new Set([

@@ -5,8 +5,8 @@ import {
   isUnfinishedPayment,
   paymentMessage,
   safeCheckoutUrl,
-} from "@/lib/payment-state";
-import { formatMoney } from "@/lib/subscription-plans";
+} from "@/lib/subscription/payment-state";
+import { formatMoney } from "@/lib/subscription/subscription-plans";
 import type { PaymentAction, PaymentOrder } from "@/types/payment";
 import type { PlanCode } from "@/types/subscription";
 

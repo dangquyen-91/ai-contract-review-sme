@@ -8,9 +8,9 @@ import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider
 import { useDashboardWorkspace } from "@/hooks/dashboard/use-dashboard-workspace";
 import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
 import type { DashboardContractFilter } from "@/types/dashboard";
-import { organizationDashboardPath, organizationDashboardView, type OrganizationDashboardRole, type OrganizationDashboardView } from "@/lib/organization-dashboard-route";
+import { organizationDashboardPath, organizationDashboardView, type OrganizationDashboardRole, type OrganizationDashboardView } from "@/lib/routing/organization-dashboard-route";
 import { useLoadContract } from "@/hooks/contracts/use-contracts";
-import { isReviewCancelled } from "@/lib/review-session";
+import { isReviewCancelled } from "@/lib/review/review-session";
 
 export type DashboardTab = OrganizationDashboardView;
 

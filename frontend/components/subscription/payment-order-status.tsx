@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { usePaymentResult } from "@/hooks/subscription/use-payment-result";
-import { paymentMessage, safeCheckoutUrl } from "@/lib/payment-state";
-import { workspacePath } from "@/lib/workspace-path";
+import { paymentMessage, safeCheckoutUrl } from "@/lib/subscription/payment-state";
+import { workspacePath } from "@/lib/routing/workspace-path";
 import { PaymentOrderDetails } from "./payment-order-details";
 import type { AuthUser } from "@/types/auth";
 

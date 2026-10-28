@@ -2,7 +2,7 @@ import "server-only";
 import { notFound, redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth/session";
 import { permissions } from "@/config/permissions";
-import { needsOnboarding } from "@/lib/workspace-path";
+import { needsOnboarding } from "@/lib/routing/workspace-path";
 export async function requirePermission(permission: keyof typeof permissions) {
   const session = await requireSession();
   if (!permissions[permission](session.user.role)) notFound();

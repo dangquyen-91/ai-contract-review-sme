@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { getUserRoleLabel } from "@/lib/user-role";
+import { getUserRoleLabel } from "@/lib/users/user-role";
 import { useManagedUser, useSaveManagedUser } from "@/hooks/users/use-user-management";
 import type { ManagedUser, ManagedUserRole } from "@/types/user-management";
 

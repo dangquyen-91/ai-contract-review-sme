@@ -1,5 +1,5 @@
 import type { ContractReviewResult, ContractReviewRun } from "@/types/contracts";
-import type { ReviewBlockReason } from "@/lib/review-failure";
+import type { ReviewBlockReason } from "@/lib/review/review-failure";
 
 export type StepState = "pending" | "running" | "completed" | "failed";
 export type TimelineInput = {

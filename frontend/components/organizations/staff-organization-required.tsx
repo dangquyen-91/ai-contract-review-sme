@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRefreshTokenMutation } from "@/hooks/auth/use-auth";
 import { useLogoutWorkflow } from "@/hooks/auth/use-logout-workflow";
-import { clearSessionCache } from "@/lib/session-cache";
+import { clearSessionCache } from "@/lib/auth/session-cache";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
 

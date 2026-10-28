@@ -9,7 +9,7 @@ import {
 } from "@tiptap/react";
 import { Plugin } from "@tiptap/pm/state";
 import type { ContractTemplate } from "@/types/contract-drafts";
-import { studioFieldText } from "@/lib/studio-document";
+import { studioFieldText } from "@/lib/contract-drafts/studio-document";
 import { LineItemsInput } from "@/components/contract-drafts/line-items-input";
 import { StudioDocumentView } from "./studio-document-view";
 import styles from "@/styles/template-studio.module.css";

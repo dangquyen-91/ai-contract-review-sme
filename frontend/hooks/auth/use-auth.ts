@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { clearSessionCache } from "@/lib/session-cache";
+import { clearSessionCache } from "@/lib/auth/session-cache";
 import { authApi } from "@/lib/api/auth";
 import type { ApiClientError } from "@/lib/api/client";
 import type { AuthMutationVariables, AuthResult, AuthSession, RefreshTokenResult } from "@/types/auth";

@@ -6,7 +6,7 @@ import { ReviewBlockedNotice } from "@/components/review/timeline/review-blocked
 import { useEffect, useId, useState } from "react";
 import { Icon } from "@/components/ui/icon";
 import styles from "@/styles/review/review-timeline.module.css";
-import { buildReviewTimeline, reviewElapsed, type StepState, type TimelineInput } from "@/lib/review-timeline";
+import { buildReviewTimeline, reviewElapsed, type StepState, type TimelineInput } from "@/lib/review/review-timeline";
 
 const labels: Record<StepState, string> = { pending: "Đang chờ", running: "Đang xử lý", completed: "Hoàn thành", failed: "Thất bại" };
 const colors: Record<StepState, string> = {

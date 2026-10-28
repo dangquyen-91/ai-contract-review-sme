@@ -1,7 +1,7 @@
 import type { TemplateStudioState } from "@/hooks/contract-drafts/use-template-studio";
 import type { AuthUser } from "@/types/auth";
-import { readLineItems, totalLineItems } from "@/lib/draft-line-items";
-import { studioCharacterCount } from "@/lib/studio-document";
+import { readLineItems, totalLineItems } from "@/lib/contract-drafts/draft-line-items";
+import { studioCharacterCount } from "@/lib/contract-drafts/studio-document";
 
 export type StudioPresentation = ReturnType<typeof getStudioPresentation>;
 export function getStudioPresentation(

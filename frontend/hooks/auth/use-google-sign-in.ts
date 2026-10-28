@@ -2,10 +2,10 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { clearSessionCache } from "@/lib/session-cache";
+import { clearSessionCache } from "@/lib/auth/session-cache";
 import { authApi } from "@/lib/api/auth";
 import { apiRequest, isApiClientError } from "@/lib/api/client";
-import { authDestination } from "@/lib/auth-return";
+import { authDestination } from "@/lib/auth/auth-return";
 import type { GoogleSignInOptions } from "@/types/auth";
 type GoogleCredential = { credential: string; state?: string };
 type GoogleIdentity = {

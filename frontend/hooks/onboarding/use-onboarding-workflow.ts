@@ -7,7 +7,7 @@ import { useCompleteOnboardingMutation, useRefreshTokenMutation } from "@/hooks/
 import { useCreateOrganizationMutation } from "@/hooks/organizations/use-organizations";
 import { authMutationKeys } from "@/lib/query-keys/auth";
 import { isApiClientError } from "@/lib/api/client";
-import { clearSessionCache } from "@/lib/session-cache";
+import { clearSessionCache } from "@/lib/auth/session-cache";
 
 type SetupAction = "personal" | "organization";
 

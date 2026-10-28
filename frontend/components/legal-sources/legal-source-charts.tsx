@@ -2,8 +2,8 @@
 
 import { ChartNoAxesCombined, ChartPie, ArrowDown, Layers3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { getLegalSourceAnalytics } from "@/lib/legal-source-analytics";
-import type { SourceGroup } from "@/lib/legal-source-filtering";
+import type { getLegalSourceAnalytics } from "@/lib/legal-sources/legal-source-analytics";
+import type { SourceGroup } from "@/lib/legal-sources/legal-source-filtering";
 import { LegalSourceTypeChart } from "./legal-source-type-chart";
 import { LegalSourceProcessingChart } from "./legal-source-processing-chart";
 

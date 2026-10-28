@@ -1,5 +1,5 @@
 import type { AuthUser } from "@/types/auth";
-import { workspacePath } from "./workspace-path";
+import { workspacePath } from "@/lib/routing/workspace-path";
 import { planCodes } from "@/types/subscription";
 
 // Keep payment context across password, Google and OTP sign-in without open redirects.

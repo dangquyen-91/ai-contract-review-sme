@@ -10,7 +10,7 @@ import { DashboardSkeleton } from "@/components/layouts/dashboard/dashboard-skel
 import { getDashboardNavigation } from "@/config/dashboard-navigation";
 import { useOrganizationDashboard } from "@/providers/dashboard-provider";
 import { UploadedReviewDialog } from "@/components/review/upload/uploaded-review-dialog";
-import type { OrganizationDashboardRole } from "@/lib/organization-dashboard-route";
+import type { OrganizationDashboardRole } from "@/lib/routing/organization-dashboard-route";
 
 export function OrganizationDashboardFrame({ role, children }: { role: OrganizationDashboardRole; children: ReactNode }) {
   const workspace = useOrganizationDashboard();

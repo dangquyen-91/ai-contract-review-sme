@@ -19,7 +19,7 @@ import type {
   StudioSelection,
   StudioReference,
 } from "@/types/template-studio";
-import { studioFieldText } from "@/lib/studio-document";
+import { studioFieldText } from "@/lib/contract-drafts/studio-document";
 import { StudioChatTools, StudioReferenceList } from "./studio-chat-tools";
 
 function ProposalCard({

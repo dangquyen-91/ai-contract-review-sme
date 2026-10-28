@@ -1,6 +1,6 @@
 import type { Icon } from "@/components/ui/icon";
 import type { DashboardRole } from "./dashboard-roles";
-import { organizationDashboardPath } from "@/lib/organization-dashboard-route";
+import { organizationDashboardPath } from "@/lib/routing/organization-dashboard-route";
 import { userManagementPath } from "./user-management";
 import { routes } from "./routes";
 

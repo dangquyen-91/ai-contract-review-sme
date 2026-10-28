@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes } from "node:crypto";
-import { encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
-import { rememberedCookieAge, tokenMaxAge } from "@/lib/token-expiry";
+import { encodeSessionUser, userSessionCookie } from "@/lib/auth/auth-session";
+import { rememberedCookieAge, tokenMaxAge } from "@/lib/auth/token-expiry";
 import type { AuthUser } from "@/types/auth";
-import { isSameOriginRequest } from "@/lib/request-origin";
-import { emailVerificationCookie, emailVerificationCookieAge, encodeEmailVerification } from "@/lib/email-verification-session";
+import { isSameOriginRequest } from "@/lib/api/request-origin";
+import { emailVerificationCookie, emailVerificationCookieAge, encodeEmailVerification } from "@/lib/auth/email-verification-session";
 
 const allowedActions = new Set(["login", "register", "refresh", "logout", "verify-email", "resend-verification", "google", "forgot-password", "reset-password"]);
 

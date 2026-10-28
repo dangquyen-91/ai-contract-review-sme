@@ -1,5 +1,5 @@
 import type { LegalSource } from "@/types/legal-sources";
-import { matchesSourceGroup } from "@/lib/legal-source-filtering";
+import { matchesSourceGroup } from "@/lib/legal-sources/legal-source-filtering";
 import { ingestionStatuses, legalSourceTypes } from "@/config/legal-source-display";
 
 export function getLegalSourceAnalytics(sources: LegalSource[]) {

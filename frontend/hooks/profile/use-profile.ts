@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { profileApi } from '@/lib/api/profile';
 import { dashboardKeys } from '@/lib/query-keys/dashboard';
-import { clearSessionCache } from '@/lib/session-cache';
+import { clearSessionCache } from '@/lib/auth/session-cache';
 import type { Profile } from '@/types/profile';
 
 export const profileKey = ['account-profile'] as const;

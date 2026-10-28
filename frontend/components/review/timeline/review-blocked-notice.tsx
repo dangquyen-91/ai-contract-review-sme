@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { reviewBlockedMessage, type ReviewBlockReason } from "@/lib/review-failure";
+import { reviewBlockedMessage, type ReviewBlockReason } from "@/lib/review/review-failure";
 
 export function ReviewBlockedNotice({ reason, role }: { reason: ReviewBlockReason; role: string }) {
   const canManagePlan = role === "owner" || role === "user";

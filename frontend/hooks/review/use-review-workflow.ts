@@ -5,9 +5,9 @@ import { toast } from "sonner";
 import { useContractReviewResult, useReviewContractMutation, useUploadContractMutation } from "@/hooks/contracts/use-contracts";
 import { contractsApi } from "@/lib/api/contracts";
 import { isApiClientError } from "@/lib/api/client";
-import { isReviewCancelled, readReviewSession } from "@/lib/review-session";
-import { serverCodeMessage } from "@/lib/review-error-codes";
-import { reviewBlockReason, reviewBlockedMessage, type ReviewBlockReason } from "@/lib/review-failure";
+import { isReviewCancelled, readReviewSession } from "@/lib/review/review-session";
+import { serverCodeMessage } from "@/lib/review/review-error-codes";
+import { reviewBlockReason, reviewBlockedMessage, type ReviewBlockReason } from "@/lib/review/review-failure";
 import type { ContractReviewRun, DashboardContract, ReviewBillingConfirmation } from "@/types/contracts";
 
 type ReviewStage = "idle" | "uploading" | "reviewing" | "done";

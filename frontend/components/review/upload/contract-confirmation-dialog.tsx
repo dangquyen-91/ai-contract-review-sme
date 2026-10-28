@@ -7,8 +7,8 @@ import { AnalysisFocusDialog } from "@/components/review/upload/analysis-focus-d
 import { Button } from "@/components/ui/button";
 import { reviewableTypeLabels } from "@/config/contract-display";
 import { useConfirmProfileMutation, useContractClassification, useContractProfiles, useDeleteContract, useRetryClassificationMutation } from "@/hooks/contracts/use-contracts";
-import { confirmationView, detectedNamesFor, LOW_CONFIDENCE, otherPartyNames, suggestedProfile } from "@/lib/contract-classification";
-import { classificationOutcomeCopy, serverCodeMessage } from "@/lib/review-error-codes";
+import { confirmationView, detectedNamesFor, LOW_CONFIDENCE, otherPartyNames, suggestedProfile } from "@/lib/contracts/contract-classification";
+import { classificationOutcomeCopy, serverCodeMessage } from "@/lib/review/review-error-codes";
 import { isApiClientError } from "@/lib/api/client";
 import type { ClassificationOutcome, ReviewBillingConfirmation } from "@/types/contracts";
 

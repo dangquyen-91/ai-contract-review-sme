@@ -4,8 +4,8 @@ import { redirect } from "next/navigation";
 import { AuthBrandPanel } from "@/components/auth/auth-brand-panel";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { EmailVerificationContent } from "@/components/auth/email-verification-content";
-import { emailVerificationNavigation, safeAuthReturn } from "@/lib/auth-return";
-import { decodeEmailVerification, emailVerificationCookie } from "@/lib/email-verification-session";
+import { emailVerificationNavigation, safeAuthReturn } from "@/lib/auth/auth-return";
+import { decodeEmailVerification, emailVerificationCookie } from "@/lib/auth/email-verification-session";
 
 export const metadata: Metadata = {
   title: "Xác minh email | LawScan",

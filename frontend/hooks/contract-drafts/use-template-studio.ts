@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { contractDraftsApi } from "@/lib/api/contract-drafts";
-import { studioInput } from "@/lib/studio-document";
+import { studioInput } from "@/lib/contract-drafts/studio-document";
 import { useSaveDraftCache } from "./use-contract-drafts";
 import type { ContractDraft } from "@/types/contract-drafts";
 import type {

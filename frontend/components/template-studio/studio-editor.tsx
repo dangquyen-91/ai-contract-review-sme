@@ -8,7 +8,7 @@ import TextAlign from "@tiptap/extension-text-align";
 import { Plus } from "lucide-react";
 import type { StudioDocument, StudioSelection } from "@/types/template-studio";
 import type { ContractTemplate } from "@/types/contract-drafts";
-import { studioInput } from "@/lib/studio-document";
+import { studioInput } from "@/lib/contract-drafts/studio-document";
 import {
   StudioFieldsContext,
   TemplateFieldExtension,

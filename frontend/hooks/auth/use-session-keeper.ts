@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRefreshTokenMutation } from "@/hooks/auth/use-auth";
 import { isApiClientError } from "@/lib/api/client";
-import { clearSessionCache } from "@/lib/session-cache";
+import { clearSessionCache } from "@/lib/auth/session-cache";
 
 const refreshIntervalMs = 10 * 60 * 1000;
 

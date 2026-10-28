@@ -8,7 +8,7 @@ import { ReceivedInvitations } from '@/components/invitations/received-invitatio
 import { Button } from '@/components/ui/button';
 import { useProfile } from '@/hooks/profile/use-profile';
 import { roleLabels } from '@/config/dashboard-roles';
-import { workspacePath } from '@/lib/workspace-path';
+import { workspacePath } from '@/lib/routing/workspace-path';
 import type { AuthUser } from '@/types/auth';
 import { ProfileInformationForm } from './profile-information-form';
 import { ProfileAvatarEditor } from './profile-avatar-editor';

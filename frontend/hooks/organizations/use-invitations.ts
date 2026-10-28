@@ -7,7 +7,7 @@ import type { CreateInvitationInput } from "@/types/invitations";
 import { invitationKeys } from "@/lib/query-keys/invitations";
 import { isApiClientError } from "@/lib/api/client";
 import { dashboardKeys } from "@/lib/query-keys/dashboard";
-import { clearSessionCache } from "@/lib/session-cache";
+import { clearSessionCache } from "@/lib/auth/session-cache";
 
 export function useReceivedInvitations() {
   return useQuery({

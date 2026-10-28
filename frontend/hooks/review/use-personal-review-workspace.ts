@@ -7,7 +7,7 @@ import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/d
 import { reviewErrorMessage } from "@/hooks/review/use-review-workflow";
 import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider";
 import { useLoadContract } from "@/hooks/contracts/use-contracts";
-import { isReviewCancelled } from "@/lib/review-session";
+import { isReviewCancelled } from "@/lib/review/review-session";
 
 export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) {
   const router = useRouter();

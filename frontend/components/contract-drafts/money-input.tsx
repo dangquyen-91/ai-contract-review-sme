@@ -1,7 +1,7 @@
 "use client";
 import { useRef, useState } from 'react';
 import { Input } from '@/components/ui/input';
-import { formatMoneyInput, parseMoneyInput } from '@/lib/money-input';
+import { formatMoneyInput, parseMoneyInput } from '@/lib/contract-drafts/money-input';
 
 export function MoneyInput({ id, value, disabled, ariaLabel, onValueChange }: {
   id: string;

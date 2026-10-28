@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useLogoutMutation } from "@/hooks/auth/use-auth";
-import { clearSessionCache } from "@/lib/session-cache";
+import { clearSessionCache } from "@/lib/auth/session-cache";
 
 export function useLogoutWorkflow({ destination = "/dang-nhap", onSuccess, onError, successMessage }: {
   destination?: string;

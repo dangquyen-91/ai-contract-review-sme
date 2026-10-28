@@ -8,7 +8,7 @@ import {
   isUnfinishedPayment,
   paymentAction,
   safeCheckoutUrl,
-} from "@/lib/payment-state";
+} from "@/lib/subscription/payment-state";
 import type { SubscriptionPlan } from "@/types/subscription";
 
 export function usePaymentCheckout(orgId: string, plan: SubscriptionPlan) {

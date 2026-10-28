@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/ui/icon";
 import { useLogoutWorkflow } from "@/hooks/auth/use-logout-workflow";
-import { getUserInitials } from "@/lib/user-display";
+import { getUserInitials } from "@/lib/users/user-display";
 import type { AuthUser } from "@/types/auth";
 
 export function AccountMenu({ user, accountHref }: { user: AuthUser; accountHref: string }) {
