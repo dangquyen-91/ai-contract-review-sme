@@ -11,7 +11,7 @@ import { InvitationTable } from "@/components/invitations/invitation-table";
 import { InvitationFormDialog } from "@/components/invitations/invitation-form-dialog";
 import { Icon } from "@/components/ui/icon";
 import { MemberCapacityDialog } from "@/components/members/member-capacity-dialog";
-import { useCreateInvitationMutation, useMemberSubscription, useOrganizationInvitations, useOrganizationMembers, useRemoveMemberMutation, useRevokeInvitationMutation } from "@/hooks/use-invitations";
+import { useCreateInvitationMutation, useMemberSubscription, useOrganizationInvitations, useOrganizationMembers, useRemoveMemberMutation, useRevokeInvitationMutation } from "@/hooks/organizations/use-invitations";
 import { isApiClientError } from "@/lib/api/client";
 import type { OrganizationMember } from "@/types/invitations";
 

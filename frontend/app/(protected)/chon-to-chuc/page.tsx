@@ -5,7 +5,7 @@ import { getSession } from "@/lib/auth/session";
 import { CompanyChoice } from "@/components/onboarding/company-choice";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
-import { workspacePath } from "@/lib/workspace-path";
+import { workspacePath } from "@/lib/routing/workspace-path";
 
 export const metadata: Metadata = {
   title: "Thiết lập tổ chức | LawScan",

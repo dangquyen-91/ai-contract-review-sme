@@ -15,7 +15,7 @@ function load(file, dependencies = {}) {
   vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? (name === "@/components/ui/button" ? { Button: "button" } : {}), Date });
   return exports;
 }
-const helpers = load('../lib/review-timeline.ts');
+const helpers = load('../lib/review/review-timeline.ts');
 const { buildReviewTimeline, reviewElapsed } = helpers;
 const base = { _id: 'run', contractId: 'contract', status: 'running', stages: { segmentation: 'pending', summary: 'pending', riskDetection: 'pending' } };
 const step = (model, key) => model.steps.find((item) => item.key === key).state;
@@ -133,7 +133,7 @@ test('Elapsed time is restored from BE dates and stops at finishedAt', () => {
 
 const { ReviewTimeline } = load('../components/review/review-timeline.tsx', {
   'react': React, 'react/jsx-runtime': jsx,
-  '@/lib/review-timeline': helpers,
+  '@/lib/review/review-timeline': helpers,
   '@/components/ui/icon': { Icon: () => null },
   '@/styles/review/review-timeline.module.css': { default: {} },
 });

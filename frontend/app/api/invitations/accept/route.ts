@@ -1,9 +1,9 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
-import { encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
-import { rememberedCookieAge, tokenMaxAge } from "@/lib/token-expiry";
+import { encodeSessionUser, userSessionCookie } from "@/lib/auth/auth-session";
+import { rememberedCookieAge, tokenMaxAge } from "@/lib/auth/token-expiry";
 import type { AuthUser } from "@/types/auth";
-import { isSameOriginRequest } from "@/lib/request-origin";
+import { isSameOriginRequest } from "@/lib/api/request-origin";
 
 export async function POST(request: NextRequest) {
   const session = await getApiSession();

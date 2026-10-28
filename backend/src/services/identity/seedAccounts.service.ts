@@ -9,6 +9,9 @@ export const SEED_ACCOUNTS = [
   { email: 'manager@example.com', name: 'Demo Manager', role: 'manager' },
   { email: 'admin@example.com', name: 'Demo Administrator', role: 'administrator' },
   { email: 'expert@example.com', name: 'Demo Expert', role: 'expert' },
+  { email: 'owner@example.com', name: 'Demo Owner', role: 'owner' },
+  { email: 'user@example.com', name: 'Demo User', role: 'user' }
+
 ] as const;
 
 export async function seedAccounts(password: string) {

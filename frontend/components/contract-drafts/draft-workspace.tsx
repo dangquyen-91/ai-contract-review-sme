@@ -18,7 +18,7 @@ import {
   draftKeys,
   useDraftCatalog,
   useDraftList,
-} from "@/hooks/use-contract-drafts";
+} from "@/hooks/contract-drafts/use-contract-drafts";
 import type { AuthUser } from "@/types/auth";
 import type { ContractTemplate } from "@/types/contract-drafts";
 import { DraftShell } from "./draft-shell";
@@ -39,12 +39,12 @@ function StudioRolePicker({
   if (template.parties.length < 2)
     return (
       <p className="mb-4 text-xs text-slate-400">
-        Doanh nghiệp là người sử dụng lao động
+        Bên soạn là người sử dụng lao động
       </p>
     );
   return (
     <label className="mb-4 grid gap-2 text-xs text-slate-500">
-      Vai trò doanh nghiệp
+      Vai trò bên soạn
       <select
         aria-label={`Vai trò với ${template.name}`}
         value={value}
@@ -104,7 +104,7 @@ export function DraftWorkspace({ user }: { user: AuthUser }) {
       <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">
-            Soạn thảo cho doanh nghiệp
+            {user.role === "user" ? "Soạn thảo cá nhân" : "Soạn thảo cho doanh nghiệp"}
           </p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight">
             Bắt đầu từ mẫu. Hoàn thiện theo cách của bạn.
@@ -123,7 +123,7 @@ export function DraftWorkspace({ user }: { user: AuthUser }) {
         {[
           "Mở mẫu có sẵn",
           "Chỉnh trực tiếp hoặc nhờ AI",
-          "Gửi duyệt & xuất hợp đồng",
+          user.role === "staff" ? "Gửi duyệt & xuất hợp đồng" : "Duyệt & xuất hợp đồng",
         ].map((label, index) => (
           <span key={label} className="inline-flex items-center gap-2">
             <span className="grid size-6 place-items-center rounded-full bg-white text-xs font-bold">

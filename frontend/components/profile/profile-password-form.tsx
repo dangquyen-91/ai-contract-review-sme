@@ -9,7 +9,7 @@ import { toast } from 'sonner';
 import { changePasswordFormSchema } from '@/schemas/profile.schema';
 import { AuthInput } from '@/components/auth/auth-input';
 import { Button } from '@/components/ui/button';
-import { useChangeProfilePassword } from '@/hooks/use-profile';
+import { useChangeProfilePassword } from '@/hooks/profile/use-profile';
 import type { Profile } from '@/types/profile';
 
 export function ProfilePasswordForm({ user }: { user: Profile['user'] }) {

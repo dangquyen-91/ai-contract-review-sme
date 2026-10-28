@@ -2,10 +2,10 @@
 
 import { createContext, useCallback, useContext, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { useDashboardWorkspace } from "@/hooks/use-dashboard-workspace";
-import { useReviewWorkflow } from "@/hooks/use-review-workflow";
-import { useReviewResultNavigation } from "@/hooks/use-review-result-navigation";
-import { useReviewTimelineScroll } from "@/hooks/use-review-timeline-scroll";
+import { useDashboardWorkspace } from "@/hooks/dashboard/use-dashboard-workspace";
+import { useReviewWorkflow } from "@/hooks/review/use-review-workflow";
+import { useReviewResultNavigation } from "@/hooks/review/use-review-result-navigation";
+import { useReviewTimelineScroll } from "@/hooks/review/use-review-timeline-scroll";
 
 type ReviewWorkflow = ReturnType<typeof useReviewWorkflow>;
 const ReviewWorkflowContext = createContext<ReviewWorkflow | null>(null);

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowUpRight, CalendarDays, FileSearch, MessagesSquare, Sparkles, UserRound, Users, WalletCards } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { DisplaySubscriptionPlan } from "@/lib/subscription-plans";
+import type { DisplaySubscriptionPlan } from "@/lib/subscription/subscription-plans";
 
 export function SubscriptionCatalogCard({ plan, onSelect }: {
   plan: DisplaySubscriptionPlan;

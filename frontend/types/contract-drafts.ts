@@ -6,5 +6,5 @@ export type DraftFormGroup = { key: string; title: string; description: string; 
 export type ContractTemplate = { code: TemplateCode; name: string; description: string; version: number; fields: TemplateField[]; formGroups?: DraftFormGroup[]; legalBasis: string; reviewNotes?: string[]; parties: { code: string; name: string }[] };
 export type DraftSummary = { pinnedAt?: string | null; id: string; title: string; templateCode: TemplateCode; status: DraftStatus; revision: number; createdBy: string; updatedAt: string; contractId: string | null };
 export type ContractDraft = DraftSummary & { templateVersion: number; template: ContractTemplate; ourParty: string; input: Record<string, string>; organization: { name: string; address: string; taxCode: string }; content: string; document?: StudioDocument | null; notes: string[]; decisionNote: string; generatedAt?: string; generationStartedAt?: string; approvedAt?: string };
-export type DraftCatalog = { templates: ContractTemplate[]; organization: { name: string; address: string; taxCode: string }; role: 'owner' | 'staff' };
+export type DraftCatalog = { templates: ContractTemplate[]; organization: { name: string; address: string; taxCode: string }; role: 'owner' | 'staff' | 'user' };
 export type DraftList = { items: DraftSummary[]; total: number; page: number; pages: number };

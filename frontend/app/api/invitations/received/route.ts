@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isSameOriginRequest } from "@/lib/request-origin";
+import { isSameOriginRequest } from "@/lib/api/request-origin";
 import { getApiSession } from "@/lib/auth/api-session";
 
 async function proxy(request: NextRequest, decline = false) {

@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { workspacePath } from "@/lib/workspace-path";
-import { getUserInitials } from "@/lib/user-display";
+import { workspacePath } from "@/lib/routing/workspace-path";
+import { getUserInitials } from "@/lib/users/user-display";
 import type { AuthUser } from "@/types/auth";
 
 const navigationItems = [

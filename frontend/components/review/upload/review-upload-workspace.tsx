@@ -2,7 +2,7 @@
 
 import type { ComponentProps, RefObject } from "react";
 import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider";
-import type { ReviewBlockReason } from "@/lib/review-failure";
+import type { ReviewBlockReason } from "@/lib/review/review-failure";
 import { ReviewAllowanceSummary } from "@/components/review/upload/review-allowance-summary";
 import { ContractUploadForm } from "@/components/review/upload/contract-upload-form";
 import { ReviewResults } from "@/components/review/results/review-results";

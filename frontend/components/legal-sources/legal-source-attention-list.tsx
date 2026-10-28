@@ -3,7 +3,7 @@
 import { Eye, CircleAlert, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { matchesSourceGroup } from "@/lib/legal-source-filtering";
+import { matchesSourceGroup } from "@/lib/legal-sources/legal-source-filtering";
 import type { LegalSource } from "@/types/legal-sources";
 
 export function LegalSourceAttentionList({ sources, pending, unavailable, onDetail }: { sources: LegalSource[]; pending: boolean; unavailable: boolean; onDetail: (source: LegalSource) => void }) {

@@ -1,9 +1,9 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { useLogoutWorkflow } from "@/hooks/use-logout-workflow";
-import { useOrganizationWorkflow, type OrganizationWorkflow } from "@/hooks/use-organization-workflow";
-import type { OrganizationDashboardRole } from "@/lib/organization-dashboard-route";
+import { useLogoutWorkflow } from "@/hooks/auth/use-logout-workflow";
+import { useOrganizationWorkflow, type OrganizationWorkflow } from "@/hooks/organizations/use-organization-workflow";
+import type { OrganizationDashboardRole } from "@/lib/routing/organization-dashboard-route";
 import { ReviewWorkflowProvider } from "@/providers/review-workflow-provider";
 
 export type DashboardSession = {

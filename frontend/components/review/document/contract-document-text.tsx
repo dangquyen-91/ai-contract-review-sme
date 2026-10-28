@@ -1,6 +1,6 @@
 import { useMemo, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import type { useContractText } from "@/hooks/use-contracts";
+import type { useContractText } from "@/hooks/contracts/use-contracts";
 import type { ContractReviewResult } from "@/types/contracts";
 
 type ClausePosition = ContractReviewResult["clauses"][number];

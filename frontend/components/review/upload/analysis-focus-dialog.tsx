@@ -14,7 +14,7 @@ import {
 import { ReviewBillingNotice } from "./review-billing-notice";
 import { ReviewFocusFields } from "./review-focus-fields";
 import { ReviewAllowanceSummary } from "@/components/review/upload/review-allowance-summary";
-import { useReviewAllowance } from "@/hooks/use-review-allowance";
+import { useReviewAllowance } from "@/hooks/review/use-review-allowance";
 import type { DashboardContract } from "@/types/contracts";
 
 type AnalysisFocusDialogProps = {

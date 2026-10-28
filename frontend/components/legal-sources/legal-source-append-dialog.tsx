@@ -4,8 +4,8 @@ import { toast } from "sonner";
 import { FilePlus2 } from "lucide-react";
 import { LegalSourceUploadActions } from "./legal-source-upload-actions";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { useAppendLegalSourcePartMutation } from "@/hooks/use-legal-sources";
-import { useLegalSourceUpload } from "@/hooks/use-legal-source-upload";
+import { useAppendLegalSourcePartMutation } from "@/hooks/legal-sources/use-legal-sources";
+import { useLegalSourceUpload } from "@/hooks/legal-sources/use-legal-source-upload";
 import { LegalSourceFileFields } from "./legal-source-file-fields";
 import { LegalSourcePreview } from "./legal-source-preview";
 

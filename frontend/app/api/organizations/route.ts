@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
-import { rememberedCookieAge } from "@/lib/token-expiry";
+import { encodeSessionUser, userSessionCookie } from "@/lib/auth/auth-session";
+import { rememberedCookieAge } from "@/lib/auth/token-expiry";
 import { getApiSession } from "@/lib/auth/api-session";
 
 export async function GET(request: NextRequest) {

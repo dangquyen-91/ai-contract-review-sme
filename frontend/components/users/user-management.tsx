@@ -10,8 +10,8 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { Pagination, PaginationContent, PaginationItem, PaginationPrevious, PaginationNext } from "@/components/ui/pagination";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { userManagementPageSize } from "@/config/user-management";
-import { getUserRoleLabel, userRoleOptions } from "@/lib/user-role";
-import { useManagedUsers, useSetManagedUserStatus } from "@/hooks/use-user-management";
+import { getUserRoleLabel, userRoleOptions } from "@/lib/users/user-role";
+import { useManagedUsers, useSetManagedUserStatus } from "@/hooks/users/use-user-management";
 import type { ManagedUser, ManagedUserRole, UserListParams } from "@/types/user-management";
 import { UserEditor } from "./user-editor";
 import { DeleteUserDialog } from "./delete-user-dialog";

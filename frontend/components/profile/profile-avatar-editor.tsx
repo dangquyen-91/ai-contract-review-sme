@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Camera, Check, Mail } from 'lucide-react';
 import { roleLabels } from '@/config/dashboard-roles';
-import { useProfileUpdates } from '@/hooks/use-profile';
+import { useProfileUpdates } from '@/hooks/profile/use-profile';
 import { Button } from '@/components/ui/button';
 import { ProfileAvatar } from './profile-avatar';
 import type { Profile } from '@/types/profile';

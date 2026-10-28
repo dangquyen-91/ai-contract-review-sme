@@ -1,6 +1,6 @@
 "use client";
 
-import type { OrganizationWorkflow } from "@/hooks/use-organization-workflow";
+import type { OrganizationWorkflow } from "@/hooks/organizations/use-organization-workflow";
 import { ReviewUploadWorkspace } from "@/components/review/upload/review-upload-workspace";
 import { businessTypeLabels } from "@/config/contract-display";
 

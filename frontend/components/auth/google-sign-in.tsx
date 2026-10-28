@@ -1,6 +1,6 @@
 "use client";
 import Script from "next/script";
-import { useGoogleSignIn } from "@/hooks/use-google-sign-in";
+import { useGoogleSignIn } from "@/hooks/auth/use-google-sign-in";
 import type { GoogleSignInOptions } from "@/types/auth";
 
 export function GoogleSignIn(options: GoogleSignInOptions) {

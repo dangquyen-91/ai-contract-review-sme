@@ -4,7 +4,7 @@ import { useId, useRef, useState } from "react";
 import { Search, SlidersHorizontal, X, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { legalSourceStatuses, legalSourceTypes } from "@/config/legal-source-display";
-import type { SourceFilters } from "@/lib/legal-source-filtering";
+import type { SourceFilters } from "@/lib/legal-sources/legal-source-filtering";
 
 const field = "h-12 w-full min-w-0 rounded-lg border border-input bg-card px-3 text-ui font-normal leading-normal text-card-foreground [color-scheme:light] outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20";
 const label = "grid min-w-0 content-start gap-2 text-ui-meta font-medium leading-normal text-muted-foreground";

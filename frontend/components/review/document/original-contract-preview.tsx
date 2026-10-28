@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 
 import { useEffect, useRef, useState } from "react";
-import { useContractFile } from "@/hooks/use-contracts";
+import { useContractFile } from "@/hooks/contracts/use-contracts";
 
 function normalizeText(value: string) {
   return value.normalize("NFKC").replace(/[\u00ad\u200b-\u200d\ufeff]/g, "").replace(/\s+/g, " ").trim();

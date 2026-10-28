@@ -1,6 +1,6 @@
 "use client";
 
-import { useContractKeyTerms } from "@/hooks/use-contracts";
+import { useContractKeyTerms } from "@/hooks/contracts/use-contracts";
 
 export function KeyTerms({ contractId }: { contractId: string }) {
   const { data } = useContractKeyTerms(contractId);

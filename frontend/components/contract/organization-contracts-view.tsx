@@ -5,11 +5,11 @@ import { Button } from "@/components/ui/button";
 import { useState, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { parseAsString, useQueryStates } from "nuqs";
-import { useContractsList } from "@/hooks/use-contracts";
+import { useContractsList } from "@/hooks/contracts/use-contracts";
 import { isApiClientError } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
 import type { DashboardContract } from "@/types/contracts";
-import { paginationPageParser } from "@/hooks/use-pagination-page";
+import { paginationPageParser } from "@/hooks/shared/use-pagination-page";
 
 const listSearchParams = {
   page: paginationPageParser,

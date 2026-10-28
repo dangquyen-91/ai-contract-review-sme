@@ -11,7 +11,7 @@ import { SectionDetailDialog } from "./section-detail-dialog";
 import type { SectionConfig, ManagementSectionId } from "@/types/management";
 import { SectionTableFilters } from "./section-table-filters";
 import { Badge } from "@/components/ui/badge";
-import { usePaginationPage } from "@/hooks/use-pagination-page";
+import { usePaginationPage } from "@/hooks/shared/use-pagination-page";
 
 
 function statusTone(status: string) {

@@ -11,8 +11,24 @@ const faqs = [
 
 export function SubscriptionCatalog() {
   return <>
-    <div className="mx-auto mb-8 max-w-2xl text-center text-[#080e2f]"><p className="mb-3 text-[10px] font-bold uppercase tracking-[1.5px] text-[#2864dc]">GÓI DỊCH VỤ LAWSCAN</p><h1 className="text-[clamp(30px,3.4vw,46px)] font-semibold leading-[1.2] tracking-[-1.7px]">Chọn gói phù hợp với bạn</h1><p className="mx-auto mt-4 max-w-lg text-[15px] leading-relaxed text-[#61708b]">Từ hợp đồng cá nhân đến công việc của cả đội ngũ.<br className="hidden sm:block" /> Chủ động lựa chọn với giá và hạn mức rõ ràng.</p></div>
+    <div className="mx-auto mb-8 max-w-3xl text-center">
+      <p className="mb-5 flex items-center justify-center gap-3 text-[11px] font-semibold uppercase tracking-[1.8px] text-[#52688b] before:h-0.5 before:w-5 before:bg-[#0066ff] before:content-['']">Gói dịch vụ LawScan</p>
+      <h1 className="text-[clamp(32px,3.4vw,49px)] font-semibold leading-[1.16] tracking-[-1.2px] sm:tracking-[-1.8px]">Chọn gói phù hợp.<br /><span className="text-slate-500">Chủ động mỗi lần ký.</span></h1>
+      <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-[#61708b] sm:text-base">Từ hợp đồng cá nhân đến công việc của cả đội ngũ.<br className="hidden sm:block" /> Chủ động lựa chọn với giá và hạn mức rõ ràng.</p>
+    </div>
     <SubscriptionPlanPicker variant="catalog" showComparison />
-    <section className="mt-[60px] grid gap-8 text-[#080e2f] md:grid-cols-[1fr_1.7fr]" aria-labelledby="subscription-faq-heading"><div><p className="mb-3 text-[10px] font-bold tracking-[1.5px] text-[#0066ff]">TRƯỚC KHI BẠN CHỌN</p><h2 id="subscription-faq-heading" className="text-[26px] font-semibold tracking-[-0.8px]">Một vài điều<br />cần làm rõ.</h2><p className="mt-1.5 text-[13px] text-[#61708b]">Để bạn biết mình sẽ nhận được gì.</p></div><div>{faqs.map(([question, answer]) => <details key={question} className="group border-b border-[#dce4ef]"><summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-[18px] text-[13px] font-semibold [&::-webkit-details-marker]:hidden">{question}<span aria-hidden="true" className="text-[20px] text-[#0066ff] group-open:rotate-45">+</span></summary><p className="pb-5 text-[13px] leading-relaxed text-[#61708b]">{answer}</p></details>)}</div></section>
+    <section className="mt-16 grid gap-8 border-t border-[#dce4ef] pt-12 md:grid-cols-[1fr_1.7fr] md:gap-12 lg:mt-20 lg:pt-16" aria-labelledby="subscription-faq-heading">
+      <div>
+        <p className="mb-4 text-[11px] font-semibold uppercase tracking-[1.8px] text-[#52688b]">Trước khi bạn chọn</p>
+        <h2 id="subscription-faq-heading" className="text-[clamp(28px,3vw,38px)] font-semibold leading-[1.2] tracking-[-1.2px]">Một vài điều<br />cần làm rõ.</h2>
+        <p className="mt-4 text-sm leading-relaxed text-[#61708b]">Để bạn biết mình sẽ nhận được gì.</p>
+      </div>
+      <div>{faqs.map(([question, answer]) => (
+        <details key={question} className="group border-b border-[#dce4ef]">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-5 text-sm font-semibold focus-visible:rounded focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#2864dc] [&::-webkit-details-marker]:hidden">{question}<span aria-hidden="true" className="shrink-0 text-xl text-[#0066ff] transition-transform group-open:rotate-45">+</span></summary>
+          <p className="pb-5 text-sm leading-7 text-[#61708b]">{answer}</p>
+        </details>
+      ))}</div>
+    </section>
   </>;
 }

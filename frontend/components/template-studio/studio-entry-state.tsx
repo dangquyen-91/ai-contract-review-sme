@@ -3,7 +3,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { FileText, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useSaveDraftCache } from "@/hooks/use-contract-drafts";
+import { useSaveDraftCache } from "@/hooks/contract-drafts/use-contract-drafts";
 import { contractDraftsApi } from "@/lib/api/contract-drafts";
 import type { AuthUser } from "@/types/auth";
 import type { ContractDraft } from "@/types/contract-drafts";

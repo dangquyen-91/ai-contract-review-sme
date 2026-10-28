@@ -26,7 +26,7 @@ function setup(overrides = {}, saved) {
     };
   }
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/review-session.ts', import.meta.url), 'utf8'), {
+  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/review/review-session.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   vm.runInNewContext(source, {

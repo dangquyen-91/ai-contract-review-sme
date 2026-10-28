@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useOnboardingWorkflow } from "@/hooks/use-onboarding-workflow";
+import { useOnboardingWorkflow } from "@/hooks/onboarding/use-onboarding-workflow";
 import { OrganizationChoiceOptions } from "./organization-choice-options";
 import { OrganizationCreateForm } from "./organization-create-form";
 
