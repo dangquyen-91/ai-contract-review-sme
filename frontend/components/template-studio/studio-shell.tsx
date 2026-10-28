@@ -21,8 +21,8 @@ export function StudioShell({
       role={user.role}
       activeKey="drafts"
       sectionLabel="Soạn hợp đồng"
-      workspaceName={organizationName ?? "Doanh nghiệp"}
-      workspaceLabel="Không gian doanh nghiệp"
+      workspaceName={organizationName ?? (user.role === "user" ? user.name : "Doanh nghiệp")}
+      workspaceLabel={user.role === "user" ? "Không gian cá nhân" : "Không gian doanh nghiệp"}
       name={user.name}
       roleLabel={roleLabels[user.role]}
       homeHref="/dashboard"

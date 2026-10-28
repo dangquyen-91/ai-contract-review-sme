@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { DropdownMenu } from 'radix-ui';
-import { useProfile } from '@/hooks/use-profile';
+import { useProfile } from '@/hooks/profile/use-profile';
 import { ProfileAvatar } from './profile-avatar';
 import { Icon } from '@/components/ui/icon';
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/ui/icon";
-import type { DisplaySubscriptionPlan } from "@/lib/subscription-plans";
+import type { DisplaySubscriptionPlan } from "@/lib/subscription/subscription-plans";
 
 export function SubscriptionPlanCard({ plan, onSelect }: {
   plan: DisplaySubscriptionPlan;

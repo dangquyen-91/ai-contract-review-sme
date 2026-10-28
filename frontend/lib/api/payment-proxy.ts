@@ -1,6 +1,6 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
-import { isSameOriginRequest } from "@/lib/request-origin";
+import { isSameOriginRequest } from "@/lib/api/request-origin";
 
 export async function proxyPayment(request: NextRequest, orgId: string, orderCode?: string, action?: "sync" | "cancel") {
   const session = await getApiSession();

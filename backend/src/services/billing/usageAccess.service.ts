@@ -30,13 +30,13 @@ export async function assertUsageAccess(input: UsageInput, session: ClientSessio
   }
 
   const role = (user.roleId as unknown as { code?: string })?.code;
-  if (role !== 'owner' && role !== 'staff') {
+  if (role !== 'owner' && role !== 'staff' && role !== 'user') {
     throw AppError.forbidden('Bạn không có quyền truy cập bản nháp này.');
   }
   const draft = await ContractDraftModel.exists({
     _id: input.draftId,
     orgId: input.orgId,
-    ...(role === 'staff' ? { createdBy: input.userId } : {}),
+    ...(role !== 'owner' ? { createdBy: input.userId } : {}),
   }).session(session);
   if (!draft) throw AppError.forbidden('Bạn không có quyền truy cập bản nháp này.');
 }

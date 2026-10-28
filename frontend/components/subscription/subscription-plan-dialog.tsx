@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Icon } from "@/components/ui/icon";
-import { formatMoney, type DisplaySubscriptionPlan } from "@/lib/subscription-plans";
+import { formatMoney, type DisplaySubscriptionPlan } from "@/lib/subscription/subscription-plans";
 
 export function SubscriptionPlanDialog({ plan, onClose }: { plan: DisplaySubscriptionPlan; onClose: () => void }) {
   return <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { toast } from 'sonner';
-import { useProfileUpdates } from '@/hooks/use-profile';
+import { useProfileUpdates } from '@/hooks/profile/use-profile';
 import { profileFormSchema } from '@/schemas/profile.schema';
 import { AuthInput } from '@/components/auth/auth-input';
 import { Button } from '@/components/ui/button';

@@ -3,14 +3,14 @@
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import type { DashboardRole } from "@/config/dashboard-roles";
-import type { OrganizationWorkflow, DashboardTab } from "@/hooks/use-organization-workflow";
+import type { OrganizationWorkflow, DashboardTab } from "@/hooks/organizations/use-organization-workflow";
 import { DashboardShell } from "@/components/layouts/dashboard/dashboard-shell";
 import { DashboardError } from "@/components/layouts/dashboard/dashboard-error";
 import { DashboardSkeleton } from "@/components/layouts/dashboard/dashboard-skeleton";
 import { getDashboardNavigation } from "@/config/dashboard-navigation";
 import { useOrganizationDashboard } from "@/providers/dashboard-provider";
 import { UploadedReviewDialog } from "@/components/review/upload/uploaded-review-dialog";
-import type { OrganizationDashboardRole } from "@/lib/organization-dashboard-route";
+import type { OrganizationDashboardRole } from "@/lib/routing/organization-dashboard-route";
 
 export function OrganizationDashboardFrame({ role, children }: { role: OrganizationDashboardRole; children: ReactNode }) {
   const workspace = useOrganizationDashboard();

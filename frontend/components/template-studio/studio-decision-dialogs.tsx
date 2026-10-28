@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import type { TemplateStudioState } from "@/hooks/use-template-studio";
+import type { TemplateStudioState } from "@/hooks/contract-drafts/use-template-studio";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,

@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   useDraftCatalog,
   useSaveDraftCache,
-} from "@/hooks/use-contract-drafts";
+} from "@/hooks/contract-drafts/use-contract-drafts";
 import { contractDraftsApi } from "@/lib/api/contract-drafts";
 import type { ContractDraft } from "@/types/contract-drafts";
 import { Button } from "@/components/ui/button";

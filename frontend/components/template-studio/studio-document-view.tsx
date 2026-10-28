@@ -1,13 +1,13 @@
 import type { ReactNode } from "react";
 import type { StudioDocument, StudioNode } from "@/types/template-studio";
 import type { ContractTemplate } from "@/types/contract-drafts";
-import { studioFieldText } from "@/lib/studio-document";
+import { studioFieldText } from "@/lib/contract-drafts/studio-document";
 import {
   readLineItems,
   lineItemAmount,
   centsToMoney,
-} from "@/lib/draft-line-items";
-import { formatMoneyInput } from "@/lib/money-input";
+} from "@/lib/contract-drafts/draft-line-items";
+import { formatMoneyInput } from "@/lib/contract-drafts/money-input";
 import styles from "@/styles/template-studio.module.css";
 
 export function StudioDocumentView({

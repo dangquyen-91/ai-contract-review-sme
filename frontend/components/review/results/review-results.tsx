@@ -5,7 +5,7 @@ import { ContractDocumentText, FullDocument } from "@/components/review/document
 import { Button } from "@/components/ui/button";
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useContractText } from "@/hooks/use-contracts";
+import { useContractText } from "@/hooks/contracts/use-contracts";
 import workspaceStyles from "@/styles/review/review-workspace.module.css";
 import { Icon } from "@/components/ui/icon";
 import { ContractChat } from "@/components/review/results/contract-chat";

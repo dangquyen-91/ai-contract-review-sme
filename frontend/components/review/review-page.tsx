@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { ReviewContent } from "@/components/review/review-content";
 import { DashboardShell, type DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
-import { usePersonalReviewWorkspace } from "@/hooks/use-personal-review-workspace";
+import { usePersonalReviewWorkspace } from "@/hooks/review/use-personal-review-workspace";
 import { useOptionalOrganizationDashboard } from "@/providers/dashboard-provider";
 
 export function ReviewDashboardPage({ children }: { children?: ReactNode }) {

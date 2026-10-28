@@ -1,6 +1,6 @@
 import { TriangleAlert } from "lucide-react";
 import type { LegalSource } from "@/types/legal-sources";
-import { matchesSourceGroup } from "@/lib/legal-source-filtering";
+import { matchesSourceGroup } from "@/lib/legal-sources/legal-source-filtering";
 import { LegalSourceStatusBadge } from "./legal-source-ingestion-status";
 
 export function LegalSourceProcessingCell({ source }: { source: LegalSource }) {

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { useLegalSourceDetail } from "@/hooks/use-legal-source-detail";
+import { useLegalSourceDetail } from "@/hooks/legal-sources/use-legal-source-detail";
 import { LegalSourceDetailContent } from "./legal-source-detail-content";
 
 // Keeps previously shared detail URLs usable; list actions open the dialog.

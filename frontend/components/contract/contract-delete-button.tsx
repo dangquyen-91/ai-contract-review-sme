@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { useDeleteContract } from "@/hooks/use-contracts";
+import { useDeleteContract } from "@/hooks/contracts/use-contracts";
 import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/shared/confirm-action-dialog";
 import type { DashboardContract } from "@/types/contracts";

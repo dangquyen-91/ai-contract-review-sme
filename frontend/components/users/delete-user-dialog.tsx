@@ -5,7 +5,7 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { useDeleteManagedUser } from "@/hooks/use-user-management";
+import { useDeleteManagedUser } from "@/hooks/users/use-user-management";
 import type { ManagedUser } from "@/types/user-management";
 
 export function DeleteUserDialog({ user, close, deleted }: {

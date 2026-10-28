@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { workspacePath } from "@/lib/workspace-path";
+import { workspacePath } from "@/lib/routing/workspace-path";
 import { PaymentOrderStatus } from "./payment-order-status";
 import type { AuthUser } from "@/types/auth";
 
