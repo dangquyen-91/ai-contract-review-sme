@@ -4,8 +4,8 @@ import { useId, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useContractProfiles } from "@/hooks/use-contracts";
-import { useUpdateOrganizationIndustry } from "@/hooks/use-organizations";
+import { useContractProfiles } from "@/hooks/contracts/use-contracts";
+import { useUpdateOrganizationIndustry } from "@/hooks/organizations/use-organizations";
 
 export type IndustryOption = { code: string; name: string };
 

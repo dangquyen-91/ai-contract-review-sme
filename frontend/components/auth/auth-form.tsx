@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useAuthInvitation } from "@/hooks/use-auth-invitation";
+import { useAuthInvitation } from "@/hooks/auth/use-auth-invitation";
 import { safeAuthReturn } from "@/lib/auth-return";
 import { AuthFormContent } from "./auth-form-content";
 import type { AuthFormProps } from "@/types/auth";

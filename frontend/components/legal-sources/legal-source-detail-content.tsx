@@ -4,7 +4,7 @@ import { Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { legalSourceStatuses, legalSourceTypes } from "@/config/legal-source-display";
-import type { LegalSourceDetailWorkflow } from "@/hooks/use-legal-source-detail";
+import type { LegalSourceDetailWorkflow } from "@/hooks/legal-sources/use-legal-source-detail";
 import { LegalSourceCoverage } from "./legal-source-coverage";
 import { LegalSourceIngestionStatus, formatLegalDate } from "./legal-source-ingestion-status";
 import { LegalSourceParts } from "./legal-source-parts";

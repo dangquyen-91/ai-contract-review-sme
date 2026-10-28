@@ -2,7 +2,7 @@ import { Schema, model } from 'mongoose';
 import { decryptOnSerialize, encryptedString } from '../utils/fieldEncryption';
 
 const schema = new Schema({
-  orgId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
+  orgId: { type: Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   title: { type: String, required: true },
   templateCode: { type: String, enum: ['labor', 'service', 'sales'], required: true },

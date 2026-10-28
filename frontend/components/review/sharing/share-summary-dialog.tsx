@@ -4,7 +4,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { Copy, Check, FileText, ShieldCheck, Share2, Mail, Pencil, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useContractShareSummary } from "@/hooks/use-contract-share-summary";
+import { useContractShareSummary } from "@/hooks/contracts/use-contract-share-summary";
 import { ShareSummaryPreview } from "@/components/review/sharing/share-summary-preview";
 
 export function ShareSummaryDialog({ contractId, version, onClose }: {

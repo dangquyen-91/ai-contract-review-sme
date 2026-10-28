@@ -69,14 +69,50 @@ beforeAll(async () => {
 });
 afterAll(async () => { await mongoose.disconnect(); if (repl) await repl.stop(); });
 
-test('catalog and all draft endpoints require a business owner/staff identity', async () => {
+test('catalog admits personal users and business owner/staff, excluding other roles', async () => {
   expect((await request(app).get('/api/v1/contract-drafts/templates')).status).toBe(401);
-  for (const role of ['user', 'manager', 'expert', 'administrator']) expect((await call(await user(role), 'get', '/templates')).status).toBe(403);
+  for (const role of ['manager', 'expert', 'administrator']) expect((await call(await user(role), 'get', '/templates')).status).toBe(403);
+  expect((await call(await user('user', org.id), 'get', '/templates')).status).toBe(403);
   const personal = await OrganizationModel.create({ name: 'Personal', isPersonal: true });
   expect((await call(await user('owner', personal.id), 'get', '/templates')).status).toBe(403);
   const response = await call(staff, 'get', '/templates');
   expect(response.status).toBe(200);
   expect(response.body.data.templates.map(template => template.code)).toEqual(['labor', 'service', 'sales']);
+});
+
+test.each([false, true])('personal drafts support creation, editing, approval and export with personal workspace=%s', async hasWorkspace => {
+  const personalOrg = hasWorkspace ? await OrganizationModel.create({ name: 'Personal drafts', isPersonal: true }) : null;
+  const personal = await user('user', personalOrg?.id);
+  const stranger = await user('user', personalOrg?.id);
+  const catalog = await call(personal, 'get', '/templates');
+  expect(catalog.status).toBe(200);
+  expect(catalog.body.data.role).toBe('user');
+  let draft = await create(personal);
+  const content = 'Nội dung hợp đồng đã được người dùng kiểm tra. '.repeat(12);
+  let response = await call(personal, 'patch', `/${draft.id}`).send({ ...changes(draft), content });
+  expect(response.status).toBe(200); draft = response.body.data;
+  expect((await call(stranger, 'get')).body.data.items).toEqual([]);
+  for (const actor of [stranger, owner, staff]) {
+    expect((await call(actor, 'get', `/${draft.id}`)).status).toBe(404);
+    expect((await call(actor, 'patch', `/${draft.id}`).send(changes(draft))).status).toBe(404);
+    expect((await decide(actor, draft, 'approve')).status).toBe(404);
+    expect((await call(actor, 'get', `/${draft.id}/export`)).status).toBe(404);
+    expect((await call(actor, 'get', `/${draft.id}/assistant`)).status).toBe(404);
+  }
+  expect((await decide(personal, draft, 'submit')).status).toBe(400);
+  expect((await call(personal, 'get', `/${draft.id}/export`)).status).toBe(409);
+  expect((await generate(personal, draft)).status).toBe(403);
+  expect((await Drafts.findById(draft.id)).generationStartedAt).toBeUndefined();
+  response = await decide(personal, draft, 'approve');
+  expect(response.status).toBe(200); draft = response.body.data;
+  expect(draft.status).toBe('approved');
+  expect((await call(personal, 'patch', `/${draft.id}`).send(changes(draft))).status).toBe(409);
+  expect((await call(personal, 'get', `/${draft.id}/export`)).status).toBe(200);
+  expect((await call(personal, 'get', `/${draft.id}/export?format=print`)).body.data.content).toBe(content);
+  const copy = await call(personal, 'post', `/${draft.id}/copy-latest`).send({ revision: draft.revision });
+  expect(copy.status).toBe(201);
+  expect((await call(personal, 'patch', `/${copy.body.data.id}/pin`).send({ pinned: true })).status).toBe(200);
+  expect((await call(personal, 'delete', `/${copy.body.data.id}`).send({ revision: copy.body.data.revision })).status).toBe(200);
 });
 
 test('creation snapshots organization data; sensitive fields are encrypted and stale edits fail', async () => {

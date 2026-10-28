@@ -1,4 +1,4 @@
-import type { TemplateStudioState } from "@/hooks/use-template-studio";
+import type { TemplateStudioState } from "@/hooks/contract-drafts/use-template-studio";
 import type { AuthUser } from "@/types/auth";
 import { readLineItems, totalLineItems } from "@/lib/draft-line-items";
 import { studioCharacterCount } from "@/lib/studio-document";
@@ -9,7 +9,7 @@ export function getStudioPresentation(
   user: AuthUser,
 ) {
   const { draft, values, busy, dirty, error } = studio;
-  const owner = user.role === "owner";
+  const owner = user.role === "owner" || (user.role === "user" && draft.createdBy === user.id);
   const readOnly = draft.status !== "draft";
   const editable = !readOnly && (!busy || busy === "save");
   const canExport =
@@ -41,6 +41,7 @@ export function getStudioPresentation(
     readOnly,
     editable,
     canExport,
+    canPublish: owner && Boolean(user.orgId),
     missing,
     outline,
     status,

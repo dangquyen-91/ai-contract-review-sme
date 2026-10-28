@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
-import { useSubscriptionPlans } from "@/hooks/use-subscription-plans";
+import { useSubscriptionPlans } from "@/hooks/subscription/use-subscription-plans";
 import { describePlan, formatMoney } from "@/lib/subscription-plans";
 import { PaymentCheckout } from "./payment-checkout";
 import { PaymentHistory } from "./payment-history";

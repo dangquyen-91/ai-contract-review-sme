@@ -5,8 +5,8 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/shared/confirm-action-dialog";
-import { useSubscriptionManagement } from "@/hooks/use-subscription-management";
-import { useSubscriptionPlans } from "@/hooks/use-subscription-plans";
+import { useSubscriptionManagement } from "@/hooks/subscription/use-subscription-management";
+import { useSubscriptionPlans } from "@/hooks/subscription/use-subscription-plans";
 import type { SubscriptionPlan } from "@/types/subscription";
 import { PaymentHistory } from "./payment-history";
 

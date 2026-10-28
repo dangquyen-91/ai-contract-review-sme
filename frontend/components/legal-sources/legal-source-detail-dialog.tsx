@@ -3,7 +3,7 @@
 import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { useLegalSourceDetail } from "@/hooks/use-legal-source-detail";
+import { useLegalSourceDetail } from "@/hooks/legal-sources/use-legal-source-detail";
 import { LegalSourceDetailContent } from "./legal-source-detail-content";
 
 export function LegalSourceDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {

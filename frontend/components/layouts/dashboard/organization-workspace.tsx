@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import type { DashboardRole } from "@/config/dashboard-roles";
-import type { OrganizationWorkflow, DashboardTab } from "@/hooks/use-organization-workflow";
+import type { OrganizationWorkflow, DashboardTab } from "@/hooks/organizations/use-organization-workflow";
 import { DashboardShell } from "@/components/layouts/dashboard/dashboard-shell";
 import { DashboardError } from "@/components/layouts/dashboard/dashboard-error";
 import { DashboardSkeleton } from "@/components/layouts/dashboard/dashboard-skeleton";

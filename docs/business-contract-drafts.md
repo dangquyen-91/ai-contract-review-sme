@@ -2,7 +2,7 @@
 
 ## User flow
 
-Owner and Staff members of a business organization can open **Tạo hợp đồng** at `/contract-drafts`.
+Owner and Staff members of a business organization, and personal accounts with the User role, can open **Tạo hợp đồng** at `/contract-drafts`.
 
 1. Choose labor, service or sale of goods.
 2. Enter the parties and contract terms. Company name is taken from the organization; address and tax code are prefilled and can be corrected for this draft.
@@ -13,7 +13,7 @@ Owner and Staff members of a business organization can open **Tạo hợp đồn
 
 The print page provides browser print-to-PDF, not a server-side PDF file. Publishing creates an ordinary `uploaded` contract and an extracted DOCX version; it does not automatically start or charge for a review. The user starts review through the existing interface.
 
-Personal accounts and personal workspaces cannot access this feature. Staff sees and edits only their own drafts. Owner sees drafts within their organization. An internal approval is not an electronic signature.
+Personal users see and edit only their own drafts, approve their own content, and export approved drafts as DOCX or through browser print. They can create drafts without an organization; account name supplies the initial party name in that case. Personal users with a personal workspace can transfer approved drafts to the existing contract workflow. Accounts without a workspace can export their drafts but must set up a workspace before transferring them. Staff sees and edits only their own drafts. Owner sees drafts within their organization. An internal approval is not an electronic signature.
 
 ## Data and concurrency
 
@@ -46,7 +46,7 @@ Reference basis for maintaining the frames:
 
 ## API
 
-All endpoints are below `/api/v1/contract-drafts`, require authenticated business Owner/Staff, and use organization-scoped access.
+All endpoints are below `/api/v1/contract-drafts` and require authenticated business Owner/Staff or a personal User. Owner access is scoped to the organization; Staff and User access additionally requires draft ownership. Personal drafts without an organization are scoped by creator.
 
 | Method and suffix | Purpose |
 | --- | --- |
@@ -60,11 +60,13 @@ All endpoints are below `/api/v1/contract-drafts`, require authenticated busines
 | `POST /:id/decision` | `revision`, `action` (`submit`, `approve`, `return`), `note` |
 | `GET /:id/export?format=docx` | Approved DOCX; Owner or the Staff creator |
 | `GET /:id/export?format=print` | Approved print content; Owner or the Staff creator |
-| `POST /:id/publish` | Owner-only publication with `revision` |
+| `POST /:id/publish` | Owner or personal draft creator with a workspace; requires `revision` |
 
 ## Configuration and checks
 
 Use the existing `GEMINI_API_KEY`, `GEMINI_MODEL`, MongoDB, and `DATA_ENCRYPTION_KEY`. AI generation requires an active business plan and consumes one drafting credit only when the generated document is successfully saved. Starter defaults to 50 and Pro to 150 drafting credits per period, shared in the organization. Publishing to the review workflow also needs private Cloudinary storage and LibreOffice to count the generated DOCX pages. Generating/downloading a DOCX does not require LibreOffice, Redis or Cloudinary. Reviews use a separate quota of one credit per five pages, rounded up; see [usage billing](subscription/usage-billing.md).
+
+Draft access does not grant additional AI credits. Personal plans currently default to zero drafting credits; manual template editing, approval and export remain available. Accounts without a workspace receive `AI_PLAN_REQUIRED` for AI drafting requests.
 
 Backend tests use a disposable MongoDB replica set, mocked model responses and mocked storage; browser checks use a fixture backend only. They do not contact production databases or spend Gemini quota.
 

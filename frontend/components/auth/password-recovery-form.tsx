@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
-import { usePasswordRecovery } from "@/hooks/use-password-recovery";
+import { usePasswordRecovery } from "@/hooks/auth/use-password-recovery";
 import { ForgotPasswordRequestForm } from "./forgot-password-request-form";
 import { PasswordRecoverySuccess } from "./password-recovery-success";
 import { ResetPasswordForm } from "./reset-password-form";

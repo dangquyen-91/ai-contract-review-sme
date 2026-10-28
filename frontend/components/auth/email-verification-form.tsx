@@ -1,5 +1,5 @@
 "use client";
-import { useEmailVerification } from "@/hooks/use-email-verification";
+import { useEmailVerification } from "@/hooks/auth/use-email-verification";
 import type { EmailVerificationOptions } from "@/types/auth";
 
 export function EmailVerificationForm(options: EmailVerificationOptions) {

@@ -6,7 +6,7 @@ import { ArrowLeft, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react';
 import { DashboardShell } from '@/components/layouts/dashboard/dashboard-shell';
 import { ReceivedInvitations } from '@/components/invitations/received-invitations';
 import { Button } from '@/components/ui/button';
-import { useProfile } from '@/hooks/use-profile';
+import { useProfile } from '@/hooks/profile/use-profile';
 import { roleLabels } from '@/config/dashboard-roles';
 import { workspacePath } from '@/lib/workspace-path';
 import type { AuthUser } from '@/types/auth';

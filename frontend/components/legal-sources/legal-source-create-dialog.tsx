@@ -4,8 +4,8 @@ import { useState } from "react";
 import { FilePlus2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { useCreateLegalSourceMutation } from "@/hooks/use-legal-sources";
-import { useLegalSourceUpload } from "@/hooks/use-legal-source-upload";
+import { useCreateLegalSourceMutation } from "@/hooks/legal-sources/use-legal-sources";
+import { useLegalSourceUpload } from "@/hooks/legal-sources/use-legal-source-upload";
 import { LegalSourceForm } from "./legal-source-form";
 import type { LegalSource } from "@/types/legal-sources";
 

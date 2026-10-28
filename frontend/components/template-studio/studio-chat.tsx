@@ -11,9 +11,9 @@ import {
   MessageSquare,
   LoaderCircle,
 } from "lucide-react";
-import { useReviewAllowance } from "@/hooks/use-review-allowance";
-import { useStudioVoice } from "@/hooks/use-studio-voice";
-import type { TemplateStudioState } from "@/hooks/use-template-studio";
+import { useReviewAllowance } from "@/hooks/review/use-review-allowance";
+import { useStudioVoice } from "@/hooks/contract-drafts/use-studio-voice";
+import type { TemplateStudioState } from "@/hooks/contract-drafts/use-template-studio";
 import type {
   StudioProposal,
   StudioSelection,

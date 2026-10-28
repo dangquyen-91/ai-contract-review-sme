@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { useLegalSourcesWorkspace } from "@/hooks/use-legal-sources-workspace";
+import { useLegalSourcesWorkspace } from "@/hooks/legal-sources/use-legal-sources-workspace";
 import { LegalSourceDeleteConfirmation } from "./legal-source-delete-confirmation";
 import { LegalSourceFilters } from "./legal-source-filters";
 import { LegalSourceTable } from "./legal-source-table";

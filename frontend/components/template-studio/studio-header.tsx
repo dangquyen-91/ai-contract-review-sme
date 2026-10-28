@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import type { TemplateStudioState } from "@/hooks/use-template-studio";
+import type { TemplateStudioState } from "@/hooks/contract-drafts/use-template-studio";
 import type { StudioPresentation } from "./studio-presentation";
 import { StudioDownloadMenu } from "./studio-download-menu";
 import styles from "@/styles/template-studio.module.css";
@@ -31,7 +31,7 @@ export function StudioHeader({
   onReturn: () => void;
 }) {
   const { draft, values, busy, dirty, error } = studio;
-  const { owner, readOnly, editable, canExport, status, missing } = view;
+  const { owner, readOnly, editable, canExport, canPublish, status, missing } = view;
   return (
     <header className="z-20 flex min-h-16 shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-3 sm:px-5">
       <Link
@@ -188,7 +188,7 @@ export function StudioHeader({
               Yêu cầu chỉnh sửa
             </button>
           )}
-          {owner &&
+          {canPublish &&
             draft.status === "approved" &&
             (draft.contractId ? (
               <Link

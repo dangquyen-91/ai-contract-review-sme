@@ -2,6 +2,7 @@ import type { Icon } from "@/components/ui/icon";
 import type { DashboardRole } from "./dashboard-roles";
 import { organizationDashboardPath } from "@/lib/organization-dashboard-route";
 import { userManagementPath } from "./user-management";
+import { routes } from "./routes";
 
 export type NavigationItem = {
   key: string;
@@ -38,8 +39,9 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
   if (role === "user") return [
     { key: "review", href: "/review", label: "Tải & rà soát", icon: "upload", group: "Không gian làm việc", mobile: true },
     { key: "contract", href: "/contract", label: "Hợp đồng", icon: "document", count: true, mobile: true },
+    { key: "drafts", href: "/contract-drafts", label: "Tạo hợp đồng", icon: "document", mobile: true },
     { key: "create-organization", href: "/chon-to-chuc", label: "Tạo tổ chức", icon: "building", group: "Hỗ trợ", mobile: true },
-    ...supportNavigation.map((item) => ({ ...item, ...(item.key === "plans" ? { key: "subscription", href: "/dashboard/subscription" } : {}), group: undefined })),
+    ...supportNavigation.map((item) => ({ ...item, ...(item.key === "plans" ? { key: "subscription", href: routes.subscription } : {}), group: undefined })),
   ];
 
   return [

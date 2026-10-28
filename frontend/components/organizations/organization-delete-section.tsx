@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
-import { useDeleteOrganization } from "@/hooks/use-organizations";
+import { useDeleteOrganization } from "@/hooks/organizations/use-organizations";
 import { clearSessionCache } from "@/lib/session-cache";
 import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/shared/confirm-action-dialog";

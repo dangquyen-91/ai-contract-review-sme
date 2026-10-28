@@ -4,7 +4,7 @@ import { RecentContracts } from "@/components/contract/recent-contracts";
 import { ContractConfirmationDialog } from "@/components/review/upload/contract-confirmation-dialog";
 import { ReviewUploadWorkspace } from "@/components/review/upload/review-upload-workspace";
 import { reviewableTypeLabels } from "@/config/contract-display";
-import type { useReviewWorkflow } from "@/hooks/use-review-workflow";
+import type { useReviewWorkflow } from "@/hooks/review/use-review-workflow";
 import type { DashboardContract } from "@/types/contracts";
 import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
 

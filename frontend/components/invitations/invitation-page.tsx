@@ -9,11 +9,11 @@ import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
-import { useLogoutWorkflow } from "@/hooks/use-logout-workflow";
+import { useLogoutWorkflow } from "@/hooks/auth/use-logout-workflow";
 import { clearSessionCache } from "@/lib/session-cache";
 import { isApiClientError } from "@/lib/api/client";
 import { invitationError } from "@/lib/invitation-error";
-import { useAcceptInvitationMutation, useInvitationPreview } from "@/hooks/use-invitations";
+import { useAcceptInvitationMutation, useInvitationPreview } from "@/hooks/organizations/use-invitations";
 import { workspacePath } from "@/lib/workspace-path";
 import type { AuthUser } from "@/types/auth";
 

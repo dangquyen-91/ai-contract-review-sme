@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { usePaymentResult } from "@/hooks/use-payment-result";
+import { usePaymentResult } from "@/hooks/subscription/use-payment-result";
 import { paymentMessage, safeCheckoutUrl } from "@/lib/payment-state";
 import { workspacePath } from "@/lib/workspace-path";
 import { PaymentOrderDetails } from "./payment-order-details";

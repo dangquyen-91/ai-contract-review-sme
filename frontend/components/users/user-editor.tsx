@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { getUserRoleLabel } from "@/lib/user-role";
-import { useManagedUser, useSaveManagedUser } from "@/hooks/use-user-management";
+import { useManagedUser, useSaveManagedUser } from "@/hooks/users/use-user-management";
 import type { ManagedUser, ManagedUserRole } from "@/types/user-management";
 
 const selectClass = "h-11 rounded-lg border border-input bg-card px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30";

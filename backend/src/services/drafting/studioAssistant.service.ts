@@ -11,7 +11,7 @@ import { createRedactor } from '../ai/redaction.service';
 import { generateJson, isLlmConfigured } from '../ai/llm.service';
 import { reserveUsage, finishUsage } from '../billing/usage.service';
 import { inputErrors } from '../../validations/contractDraft.validation';
-import { requireBusiness, findDraft, scope, getDraft } from './contractDraft.service';
+import { requireDraftAccess, findDraft, scope, getDraft } from './contractDraft.service';
 import type { ContractTemplate, TemplateCode } from './templates';
 import { studioInput, studioText, type StudioDocument } from './studioDocument';
 import { applyStudioChanges, studioBlocks, type StudioChanges } from './studioChanges';
@@ -106,7 +106,7 @@ function proposalView(proposal: InstanceType<typeof DraftAssistantProposalModel>
 }
 
 export async function assistantHistory(actor: AccessTokenPayload, id: string) {
-  await requireBusiness(actor);
+  await requireDraftAccess(actor);
   await findDraft(actor, id);
   const rows = await DraftAssistantProposalModel.find({ draftId: id, orgId: actor.orgId })
     .sort({ createdAt: -1, _id: -1 })
@@ -211,7 +211,7 @@ export async function requestAssistant(
   id: string,
   input: z.infer<typeof assistantRequestSchema>,
 ) {
-  await requireBusiness(actor);
+  await requireDraftAccess(actor);
   const draft = await findDraft(actor, id);
   const replay = await DraftAssistantProposalModel.findOne({
     draftId: id,
@@ -247,6 +247,7 @@ export async function requestAssistant(
     throw AppError.conflict('Trợ lý đang xử lý yêu cầu khác. Vui lòng chờ hoàn tất.');
   let runId: string | undefined;
   try {
+    if (!actor.orgId) throw AppError.forbidden('Tài khoản chưa có hạn mức soạn hợp đồng AI.', 'AI_PLAN_REQUIRED');
     const { run } = await reserveUsage(
       {
         orgId: actor.orgId!,
@@ -269,7 +270,7 @@ export async function requestAssistant(
       JSON.parse(draft.organizationJson).name,
       input.references,
     );
-    await requireBusiness(actor);
+    await requireDraftAccess(actor);
     let proposalId = '';
     await finishUsage(
       actor.orgId!,
@@ -324,7 +325,7 @@ export async function actOnProposal(
   revision: number,
   action: 'apply' | 'dismiss',
 ) {
-  await requireBusiness(actor);
+  await requireDraftAccess(actor);
   await findDraft(actor, id);
   const proposal = await DraftAssistantProposalModel.findOne({
     _id: proposalId,
