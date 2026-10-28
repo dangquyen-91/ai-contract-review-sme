@@ -12,7 +12,7 @@ function setup({ role = 'owner', orgId = 'b'.repeat(24), authenticated = true, u
   const deps = {
     'next/server': { NextRequest, NextResponse },
     '@/lib/auth/api-session': { getApiSession: async () => authenticated ? { user: { role, orgId }, accessToken: 'verified-server-token' } : { error: NextResponse.json({ success: false }, { status: 401 }) } },
-    '@/lib/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
+    '@/lib/api/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
   };
   vm.runInNewContext(source, { exports, URLSearchParams, Response, AbortSignal, process: { env: {} }, require: name => deps[name], fetch: async (url, options) => {
     calls.push({ url, options });
@@ -27,7 +27,7 @@ const id = 'a'.repeat(24);
 
 test('line item totals keep decimal precision and reject incomplete or invalid rows', () => {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/draft-line-items.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/contract-drafts/draft-line-items.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   vm.runInNewContext(source, { exports, BigInt });
   const { totalLineItems, readLineItems } = exports;
   const first = { name: 'Product', unit: 'kg', quantity: '1.125', unitPrice: '1000.25' };
@@ -43,7 +43,7 @@ test('copy-latest forwards revisions and preserves the created response', async 
 });
 test('Vietnamese money input groups displayed amounts without changing their API value', () => {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/money-input.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/contract-drafts/money-input.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   vm.runInNewContext(source, { exports });
   const { formatMoneyInput, parseMoneyInput } = exports;
   for (const [canonical, display] of [['', ''], ['0', '0'], ['10000000', '10.000.000'], ['30000000.50', '30.000.000,50'], ['123456789012345', '123.456.789.012.345']]) {
@@ -55,9 +55,12 @@ test('Vietnamese money input groups displayed amounts without changing their API
   assert.equal(parseMoneyInput('1000,'), '1000');
   for (const invalid of ['-10000000', '1e7', '10,000,000', '10,123', 'ten million']) assert.equal(parseMoneyInput(invalid), null);
 });
-test('draft proxy requires a verified business owner/staff session', async () => {
+test('draft proxy allows personal users and organization owner/staff while rejecting other roles', async () => {
   assert.equal((await setup({ authenticated: false }).run([])).status, 401);
-  for (const role of ['user', 'expert', 'manager', 'administrator']) assert.equal((await setup({ role }).run(['templates'])).status, 403);
+  for (const role of ['expert', 'manager', 'administrator']) assert.equal((await setup({ role }).run(['templates'])).status, 403);
+  const personal = setup({ role: 'user', orgId: null });
+  assert.equal((await personal.run(['templates'])).status, 200);
+  assert.equal((await personal.run([])).status, 200);
   assert.equal((await setup({ orgId: null }).run([])).status, 403);
   assert.equal((await setup({ role: 'staff' }).run([])).status, 200);
 });
