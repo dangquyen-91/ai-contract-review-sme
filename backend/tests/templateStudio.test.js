@@ -421,6 +421,72 @@ test('AI proposals charge once, preserve the document until applied, replay safe
   ).toMatch(/^enc:v1:/);
 });
 
+test('company-name edits recover a protected-block replacement as linked fields without changing the draft before confirmation', async () => {
+  const draft = await create({}, 'labor');
+  const before = await usage();
+  const block = studioBlocks(draft.document, draft.template).find((item) => item.keys.includes('companyName'));
+  generateJson.mockResolvedValueOnce({
+    message: 'Đổi tên công ty',
+    fields: [],
+    blocks: [{ action: 'replace', blockId: block.id, text: 'Tên công ty: FPT' }],
+  }).mockResolvedValueOnce({
+    message: 'Đề xuất đổi tên công ty thành FPT',
+    fields: [{ key: 'companyName', value: 'FPT' }],
+    blocks: [],
+  });
+  const response = await ask(draft, 'Sửa cho tôi tên công ty thành FPT');
+  expect(response.status).toBe(200);
+  expect(generateJson).toHaveBeenCalledTimes(2);
+  expect(generateJson.mock.calls[1][0]).toContain('CORRECTION:');
+  expect(generateJson.mock.calls[1][2]).toBe(generateJson.mock.calls[0][2]);
+  for (const [prompt] of generateJson.mock.calls) expect(prompt).not.toContain(org.name);
+  expect(response.body.data.changes).toEqual({
+    fields: [{ key: 'companyName', before: org.name, after: 'FPT' }],
+    blocks: [],
+  });
+  expect((await call(staff, 'get', `/${draft.id}`)).body.data.input.companyName).toBe(org.name);
+  expect(await usage()).toMatchObject({ used: before.used + 1, reserved: 0 });
+  const applied = await call(staff, 'post', `/${draft.id}/proposals/${response.body.data.id}`).send({
+    revision: draft.revision,
+    action: 'apply',
+  });
+  expect(applied.status).toBe(200);
+  const companyFields = [];
+  walkStudio(applied.body.data.document, (node) => {
+    if (node.type === 'templateField' && node.attrs.key === 'companyName') companyFields.push(node);
+  });
+  expect(companyFields.length).toBeGreaterThan(1);
+  expect(companyFields.every((node) => node.attrs.value === 'FPT')).toBe(true);
+  expect((await OrganizationModel.findById(org.id)).name).toBe(org.name);
+});
+
+test('a repair attempt cannot bypass selected scope, consume credits on failure or replace protected fields', async () => {
+  const draft = await create({}, 'labor');
+  const block = studioBlocks(draft.document, draft.template).find((item) => item.editable);
+  const before = await usage();
+  generateJson.mockResolvedValue({
+    message: 'Outside selection',
+    fields: [{ key: 'companyName', value: 'FPT' }],
+    blocks: [],
+  });
+  expect((await ask(draft, 'Sửa cho tôi tên công ty thành FPT', undefined, [block.id])).status).toBe(502);
+  expect(generateJson).toHaveBeenCalledTimes(2);
+  expect(await usage()).toEqual(before);
+  expect((await call(staff, 'get', `/${draft.id}`)).body.data.document).toEqual(draft.document);
+  expect((await ContractDraftModel.findById(draft.id)).generationStartedAt).toBeUndefined();
+  generateJson.mockClear();
+  const companyBlock = studioBlocks(draft.document, draft.template).find((item) => item.keys.includes('companyName'));
+  generateJson.mockResolvedValue({
+    message: 'Invalid replacement',
+    fields: [],
+    blocks: [{ action: 'replace', blockId: companyBlock.id, text: 'Tên công ty: FPT' }],
+  });
+  expect((await ask(draft, 'Sửa cho tôi tên công ty thành FPT')).status).toBe(502);
+  expect(generateJson).toHaveBeenCalledTimes(2);
+  expect(await usage()).toEqual(before);
+  expect((await call(staff, 'get', `/${draft.id}`)).body.data.document).toEqual(draft.document);
+});
+
 test('selected-block scope, failed providers and stale proposals cannot alter the document or leave reserved credits', async () => {
   let draft = await create();
   const before = await usage();
