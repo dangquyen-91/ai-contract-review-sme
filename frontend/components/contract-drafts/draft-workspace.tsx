@@ -123,7 +123,7 @@ export function DraftWorkspace({ user }: { user: AuthUser }) {
         {[
           "Mở mẫu có sẵn",
           "Chỉnh trực tiếp hoặc nhờ AI",
-          user.role === "staff" ? "Gửi duyệt & xuất hợp đồng" : "Duyệt & xuất hợp đồng",
+          "Hoàn tất & xuất hợp đồng",
         ].map((label, index) => (
           <span key={label} className="inline-flex items-center gap-2">
             <span className="grid size-6 place-items-center rounded-full bg-white text-xs font-bold">

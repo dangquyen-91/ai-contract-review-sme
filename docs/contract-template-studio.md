@@ -15,7 +15,7 @@ Phiên bản 4 chép lại nội dung các điều khoản trong ảnh do ngư�
 4. Nhập yêu cầu trong khung chat hoặc bấm micro để chuyển giọng nói tiếng Việt thành chữ. Kiểm tra chữ rồi chủ động gửi.
 5. AI trả đề xuất trước/sau. Bấm **Áp dụng** để sửa văn bản hoặc **Bỏ qua** để giữ nguyên. Nếu văn bản đã thay đổi, cần yêu cầu đề xuất mới.
    Thanh chat có **Đính kèm tài liệu** (PDF có chữ, DOCX, TXT UTF-8; tối đa 3 tệp, 2 MB/tệp, 12.000 ký tự/tệp và 24.000 ký tự tổng cộng) và **Luật áp dụng** để xem căn cứ của mẫu. Tệp được trích chữ làm ngữ cảnh cho yêu cầu; không tự thay đổi hợp đồng. PDF ảnh chưa được nhận dạng chữ trong luồng này.
-6. Kiểm tra bảng thông tin còn thiếu, gửi Owner duyệt. Sau khi duyệt, Owner và Staff đã tạo bản nháp có thể tải Word hoặc in/lưu PDF. Owner có thể chuyển sang kho hợp đồng để rà soát.
+6. Kiểm tra bảng thông tin còn thiếu rồi bấm **Hoàn tất hợp đồng** và xác nhận nội dung. Staff tự hoàn tất bản nháp của mình, không cần Owner phê duyệt; sau đó có thể tải Word, in/lưu PDF hoặc chuyển sang kho hợp đồng để rà soát. Bản đang chờ duyệt từ luồng cũ cũng có thể tự hoàn tất. Owner vẫn truy cập được bản nháp trong tổ chức; Staff không được truy cập bản của người khác.
 
 Màn điền biểu mẫu theo bước cũ đã được thay thế. Dữ liệu cũ được giữ; nút **Mở trình soạn mới** chuyển bản nháp sang trình soạn trực tiếp. Bản đã duyệt mở ở chế độ chỉ đọc.
 

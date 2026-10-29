@@ -253,10 +253,10 @@ export function useTemplateStudio(initial: ContractDraft) {
         );
         toast.success(
           action === "approve"
-            ? "Đã duyệt hợp đồng"
+            ? "Đã hoàn tất hợp đồng"
             : action === "return"
               ? "Đã yêu cầu chỉnh sửa"
-              : "Đã gửi chủ tổ chức duyệt",
+              : "Đã hoàn tất hợp đồng",
         );
       }
       return true;
