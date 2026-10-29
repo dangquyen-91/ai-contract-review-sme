@@ -105,6 +105,7 @@ export async function deleteOrganization(
   userId: string,
 ) {
   ensureOrganizationAccess(organizationId, userOrganizationId);
+  const personalRole = await getRoleByCode('user');
 
   await mongoose.connection.transaction(async (session) => {
     // Lock the organization before counting members; invitation acceptance writes it too.
@@ -120,7 +121,11 @@ export async function deleteOrganization(
     if (memberCount > 1) throw AppError.conflict('Organization still has other members');
     const detachedUser = await UserModel.findOneAndUpdate(
       { _id: userId, orgId: organizationId },
-      { $unset: { orgId: 1 } },
+      {
+        $unset: { orgId: 1 },
+        $set: { roleId: personalRole._id, hasCompletedOnboarding: true },
+        $inc: { permissionsVersion: 1 },
+      },
       { session },
     );
     if (!detachedUser) throw AppError.forbidden();
