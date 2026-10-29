@@ -2,6 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { clearSessionCache } from "@/lib/auth/session-cache";
+import { disableGoogleAutoSelect } from "@/lib/auth/google-sign-out";
 import { authApi } from "@/lib/api/auth";
 import type { ApiClientError } from "@/lib/api/client";
 import type { AuthMutationVariables, AuthResult, AuthSession, RefreshTokenResult } from "@/types/auth";
@@ -34,5 +35,5 @@ export function useCompleteOnboardingMutation() {
 }
 
 export function useLogoutMutation() {
-  return useMutation({ mutationFn: () => authApi.logout() });
+  return useMutation({ mutationFn: () => authApi.logout(), onSuccess: disableGoogleAutoSelect });
 }
