@@ -71,7 +71,14 @@ const usageRunSchema = new Schema(
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     contractId: { type: Schema.Types.ObjectId, ref: 'Contract' },
     draftId: { type: Schema.Types.ObjectId, ref: 'ContractDraft' },
-    periodId: { type: Schema.Types.ObjectId, ref: 'SubscriptionPeriod', required: true },
+    periodId: {
+      type: Schema.Types.ObjectId,
+      ref: 'SubscriptionPeriod',
+      required: function (this: { reviewPurchaseId?: unknown }) {
+        return !this.reviewPurchaseId;
+      },
+    },
+    reviewPurchaseId: { type: Schema.Types.ObjectId, ref: 'ContractReviewPurchase' },
     kind: { type: String, enum: ['analysis', 'chat', 'drafting'], required: true },
     units: { type: Number, default: 1, min: 1, required: true },
     pageCount: { type: Number, min: 1 },

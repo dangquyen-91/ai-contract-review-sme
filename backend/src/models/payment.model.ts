@@ -10,7 +10,19 @@ const schema = new Schema(
     orgId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     idempotencyKey: { type: String, required: true },
-    planCode: { type: String, enum: PLAN_CODES, required: true },
+    purpose: { type: String, enum: ['subscription', 'contract_review'], default: 'subscription' },
+    planCode: {
+      type: String,
+      enum: PLAN_CODES,
+      required: function (this: { purpose?: string }) {
+        return this.purpose !== 'contract_review';
+      },
+    },
+    contractId: { type: Schema.Types.ObjectId, ref: 'Contract' },
+    versionId: { type: Schema.Types.ObjectId, ref: 'ContractVersion' },
+    pageCount: Number,
+    reviewUnits: Number,
+    unitPrice: Number,
     action: { type: String, enum: PAYMENT_ACTIONS, required: true },
     amount: { type: Number, required: true, min: 1 },
     currency: { type: String, enum: ['VND'], default: 'VND', required: true },

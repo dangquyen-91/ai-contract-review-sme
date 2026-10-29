@@ -1,13 +1,13 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
-import { getOrganizationUser } from '../middlewares/auth.middleware';
+import { getContractUser } from '../middlewares/auth.middleware';
 import * as chatService from '../services/analysis/chat.service';
 import { openSseStream } from '../utils/sse';
 import { getIdempotencyKey } from '../validations/subscription.validation';
 
 export const askAboutContractHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
+  const user = getContractUser(req);
   const idempotencyKey = getIdempotencyKey(req);
   const controller = new AbortController();
   const onClose = () => {
@@ -30,13 +30,13 @@ export const askAboutContractHandler = asyncHandler(async (req: Request, res: Re
 });
 
 export const listChatMessagesHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
+  const user = getContractUser(req);
   const messages = await chatService.listChatMessages(user.orgId, req.params.id);
   ok(res, messages);
 });
 
 export const streamAboutContractHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
+  const user = getContractUser(req);
   const idempotencyKey = getIdempotencyKey(req);
 
   const stream = openSseStream(res);

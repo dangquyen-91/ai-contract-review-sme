@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { AppError } from '../errors/AppError';
 import { ok } from '../utils/ApiResponse';
-import { getOrganizationUser } from '../middlewares/auth.middleware';
+import { getContractUser } from '../middlewares/auth.middleware';
 import { openSseStream } from '../utils/sse';
 import * as reviewService from '../services/review/review.service';
 import * as contractService from '../services/contract/contract.service';
@@ -13,7 +13,7 @@ import { getIdempotencyKey } from '../validations/subscription.validation';
 const STREAM_POLL_MS = 5000;
 
 export const startReviewHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
+  const user = getContractUser(req);
   const contract = await contractService.getContractById(user.orgId, req.params.id);
   if (!contract.type) {
     throw AppError.conflict('Vui lòng xác nhận loại hợp đồng trước khi bắt đầu rà soát.', 'CONTRACT_NOT_CONFIRMED');
@@ -32,12 +32,12 @@ export const startReviewHandler = asyncHandler(async (req: Request, res: Respons
 });
 
 export const cancelReviewHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
+  const user = getContractUser(req);
   ok(res, await reviewService.cancelReview(user.orgId, req.params.reviewId));
 });
 
 export const retryReviewHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
+  const user = getContractUser(req);
   const review = await reviewService.retryReview({
     orgId: user.orgId,
     userId: user.sub,
@@ -51,17 +51,17 @@ export const retryReviewHandler = asyncHandler(async (req: Request, res: Respons
 });
 
 export const listReviewsHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
+  const user = getContractUser(req);
   ok(res, await reviewService.listReviews(user.orgId, req.params.id));
 });
 
 export const getReviewHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
+  const user = getContractUser(req);
   ok(res, await reviewService.getReview(user.orgId, req.params.reviewId));
 });
 
 export const streamReviewHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getOrganizationUser(req);
+  const user = getContractUser(req);
   const { reviewId } = req.params;
   await reviewService.getReview(user.orgId, reviewId);
 

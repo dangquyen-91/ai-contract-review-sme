@@ -6,6 +6,7 @@ dotenv.config();
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
+  PERSONAL_REVIEW_PRICE_PER_UNIT: z.coerce.number().int().min(1000).max(1000000).default(10000),
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
   DNS_SERVERS: z
     .string()

@@ -13,7 +13,10 @@ import {
 } from '../../models/subscription.model';
 import { readUsageCounter } from './usagePolicy';
 import { REVIEW_PAGES_PER_UNIT } from './reviewCost';
+import { env } from '../../config/env';
 import { addSubscriptionMonth, vietnamCalendarMonth } from '../../utils/subscriptionPeriods';
+import { findBillingAccount } from './billingAccount.service';
+import { ContractReviewPurchaseModel } from '../../models/contractReviewPurchase.model';
 
 export const DEFAULT_PLANS = [
   {
@@ -83,16 +86,15 @@ export const listPlans = () => PlanModel.find().sort({ price: 1 }).select('-__v'
 
 // Shared organization lock: payments, downgrade changes and invitation acceptance serialize here.
 export async function lockSubscriptionOrganization(orgId: string, session: ClientSession) {
-  const organization = await OrganizationModel.findByIdAndUpdate(
-    orgId,
-    { $inc: { __v: 1 } },
-    { new: true, session },
-  );
-  if (!organization) throw AppError.notFound('Không tìm thấy tổ chức.');
-  return organization;
+  return findBillingAccount(orgId, session, true);
 }
 
 export async function requireSubscriptionAccess(userId: string, orgId: string, ownerOnly = false) {
+  if (userId === orgId) {
+    const account = await findBillingAccount(orgId);
+    if (account.userId === userId) return account;
+    throw AppError.forbidden('Bạn không có quyền quản lý gói dịch vụ này.');
+  }
   const user = await UserModel.findOne({ _id: userId, orgId, isActive: true }).populate('roleId');
   if (!user)
     throw AppError.forbidden('Bạn không thuộc tổ chức này hoặc tài khoản đã bị vô hiệu hóa.');
@@ -115,17 +117,27 @@ export async function resolveSubscription(orgId: string, session: ClientSession,
     leaseExpiresAt: { $lte: now },
   }).session(session);
   for (const run of expiredRuns) {
-    await SubscriptionPeriodModel.updateOne(
-      { _id: run.periodId },
-      { $inc: { [`${run.kind}Reserved`]: -(run.units ?? 1) } },
-      { session },
-    );
+    if (run.reviewPurchaseId)
+      await ContractReviewPurchaseModel.updateOne(
+        {
+          _id: run.reviewPurchaseId,
+          status: 'reserved',
+          runId: run._id,
+        },
+        { $set: { status: 'available' }, $unset: { runId: '' } },
+        { session },
+      );
+    else
+      await SubscriptionPeriodModel.updateOne(
+        { _id: run.periodId },
+        { $inc: { [`${run.kind}Reserved`]: -(run.units ?? 1) } },
+        { session },
+      );
     run.status = 'failed';
     run.error = 'Tác vụ đã hết thời gian xử lý; các lượt đã giữ được hoàn lại.';
     await run.save({ session });
   }
-  const organization = await OrganizationModel.findById(orgId).session(session);
-  if (!organization) throw AppError.notFound('Không tìm thấy tổ chức.');
+  const organization = await findBillingAccount(orgId, session);
   const subscription = await OrganizationSubscriptionModel.findOneAndUpdate(
     { orgId },
     { $setOnInsert: { orgId } },
@@ -150,7 +162,11 @@ export async function resolveSubscription(orgId: string, session: ClientSession,
         'Các gói dịch vụ chưa được khởi tạo. Vui lòng liên hệ quản trị viên.',
       );
     const dates = vietnamCalendarMonth(now);
-    const personalUser = await UserModel.findOne({ orgId }).select('_id').session(session);
+    const personalUser = await UserModel.findOne(
+      organization.userId ? { _id: organization.userId } : { orgId },
+    )
+      .select('_id')
+      .session(session);
     if (!personalUser)
       throw AppError.conflict('Không tìm thấy tài khoản của không gian cá nhân này.');
     // Free credits belong to the account: recreating a workspace must not reset them.
@@ -189,7 +205,9 @@ export async function getSubscription(userId: string, orgId: string) {
   return mongoose.connection.transaction(async (session) => {
     await lockSubscriptionOrganization(orgId, session);
     const state = await resolveSubscription(orgId, session);
-    const memberCount = await UserModel.countDocuments({ orgId }).session(session);
+    const memberCount = state.organization.userId
+      ? 1
+      : await UserModel.countDocuments({ orgId }).session(session);
     const pendingInvitations = await OrganizationInvitationModel.countDocuments({
       orgId,
       status: 'pending',
@@ -228,6 +246,9 @@ export async function getSubscription(userId: string, orgId: string) {
       chat: readUsageCounter(period, 'chat'),
       drafting: readUsageCounter(period, 'drafting'),
       reviewPagesPerUnit: REVIEW_PAGES_PER_UNIT,
+      ...(state.organization.isPersonal ? {
+        contractReviewPricing: { unitPrice: env.PERSONAL_REVIEW_PRICE_PER_UNIT, pagesPerUnit: REVIEW_PAGES_PER_UNIT },
+      } : {}),
     };
   });
 }
