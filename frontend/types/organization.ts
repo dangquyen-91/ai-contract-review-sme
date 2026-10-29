@@ -1,7 +1,15 @@
 export type CreateOrganizationInput = {
   name: string;
-  taxCode?: string;
-  address?: string;
+  taxCode: string;
+  industry: string;
+  addressDetails: { provinceCode: string; wardCode: string; addressLine: string };
+};
+
+export type VietnamAddressDirectory = {
+  source: string;
+  retrievedAt: string;
+  administrativeLevels: number;
+  provinces: { code: string; name: string; wards: { code: string; name: string }[] }[];
 };
 
 export type Organization = {

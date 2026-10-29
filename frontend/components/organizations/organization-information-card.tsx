@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Building2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { OrganizationEditDialog } from "./organization-edit-dialog";
-import { OrganizationIndustryDialog, useIndustryOptions } from "./organization-industry-dialog";
+import { OrganizationIndustryDialog } from "./organization-industry-dialog";
+import { useIndustryOptions } from "@/hooks/organizations/use-industry-options";
 
 export function OrganizationInformationCard({ organization, roleLabel }: {
   organization: { id: string; name: string; taxCode: string | null; address: string | null; industry?: string | null };
