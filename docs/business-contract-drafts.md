@@ -8,8 +8,8 @@ Owner and Staff members of a business organization, and personal accounts with t
 2. Enter the parties and contract terms. Company name is taken from the organization; address and tax code are prefilled and can be corrected for this draft.
 3. The form saves after 1.5 seconds without edits. Partial drafts are allowed. Generating or submitting requires complete, valid fields.
 4. Generate the draft with Gemini, review the result, and edit the text if needed.
-5. Staff submits their own draft; Owner can request changes with a reason or approve. Owner can also approve their own draft.
-6. Owner can export approved drafts in their organization as DOCX or open the browser print page to save PDF. Staff can export only their own drafts after Owner approval. Only Owner can transfer a draft to the existing contract/review workflow.
+5. Staff tự kiểm tra và bấm **Hoàn tất hợp đồng** cho bản nháp của mình, không cần Owner phê duyệt. Owner cũng có thể hoàn tất bản nháp trong tổ chức.
+6. Sau khi hoàn tất, Owner hoặc Staff tạo bản nháp có thể tải Word, in/lưu PDF và chuyển sang luồng rà soát. Nội dung đã hoàn tất được khóa chỉnh sửa. Bản chờ duyệt cũ có thể tự hoàn tất; yêu cầu `submit` từ giao diện Staff cũ được xử lý thành hoàn tất trực tiếp. Trạng thái lưu trong dữ liệu vẫn là `approved` để giữ tương thích, kèm người và thời điểm hoàn tất.
 
 The print page provides browser print-to-PDF, not a server-side PDF file. Publishing creates an ordinary `uploaded` contract and an extracted DOCX version; it does not automatically start or charge for a review. The user starts review through the existing interface.
 
@@ -60,7 +60,7 @@ All endpoints are below `/api/v1/contract-drafts` and require authenticated busi
 | `POST /:id/decision` | `revision`, `action` (`submit`, `approve`, `return`), `note` |
 | `GET /:id/export?format=docx` | Approved DOCX; Owner or the Staff creator |
 | `GET /:id/export?format=print` | Approved print content; Owner or the Staff creator |
-| `POST /:id/publish` | Owner or personal draft creator with a workspace; requires `revision` |
+| `POST /:id/publish` | Owner hoặc Staff tạo bản nháp trong tổ chức; tài khoản cá nhân có không gian làm việc; yêu cầu `revision` |
 
 ## Configuration and checks
 

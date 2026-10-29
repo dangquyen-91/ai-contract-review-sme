@@ -179,23 +179,18 @@ test('generation is locked against duplicate requests, releases on provider fail
   expect((await generate(staff, failing)).status).toBe(200);
 });
 
-test('staff submits only their draft; Owner returns for edits or approves, and approved content is immutable', async () => {
+test('staff finalizes and exports their own draft without Owner approval; completed content is immutable', async () => {
   let draft = (await generate(staff, await create())).body.data;
   expect((await call(staff, 'get', `/${draft.id}/export`)).status).toBe(409);
-  expect((await call(staff, 'get', `/${draft.id}/export?format=print`)).status).toBe(409);
-  expect((await decide(staff, draft, 'approve')).status).toBe(403);
-  expect((await call(owner, 'get', `/${draft.id}/export`)).status).toBe(409);
-  draft = (await decide(staff, draft, 'submit')).body.data;
-  expect(draft.status).toBe('pending_approval');
-  expect((await call(staff, 'get', `/${draft.id}/export`)).status).toBe(409);
-  expect((await call(staff, 'get', `/${draft.id}/export?format=print`)).status).toBe(409);
-  expect((await call(staff, 'patch', `/${draft.id}`).send(changes(draft))).status).toBe(409);
-  expect((await decide(owner, draft, 'return')).status).toBe(400);
-  draft = (await decide(owner, draft, 'return', 'Kiểm tra tiến độ')).body.data;
-  expect(draft.status).toBe('draft'); expect(draft.decisionNote).toBe('Kiểm tra tiến độ');
-  draft = (await decide(staff, draft, 'submit')).body.data;
-  draft = (await decide(owner, draft, 'approve')).body.data;
+  for (const actor of [otherStaff, otherOwner]) {
+    expect((await decide(actor, draft, 'approve')).status).toBe(404);
+    expect((await call(actor, 'post', `/${draft.id}/publish`).send({ revision: draft.revision })).status).toBe(404);
+  }
+  const response = await decide(staff, draft, 'approve');
+  expect(response.status).toBe(200);
+  draft = response.body.data;
   expect(draft.status).toBe('approved');
+  expect((await decide(staff, draft, 'approve')).status).toBe(409);
   expect((await call(staff, 'patch', `/${draft.id}`).send(changes(draft))).status).toBe(409);
   const staffDownload = await call(staff, 'get', `/${draft.id}/export`);
   expect(staffDownload.status).toBe(200);
@@ -206,7 +201,6 @@ test('staff submits only their draft; Owner returns for edits or approves, and a
     expect((await call(member, 'get', `/${draft.id}/export`)).status).toBe(404);
     expect((await call(member, 'get', `/${draft.id}/export?format=print`)).status).toBe(404);
   }
-  expect((await call(staff, 'post', `/${draft.id}/publish`).send({ revision: draft.revision })).status).toBe(403);
   const print = await call(owner, 'get', `/${draft.id}/export?format=print`);
   expect(print.status).toBe(200); expect(print.body.data.content).toBe(draft.content);
   const docx = await createDraftDocx(`${draft.content}\nA & B <C>`);
@@ -218,7 +212,7 @@ test('staff submits only their draft; Owner returns for edits or approves, and a
   expect(document).toContain('<w:lang w:val="vi-VN"/>');
   expect(document).toContain('<w:i/>');
   const before = await ContractModel.countDocuments({ orgId: org.id });
-  const result = await call(owner, 'post', `/${draft.id}/publish`).send({ revision: draft.revision });
+  const result = await call(staff, 'post', `/${draft.id}/publish`).send({ revision: draft.revision });
   expect(result.status).toBe(200);
   const again = await call(owner, 'post', `/${draft.id}/publish`).send({ revision: draft.revision });
   expect(again.body.data.contractId).toBe(result.body.data.contractId);
@@ -226,6 +220,95 @@ test('staff submits only their draft; Owner returns for edits or approves, and a
   expect(uploadContractFile).toHaveBeenCalledTimes(1);
   const version = await ContractVersionModel.findOne({ contractId: result.body.data.contractId }).select('+extractedText');
   expect(version.extractionStatus).toBe('completed'); expect(version.extractedText).toBe(draft.content);
+});
+
+test.each([
+  ['draft', 'submit'],
+  ['pending_approval', 'approve'],
+  ['pending_approval', 'submit'],
+])('staff can complete an existing %s draft using %s without waiting for Owner', async (status, action) => {
+  let draft = await create();
+  const saved = await call(staff, 'patch', `/${draft.id}`).send({
+    ...changes(draft),
+    content: renderDraftDocument('service', draft.input, org.name, draft.ourParty),
+  });
+  expect(saved.status).toBe(200);
+  draft = saved.body.data;
+  await Drafts.updateOne({ _id: draft.id }, { $set: { status } });
+  expect((await decide(otherStaff, draft, action)).status).toBe(404);
+  expect((await decide(staff, { ...draft, revision: draft.revision + 1 }, action)).status).toBe(409);
+  const response = await decide(staff, draft, action);
+  expect(response.status).toBe(200);
+  draft = response.body.data;
+  expect(draft.status).toBe('approved');
+  const stored = await Drafts.findById(draft.id);
+  expect(stored.approvedBy.toString()).toBe(staff.id);
+  expect(stored.approvedAt).toBeInstanceOf(Date);
+  expect((await call(staff, 'get', `/${draft.id}/export`)).status).toBe(200);
+});
+
+test('rental template is offered only to personal accounts and cannot be created by business members', async () => {
+  const personal = await user('user');
+  const catalog = await call(personal, 'get', '/templates');
+  expect(catalog.status).toBe(200);
+  expect(catalog.body.data.templates.map(template => template.code)).toContain('rental');
+  for (const member of [owner, staff]) {
+    const response = await call(member, 'get', '/templates');
+    expect(response.body.data.templates.map(template => template.code)).not.toContain('rental');
+    expect((await call(member, 'post').send({ templateCode: 'rental', title: 'Rental', ourParty: 'tenant', input: {} })).status).toBe(403);
+  }
+});
+
+test.each(['landlord', 'tenant'])('personal %s can complete a rental contract and export Word without creating an organization', async ourParty => {
+  const personal = await user('user');
+  const stranger = await user('user');
+  const input = { ...values('rental'), reference: 'TN-001', representative: 'Nguyễn Văn An', partnerName: 'Trần Thị Bình', propertyAddress: '12 Nguyễn Huệ, TP. Hồ Chí Minh', price: '10000000', depositAmount: '0' };
+  const before = await OrganizationModel.countDocuments();
+  const response = await call(personal, 'post').send({ templateCode: 'rental', title: 'Hợp đồng thuê nhà cá nhân', ourParty, input, editorMode: 'studio' });
+  expect(response.status).toBe(201);
+  let draft = response.body.data;
+  expect(draft.input.depositAmount).toBe('0');
+  expect(draft.content).not.toContain('Tên doanh nghiệp');
+  expect(draft.content).not.toContain('Chức vụ');
+  expect(draft.content).toContain(input.propertyAddress);
+  expect(draft.content).toContain('10.000.000');
+  expect(draft.content).toContain('BÊN A — ' + (ourParty === 'tenant' ? 'BÊN THUÊ' : 'BÊN CHO THUÊ'));
+  expect((await decide(stranger, draft, 'approve')).status).toBe(404);
+  expect((await call(stranger, 'get', `/${draft.id}/export`)).status).toBe(404);
+  const completed = await decide(personal, draft, 'approve');
+  expect(completed.status).toBe(200);
+  draft = completed.body.data;
+  expect(draft.status).toBe('approved');
+  const printed = await call(personal, 'get', `/${draft.id}/export?format=print`);
+  expect(printed.status).toBe(200);
+  expect(printed.body.data.document).toEqual(draft.document);
+  const word = await call(personal, 'get', `/${draft.id}/export`).buffer(true).parse((res, done) => {
+    const chunks = [];
+    res.on('data', chunk => chunks.push(chunk));
+    res.on('end', () => done(null, Buffer.concat(chunks)));
+  });
+  expect(word.status).toBe(200);
+  const zip = await JSZip.loadAsync(word.body);
+  const xml = await zip.file('word/document.xml').async('string');
+  expect(xml).toContain('HỢP ĐỒNG THUÊ NHÀ');
+  expect(xml).toContain(input.propertyAddress);
+  expect(xml).toContain('Nguyễn Văn An');
+  expect(xml).toContain('Trần Thị Bình');
+  expect((await call(personal, 'patch', `/${draft.id}`).send({ ...changes(draft), document: draft.document })).status).toBe(409);
+  expect((await UserModel.findById(personal.id)).orgId ?? null).toBeNull();
+  expect(await OrganizationModel.countDocuments()).toBe(before);
+});
+
+test('rental completion validates required fields, positive rent, nonnegative deposit and rental dates', async () => {
+  const personal = await user('user');
+  const partial = await call(personal, 'post').send({ templateCode: 'rental', title: 'Nháp thuê nhà', ourParty: 'tenant', input: {}, editorMode: 'studio' });
+  expect(partial.status).toBe(201);
+  expect((await decide(personal, partial.body.data, 'approve')).status).toBe(400);
+  for (const update of [{ depositAmount: '-1' }, { price: '0' }, { endDate: '2026-10-25' }, { ourParty: 'buyer' }]) {
+    const { ourParty, ...patch } = update;
+    const response = await call(personal, 'post').send({ templateCode: 'rental', title: 'Thuê nhà', ourParty: ourParty ?? 'tenant', input: { ...values('rental'), ...patch }, editorMode: 'studio' });
+    expect(response.status).toBe(400);
+  }
 });
 
 test('changing form data invalidates generated content instead of retaining mismatched clauses', async () => {
@@ -256,7 +339,7 @@ test('drafts retain the original template snapshot after a catalog update', asyn
 
 test('current forms cover each field once and distinguish labor parties from companies', () => {
   for (const template of CONTRACT_TEMPLATES) {
-    expect(template.version).toBe(template.code === 'labor' ? 4 : 2);
+    expect(template.version).toBe(template.code === 'labor' ? 4 : template.code === 'rental' ? 1 : 2);
     const grouped = template.formGroups.flatMap(group => group.fields);
     expect(grouped.length).toBe(new Set(grouped).size);
     expect(grouped.slice().sort()).toEqual(template.fields.map(field => field.key).sort());

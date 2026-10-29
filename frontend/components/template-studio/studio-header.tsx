@@ -10,7 +10,6 @@ import {
   MoreHorizontal,
   Printer,
   RefreshCw,
-  Send,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -31,7 +30,16 @@ export function StudioHeader({
   onReturn: () => void;
 }) {
   const { draft, values, busy, dirty, error } = studio;
-  const { owner, readOnly, editable, canExport, canPublish, status, missing } = view;
+  const {
+    owner,
+    canFinalize,
+    readOnly,
+    editable,
+    canExport,
+    canPublish,
+    status,
+    missing,
+  } = view;
   return (
     <header className="z-20 flex min-h-16 shrink-0 items-center gap-3 border-b border-slate-200/80 bg-white px-3 sm:px-5">
       <Link
@@ -66,8 +74,8 @@ export function StudioHeader({
             <>
               <LockKeyhole size={10} />
               {draft.status === "approved"
-                ? "Đã duyệt · Chỉ đọc"
-                : "Đang chờ duyệt"}
+                ? "Đã hoàn tất · Chỉ đọc"
+                : "Cần hoàn tất hợp đồng"}
             </>
           ) : (
             <>
@@ -91,34 +99,17 @@ export function StudioHeader({
         )}
         {status}
       </button>
-      {!readOnly && (
+      {canFinalize && draft.status !== "approved" && (
         <Button
           size="sm"
-          aria-label={owner ? "Duyệt hợp đồng" : "Gửi duyệt"}
-          title={owner ? "Duyệt hợp đồng" : "Gửi duyệt"}
+          aria-label="Hoàn tất hợp đồng"
+          title="Hoàn tất hợp đồng"
           disabled={Boolean(busy) || missing.length > 0}
           loading={busy === "submit" || busy === "approve"}
-          onClick={() => {
-            if (owner) onApprove();
-            else void studio.run("submit");
-          }}
-        >
-          {owner ? <CheckCircle2 size={14} /> : <Send size={14} />}
-          <span className="hidden sm:inline">
-            {owner ? "Duyệt hợp đồng" : "Gửi duyệt"}
-          </span>
-        </Button>
-      )}
-      {owner && draft.status === "pending_approval" && (
-        <Button
-          size="sm"
-          aria-label="Duyệt hợp đồng"
-          title="Duyệt hợp đồng"
-          disabled={Boolean(busy)}
-          onClick={() => onApprove()}
+          onClick={onApprove}
         >
           <CheckCircle2 size={14} />
-          <span className="hidden sm:inline">Duyệt hợp đồng</span>
+          <span className="hidden sm:inline">Hoàn tất hợp đồng</span>
         </Button>
       )}
       <StudioDownloadMenu

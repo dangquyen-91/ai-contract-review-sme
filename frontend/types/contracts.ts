@@ -21,7 +21,7 @@ export type ContractClassification = {
 
 export type DashboardContract = {
   orgId?: string;
-  reviewBilling?: { versionId: string; pageCount: number | null; pagesPerUnit: number; units: number | null; ready: boolean; reason: string | null };
+  reviewBilling?: { versionId: string; pageCount: number | null; pagesPerUnit: number; units: number | null; ready: boolean; reason: string | null; purchaseStatus?: "available" | "reserved" | "consumed" | null };
   id?: string;
   _id?: string;
   title: string;
@@ -37,6 +37,8 @@ export type DashboardContract = {
     overallAssessment?: string[];
     summaryPoints?: string[];
     extractionStatus?: "pending" | "processing" | "completed" | "failed" | "unsupported";
+    extractionError?: string;
+    extractionErrorCode?: string;
     extractionProgress?: { processedPages: number; totalPages: number };
     segmentationStatus?: "pending" | "processing" | "completed" | "failed";
     segmentationError?: string;

@@ -3,6 +3,7 @@ import { createScheduler, createWorker, Scheduler } from 'tesseract.js';
 import { env } from '../../config/env';
 import { EXTRACTION_METHODS, EXTRACTION_STATUSES } from '../../models/contractVersion.model';
 import { countDocxPages } from './documentPageCount.service';
+import { AppError } from '../../errors/AppError';
 
 export type ExtractionStatus = (typeof EXTRACTION_STATUSES)[number];
 export type ExtractionMethod = (typeof EXTRACTION_METHODS)[number];
@@ -20,6 +21,7 @@ export interface ExtractionResult {
   status: ExtractionStatus;
   text?: string;
   error?: string;
+  errorCode?: string;
   quality?: ExtractionQuality;
 }
 
@@ -243,6 +245,6 @@ export async function extractContractText(
     }
     return { status: 'completed', text: extracted.text, quality: extracted.quality };
   } catch (err) {
-    return { status: 'failed', error: err instanceof Error ? err.message : 'Extraction failed' };
+    return { status: 'failed', error: err instanceof Error ? err.message : 'Extraction failed', errorCode: err instanceof AppError ? err.code : undefined };
   }
 }

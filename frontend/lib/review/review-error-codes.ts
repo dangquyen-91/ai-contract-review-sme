@@ -32,6 +32,7 @@ export const classificationOutcomeCopy: Record<Exclude<ClassificationOutcome, "s
 };
 
 const serverCodeMessages: Record<string, string> = {
+  PAID_REVIEW_COMPLETED: "Phiên bản hợp đồng này đã được rà soát. Hãy mở kết quả đã lưu; bạn không cần thanh toán lại.",
   CONTRACT_NOT_CONFIRMED: "Hãy xác nhận loại hợp đồng trước khi rà soát.",
   REVIEW_RUNNING: "Hợp đồng đang được rà soát ở một phiên khác.",
   REVIEW_FINISHED: "Lượt rà soát đã kết thúc.",

@@ -1,4 +1,4 @@
-export type TemplateCode = 'labor' | 'service' | 'sales';
+export type TemplateCode = 'labor' | 'service' | 'sales' | 'rental';
 export interface TemplateField {
   key: string;
   label: string;
@@ -27,6 +27,7 @@ export interface ContractTemplate {
 }
 import { buildDetailedTemplate } from './templates.v2';
 import { buildLaborTemplate } from './templates.labor';
+import { RENTAL_TEMPLATE } from './templates.rental';
 
 const field = (key: string, label: string, kind: TemplateField['kind'] = 'text', required = true, group: TemplateField['group'] = 'terms'): TemplateField => ({ key, label, kind, required, group });
 const commonFields: TemplateField[] = [
@@ -119,10 +120,10 @@ const BASE_TEMPLATES: readonly ContractTemplate[] = [
   },
 ];
 
-export const CONTRACT_TEMPLATES: readonly ContractTemplate[] = BASE_TEMPLATES.map(base => {
+export const CONTRACT_TEMPLATES: readonly ContractTemplate[] = [...BASE_TEMPLATES.map(base => {
   const detailed = buildDetailedTemplate(base);
   return base.code === 'labor' ? buildLaborTemplate(detailed) : detailed;
-});
+}), RENTAL_TEMPLATE];
 
 export function getTemplate(code: TemplateCode) {
   return CONTRACT_TEMPLATES.find(template => template.code === code)!;

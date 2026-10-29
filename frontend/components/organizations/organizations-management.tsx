@@ -9,7 +9,7 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@
 import { useOrganizationsList } from "@/hooks/organizations/use-organizations";
 import { usePaginationPage } from "@/hooks/shared/use-pagination-page";
 import type { Organization } from "@/types/organization";
-import { useIndustryOptions } from "./organization-industry-dialog";
+import { useIndustryOptions } from "@/hooks/organizations/use-industry-options";
 import styles from "@/styles/user_management/user-management.module.css";
 
 function formatDate(value: string) {

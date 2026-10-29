@@ -16,26 +16,37 @@ jest.mock('../dist/services/organization/invitationEmail.service', () => ({
 jest.mock('../dist/services/review/reviewWorker.service', () => ({
   enqueueReview: jest.fn().mockResolvedValue(undefined),
   isReviewJobAlive: jest.fn().mockResolvedValue(true),
+  removeIdleReviewJob: jest.fn().mockResolvedValue(true),
+  finishUnsuccessfulReview: (...args) => jest.requireActual('../dist/services/review/reviewWorker.service').finishUnsuccessfulReview(...args),
 }));
 jest.mock('../dist/services/analysis/clause.service', () => ({
   segmentClauses: jest.fn().mockResolvedValue([]),
-  listClauses: jest.fn(),
+  listClauses: jest.fn(jest.requireActual('../dist/services/analysis/clause.service').listClauses),
 }));
 jest.mock('../dist/services/analysis/summary.service', () => ({
   generateContractSummary: jest.fn().mockResolvedValue({}),
 }));
 jest.mock('../dist/services/analysis/risk.service', () => ({
   detectRisks: jest.fn().mockResolvedValue([]),
-  listRiskFindings: jest.fn(),
+  listRiskFindings: jest.fn(jest.requireActual('../dist/services/analysis/risk.service').listRiskFindings),
   updateProposedRevision: jest.fn(),
   removeProposedRevision: jest.fn(),
 }));
 jest.mock('../dist/services/ai/llm.service', () => ({
+  generateJson: jest.fn(),
   generateText: jest.fn().mockResolvedValue('Test AI reply'),
   generateTextStream: jest.fn(async function* () {
     yield 'Test ';
     yield 'AI reply';
   }),
+}));
+jest.mock('../dist/services/contract/storage.service', () => ({
+  uploadContractFile: jest.fn().mockResolvedValue({ key: 'fixture-personal-file', resourceType: 'raw', deliveryType: 'authenticated', format: 'pdf' }),
+  deleteContractFile: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('../dist/services/contract/extractionWorker.service', () => ({
+  enqueueExtraction: jest.fn().mockResolvedValue({}),
+  waitForExtraction: jest.fn().mockResolvedValue(undefined),
 }));
 
 const mongoose = require('mongoose');
@@ -116,6 +127,87 @@ async function workspace(personal = false, pages = 5) {
   return { org, owner, contract };
 }
 const bearer = (u) => `Bearer ${tokensForUser(u).accessToken}`;
+
+test('standalone users upload, classify, list and review personal contracts within their own billing scope', async () => {
+  const personal = await user();
+  const other = await user();
+  const organizationCount = await OrganizationModel.countDocuments();
+  const uploaded = await request(app).post('/api/v1/contracts')
+    .set('Authorization', bearer(personal)).set('Prefer', 'respond-async')
+    .attach('file', Buffer.from('%PDF-1.4 fixture'), 'Hợp Đồng Lao Động.pdf');
+  expect(uploaded.status).toBe(202);
+  const id = uploaded.body.data._id;
+  expect(id).toBeTruthy();
+  expect(uploaded.body.data.orgId).toBe(personal.id);
+  expect(uploaded.body.data.title).toBe('Hợp Đồng Lao Động');
+  expect(uploaded.body.data.currentVersion.fileName).toBe('Hợp Đồng Lao Động.pdf');
+  await ContractVersionModel.updateOne({ contractId: id }, { $set: {
+    extractionStatus: 'completed', extractedText: 'Hợp đồng lao động của người lao động kiểm thử.',
+    extractionQuality: { method: 'text_layer', pageCount: 5, ocrPageCount: 0, lowConfidence: false },
+  } });
+  const llm = require('../dist/services/ai/llm.service');
+  llm.generateJson.mockResolvedValueOnce({ type: 'labor', confidence: 0.99, parties: [] });
+  const { classifyContract } = require('../dist/services/contract/contractClassification.service');
+  expect(await classifyContract(id)).toBe('supported');
+  expect((await ContractModel.findById(id)).classification.ourParty).toBe('employee');
+  const confirmed = await request(app).patch(`/api/v1/contracts/${id}/profile`).set('Authorization', bearer(personal)).send({ type: 'labor', ourParty: 'employee' });
+  expect(confirmed.status).toBe(200);
+  const list = await request(app).get('/api/v1/contracts').set('Authorization', bearer(personal));
+  expect(list.status).toBe(200);
+  expect(list.body.data.map(row => row._id)).toContain(id);
+  expect((await request(app).get('/api/v1/contracts').set('Authorization', bearer(other))).body.data).toEqual([]);
+  for (const endpoint of ['', '/text', '/reviews', '/clauses', '/risks', '/key-terms', '/chat'])
+    expect((await request(app).get(`/api/v1/contracts/${id}${endpoint}`).set('Authorization', bearer(other))).status).toBe(404);
+  const started = await request(app).post(`/api/v1/contracts/${id}/reviews`).set('Authorization', bearer(personal)).set('Idempotency-Key', randomUUID()).send({});
+  expect(started.status).toBe(202);
+  expect((await getSubscription(personal.id, personal.id)).analysis.reserved).toBe(1);
+  const review = await ReviewModel.findOne({ contractId: id });
+  expect((await request(app).get(`/api/v1/reviews/${review.id}`).set('Authorization', bearer(other))).status).toBe(404);
+  expect((await request(app).post(`/api/v1/reviews/${review.id}/cancel`).set('Authorization', bearer(personal))).status).toBe(200);
+  expect((await getSubscription(personal.id, personal.id)).analysis.available).toBe(3);
+  expect((await UserModel.findById(personal.id)).orgId).toBeFalsy();
+  expect(await OrganizationModel.countDocuments()).toBe(organizationCount);
+});
+
+test('standalone users receive their own Free period without being assigned an organization', async () => {
+  const personal = await user();
+  const organizations = await OrganizationModel.countDocuments();
+  const path = `/api/v1/organizations/${personal.id}/subscription`;
+  const response = await request(app).get(path).set('Authorization', bearer(personal));
+  expect(response.status).toBe(200);
+  expect(response.body.data).toMatchObject({ status: 'active', plan: { code: 'personal_free' }, members: { count: 1, limit: 1 }, analysis: { limit: 3, available: 3 } });
+  expect(response.body.data.contractReviewPricing).toEqual({ unitPrice: require('../dist/config/env').env.PERSONAL_REVIEW_PRICE_PER_UNIT, pagesPerUnit: 5 });
+  const period = await SubscriptionPeriodModel.findById(response.body.data.periodId);
+  period.analysisUsed = 1;
+  await period.save();
+  const again = await request(app).get(path).set('Authorization', bearer(personal));
+  expect(again.body.data).toMatchObject({ periodId: response.body.data.periodId, analysis: { used: 1, available: 2 } });
+  expect((await UserModel.findById(personal.id)).orgId).toBeFalsy();
+  expect(await OrganizationModel.countDocuments()).toBe(organizations);
+});
+
+test('personal billing is isolated from other accounts and organization members', async () => {
+  const first = await user();
+  const second = await user();
+  const business = await workspace();
+  for (const viewer of [second, business.owner]) {
+    expect((await request(app).get(`/api/v1/organizations/${first.id}/subscription`).set('Authorization', bearer(viewer))).status).toBe(403);
+    expect((await request(app).get(`/api/v1/organizations/${first.id}/payments`).set('Authorization', bearer(viewer))).status).toBe(403);
+  }
+  expect((await request(app).get(`/api/v1/organizations/${business.owner.id}/subscription`).set('Authorization', bearer(business.owner))).status).toBe(404);
+});
+
+test('standalone personal Pro supports downgrade and cancellation without changing membership', async () => {
+  const personal = await user();
+  await activatePaidSubscription({ orgId: personal.id, planCode: 'personal_pro', action: 'purchase', amount: 99000, paymentReference: randomUUID() });
+  expect((await getSubscription(personal.id, personal.id)).plan.code).toBe('personal_pro');
+  await scheduleDowngrade(personal.id, personal.id, 'personal_free');
+  expect((await getSubscription(personal.id, personal.id)).scheduledDowngrade.planCode).toBe('personal_free');
+  await cancelDowngrade(personal.id, personal.id);
+  expect((await getSubscription(personal.id, personal.id)).scheduledDowngrade).toBeNull();
+  await expect(activatePaidSubscription({ orgId: personal.id, planCode: 'business_starter', action: 'upgrade', amount: 499000, paymentReference: randomUUID() })).rejects.toMatchObject({ statusCode: 400 });
+  expect((await UserModel.findById(personal.id)).orgId).toBeFalsy();
+});
 const usage = (w, kind = 'analysis', key = randomUUID()) => ({
   orgId: w.org.id,
   userId: w.owner.id,

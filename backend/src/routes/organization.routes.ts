@@ -24,6 +24,7 @@ import {
   getOrganizationHandler,
   listOrganizationsHandler,
   updateOrganizationHandler,
+  organizationAddressOptionsHandler,
 } from '../controllers/organization.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 import { requireRole } from '../middlewares/rbac.middleware';
@@ -52,6 +53,7 @@ import {
 const router = Router();
 
 router.use(requireAuth);
+router.get('/address-options', organizationAddressOptionsHandler);
 const paymentLimiter = rateLimit({
   windowMs: 60_000,
   limit: 20,

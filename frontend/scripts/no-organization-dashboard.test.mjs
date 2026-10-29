@@ -20,7 +20,7 @@ function load(file, dependencies) {
 }
 
 const routes = load('../config/routes.ts', {});
-const navigation = load('../lib/workspace-path.ts', { '@/config/routes': routes });
+const navigation = load('../lib/routing/workspace-path.ts', { '@/config/routes': routes });
 const children = 'dashboard content';
 const account = { role: 'user', orgId: null, email: 'user@example.com', hasCompletedOnboarding: true };
 const OrganizationRequired = () => null;
@@ -30,7 +30,7 @@ function accessLayout(user) {
     'next/headers': { cookies: async () => ({ get: () => ({ value: 'session' }) }) },
     'next/navigation': { redirect: (path) => { throw new Error(`redirect:${path}`); } },
     '@/lib/auth/session': { getSession: async () => user ? { user, accessToken: 'verified-access' } : null },
-    '@/lib/workspace-path': navigation,
+    '@/lib/routing/workspace-path': navigation,
     '@/components/organizations/staff-organization-required': { StaffOrganizationRequired: OrganizationRequired },
     '@/components/layouts/dashboard/organization-workspace': { OrganizationDashboardFrame: OrganizationFrame },
   }).DashboardAccessLayout;
@@ -62,8 +62,8 @@ test('personal dashboard retains the original review workflow without an organiz
   const ContextProvider = () => null;
   const { DashboardProvider } = load('../providers/dashboard-provider.tsx', {
     react: { createContext: () => ({ Provider: ContextProvider }), useContext: () => null },
-    '@/hooks/use-logout-workflow': { useLogoutWorkflow: () => ({ loggingOut: false }) },
-    '@/hooks/use-organization-workflow': { useOrganizationWorkflow: () => { throw new Error('Organization API requests should not mount'); } },
+    '@/hooks/auth/use-logout-workflow': { useLogoutWorkflow: () => ({ loggingOut: false }) },
+    '@/hooks/organizations/use-organization-workflow': { useOrganizationWorkflow: () => { throw new Error('Organization API requests should not mount'); } },
     '@/providers/review-workflow-provider': { ReviewWorkflowProvider: ReviewProvider },
   });
   const result = DashboardProvider({ children, hasWorkspace: false, reviewRole: 'staff' });
@@ -74,7 +74,7 @@ test('personal dashboard retains the original review workflow without an organiz
   assert.equal(DashboardProvider({ children, hasWorkspace: false, reviewRole: 'user' }).type, ReviewProvider);
 });
 
-test('dashboard API supplies empty account metadata without requesting or creating an organization', async () => {
+test('personal dashboard loads saved contracts without requesting or creating an organization', async () => {
   const source = ts.transpileModule(fs.readFileSync(new URL('../app/api/dashboard/route.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
@@ -84,7 +84,12 @@ test('dashboard API supplies empty account metadata without requesting or creati
   let authenticated = true;
   vm.runInNewContext(source, {
     exports, Buffer, Date, process: { env: {} },
-    fetch: () => { calls++; throw new Error('Must not load organization resources'); },
+    fetch: async url => {
+      calls++;
+      assert.ok(url.includes('/api/v1/contracts?'));
+      const main = url.includes('limit=10');
+      return NextResponse.json({ data: main ? [{ _id: 'personal-contract', title: 'Saved contract' }] : [], meta: { total: main ? 1 : 0 } });
+    },
     require: name => name === 'next/server' ? { NextResponse } : { getApiSession: async () => authenticated ? { user, accessToken: 'verified-access' } : { error: NextResponse.json({ success: false }, { status: 401 }) } },
   });
   const token = exp => `header.${Buffer.from(JSON.stringify({ sub: user.id, role: 'user', exp })).toString('base64url')}.signature`;
@@ -95,8 +100,11 @@ test('dashboard API supplies empty account metadata without requesting or creati
   const payload = await response.json();
   assert.equal(payload.data.organization.id, '');
   assert.equal(payload.data.user.name, user.name);
-  assert.deepEqual(payload.data.contracts, []);
-  assert.equal(calls, 0);
+  assert.equal(payload.data.contractScopeId, user.id);
+  assert.equal(payload.data.contracts[0]._id, 'personal-contract');
+  assert.equal(payload.data.totalContracts, 1);
+  assert.equal(user.orgId, null);
+  assert.equal(calls, 4);
   authenticated = false;
   const expired = await exports.GET(new NextRequest('http://localhost/api/dashboard', { headers: { cookie: `lawscan_access=${token(1)}` } }));
   assert.equal(expired.status, 401);

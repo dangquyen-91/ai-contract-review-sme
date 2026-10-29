@@ -30,7 +30,7 @@ function failedRun(error: unknown) {
   return error instanceof Error && error.name === "ReviewRunError" ? (error as Error & { review: ContractReviewRun }).review : null;
 }
 
-export function useReviewWorkflow({ access, workspaceReady = true }: { access: Access; workspaceReady?: boolean }) {
+export function useReviewWorkflow({ access, workspaceReady = true, personal = false }: { access: Access; workspaceReady?: boolean; personal?: boolean }) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [uploadedContract, setUploadedContract] = useState<{ id: string; title: string } | null>(null);
@@ -57,7 +57,7 @@ export function useReviewWorkflow({ access, workspaceReady = true }: { access: A
   async function selectFile(nextFile?: File): Promise<boolean> {
     if (!nextFile || !access.upload || uploadContractMutation.isPending || isReviewing) return false;
     if (!workspaceReady) {
-      toast.error("Chưa thể tải hợp đồng", { description: "Backend hiện chưa hỗ trợ lưu hợp đồng cá nhân khi tài khoản chưa thuộc tổ chức." });
+      toast.error("Chưa thể tải hợp đồng", { description: "Chưa tải được thông tin tài khoản. Vui lòng tải lại trang và thử lại." });
       return false;
     }
     const validTypes = new Set(["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg"]);
@@ -157,8 +157,12 @@ export function useReviewWorkflow({ access, workspaceReady = true }: { access: A
       setUploadedContract({ id: contractId, title: contract.title });
       return true;
     }
-    activeReviewRequest.current = contractId;
     const kind = contract.status === "reviewed" && !rerun && !readReviewSession(contractId) ? "load" : "run";
+    if (personal && kind === "run" && !resumeOnly && !readReviewSession(contractId) && contract.status !== "processing") {
+      setUploadedContract({ id: contractId, title: contract.title });
+      return true;
+    }
+    activeReviewRequest.current = contractId;
     setRetryKind(kind);
     setPendingReviewId(null);
     setPendingReviewFocus("");

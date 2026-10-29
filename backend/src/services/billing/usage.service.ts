@@ -5,6 +5,7 @@ import { UsageRunModel, SubscriptionPeriodModel } from '../../models/subscriptio
 import { assertUsageAvailable, type UsageKind } from './usagePolicy';
 import { assertUsageAccess, assertNoActiveReview, calculateUsageCost } from './usageAccess.service';
 import { lockSubscriptionOrganization, resolveSubscription } from './subscription.service';
+import { ContractReviewPurchaseModel } from '../../models/contractReviewPurchase.model';
 
 export interface UsageInput {
   orgId: string;
@@ -62,6 +63,46 @@ export async function reserveUsage(input: UsageInput, now = new Date(), leaseMs 
     const { period } = await resolveSubscription(input.orgId, session, now);
     const existing = await findCompletedRun(input, fingerprint, session);
     if (existing) return { run: existing, replayed: true };
+    const cost = await calculateUsageCost(input, session);
+    await assertNoActiveReview(input, session);
+    const purchase =
+      input.kind === 'analysis'
+        ? await ContractReviewPurchaseModel.findOne({
+            orgId: input.orgId,
+            userId: input.userId,
+            contractId: input.contractId,
+            versionId: cost.versionId,
+          }).session(session)
+        : null;
+    if (purchase) {
+      if (purchase.status !== 'available')
+        throw AppError.conflict(
+          purchase.status === 'consumed'
+            ? 'Hợp đồng đã được rà soát bằng lần thanh toán này. Hãy mở kết quả đã lưu.'
+            : 'Lần rà soát đã thanh toán đang được xử lý.',
+          purchase.status === 'consumed' ? 'PAID_REVIEW_COMPLETED' : 'REVIEW_RUNNING',
+        );
+      const [run] = await UsageRunModel.create(
+        [
+          {
+            orgId: input.orgId,
+            userId: input.userId,
+            contractId: input.contractId,
+            ...cost,
+            reviewPurchaseId: purchase._id,
+            kind: input.kind,
+            idempotencyKey: input.idempotencyKey,
+            fingerprint,
+            leaseExpiresAt: new Date(now.getTime() + leaseMs),
+          },
+        ],
+        { session },
+      );
+      purchase.status = 'reserved';
+      purchase.runId = run._id;
+      await purchase.save({ session });
+      return { run, replayed: false };
+    }
     if (!period) {
       const message =
         input.kind === 'drafting'
@@ -69,8 +110,6 @@ export async function reserveUsage(input: UsageInput, now = new Date(), leaseMs 
           : 'Cần gói dịch vụ AI đang hoạt động để thực hiện thao tác này.';
       throw AppError.forbidden(message, 'AI_PLAN_REQUIRED');
     }
-    const cost = await calculateUsageCost(input, session);
-    await assertNoActiveReview(input, session);
     assertUsageAvailable(period, input.kind, cost.units);
     await SubscriptionPeriodModel.updateOne(
       { _id: period._id },
@@ -142,16 +181,30 @@ export async function finishUsage(
       if (run.status !== 'reserved') return;
     }
     if (success && commit) await commit(session);
-    await SubscriptionPeriodModel.updateOne(
-      { _id: run.periodId },
-      {
-        $inc: {
-          [`${run.kind}Reserved`]: -(run.units ?? 1),
-          ...(success ? { [`${run.kind}Used`]: run.units ?? 1 } : {}),
+    if (run.reviewPurchaseId)
+      await ContractReviewPurchaseModel.updateOne(
+        {
+          _id: run.reviewPurchaseId,
+          status: 'reserved',
+          runId: run._id,
         },
-      },
-      { session },
-    );
+        {
+          $set: { status: success ? 'consumed' : 'available' },
+          ...(!success ? { $unset: { runId: '' } } : {}),
+        },
+        { session },
+      );
+    else
+      await SubscriptionPeriodModel.updateOne(
+        { _id: run.periodId },
+        {
+          $inc: {
+            [`${run.kind}Reserved`]: -(run.units ?? 1),
+            ...(success ? { [`${run.kind}Used`]: run.units ?? 1 } : {}),
+          },
+        },
+        { session },
+      );
     run.status = success ? 'succeeded' : 'failed';
     if (success) run.result = result;
     else run.error = 'Yêu cầu thất bại hoặc đã bị hủy; các lượt đã giữ được hoàn lại.';

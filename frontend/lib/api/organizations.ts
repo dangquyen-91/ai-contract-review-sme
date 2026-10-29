@@ -1,7 +1,8 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
-import type { CreateOrganizationInput, Organization, OrganizationListFilters, OrganizationListResult } from "@/types/organization";
+import type { CreateOrganizationInput, Organization, OrganizationListFilters, OrganizationListResult, VietnamAddressDirectory } from "@/types/organization";
 
 export const organizationsApi = {
+  addressOptions: () => apiRequest<VietnamAddressDirectory>({ url: '/organizations/address-options' }),
   async list(page = 1, limit = 20, signal?: AbortSignal, filters: OrganizationListFilters = {}): Promise<OrganizationListResult> {
     const response = await apiClient.get<{
       data: Organization[];

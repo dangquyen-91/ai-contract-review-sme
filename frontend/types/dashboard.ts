@@ -11,6 +11,7 @@ export type DashboardOrganization = {
 };
 
 export type DashboardData = {
+  contractScopeId?: string;
   organization: DashboardOrganization;
   contracts: DashboardContract[];
   totalContracts: number;

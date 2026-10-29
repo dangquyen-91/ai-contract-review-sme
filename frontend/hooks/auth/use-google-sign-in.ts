@@ -14,6 +14,7 @@ type GoogleIdentity = {
     nonce: string;
     callback: (result: GoogleCredential) => void;
     auto_select: boolean;
+    button_auto_select: boolean;
   }) => void;
   renderButton: (
     element: HTMLElement,
@@ -84,6 +85,7 @@ function getGoogleClient(identity: GoogleIdentity, config: GoogleConfig) {
       client_id: config.clientId,
       nonce: config.nonce,
       auto_select: false,
+      button_auto_select: false,
       // Invitation details belong to the current handler. A global login_hint
       // would become stale when navigating to a different invitation.
       callback: (result) => {
@@ -213,7 +215,8 @@ export function useGoogleSignIn({
     element.replaceChildren();
     identity.renderButton(element, {
       theme: "outline",
-      size: "large",
+      // Google medium buttons do not display a remembered account's identity.
+      size: "medium",
       text: "signin_with",
       width: Math.min(400, element.clientWidth || 300),
       locale: "vi",

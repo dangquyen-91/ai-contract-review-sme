@@ -4,6 +4,20 @@ export type ConfirmationView = "reading" | "extraction_failed" | "classifying" |
 
 export const LOW_CONFIDENCE = 0.7;
 
+export function extractionFailureCopy(contract: DashboardContract) {
+  const version = contract.currentVersion;
+  if (version?.extractionErrorCode === "REVIEW_PAGE_COUNT_UNAVAILABLE" || version?.extractionError?.includes("LibreOffice")) {
+    return {
+      title: "Chưa đếm được số trang Word",
+      message: "Tệp đã tải lên nhưng máy chủ chưa xử lý được số trang Word. Hãy tải bản PDF hoặc thử lại sau khi hệ thống được cấu hình. Bạn chưa bị trừ lượt nào.",
+    };
+  }
+  return {
+    title: "Không đọc được nội dung tệp",
+    message: "Hãy tải lên tệp rõ hơn hoặc ở định dạng khác. Bạn chưa bị trừ lượt nào.",
+  };
+}
+
 export function isAwaitingClassification(contract?: DashboardContract) {
   if (!contract) return false;
   if (contract.currentVersion?.extractionStatus === "processing") return true;

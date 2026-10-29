@@ -23,6 +23,7 @@ const { logger } = require('../dist/config/logger');
 logger.silent = true;
 const { UserModel } = require('../dist/models/user.model');
 const { OrganizationModel } = require('../dist/models/organization.model');
+const { IndustryModel } = require('../dist/models/industry.model');
 const { OrganizationInvitationModel } = require('../dist/models/organizationInvitation.model');
 const { ContractModel } = require('../dist/models/contract.model');
 const { ContractVersionModel } = require('../dist/models/contractVersion.model');
@@ -77,6 +78,112 @@ async function invitation(owner, org, email) {
   await createInvitation(owner.id, org.id, { email, role: 'staff' });
   return sendInvitationEmail.mock.calls.at(-1)[0].token;
 }
+
+test('creating a business saves its name, tax code, address and validated industry together', async () => {
+  const personal = await user('user');
+  await IndustryModel.create({ code: 'organization-create-fixture', name: 'Test industry' });
+  const response = await request(app).post('/api/v1/organizations').set('Authorization', bearer(personal)).send({
+    name: '  Công ty Minh Tâm  ', taxCode: '  0312345678  ', industry: 'organization-create-fixture',
+    addressDetails: { provinceCode: '01', wardCode: '00004', addressLine: '  12 Hoàng Hoa Thám  ' },
+  });
+  expect(response.status).toBe(201);
+  const organization = await OrganizationModel.findById(response.body.data.id ?? response.body.data._id);
+  expect(organization.toObject()).toMatchObject({ name: 'Công ty Minh Tâm', taxCode: '0312345678', address: '12 Hoàng Hoa Thám, Phường Ba Đình, Thành phố Hà Nội', industry: 'organization-create-fixture', isPersonal: false, addressDetails: { provinceCode: '01', provinceName: 'Thành phố Hà Nội', wardCode: '00004', wardName: 'Phường Ba Đình', addressLine: '12 Hoàng Hoa Thám' } });
+  const updated = await UserModel.findById(personal.id).populate('roleId');
+  expect(updated.orgId.toString()).toBe(organization.id);
+  expect(updated.roleId.code).toBe('owner');
+  expect(updated.hasCompletedOnboarding).toBe(true);
+});
+
+test('creating a business rejects an unknown industry without creating an orphan organization', async () => {
+  const personal = await user('user');
+  const before = await OrganizationModel.countDocuments();
+  const response = await request(app).post('/api/v1/organizations').set('Authorization', bearer(personal)).send({ name: 'Business', taxCode: '0312345678', industry: 'nonexistent-industry', addressDetails: { provinceCode: '01', wardCode: '00004', addressLine: '12 Hoàng Hoa Thám' } });
+  expect(response.status).toBe(400);
+  expect(await OrganizationModel.countDocuments()).toBe(before);
+  expect((await UserModel.findById(personal.id)).orgId ?? null).toBeNull();
+});
+
+test('business creation requires tax code, address and industry instead of accepting only a name', async () => {
+  const personal = await user('user');
+  const response = await request(app).post('/api/v1/organizations').set('Authorization', bearer(personal)).send({ name: 'Nhóm mới' });
+  expect(response.status).toBe(400);
+  expect((await UserModel.findById(personal.id)).orgId ?? null).toBeNull();
+});
+
+test('address directory includes all 34 provinces and 3321 wards; mismatched addresses are rejected before creating a business', async () => {
+  const personal = await user('user');
+  const directory = await request(app).get('/api/v1/organizations/address-options').set('Authorization', bearer(personal));
+  expect(directory.status).toBe(200);
+  const provinces = directory.body.data.provinces;
+  expect(provinces).toHaveLength(34);
+  expect(provinces.reduce((sum, province) => sum + province.wards.length, 0)).toBe(3321);
+  const payload = { name: 'Test business', taxCode: '0312345678', industry: 'organization-create-fixture', addressDetails: { provinceCode: '79', wardCode: '00004', addressLine: '12 Test' } };
+  const before = await OrganizationModel.countDocuments();
+  for (const invalid of [payload, { ...payload, taxCode: '' }, { ...payload, addressDetails: { ...payload.addressDetails, provinceCode: '01', addressLine: '' } }]) {
+    const response = await request(app).post('/api/v1/organizations').set('Authorization', bearer(personal)).send(invalid);
+    expect(response.status).toBe(400);
+  }
+  expect(await OrganizationModel.countDocuments()).toBe(before);
+});
+
+test('deleting the last-owner organization restores the same personal account and keeps its refresh session', async () => {
+  const { org, owner } = await team();
+  const previous = tokensForUser(owner, true);
+  const otherOrg = await OrganizationModel.create({ name: 'Unchanged company' });
+  const unrelated = await user('owner', otherOrg._id);
+  await invitation(owner, org, 'deleted-org-invite@example.com');
+  const response = await request(app).delete(`/api/v1/organizations/${org.id}`).set('Authorization', `Bearer ${previous.accessToken}`);
+  expect(response.status).toBe(204);
+  expect(await OrganizationModel.findById(org.id)).toBeNull();
+  const updated = await UserModel.findById(owner.id).select('+passwordHash').populate('roleId');
+  expect(updated.roleId.code).toBe('user');
+  expect(updated.orgId ?? null).toBeNull();
+  expect(updated.hasCompletedOnboarding).toBe(true);
+  expect(updated.email).toBe(owner.email);
+  expect(updated.passwordHash).toBe(owner.passwordHash);
+  expect(updated.authVersion ?? 0).toBe(owner.authVersion ?? 0);
+  expect(updated.permissionsVersion).toBe((owner.permissionsVersion ?? 0) + 1);
+  expect((await OrganizationInvitationModel.findOne({ orgId: org.id })).status).toBe('revoked');
+  expect((await request(app).get('/api/v1/profile').set('Authorization', `Bearer ${previous.accessToken}`)).status).toBe(401);
+  const refreshed = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: previous.refreshToken });
+  expect(refreshed.status).toBe(200);
+  expect(refreshed.body.data.user).toMatchObject({ id: owner.id, role: 'user', orgId: null, hasCompletedOnboarding: true });
+  expect((await request(app).get('/api/v1/profile').set('Authorization', `Bearer ${refreshed.body.data.accessToken}`)).status).toBe(200);
+  expect((await request(app).get(`/api/v1/organizations/${otherOrg.id}`).set('Authorization', `Bearer ${refreshed.body.data.accessToken}`)).status).toBe(403);
+  expect((await UserModel.findById(unrelated.id)).orgId.toString()).toBe(otherOrg.id);
+});
+
+test('refresh recovers legacy Owner accounts left without an organization without requiring onboarding again', async () => {
+  const legacy = await user('owner');
+  await UserModel.updateOne({ _id: legacy.id }, { $set: { hasCompletedOnboarding: false } });
+  const previous = tokensForUser(legacy);
+  const response = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: previous.refreshToken });
+  expect(response.status).toBe(200);
+  expect(response.body.data.user).toMatchObject({ id: legacy.id, role: 'user', orgId: null, hasCompletedOnboarding: true });
+  const repaired = await UserModel.findById(legacy.id);
+  expect(repaired.permissionsVersion).toBe(1);
+  const repeated = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: previous.refreshToken });
+  expect(repeated.status).toBe(200);
+  expect((await UserModel.findById(legacy.id)).permissionsVersion).toBe(1);
+});
+
+test.each(['member', 'contract'])('failed organization deletion with a remaining %s preserves membership and the session', async resource => {
+  const { org, owner } = await team();
+  const previous = tokensForUser(owner);
+  if (resource === 'member') await user('staff', org._id);
+  else await ContractModel.create({ orgId: org._id, uploadedBy: owner._id, title: 'Protected contract' });
+  const response = await request(app).delete(`/api/v1/organizations/${org.id}`).set('Authorization', `Bearer ${previous.accessToken}`);
+  expect(response.status).toBe(409);
+  const updated = await UserModel.findById(owner.id).populate('roleId');
+  expect(updated.roleId.code).toBe('owner');
+  expect(updated.orgId.toString()).toBe(org.id);
+  expect(updated.permissionsVersion ?? 0).toBe(owner.permissionsVersion ?? 0);
+  expect(await OrganizationModel.exists({ _id: org.id })).toBeTruthy();
+  const refreshed = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: previous.refreshToken });
+  expect(refreshed.status).toBe(200);
+  expect(refreshed.body.data.user).toMatchObject({ role: 'owner', orgId: org.id });
+});
 
 beforeAll(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1 } });

@@ -2,15 +2,7 @@
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  ArrowRight,
-  BriefcaseBusiness,
-  FilePlus2,
-  FileText,
-  Handshake,
-  Package,
-  Sparkles,
-} from "lucide-react";
+import { FileText, Sparkles } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { contractDraftsApi } from "@/lib/api/contract-drafts";
@@ -23,44 +15,8 @@ import type { AuthUser } from "@/types/auth";
 import type { ContractTemplate } from "@/types/contract-drafts";
 import { DraftShell } from "./draft-shell";
 import { DraftListRow } from "./draft-list-row";
+import { DraftTemplateCard } from "./draft-template-card";
 
-const icons = { labor: BriefcaseBusiness, service: Handshake, sales: Package };
-function StudioRolePicker({
-  template,
-  value,
-  disabled,
-  onChange,
-}: {
-  template: ContractTemplate;
-  value: string;
-  disabled: boolean;
-  onChange: (value: string) => void;
-}) {
-  if (template.parties.length < 2)
-    return (
-      <p className="mb-4 text-xs text-slate-400">
-        Bên soạn là người sử dụng lao động
-      </p>
-    );
-  return (
-    <label className="mb-4 grid gap-2 text-xs text-slate-500">
-      Vai trò bên soạn
-      <select
-        aria-label={`Vai trò với ${template.name}`}
-        value={value}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
-      >
-        {template.parties.map((party) => (
-          <option key={party.code} value={party.code}>
-            {party.name}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
 export function DraftWorkspace({ user }: { user: AuthUser }) {
   const router = useRouter();
   const client = useQueryClient();
@@ -104,7 +60,9 @@ export function DraftWorkspace({ user }: { user: AuthUser }) {
       <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">
-            {user.role === "user" ? "Soạn thảo cá nhân" : "Soạn thảo cho doanh nghiệp"}
+            {user.role === "user"
+              ? "Soạn thảo cá nhân"
+              : "Soạn thảo cho doanh nghiệp"}
           </p>
           <h1 className="mt-2 text-3xl font-bold tracking-tight">
             Bắt đầu từ mẫu. Hoàn thiện theo cách của bạn.
@@ -123,7 +81,7 @@ export function DraftWorkspace({ user }: { user: AuthUser }) {
         {[
           "Mở mẫu có sẵn",
           "Chỉnh trực tiếp hoặc nhờ AI",
-          user.role === "staff" ? "Gửi duyệt & xuất hợp đồng" : "Duyệt & xuất hợp đồng",
+          "Hoàn tất & xuất hợp đồng",
         ].map((label, index) => (
           <span key={label} className="inline-flex items-center gap-2">
             <span className="grid size-6 place-items-center rounded-full bg-white text-xs font-bold">
@@ -150,50 +108,30 @@ export function DraftWorkspace({ user }: { user: AuthUser }) {
           </Button>
         </div>
       ) : (
-        <div className="grid gap-5 md:grid-cols-3">
-          {catalog.data?.templates.map((template) => {
-            const Icon = icons[template.code];
-            return (
-              <article
+        <div className="@container/templates">
+          <div
+            className={
+              catalog.data?.templates.length === 3
+                ? "grid gap-4 @min-[640px]/templates:grid-cols-2 @min-[1000px]/templates:grid-cols-3"
+                : "grid gap-4 @min-[640px]/templates:grid-cols-2"
+            }
+          >
+            {catalog.data?.templates.map((template) => (
+              <DraftTemplateCard
                 key={template.code}
-                className="flex flex-col rounded-2xl border border-slate-200 bg-white p-6 transition-shadow hover:border-blue-200 hover:shadow-md"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="rounded-xl bg-blue-50 p-3 text-blue-600">
-                    <Icon size={24} aria-hidden="true" />
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    Mẫu v{template.version}
-                  </span>
-                </div>
-                <h3 className="mt-5 text-lg font-semibold">{template.name}</h3>
-                <p className="mb-6 mt-2 flex-1 text-sm leading-6 text-slate-500">
-                  {template.description}
-                </p>
-                <StudioRolePicker
-                  template={template}
-                  value={parties[template.code] ?? template.parties[0].code}
-                  disabled={create.isPending}
-                  onChange={(value) =>
-                    setParties((current) => ({
-                      ...current,
-                      [template.code]: value,
-                    }))
-                  }
-                />
-                <Button
-                  className="w-full"
-                  variant="outline"
-                  disabled={create.isPending}
-                  onClick={() => void start(template)}
-                >
-                  <FilePlus2 size={16} aria-hidden="true" />
-                  Mở mẫu
-                  <ArrowRight size={15} aria-hidden="true" />
-                </Button>
-              </article>
-            );
-          })}
+                template={template}
+                party={parties[template.code] ?? template.parties[0].code}
+                pending={create.isPending}
+                onPartyChange={(value) =>
+                  setParties((current) => ({
+                    ...current,
+                    [template.code]: value,
+                  }))
+                }
+                onOpen={() => void start(template)}
+              />
+            ))}
+          </div>
         </div>
       )}
       {create.error && (

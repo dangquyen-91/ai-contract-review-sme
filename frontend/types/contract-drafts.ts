@@ -1,5 +1,5 @@
 import type { StudioDocument } from './template-studio';
-export type TemplateCode = 'labor' | 'service' | 'sales';
+export type TemplateCode = 'labor' | 'service' | 'sales' | 'rental';
 export type DraftStatus = 'draft' | 'pending_approval' | 'approved';
 export type TemplateField = { key: string; label: string; kind: 'text' | 'textarea' | 'date' | 'number' | 'select' | 'items'; required: boolean; group: 'parties' | 'terms'; options?: { value: string; label: string }[]; placeholder?: string; help?: string; defaultValue?: string; token?: string };
 export type DraftFormGroup = { key: string; title: string; description: string; step: 'parties' | 'terms'; fields: string[] };

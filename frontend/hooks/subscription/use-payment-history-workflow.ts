@@ -1,7 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { usePaymentActions, usePaymentHistory } from "@/hooks/subscription/use-payments";
+import {
+  usePaymentActions,
+  usePaymentHistory,
+} from "@/hooks/subscription/use-payments";
 
 export function usePaymentHistoryWorkflow(orgId: string) {
   const [page, setPage] = useState(1);

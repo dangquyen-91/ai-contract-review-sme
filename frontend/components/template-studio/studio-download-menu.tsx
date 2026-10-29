@@ -32,7 +32,7 @@ export function StudioDownloadMenu({
         {!ready && (
           <p className="flex gap-2 rounded-lg bg-amber-50 p-3 text-xs leading-5 text-amber-800">
             <LockKeyhole size={15} className="mt-0.5 shrink-0" />
-            Hợp đồng cần được chủ tổ chức duyệt trước khi tải.
+            Hoàn tất hợp đồng để tải Word/PDF. Không cần Owner phê duyệt.
           </p>
         )}
         <button

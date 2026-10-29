@@ -11,14 +11,19 @@ import type { UsageInput } from './usage.service';
 export async function assertUsageAccess(input: UsageInput, session: ClientSession) {
   const query = UserModel.findOne({
     _id: input.userId,
-    orgId: input.orgId,
+    ...(input.userId === input.orgId ? { orgId: null } : { orgId: input.orgId }),
     isActive: true,
   })
     .select('roleId')
     .session(session);
-  if (input.kind === 'drafting') query.populate('roleId');
+  if (input.kind === 'drafting' || input.userId === input.orgId) query.populate('roleId');
   const user = await query;
   if (!user) throw AppError.forbidden('Bạn không còn quyền truy cập tổ chức này.');
+  if (
+    input.userId === input.orgId &&
+    (user.roleId as unknown as { code?: string })?.code !== 'user'
+  )
+    throw AppError.forbidden('Bạn không có quyền truy cập tài khoản cá nhân này.');
 
   if (input.kind !== 'drafting') {
     const contract = await ContractModel.exists({

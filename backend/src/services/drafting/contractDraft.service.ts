@@ -68,7 +68,7 @@ function requireDraftApprover(actor: AccessTokenPayload) {
 
 export async function templateCatalog(actor: AccessTokenPayload) {
   const organization = await requireDraftAccess(actor);
-  return { templates: CONTRACT_TEMPLATES.map(({ sections: _sections, ...template }) => template), organization: { name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }, role: actor.role };
+  return { templates: CONTRACT_TEMPLATES.filter(template => template.code !== 'rental' || actor.role === 'user').map(({ sections: _sections, ...template }) => template), organization: { name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }, role: actor.role };
 }
 export async function listDrafts(actor: AccessTokenPayload, page: number) {
   await requireDraftAccess(actor);
@@ -102,6 +102,7 @@ export async function getDraft(actor: AccessTokenPayload, id: string) {
 }
 export async function createDraft(actor: AccessTokenPayload, input: DraftInput) {
   const organization = await requireDraftAccess(actor);
+  if (input.templateCode === 'rental' && actor.role !== 'user') throw AppError.forbidden('Mẫu thuê nhà hiện dành cho tài khoản cá nhân.');
   const defaults = Object.fromEntries(getTemplate(input.templateCode).fields.filter(field => field.defaultValue).map(field => [field.key, field.defaultValue!])) as Record<string, string>;
   const values = { ...defaults, ...(getTemplate(input.templateCode).fields.some(field => field.key === 'companyName') ? { companyName: organization.name } : {}), companyAddress: organization.address ?? '', ...(getTemplate(input.templateCode).fields.some(field => field.key === 'companyTaxCode') ? { companyTaxCode: organization.taxCode ?? '' } : {}), ...input.input };
   validateInput(input.templateCode, values, input.ourParty);
@@ -201,7 +202,10 @@ export async function decideDraft(actor: AccessTokenPayload, id: string, revisio
   await requireDraftAccess(actor);
   const draft = await findDraft(actor, id);
   if (draft.revision !== revision) throw AppError.conflict('Bản nháp đã thay đổi. Vui lòng tải lại.');
-  if (action !== 'submit') requireDraftApprover(actor);
+  if (action === 'return') requireDraftApprover(actor);
+  // Staff complete their own draft; old clients submitting for approval now
+  // complete it directly. findDraft/scope still enforce authorship and tenant.
+  if (actor.role === 'staff' && action === 'submit') action = 'approve';
   if (actor.role === 'user' && action === 'submit') throw AppError.badRequest('Hãy tự duyệt bản nháp cá nhân trước khi xuất hợp đồng.');
   if (action === 'return' && !note.trim()) throw AppError.badRequest('Vui lòng nhập lý do yêu cầu chỉnh sửa.');
   if (action !== 'return') {
@@ -219,18 +223,19 @@ export async function decideDraft(actor: AccessTokenPayload, id: string, revisio
 export async function exportDraft(actor: AccessTokenPayload, id: string) {
   await requireDraftAccess(actor);
   const draft = await findDraft(actor, id);
-  if (draft.status !== 'approved') throw AppError.conflict('Cần duyệt bản nháp trước khi xuất hợp đồng.');
+  if (draft.status !== 'approved') throw AppError.conflict('Cần hoàn tất bản nháp trước khi xuất hợp đồng.');
   return { content: draft.content, title: draft.title, document: draft.documentJson ? JSON.parse(draft.documentJson) : null, template: JSON.parse(draft.templateJson), buffer: await draftDocx(draft) };
 }
 function draftDocx(draft: InstanceType<typeof ContractDraftModel>) {
   return draft.documentJson ? createStudioDocx(JSON.parse(draft.documentJson), JSON.parse(draft.templateJson)) : createDraftDocx(draft.content);
 }
 export async function publishDraft(actor: AccessTokenPayload, id: string, revision: number) {
-  await requireDraftAccess(actor); requireDraftApprover(actor);
+  await requireDraftAccess(actor);
   if (!actor.orgId) throw AppError.forbidden('Cần thiết lập không gian làm việc trước khi chuyển sang rà soát.');
   const draft = await findDraft(actor, id);
+  if (draft.templateCode === 'rental') throw AppError.badRequest('Mẫu thuê nhà hỗ trợ soạn và tải Word/PDF; chưa hỗ trợ chuyển sang rà soát.');
   if (draft.contractId) return { contractId: draft.contractId.toString() };
-  if (draft.status !== 'approved' || draft.revision !== revision) throw AppError.conflict('Vui lòng duyệt và tải lại bản nháp trước khi chuyển sang rà soát.');
+  if (draft.status !== 'approved' || draft.revision !== revision) throw AppError.conflict('Vui lòng hoàn tất và tải lại bản nháp trước khi chuyển sang rà soát.');
   const filename = `hop-dong-${draft.templateCode}-${draft.id}.docx`;
   const buffer = await draftDocx(draft);
   const pageCount = await countDocxPages(buffer);

@@ -6,6 +6,7 @@ import { ContractProfileModel, SENSITIVE_DATA_TYPES } from '../../models/contrac
 import { OrganizationModel } from '../../models/organization.model';
 import { ReviewModel } from '../../models/review.model';
 import { UserModel } from '../../models/user.model';
+import { findBillingAccount } from '../billing/billingAccount.service';
 import { generateJson } from '../ai/llm.service';
 import { createRedactor, placeholderInstruction } from '../ai/redaction.service';
 import { getCurrentVersionWithText } from './contractVersion.service';
@@ -183,13 +184,17 @@ export async function classifyContract(contractId: string, signal?: AbortSignal)
   if (!contract) return null;
 
   try {
-    const [org, uploader, version, profileDocs] = await Promise.all([
+    const [organization, uploader, version, profileDocs] = await Promise.all([
       OrganizationModel.findById(contract.orgId),
       UserModel.findById(contract.uploadedBy).select('name'),
       getCurrentVersionWithText(contractId),
       ContractProfileModel.find().select('code name parties'),
     ]);
-    if (!org) throw AppError.notFound('Organization not found');
+    const org = organization ?? {
+      ...(await findBillingAccount(contract.orgId.toString())),
+      name: uploader?.name ?? '',
+      taxCode: undefined,
+    };
     const text = version.extractedText ?? '';
     if (version.extractionStatus !== 'completed' || !text.trim()) {
       throw AppError.badRequest('The contract text has not been extracted');
