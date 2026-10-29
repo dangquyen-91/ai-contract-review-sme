@@ -102,6 +102,7 @@ export async function getDraft(actor: AccessTokenPayload, id: string) {
 }
 export async function createDraft(actor: AccessTokenPayload, input: DraftInput) {
   const organization = await requireDraftAccess(actor);
+  if (input.templateCode === 'rental' && actor.role !== 'user') throw AppError.forbidden('Mẫu thuê nhà hiện dành cho tài khoản cá nhân.');
   const defaults = Object.fromEntries(getTemplate(input.templateCode).fields.filter(field => field.defaultValue).map(field => [field.key, field.defaultValue!])) as Record<string, string>;
   const values = { ...defaults, ...(getTemplate(input.templateCode).fields.some(field => field.key === 'companyName') ? { companyName: organization.name } : {}), companyAddress: organization.address ?? '', ...(getTemplate(input.templateCode).fields.some(field => field.key === 'companyTaxCode') ? { companyTaxCode: organization.taxCode ?? '' } : {}), ...input.input };
   validateInput(input.templateCode, values, input.ourParty);
@@ -232,8 +233,9 @@ export async function publishDraft(actor: AccessTokenPayload, id: string, revisi
   await requireDraftAccess(actor);
   if (!actor.orgId) throw AppError.forbidden('Cần thiết lập không gian làm việc trước khi chuyển sang rà soát.');
   const draft = await findDraft(actor, id);
+  if (draft.templateCode === 'rental') throw AppError.badRequest('Mẫu thuê nhà hỗ trợ soạn và tải Word/PDF; chưa hỗ trợ chuyển sang rà soát.');
   if (draft.contractId) return { contractId: draft.contractId.toString() };
-  if (draft.status !== 'approved' || draft.revision !== revision) throw AppError.conflict('Vui lòng duyệt và tải lại bản nháp trước khi chuyển sang rà soát.');
+  if (draft.status !== 'approved' || draft.revision !== revision) throw AppError.conflict('Vui lòng hoàn tất và tải lại bản nháp trước khi chuyển sang rà soát.');
   const filename = `hop-dong-${draft.templateCode}-${draft.id}.docx`;
   const buffer = await draftDocx(draft);
   const pageCount = await countDocxPages(buffer);

@@ -5,7 +5,7 @@ const schema = new Schema({
   orgId: { type: Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   title: { type: String, required: true },
-  templateCode: { type: String, enum: ['labor', 'service', 'sales'], required: true },
+  templateCode: { type: String, enum: ['labor', 'service', 'sales', 'rental'], required: true },
   templateVersion: { type: Number, required: true },
   templateJson: { type: String, required: true, immutable: true },
   ourParty: { type: String, required: true },
