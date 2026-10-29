@@ -15,7 +15,8 @@ const { applyStudioChanges } = require('../../backend/dist/services/drafting/stu
 const { createStudioDocx } = require('../../backend/dist/services/drafting/studioDocx.service');
 const root = fileURLToPath(new URL('../', import.meta.url));
 const organization = { name: 'Fixture Company', taxCode: '0101234567', address: 'Ha Noi' };
-const user = { id: 'a'.repeat(24), role: 'staff', name: 'Fixture Staff', email: 'staff@example.com', orgId: 'b'.repeat(24), hasCompletedOnboarding: true };
+const rental = process.argv.includes('--rental');
+const user = { id: 'a'.repeat(24), role: rental ? 'user' : 'staff', name: 'Fixture Staff', email: 'staff@example.com', orgId: rental ? null : 'b'.repeat(24), hasCompletedOnboarding: true };
 const token = 'fixture.refresh.signature';
 let draft, saves = 0, requests = 0, downloads = 0, failSaveOnce = false, failAiOnce = false, draftingAvailable = 50;
 let history = []; const requestIds = new Map();
@@ -28,9 +29,10 @@ const backend = http.createServer(async (req, res) => {
   const send = (data, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: true, data })); };
   const error = (message, status) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: { message } })); };
   if (url.pathname === '/api/v1/auth/refresh') return send({ user, accessToken: token, refreshToken: token });
+  if (url.pathname === '/api/v1/invitations/received') return send([]);
   if (url.pathname === '/api/v1/profile') return send({ user: { ...user, phone: '', emailVerified: true, hasPassword: true, googleLinked: false, createdAt: '2026-10-01T00:00:00Z' }, organization: { ...organization, id: user.orgId } });
   if (url.pathname.endsWith('/subscription')) return send({ status: 'active', drafting: { used: 50 - draftingAvailable, reserved: 0, limit: 50, available: draftingAvailable } });
-  if (url.pathname === '/api/v1/contract-drafts/templates') return send({ templates: CONTRACT_TEMPLATES, organization, role: user.role });
+  if (url.pathname === '/api/v1/contract-drafts/templates') return send({ templates: CONTRACT_TEMPLATES.filter(template => template.code !== 'rental' || user.role === 'user'), organization, role: user.role });
   if (url.pathname === '/api/v1/contract-drafts' && req.method === 'GET') {
     const rows = [draft,...listExtras].filter(row=>row&&!row.deletedAt).sort((a,b)=>(Date.parse(b.pinnedAt)||0)-(Date.parse(a.pinnedAt)||0)||Date.parse(b.updatedAt)-Date.parse(a.updatedAt)||b.id.localeCompare(a.id));
     const page=Number(url.searchParams.get('page')||1); return send({items:rows.slice((page-1)*20,page*20),total:rows.length,page,pages:Math.max(1,Math.ceil(rows.length/20))});
@@ -130,6 +132,50 @@ try {
     await fillSelector('[role=dialog] input:not([type=checkbox]),[role=dialog] textarea,[role=dialog] select', value);
     await click('Lưu thông tin'); await waitFor('!document.querySelector("[role=dialog]")');
   };
+  if (rental) {
+    await call('Page.navigate', { url: `${origin}/contract-drafts` });
+    await waitFor('document.querySelectorAll("article button").length===4');
+    for (const width of [1440, 1024, 390]) {
+      await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 600 });
+      assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
+      await shot(`template-catalog-${width}.png`);
+    }
+    await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    const positions = await evaluate('[...document.querySelectorAll("article[data-template-code]")].map(card => ({top:card.getBoundingClientRect().top,height:card.getBoundingClientRect().height}))');
+    assert.equal(positions[0].top, positions[1].top);
+    assert.equal(positions[2].top, positions[3].top);
+    assert.ok(positions[2].top > positions[0].top);
+    assert.equal(positions[0].height, positions[1].height);
+    await fillSelector('select[aria-label="Vai trò với Hợp đồng thuê nhà"]', 'tenant');
+    await evaluate('document.querySelectorAll("article")[3].querySelector("button").click()');
+    await waitFor(editorReady);
+    assert.equal(draft.templateCode, 'rental');
+    assert.equal(draft.ourParty, 'tenant');
+    assert.equal(draft.input.depositAmount, '0');
+    for (const field of draft.template.fields.filter(field => field.required && !draft.input[field.key])) {
+      await editField(field.key, field.kind === 'date' ? '2027-10-26' : field.kind === 'number' ? '10.000.000' : 'Thong tin hop dong thue nha');
+    }
+    await waitFor(saved);
+    assert.equal(await evaluate('document.body.innerText.includes("Tên doanh nghiệp")'), false);
+    for (const width of [1440, 390]) {
+      await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 600 });
+      assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
+      await shot(`personal-rental-${width}.png`);
+    }
+    await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await click('Hoàn tất hợp đồng');
+    await waitFor('!!document.querySelector("[role=dialog]")');
+    await evaluate('document.querySelector("[role=dialog] input[type=checkbox]").click()');
+    await click('Xác nhận hoàn tất');
+    await waitFor(`document.querySelector('button[aria-label="Tải Word"]')?.disabled===false`);
+    await evaluate(`document.querySelector('summary[aria-label="Tải hợp đồng"]').click()`);
+    await clickLabel('Tải Word');
+    for (let n = 0; n < 50 && !downloads; n++) await new Promise(resolve => setTimeout(resolve, 100));
+    assert.equal(downloads, 1);
+    assert.equal(user.orgId, null);
+    console.log('PASS personal rental: tenant selection, linked fields, zero deposit, completion, Word export and desktop/mobile layout without orgId.');
+    console.log(`Screenshots: ${artifacts}`);
+  } else {
   await call('Page.navigate', { url: `${origin}/contract-drafts` });
   await waitFor('document.querySelectorAll("article button").length===3');
   await shot('templates-desktop.png');
@@ -142,7 +188,7 @@ try {
   assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth'), false);
   await shot('studio-desktop.png');
   await evaluate(`document.querySelector('summary[aria-label="Tải hợp đồng"]').click()`);
-  await waitFor('document.body.innerText.includes("Hợp đồng cần được chủ tổ chức duyệt")');
+  await waitFor('document.body.innerText.includes("Hoàn tất hợp đồng để tải Word/PDF")');
   await evaluate(`document.querySelector('summary[aria-label="Tải hợp đồng"]').click()`);
   await editField('price', '10.000.000');
   await evaluate('document.querySelector("aside a").click()');
@@ -213,15 +259,13 @@ try {
   for (const field of draft.template.fields.filter(field => (field.required || field.key === 'endDate') && !draft.input[field.key])) {
     await editField(field.key, field.kind === 'date' ? (field.key === 'endDate' ? '2027-10-26' : '2026-10-26') : field.kind === 'number' ? '10.000.000' : field.kind === 'select' ? field.options[0].value : 'Fixture details for ' + field.key);
   }
-  await waitFor(saved); await click('Gửi duyệt'); await waitFor('document.body.innerText.includes("Đang chờ duyệt")');
-  assert.equal(draft.status, 'pending_approval');
-  user.role = 'owner'; user.id = 'e'.repeat(24); user.name = 'Fixture Owner';
-  await call('Page.reload', { ignoreCache: true }); await waitFor('Array.from(document.querySelectorAll("button")).some(button=>button.textContent.trim()==="Duyệt hợp đồng")');
-  await click('Duyệt hợp đồng'); await waitFor('!!document.querySelector("[role=dialog]")');
+  await waitFor(saved); await click('Hoàn tất hợp đồng');
+  await waitFor('!!document.querySelector("[role=dialog]")');
   await evaluate('document.querySelector("[role=dialog] input[type=checkbox]").click()');
-  await click('Xác nhận duyệt');
+  await click('Xác nhận hoàn tất');
   await waitFor(`document.querySelector('button[aria-label="Tải Word"]')?.disabled===false`);
   assert.equal(draft.status, 'approved');
+  assert.equal(user.role, 'staff');
   user.role = 'staff'; user.id = 'a'.repeat(24); user.name = 'Fixture Staff';
   await call('Page.reload', { ignoreCache: true }); await waitFor(`document.querySelector('button[aria-label="Tải Word"]')?.disabled===false`);
   await evaluate(`document.querySelector('summary[aria-label="Tải hợp đồng"]').click()`);
@@ -277,7 +321,8 @@ try {
   await openRowMenu(lastId);await waitFor('!!document.querySelector("[role=menu]")');await menuAction('Xóa bản nháp');await waitFor('!!document.querySelector("[role=dialog]")');await click('Xác nhận xóa');
   await waitFor('document.querySelectorAll("[data-draft-id]").length===20');await shot('draft-list-after-delete.png');
   user.role='user';user.orgId=null;
-  assert.equal(await evaluate("fetch('/api/contract-drafts/templates').then(response=>response.status)"),403);
-  console.log(`PASS template studio: direct edits, linked fields, undo, bold, autosave/retry, AI review/apply/staleness, voice transcript/permission, approval, Staff Word/print, desktop/mobile. ${saves} saves.`);
+  assert.equal(await evaluate("fetch('/api/contract-drafts/templates').then(response=>response.status)"),200);
+  console.log(`PASS template studio: direct edits, linked fields, undo, bold, autosave/retry, AI review/apply/staleness, voice transcript/permission, Staff self-completion without Owner approval, Word/print, desktop/mobile. ${saves} saves.`);
   console.log(`Screenshots: ${artifacts}`);
+  }
 } finally { socket?.close(); chrome?.kill(); frontend.kill(); backend.closeAllConnections(); backend.close(); }

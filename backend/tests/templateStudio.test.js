@@ -547,26 +547,13 @@ test('staff permissions apply to history, editing, proposals and exports; approv
   for (const path of ['', '/assistant', '/export'])
     expect((await call(otherStaff, 'get', `/${draft.id}${path}`)).status).toBe(404);
   expect((await call(otherStaff, 'patch', `/${draft.id}`).send(patch(draft))).status).toBe(404);
-  expect(
-    (
-      await call(staff, 'post', `/${draft.id}/decision`).send({
-        revision: draft.revision,
-        action: 'approve',
-      })
-    ).status,
-  ).toBe(403);
-  let response = await call(staff, 'post', `/${draft.id}/decision`).send({
-    revision: draft.revision,
-    action: 'submit',
-  });
-  expect(response.status).toBe(200);
-  draft = response.body.data;
-  response = await call(owner, 'post', `/${draft.id}/decision`).send({
+  const response = await call(staff, 'post', `/${draft.id}/decision`).send({
     revision: draft.revision,
     action: 'approve',
   });
   expect(response.status).toBe(200);
   draft = response.body.data;
+  expect(draft.status).toBe('approved');
   expect((await call(staff, 'patch', `/${draft.id}`).send(patch(draft))).status).toBe(409);
   const exported = await call(staff, 'get', `/${draft.id}/export?format=print`);
   expect(exported.status).toBe(200);
