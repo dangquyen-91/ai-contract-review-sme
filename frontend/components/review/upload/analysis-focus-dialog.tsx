@@ -30,6 +30,7 @@ type AnalysisFocusDialogProps = {
   hideFocus?: boolean;
   submitDisabled?: boolean;
   billing?: DashboardContract["reviewBilling"];
+  paymentOption?: ReactNode;
 };
 
 export function AnalysisFocusDialog({
@@ -45,17 +46,16 @@ export function AnalysisFocusDialog({
   hideFocus = false,
   submitDisabled = false,
   billing,
+  paymentOption,
 }: AnalysisFocusDialogProps) {
   const id = useId();
   const [focus, setFocus] = useState("");
   const allowance = useReviewAllowance(orgId);
-  const quotaBlocked = Boolean(
-    billing &&
-    (!billing.ready ||
-      !allowance.data ||
-      allowance.data.status !== "active" ||
-      allowance.data.analysis.available < (billing.units ?? 1)),
-  );
+  const creditsUnavailable = !allowance.data || allowance.data.status !== "active" || allowance.data.analysis.available < (billing?.units ?? 1);
+  const quotaBlocked = Boolean(billing && (
+    !billing.ready || billing.purchaseStatus === "consumed" ||
+    (billing.purchaseStatus !== "available" && creditsUnavailable)
+  ));
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -89,6 +89,7 @@ export function AnalysisFocusDialog({
         <form onSubmit={submit} className="flex min-h-0 flex-col">
           <div className="min-h-0 overflow-y-auto overscroll-contain px-5 pb-5 sm:px-6 sm:pb-6">
             {confirmation}
+            {paymentOption}
             {!hideFocus && (
               <>
                 <ReviewAllowanceSummary orgId={orgId} role={role} />

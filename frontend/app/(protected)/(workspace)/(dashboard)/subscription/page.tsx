@@ -5,6 +5,6 @@ import { SubscriptionDashboardPage } from "@/components/subscription/subscriptio
 export const metadata: Metadata = { title: "Gói dịch vụ của bạn | LawScan" };
 
 export default async function SubscriptionPage() {
-  await requirePermission("subscription");
-  return <SubscriptionDashboardPage />;
+  const { user } = await requirePermission("subscription");
+  return <SubscriptionDashboardPage user={user} />;
 }

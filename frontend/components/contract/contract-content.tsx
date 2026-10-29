@@ -27,7 +27,7 @@ export function ContractContent({ data, access, onReview, isReviewing = false }:
     if (!contractId) return;
     router.push(`/contract/${encodeURIComponent(contractId)}${rerun ? "?rerun=1" : ""}`);
   }
-  return <ContractsView contracts={data.contracts} totalContracts={data.totalContracts} scope={`${data.role}:${data.organization.id}`} workspaceReady={Boolean(data.organization.id)} canDraft={(data.role === "user" || (Boolean(data.organization.id) && ["owner", "staff"].includes(data.role)))} canDelete={["administrator", "owner", "manager", "staff", "user"].includes(data.role)} canReview={access.review} onReview={onReview ?? openReview} isReviewing={isReviewing} />;
+  return <ContractsView contracts={data.contracts} totalContracts={data.totalContracts} scope={`${data.role}:${(data.contractScopeId ?? data.organization.id)}`} workspaceReady={Boolean((data.contractScopeId ?? data.organization.id))} canDraft={(data.role === "user" || (Boolean((data.contractScopeId ?? data.organization.id)) && ["owner", "staff"].includes(data.role)))} canDelete={["administrator", "owner", "manager", "staff", "user"].includes(data.role)} canReview={access.review} onReview={onReview ?? openReview} isReviewing={isReviewing} />;
 }
 
 const contractListParams = { page: paginationPageParser, search: parseAsString.withDefault(""), status: parseAsString.withDefault(""), riskLevel: parseAsString.withDefault("") };

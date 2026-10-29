@@ -20,7 +20,7 @@ Backend cũng cho phép administrator sửa/xóa tổ chức và xóa hợp đ�
 - Xóa hợp đồng làm sạch cache chi tiết, chat và kết quả của hợp đồng bị xóa; cập nhật danh sách, tổng quan và trang phân trang nếu vừa xóa dòng cuối.
 - Hạ gói chỉ chọn gói cùng nhóm, giá thấp hơn gói hiện tại. Số thành viên không được vượt giới hạn gói đích; backend kiểm tra lại quyền và điều kiện. Việc đặt lịch không kích hoạt ngay gói mới và không thay thế thanh toán.
 - SSE theo dõi đúng lượt rà soát đã lưu. Mất kết nối, luồng im lặng quá 45 giây hoặc proxy không hỗ trợ sẽ chuyển sang polling. Hết quyền truy cập không tự tạo lại lượt AI. Khi rời trang, hủy kết nối và giữ thông tin để tiếp tục theo dõi.
-- Xóa tổ chức bị backend từ chối nếu còn hợp đồng hoặc thành viên khác. Lỗi giữ nguyên phiên đăng nhập và hộp xác nhận. Sau khi thành công, xóa cookie phiên, cache và dữ liệu theo dõi rà soát của FE, chuyển về đăng nhập; owner chưa có tổ chức được hướng về thiết lập tổ chức qua layout hiện có.
+- Xóa tổ chức bị backend từ chối nếu còn hợp đồng hoặc thành viên khác. Lỗi giữ nguyên phiên đăng nhập và hộp xác nhận. Sau khi thành công, backend chuyển Owner về role User, bỏ `orgId`, giữ trạng thái đã thiết lập và tăng phiên bản quyền để chặn token tổ chức cũ. FE giữ cookie phiên, xóa cache và dữ liệu theo dõi rà soát rồi mở `/review` bằng tài khoản cá nhân; không đăng nhập hoặc chọn thiết lập lại. Phiên làm mới cũng khôi phục tài khoản Owner không có `orgId` do luồng xóa cũ.
 - Các thao tác ghi có trạng thái chờ, chặn gửi lặp và giữ lỗi trong popup để người dùng thử lại.
 
 ## Các mục vẫn cần backend hoặc không cần nối trùng

@@ -25,9 +25,9 @@ function setup(role) {
   const result = { contract: { _id: 'contract-1', title: 'Test', updatedAt: 'version-1', currentVersion: { summaryStatus: 'completed', riskDetectionStatus: 'completed' } }, findings: [], clauses: [] };
   const overrides = {
     'next/navigation': { useRouter: () => router },
-    '@/hooks/use-dashboard-workspace': { useDashboardWorkspace: () => ({ data: { role, organization: { id: 'organization-1' } }, access: { upload: role !== 'expert', review: true } }) },
+    '@/hooks/dashboard/use-dashboard-workspace': { useDashboardWorkspace: () => ({ data: { role, organization: { id: 'organization-1' } }, access: { upload: role !== 'expert', review: true } }) },
     '@/lib/api/contracts': { contractsApi: { listProfiles: async () => [] } },
-    '@/lib/review-session': {
+    '@/lib/review/review-session': {
       readReviewSession: () => null, clearReviewSession() {}, isReviewCancelled: (error) => error.name === 'AbortError',
       executeReview: async ({ signal, onProgress }) => {
         calls.push('execute'); activeSignal = signal;

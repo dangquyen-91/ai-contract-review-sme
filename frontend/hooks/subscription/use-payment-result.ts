@@ -2,9 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { usePaymentActions, usePaymentOrder } from "@/hooks/subscription/use-payments";
+import {
+  usePaymentActions,
+  usePaymentOrder,
+} from "@/hooks/subscription/use-payments";
 import { invitationKeys } from "@/lib/query-keys/invitations";
 import { dashboardKeys } from "@/lib/query-keys/dashboard";
+import { contractKeys } from "@/lib/query-keys/contracts";
 
 export function usePaymentResult(orgId: string, orderCode: number) {
   const query = usePaymentOrder(orgId, orderCode);
@@ -31,8 +35,16 @@ export function usePaymentResult(orgId: string, orderCode: number) {
         queryKey: invitationKeys.subscription(orgId),
       }),
       client.invalidateQueries({ queryKey: dashboardKeys.all }),
+      client.invalidateQueries({ queryKey: ["contract-review-payment"] }),
+      ...(order.contractId
+        ? [
+            client.invalidateQueries({
+              queryKey: contractKeys.detail(order.contractId),
+            }),
+          ]
+        : []),
     ]);
-  }, [client, orgId, order?.fulfilledAt]);
+  }, [client, orgId, order?.fulfilledAt, order?.contractId]);
 
   async function check() {
     if (lock.current) return;

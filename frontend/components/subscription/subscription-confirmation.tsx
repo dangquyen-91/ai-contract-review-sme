@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { Icon } from "@/components/ui/icon";
 import { useSubscriptionPlans } from "@/hooks/subscription/use-subscription-plans";
-import { describePlan, formatMoney } from "@/lib/subscription/subscription-plans";
+import {
+  describePlan,
+  formatMoney,
+} from "@/lib/subscription/subscription-plans";
 import { PaymentCheckout } from "./payment-checkout";
 import { PaymentHistory } from "./payment-history";
 import type { PlanCode } from "@/types/subscription";

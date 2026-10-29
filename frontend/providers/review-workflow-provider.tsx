@@ -14,7 +14,7 @@ const ReviewWorkflowContext = createContext<ReviewWorkflow | null>(null);
 export function ReviewWorkflowProvider({ children }: { children: ReactNode; initialRole?: string }) {
   const { access, data } = useDashboardWorkspace();
   const router = useRouter();
-  const workflow = useReviewWorkflow({ access, workspaceReady: Boolean(data?.organization?.id) });
+  const workflow = useReviewWorkflow({ access, workspaceReady: Boolean(data?.contractScopeId || data?.organization?.id), personal: data?.role === "user" });
   useReviewTimelineScroll(workflow.timelineScrollRequest, workflow.reviewTimelineRef);
   const contract = workflow.reviewResult?.contract;
   const contractId = contract?.id ?? contract?._id;

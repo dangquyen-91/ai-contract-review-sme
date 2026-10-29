@@ -15,16 +15,28 @@ function load(file, deps = {}, globals = {}) {
     require: (name) => { if (!(name in deps)) throw new Error(`Missing module ${name}`); return deps[name]; }, ...globals });
   return exports;
 }
+const billing = load('../lib/subscription/billing-account.ts');
+const classification = load('../lib/contracts/contract-classification.ts');
 const planCodes = ['personal_free', 'personal_pro', 'business_starter', 'business_pro'];
-const state = load('../lib/payment-state.ts');
-const originCheck = load('../lib/request-origin.ts');
-const returns = load('../lib/auth-return.ts', { './workspace-path': { workspacePath: () => '/dashboard/owner' }, '@/types/subscription': { planCodes } });
+const state = load('../lib/subscription/payment-state.ts');
+const originCheck = load('../lib/api/request-origin.ts');
+const returns = load('../lib/auth/auth-return.ts', { '@/lib/routing/workspace-path': { workspacePath: () => '/dashboard/owner' }, '@/types/subscription': { planCodes } });
 const order = { orderCode: 1234567890123, orgId: 'a'.repeat(24), planCode: 'business_starter', action: 'purchase',
   amount: 499000, currency: 'VND', status: 'pending', checkoutUrl: 'https://pay.payos.vn/web/test',
   qrCode: null, expiresAt: '2026-10-19T10:00:00Z', paidAt: null, fulfilledAt: null, fulfillmentError: null, providerError: null };
 const plan = { code: 'business_starter', audience: 'business', price: 499000, memberLimit: 5 };
 const current = { status: 'none', plan: null, scheduledDowngrade: null, members: { count: 1 } };
 const user = { role: 'owner', orgId: order.orgId, email: 'owner@example.com' };
+
+test('Word page-count failures show a server-processing message rather than blaming document readability', () => {
+  for (const version of [{ extractionErrorCode: 'REVIEW_PAGE_COUNT_UNAVAILABLE' }, { extractionError: 'Máy chủ cần LibreOffice' }]) {
+    const copy = classification.extractionFailureCopy({ currentVersion: version });
+    assert.equal(copy.title, 'Chưa đếm được số trang Word');
+    assert.match(copy.message, /PDF/);
+    assert.match(copy.message, /chưa bị trừ lượt/);
+  }
+  assert.equal(classification.extractionFailureCopy({ currentVersion: { extractionError: 'Internal /private/path' } }).title, 'Không đọc được nội dung tệp');
+});
 
 test('a paid order is not shown as successfully activated until fulfilledAt exists', () => {
   assert.equal(state.paymentMessage({ ...order, status: 'paid', paidAt: 'now' }).success, false);
@@ -69,7 +81,7 @@ test('password, Google and OTP destinations preserve payment context and priorit
 function proxy(fetch) {
   let activeRequest;
   const handler = load('../lib/api/payment-proxy.ts', {
-    'next/server': { NextRequest, NextResponse }, '@/lib/request-origin': originCheck,
+    'next/server': { NextRequest, NextResponse }, '@/lib/api/request-origin': originCheck,
     '@/lib/auth/api-session': { getApiSession: async () => activeRequest?.cookies.get('lawscan_access')?.value ? { accessToken: activeRequest.cookies.get('lawscan_access').value } : { error: NextResponse.json({ success: false }, { status: 401 }) } },
   }, { fetch }).proxyPayment;
   return (request, ...args) => { activeRequest = request; return handler(request, ...args); };
@@ -89,6 +101,17 @@ test('payment proxy forwards a stable key, authenticated token and original plan
   assert.equal(captured.options.headers['Idempotency-Key'], 'checkout-test-0001');
   assert.deepEqual(JSON.parse(captured.options.body), { planCode: plan.code, action: 'purchase' });
   assert.equal(captured.url, `http://localhost:4000/api/v1/organizations/${order.orgId}/payments`);
+});
+
+test('contract-payment payload forwards only server-checked version and expected amount, without buying a plan', async () => {
+  const calls = [];
+  const api = load('../lib/api/payments.ts', { './client': { apiRequest: async input => { calls.push(input); return order; } } }).paymentsApi;
+  const quote = { contractId: 'c'.repeat(24), versionId: 'd'.repeat(24), amount: 20000 };
+  await api.createReview(order.orgId, quote, 'review-payment-key');
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0].data)), { purpose: 'contract_review', action: 'purchase', contractId: quote.contractId, versionId: quote.versionId, expectedAmount: 20000 });
+  assert.equal(calls[0].headers['Idempotency-Key'], 'review-payment-key');
+  assert.equal(state.paymentMessage({ ...order, purpose: 'contract_review', fulfilledAt: 'now' }).success, true);
+  assert.match(state.paymentMessage({ ...order, purpose: 'contract_review', fulfilledAt: 'now' }).detail, /Lượt trong gói được giữ nguyên/);
 });
 
 test('payment proxy rejects missing sessions, cross-origin POST and invalid identifiers before upstream', async () => {
@@ -132,7 +155,7 @@ function find(node, predicate) {
   if (typeof node.type === 'function') return find(node.type(node.props), predicate);
   return [...(predicate(node) ? [node] : []), ...find(node.props?.children, predicate)];
 }
-function checkoutHarness({ subscription = current, items = [], create = async () => order, schedule = async () => {}, account = user } = {}) {
+function checkoutHarness({ subscription = current, items = [], create = async () => order, schedule = async () => {}, account = user, targetPlan = plan } = {}) {
   let cursor = 0;
   const slots = [], navigation = [], calls = [];
   const history = { data: { items }, isPending: false, refetch: async () => {} };
@@ -142,24 +165,53 @@ function checkoutHarness({ subscription = current, items = [], create = async ()
       useState: (initial) => { const index = cursor++; if (!(index in slots)) slots[index] = initial; return [slots[index], value => { slots[index] = value; }]; },
     },
     'react/jsx-runtime': jsx,
+    '@/lib/subscription/billing-account': billing,
     'next/link': { __esModule: true, default: props => jsx.jsx('a', props) },
     '@/components/ui/button': { Button: props => props.asChild ? props.children : jsx.jsx('button', props) },
     '@/components/ui/icon': { Icon: props => jsx.jsx('svg', props) },
-    '@/hooks/use-subscription-management': { useSubscriptionManagement: () => ({ subscription: { data: subscription, isPending: false }, schedule: { mutateAsync: schedule } }) },
-    '@/hooks/use-payments': { usePaymentHistory: () => history },
+    '@/hooks/subscription/use-subscription-management': { useSubscriptionManagement: () => ({ subscription: { data: subscription, isPending: false }, schedule: { mutateAsync: schedule } }) },
+    '@/hooks/subscription/use-payments': { usePaymentHistory: () => history },
     '@/lib/api/payments': { paymentsApi: { create: async (...args) => { calls.push(args); return create(...args); } } },
-    '@/lib/payment-state': state,
-    '@/lib/workspace-path': { workspacePath: () => '/chon-to-chuc' },
-    '@/lib/subscription-plans': { formatMoney: value => `${value}đ` },
+    '@/lib/subscription/payment-state': state,
+    '@/lib/routing/workspace-path': { workspacePath: () => '/chon-to-chuc' },
+    '@/lib/subscription/subscription-plans': { formatMoney: value => `${value}đ` },
     './payment-history': { PaymentHistory: () => null },
   };
   const globals = { crypto: { randomUUID: () => 'stable-test-key' }, window: { location: { assign: value => navigation.push(value) } } };
-  deps['@/hooks/use-payment-checkout'] = load('../hooks/use-payment-checkout.ts', deps, globals);
+  deps['@/hooks/subscription/use-payment-checkout'] = load('../hooks/subscription/use-payment-checkout.ts', deps, globals);
   deps['./workspace-checkout'] = load('../components/subscription/workspace-checkout.tsx', deps, globals);
   const Component = load('../components/subscription/payment-checkout.tsx', deps, globals).PaymentCheckout;
-  return { calls, navigation, render: () => { cursor = 0; return find(Component({ plan, user: account }), () => true); } };
+  return { calls, navigation, render: () => { cursor = 0; return find(Component({ plan: targetPlan, user: account }), () => true); } };
 }
 const text = node => Array.isArray(node) ? node.map(text).join('') : node?.props ? text(node.props.children) : node ?? '';
+
+test('standalone personal checkout uses account scope without requiring organization setup', async () => {
+  const account = { id: 'c'.repeat(24), orgId: null, role: 'user' };
+  const personalPlan = { ...plan, code: 'personal_pro', audience: 'personal', price: 99000, memberLimit: 1 };
+  const ctx = checkoutHarness({ account, targetPlan: personalPlan, subscription: { ...current, status: 'active', plan: { ...personalPlan, code: 'personal_free', price: 0 } } });
+  const button = ctx.render().find(n => n.props?.['data-checkout-submit']);
+  assert.ok(button);
+  await button.props.onClick();
+  assert.equal(ctx.calls[0][0], account.id);
+  assert.equal(ctx.calls[0][1].planCode, 'personal_pro');
+  assert.equal(account.orgId, null);
+  assert.equal(billing.billingAccountId({ id: 'other', role: 'staff', orgId: null }), null);
+});
+
+test('personal payment result stays on order status instead of asking an authenticated user to sign in', () => {
+  const Component = load('../components/subscription/payment-result.tsx', {
+    'react/jsx-runtime': jsx,
+    'next/link': { __esModule: true, default: props => jsx.jsx('a', props) },
+    '@/components/ui/button': { Button: props => jsx.jsx('button', props) },
+    '@/lib/routing/workspace-path': { workspacePath: () => '/dashboard' },
+    '@/lib/subscription/billing-account': billing,
+    './payment-order-status': { PaymentOrderStatus: 'fixture-order-status' },
+  }).PaymentResult;
+  const account = { id: 'c'.repeat(24), orgId: null, role: 'user' };
+  const result = Component({ user: account, orderCode: order.orderCode, cancelled: false });
+  assert.equal(result.type, 'fixture-order-status');
+  assert.equal(result.props.orgId, account.id);
+});
 
 test('rapid checkout clicks create one request and navigate only to its returned payOS URL', async () => {
   let resolve;

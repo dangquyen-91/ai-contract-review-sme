@@ -16,7 +16,11 @@ export function ReviewBillingNotice({
       role="status"
       className="my-3 rounded-lg bg-accent p-3 text-ui leading-6"
     >
-      {!billing.ready ? (
+      {billing.purchaseStatus === "available" ? (
+        <>Hợp đồng có <strong>{billing.pageCount} trang</strong>, đã thanh toán riêng. Lần rà soát này không trừ lượt trong gói.</>
+      ) : billing.purchaseStatus === "consumed" ? (
+        "Phiên bản này đã có kết quả rà soát. Bạn có thể xem lại báo cáo miễn phí."
+      ) : !billing.ready ? (
         billing.reason
       ) : (
         <>

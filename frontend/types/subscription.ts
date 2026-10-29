@@ -25,4 +25,5 @@ export type OrganizationSubscription = {
   chat: { used: number; reserved: number; limit: number; available: number };
   drafting: { used: number; reserved: number; limit: number; available: number };
   reviewPagesPerUnit: number;
+  contractReviewPricing?: { unitPrice: number; pagesPerUnit: number };
 };
