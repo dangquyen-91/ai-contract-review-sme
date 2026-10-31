@@ -56,4 +56,4 @@ All LLM calls go through `services/ai/llm.service.ts` (Google Gemini via `@googl
 `server.ts` seeds plans, roles, clause taxonomy and contract profiles, and initializes indexes on every boot. Seed data lives in `*.data.ts` files next to their services.
 
 ### Billing
-Subscriptions and plans are in `services/billing/`; payments use payOS. The webhook (`/api/v1/payments/payos/webhook`) is mounted in `app.ts` **before** the rate limiter and JWT auth, and is authenticated by signature. Prices are computed on the server. See `backend/docs/payos.md`.
+Subscriptions and plans are in `services/billing/`; payments use payOS. The webhook (`/api/v1/payments/payos/webhook`) is mounted in `app.ts` **before** the rate limiter and JWT auth, and is authenticated by signature. Prices are computed on the server.

@@ -15,7 +15,7 @@ Frontend hiển thị địa chỉ đầy đủ trước khi gửi. Đổi tỉn
 - Căn cứ danh mục: [Quyết định 19/2025/QĐ-TTg và danh mục 34 tỉnh, 3.321 đơn vị cấp xã](https://cms.baochinhphu.vn/bang-danh-muc-va-ma-so-cua-34-tinh-thanh-moi-3321-don-vi-hanh-chinh-cap-xa-moi-102250704153652947.htm).
 - Dữ liệu máy đọc: [Vietnam Provinces API v2](https://provinces.open-api.vn/), danh mục sau sắp xếp tháng 7/2025; tải ngày 30/10/2026.
 - Bản chụp: `backend/src/data/vietnam-addresses.json`, gồm đủ 34 tỉnh và 3.321 xã/phường/đặc khu. Không chứa dữ liệu cá nhân.
-- Cập nhật: chạy `node scripts/update-vietnam-addresses.cjs` trong `backend`, xem thay đổi và chạy kiểm thử trước khi triển khai. Script dừng nếu số lượng khác danh mục đã kiểm tra để yêu cầu rà soát thay đổi hành chính.
+- Cập nhật: đối chiếu danh mục hành chính chính thức rồi cập nhật `backend/src/data/vietnam-addresses.json`. Giữ cấu trúc dữ liệu, kiểm tra mã không trùng và quan hệ tỉnh–xã; rà soát thay đổi và chạy kiểm thử trước khi triển khai.
 - Ứng dụng đọc bản dữ liệu đi kèm qua API của chính hệ thống; không gọi dịch vụ bên ngoài hoặc gửi địa chỉ người dùng tới nhà cung cấp danh mục.
 
 Các tổ chức cũ vẫn xem được địa chỉ văn bản hiện có; quy tắc bắt buộc áp dụng cho thao tác tạo mới.
