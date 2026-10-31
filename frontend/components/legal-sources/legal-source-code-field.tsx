@@ -9,7 +9,7 @@ function codeHint(code: string, catalog?: LegalSourceCatalogEntry[]) {
   if (!catalog) return { warning: false, text: "Mã duy nhất gồm chữ thường, số và dấu gạch dưới." };
   if (!code) return { warning: false, text: "Chọn mã trong danh mục để văn bản được dùng khi rà soát hợp đồng." };
   const entry = catalog.find((item) => item.code === code);
-  if (!entry) return { warning: true, text: "Mã ngoài danh mục: nguồn vẫn được lưu nhưng chưa được dùng khi rà soát hợp đồng." };
+  if (!entry) return { warning: true, text: "Mã ngoài danh mục: nguồn không gắn với loại hợp đồng nào, chỉ được tra cứu khi kho chưa có văn bản chính của hợp đồng đang rà soát." };
   if (entry.legalSource) return { warning: true, text: `Mã này đã có nguồn “${entry.legalSource.title}” trong kho.` };
   const profiles = entry.usedByProfiles.map((profile) => profile.name).join(", ");
   return { warning: false, text: `${entry.label}. Dùng khi rà soát: ${profiles || "chưa có loại hợp đồng nào"}.` };

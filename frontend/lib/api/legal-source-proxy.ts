@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 
-type LegalSourceAction = "catalog" | "create" | "delete" | "detail" | "preview" | "parts" | "resume";
+type LegalSourceAction = "catalog" | "create" | "delete" | "detail" | "preview" | "parts" | "resume" | "update";
 
 export async function proxyLegalSource(request: Request, action: LegalSourceAction, id?: string) {
   try {
@@ -20,15 +20,15 @@ export async function proxyLegalSource(request: Request, action: LegalSourceActi
         },
         { status: 400 },
       );
-    const needsId = ["delete", "detail", "parts", "resume"].includes(action);
+    const needsId = ["delete", "detail", "parts", "resume", "update"].includes(action);
     if (needsId && !id) return NextResponse.json({ success: false, error: { message: "Thiếu mã nguồn pháp lý." } }, { status: 400 });
-    const body = ["create", "preview", "parts"].includes(action) ? await request.formData() : undefined;
+    const body = ["create", "preview", "parts"].includes(action) ? await request.formData() : action === "update" ? await request.text() : undefined;
     const suffix = action === "preview" || action === "catalog" ? `/${action}` : id ? `/${id}${action === "parts" || action === "resume" ? `/${action}` : ""}` : "";
     const upstream = await fetch(
       `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/kb/legal-sources${suffix}`,
       {
-        method: action === "detail" || action === "catalog" ? "GET" : action === "delete" ? "DELETE" : "POST",
-        headers: { Authorization: `Bearer ${session.accessToken}` },
+        method: action === "detail" || action === "catalog" ? "GET" : action === "delete" ? "DELETE" : action === "update" ? "PATCH" : "POST",
+        headers: { Authorization: `Bearer ${session.accessToken}`, ...(action === "update" ? { "Content-Type": "application/json" } : {}) },
         body,
         cache: "no-store",
         signal: AbortSignal.timeout(180000),

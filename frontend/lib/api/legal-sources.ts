@@ -1,5 +1,5 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
-import type { AdminHealth, LegalSource, LegalSourceCatalogEntry, LegalSourcePreview } from "@/types/legal-sources";
+import type { AdminHealth, LegalSource, LegalSourceCatalogEntry, LegalSourcePreview, LegalSourceUpdate } from "@/types/legal-sources";
 
 export const legalSourcesApi = {
   catalog(signal?: AbortSignal) {
@@ -7,6 +7,9 @@ export const legalSourcesApi = {
   },
   detail(id: string, signal?: AbortSignal) {
     return apiRequest<LegalSource>({ url: `/manager/legal-sources/${encodeURIComponent(id)}`, signal });
+  },
+  update(id: string, data: LegalSourceUpdate) {
+    return apiRequest<LegalSource>({ url: `/manager/legal-sources/${encodeURIComponent(id)}`, method: "PATCH", data });
   },
   preview(data: FormData) {
     return apiRequest<LegalSourcePreview>({ url: "/manager/legal-sources/preview", method: "POST", data, timeout: 190_000 });

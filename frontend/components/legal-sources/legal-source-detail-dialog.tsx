@@ -8,7 +8,7 @@ import { LegalSourceDetailContent } from "./legal-source-detail-content";
 
 export function LegalSourceDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
   const workflow = useLegalSourceDetail(id, onClose);
-  const blocked = workflow.busy || workflow.append || workflow.deleting;
+  const blocked = workflow.busy || workflow.append || workflow.editing || workflow.deleting;
   function close() { if (!blocked) onClose(); }
   return <Dialog open onOpenChange={(open) => { if (!open) close(); }}>
     <DialogContent busy={blocked} className="flex h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
