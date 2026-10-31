@@ -64,7 +64,7 @@ export function useContractsList(
     retry: options.retry ?? false,
     refetchInterval: options.pollProcessing
       ? (query) =>
-          query.state.data?.items.some((item) => item.status === "processing")
+          query.state.data?.items.some((item) => item.status === "processing" || ["requested", "in_progress"].includes(item.expertVerification?.status ?? ""))
             ? 30_000
             : false
       : false,

@@ -32,6 +32,8 @@ reset();
 const stylesheet = path.join(root, 'styles/globals.css');
 const css = (await postcss([tailwind({ base: root })]).process(readFileSync(stylesheet, 'utf8'), { from: stylesheet })).css;
 const loader = path.join(dir, 'loader.cjs'), entry = path.join(dir, 'entry.js'), link = path.join(dir, 'link.js');
+const navigation = path.join(dir, 'navigation.js');
+await fs.writeFile(navigation, `export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);export const useRouter=()=>({push:url=>location.assign(url),replace:url=>{history.replaceState(null,'',url);window.dispatchEvent(new PopStateEvent('popstate'));}});`);
 const cssLoader = path.join(dir, 'css-loader.cjs');
 await fs.writeFile(cssLoader, String.raw`module.exports=function(source){const names=[...source.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map(m=>m[1]);return 'const s=document.createElement("style");s.textContent='+JSON.stringify(source)+';document.head.append(s);export default '+JSON.stringify(Object.fromEntries(names.map(name=>[name,name])))+';';}`);
 await fs.writeFile(loader, `const ts=require(${JSON.stringify(require.resolve('typescript'))});module.exports=function(s){return ts.transpileModule(s,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText}`);
@@ -40,20 +42,31 @@ await fs.writeFile(entry, `
 import React from 'react';import {createRoot} from 'react-dom/client';import {QueryClient,QueryClientProvider,useQuery} from '@tanstack/react-query';
 import {VerificationQueue} from '@/components/expert-verification/verification-queue';import {VerificationOverview} from '@/components/expert-verification/verification-overview';import {VerificationWorkspace} from '@/components/expert-verification/verification-workspace';
 import {VerificationMyWork} from '@/components/expert-verification/verification-my-work';
+import {ContractContent} from '@/components/contract/contract-content';import {NuqsAdapter} from 'nuqs/adapters/react';
 import {ReviewResultHeader} from '@/components/review/results/review-result-header';import {ReviewAnalysisPane} from '@/components/review/results/review-analysis-pane';
 const client=new QueryClient({defaultOptions:{queries:{retry:false}}});const filter=new URLSearchParams(location.search).get('status')||'all';const h=React.createElement;
 function SenderResults(){const {data}=useQuery({queryKey:['contracts','${'d'.repeat(24)}','review-result'],queryFn:async()=>{const r=await fetch('/api/contracts/${'d'.repeat(24)}/review-result');return(await r.json()).data;}});return data?h('main',null,h('h1',null,'Kết quả hợp đồng'),h(ReviewResultHeader,{result:data,role:'user',onShareSummary(){}}),h(ReviewAnalysisPane,{result:data,sectionId:'fixture-result',isDocx:false,onJumpToClause(){}})):h('h1',null,'Đang tải');}
-const page=location.pathname==='/sender-results'?h(SenderResults):location.pathname==='/expert-verification/overview'?h(VerificationOverview):location.pathname==='/expert-verification/my-work'?h(VerificationMyWork):location.pathname==='/expert-verification'?h(VerificationQueue,{initialFilter:filter}):h(VerificationWorkspace,{reviewId:'${reviewId}',expertId:'${expertId}',attempt:Number(new URLSearchParams(location.search).get('attempt'))||undefined});
-createRoot(document.getElementById('root')).render(h(QueryClientProvider,{client},page));
+const role=new URLSearchParams(location.search).get('role')||'user';
+const page=location.pathname==='/contracts-fixture'?h(ContractContent,{data:{role,contractScopeId:'scope',organization:{id:'scope'},contracts:[],totalContracts:0},access:{review:true},onReview(){document.body.dataset.opened='report';}}):location.pathname==='/sender-results'?h(SenderResults):location.pathname==='/expert-verification/overview'?h(VerificationOverview):location.pathname==='/expert-verification/my-work'?h(VerificationMyWork):location.pathname==='/expert-verification'?h(VerificationQueue,{initialFilter:filter}):h(VerificationWorkspace,{reviewId:'${reviewId}',expertId:'${expertId}',attempt:Number(new URLSearchParams(location.search).get('attempt'))||undefined});
+createRoot(document.getElementById('root')).render(h(NuqsAdapter,null,h(QueryClientProvider,{client},page)));
 `);
 const { webpack } = require('next/dist/compiled/webpack/webpack');
-await new Promise((resolve, reject) => webpack({ mode: 'development', devtool: false, entry, output: { path: dir, filename: 'app.js' }, resolve: { extensions: ['.tsx', '.ts', '.js'], alias: { '@': root, 'next/link': link }, modules: [path.join(root, 'node_modules'), 'node_modules'] }, module: { rules: [{ test: /\.tsx?$/, exclude: /node_modules/, use: loader }, { test: /\.module\.css$/, use: cssLoader }] } }, (error, stats) => error || stats.hasErrors() ? reject(error || new Error(stats.toString({ all: false, errors: true }))) : resolve()));
+await new Promise((resolve, reject) => webpack({ mode: 'development', devtool: false, entry, output: { path: dir, filename: 'app.js' }, resolve: { extensions: ['.tsx', '.ts', '.js'], alias: { '@': root, 'next/link': link, 'next/navigation': navigation }, modules: [path.join(root, 'node_modules'), 'node_modules'] }, module: { rules: [{ test: /\.tsx?$/, exclude: /node_modules/, use: loader }, { test: /\.module\.css$/, use: cssLoader }] } }, (error, stats) => error || stats.hasErrors() ? reject(error || new Error(stats.toString({ all: false, errors: true }))) : resolve()));
 const bundle = await fs.readFile(path.join(dir, 'app.js'));
 const html = `<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style><style>:root{--background:#fff;--foreground:#171717}@media(prefers-color-scheme:dark){:root{--background:#0a0a0a;--foreground:#ededed}}body{margin:0;background:#f6f7f9;font-family:Arial}#root{padding:16px}</style><div id="root"></div><script src="/app.js"></script></html>`;
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://fixture');
   const send = (data, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(status < 400 ? { success: true, data } : { success: false, error: data })); };
   if (url.pathname === '/fixture/reset') { reset(url.searchParams.get('mode') || ''); return send(null); }
+  if (url.pathname === '/api/contracts') {
+    let rows = Array.from({ length: 12 }, (_, index) => ({ _id: String(index).padStart(24, '0'), title: `Hợp đồng mẫu ${index + 1}`, type: 'service', status: index === 0 ? 'uploaded' : 'reviewed', createdAt: '2026-10-31T10:00:00Z', updatedAt: '2026-10-31T12:00:00Z', overallRiskLevel: 'high', latestReviewId: reviewId,
+      expertVerification: index % 3 === 0 ? null : { _id: 'c'.repeat(24), reviewId: index === 2 ? '8'.repeat(24) : reviewId, status: index % 3 === 1 ? 'requested' : 'approved', attempt: 1, requestedAt: '2026-10-31T10:00:00Z' } }));
+    const verification = url.searchParams.get('verificationStatus'), status = url.searchParams.get('status'), search = url.searchParams.get('search');
+    rows = rows.filter(row => (!verification || (verification === 'not_sent' ? !row.expertVerification : row.expertVerification?.status === verification)) && (!status || row.status === status) && (!search || row.title.includes(search)));
+    const page = Number(url.searchParams.get('page') || 1);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: true, data: rows.slice((page - 1) * 10, page * 10), meta: { total: rows.length, page, limit: 10 } }));
+  }
   if (url.pathname === '/fixture/finish') {
     workspace.findings[0].verification = { verdict: 'adjusted', originalSeverity: 'high', reason: 'Đã giảm mức rủi ro.', verifiedAt: '2026-10-31T12:00:00Z' };
     workspace.findings[0].severity = 'medium';
@@ -142,6 +155,50 @@ try {
   const fill = async (selector, value) => evaluate(`(()=>{const e=document.querySelector(${JSON.stringify(selector)});const proto=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;Object.getOwnPropertyDescriptor(proto,'value').set.call(e,${JSON.stringify(value)});e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
   const navigate = async route => { await call('Page.navigate', { url: origin + route }); await wait('!!document.querySelector("h1")'); };
   await call('Page.enable');
+  for (const role of ['user', 'staff', 'owner']) {
+    await navigate('/contracts-fixture?role=' + role);
+    await wait('document.querySelectorAll("article").length===10');
+    assert.equal(await evaluate('document.querySelector("h1").textContent'), role === 'user' ? 'Hợp đồng của tôi' : 'Hợp đồng tổ chức');
+  }
+  await click('Sau');
+  await wait('document.querySelectorAll("article").length===2');
+  assert.match(await evaluate('location.search'), /page=2/);
+  await click('Chờ tiếp nhận');
+  await wait('document.querySelectorAll("article").length===4');
+  assert.match(await evaluate('location.search'), /verificationStatus=requested/);
+  assert.equal(await evaluate('document.querySelector("[role=radio][data-state=checked]").textContent'), 'Chờ tiếp nhận');
+  assert.doesNotMatch(await evaluate('location.search'), /page=2/);
+  await fill('input[type=search]', 'Hợp đồng mẫu 2');
+  await click('Tìm kiếm');
+  await wait('document.querySelectorAll("article").length===1');
+  await evaluate(`document.querySelector('article button').click()`);
+  await wait('document.body.dataset.opened==="report"');
+  await fetch(origin + '/fixture/reset');
+  await click('Xem thông tin xác minh');
+  await wait('!!document.querySelector("[role=dialog]")');
+  await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await wait('!document.querySelector("[role=dialog]")');
+  for (const width of [1440, 390]) {
+    await call('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false });
+    await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+    assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth+1'), `Contract cards overflow at ${width}`);
+    const shot = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+    await fs.writeFile(path.join(dir, `contracts-${width}.png`), Buffer.from(shot.data, 'base64'));
+  }
+  await navigate('/contracts-fixture?verificationStatus=approved');
+  await wait('document.querySelectorAll("article").length===4');
+  assert.ok(await evaluate('document.body.textContent.includes("Yêu cầu thuộc lượt rà soát trước")'));
+  await navigate('/contracts-fixture?verificationStatus=not_sent');
+  await wait('document.querySelectorAll("article").length===4');
+  assert.equal(await evaluate('[...document.querySelectorAll("article button")].some(e=>e.textContent==="Xem thông tin xác minh")'), false);
+  await evaluate('document.querySelector("[role=radio][data-state=checked]").focus()');
+  await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
+  await wait('document.querySelector("[role=radio][data-state=checked]").textContent==="Chờ tiếp nhận"');
+  await wait('document.querySelectorAll("article").length===4');
+  await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  assert.ok(await evaluate('[...document.querySelectorAll("article .animate-pulse")].every(e=>getComputedStyle(e).animationName==="none")'));
+  await call('Emulation.setEmulatedMedia', { features: [] });
+  console.log('PASS contract tracking for user/staff/owner, URL filters, pagination, request dialog, old review warning and responsive cards');
   await fetch(origin + '/fixture/reset?mode=overview');
   await navigate('/expert-verification/overview');
   await wait('document.body.textContent.includes("Tiếp tục kiểm tra") && document.body.textContent.includes("Yêu cầu mới đang chờ")');

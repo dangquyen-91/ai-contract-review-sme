@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
   if (session.error) return session.error;
   const accessToken = session.accessToken;
   const params = new URLSearchParams();
-  for (const key of ["page", "limit", "status", "riskLevel", "search", "sortBy", "sortOrder"]) {
+  for (const key of ["page", "limit", "status", "riskLevel", "verificationStatus", "search", "sortBy", "sortOrder"]) {
     const value = request.nextUrl.searchParams.get(key);
     if (value) params.set(key, value);
   }

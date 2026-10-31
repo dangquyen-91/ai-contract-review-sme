@@ -26,6 +26,7 @@ const expertReviewSchema = new Schema(
 
 expertReviewSchema.index({ orgId: 1, status: 1, requestedAt: -1 });
 expertReviewSchema.index({ contractId: 1, status: 1 });
+expertReviewSchema.index({ orgId: 1, contractId: 1, requestedAt: -1, _id: -1 });
 
 export type ExpertReview = InferSchemaType<typeof expertReviewSchema>;
 export const ExpertReviewModel = model('ExpertReview', expertReviewSchema);

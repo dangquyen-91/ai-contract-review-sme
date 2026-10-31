@@ -1,0 +1,72 @@
+process.env.NODE_ENV = 'test';
+process.env.MONGODB_URI = 'mongodb://127.0.0.1/unused';
+process.env.JWT_ACCESS_SECRET = 'contract-list-test-access';
+process.env.JWT_REFRESH_SECRET = 'contract-list-test-refresh';
+process.env.DATA_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+process.env.MONGOMS_DOWNLOAD_DIR = require('path').join(__dirname, '../node_modules/.cache/mongodb-memory-server');
+
+const mongoose = require('mongoose');
+const { MongoMemoryReplSet } = require('mongodb-memory-server');
+const { ContractModel } = require('../dist/models/contract.model');
+const { ContractVersionModel } = require('../dist/models/contractVersion.model');
+const { ReviewModel } = require('../dist/models/review.model');
+const { ExpertReviewModel } = require('../dist/models/expertReview.model');
+const { listContracts } = require('../dist/services/contract/contract.service');
+const { listContractsQuerySchema } = require('../dist/validations/contract.validation');
+const oid = () => new mongoose.Types.ObjectId();
+const org = oid(), otherOrg = oid();
+const pagination = { page: 1, limit: 10, skip: 0, sortBy: 'updatedAt', sortOrder: -1 };
+let replica, sent, unsent, oldReview, newReview;
+
+beforeAll(async () => {
+  replica = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  await mongoose.connect(replica.getUri());
+  sent = oid(); unsent = oid(); oldReview = oid(); newReview = oid();
+  const version = oid();
+  await ContractModel.collection.insertMany([
+    { _id: sent, orgId: org, title: 'Đã gửi', status: 'reviewed', type: 'service', createdAt: new Date('2026-10-01'), updatedAt: new Date('2026-10-31') },
+    { _id: unsent, orgId: org, title: 'Chưa gửi', status: 'uploaded', createdAt: new Date('2026-10-01'), updatedAt: new Date('2026-10-30') },
+    { _id: oid(), orgId: otherOrg, title: 'Khác tổ chức', status: 'reviewed', updatedAt: new Date('2026-11-01') },
+  ]);
+  await ContractVersionModel.collection.insertOne({ _id: version, contractId: sent, versionNumber: 1, overallRiskLevel: 'high', extractedText: 'PRIVATE DOCUMENT CONTENT' });
+  await ReviewModel.collection.insertMany([
+    { _id: oldReview, orgId: org, contractId: sent, versionId: version, status: 'completed', createdAt: new Date('2026-10-29') },
+    { _id: newReview, orgId: org, contractId: sent, versionId: version, status: 'completed', createdAt: new Date('2026-10-31') },
+  ]);
+  await ExpertReviewModel.collection.insertMany([
+    { _id: oid(), orgId: org, contractId: sent, reviewId: oldReview, status: 'approved', attempt: 2, requestedAt: new Date('2026-10-30'), requestNote: 'PRIVATE NOTE', decisionNote: 'PRIVATE DECISION', expertId: oid() },
+    { _id: oid(), orgId: otherOrg, contractId: sent, reviewId: oid(), status: 'returned', requestedAt: new Date('2026-11-01') },
+  ]);
+});
+afterAll(async () => { await mongoose.disconnect(); if (replica) await replica.stop(); });
+
+test('list returns latest request metadata without text, notes or other organization data', async () => {
+  const result = await listContracts(String(org), {}, pagination);
+  expect(result.total).toBe(2);
+  const row = result.items.find(item => String(item._id) === String(sent));
+  expect(String(row.latestReviewId)).toBe(String(newReview));
+  expect(String(row.expertVerification.reviewId)).toBe(String(oldReview));
+  expect(row.expertVerification.status).toBe('approved');
+  expect(row.expertVerification.attempt).toBe(2);
+  expect(JSON.stringify(result)).not.toMatch(/PRIVATE|expertId|Khác tổ chức/);
+});
+
+test('verification filters apply before pagination and totals', async () => {
+  const unassigned = await listContracts(String(org), { verificationStatus: 'not_sent' }, { ...pagination, limit: 1 });
+  expect(unassigned.total).toBe(1);
+  expect(String(unassigned.items[0]._id)).toBe(String(unsent));
+  const approved = await listContracts(String(org), { verificationStatus: 'approved', riskLevel: 'high' }, pagination);
+  expect(approved.total).toBe(1);
+  expect(approved.items[0].expertVerification.status).toBe('approved');
+  const secondPage = await listContracts(String(org), { verificationStatus: 'approved' }, { ...pagination, page: 2, skip: 1, limit: 1 });
+  expect(secondPage.total).toBe(1);
+  expect(secondPage.items).toHaveLength(0);
+  expect((await listContracts(String(org), { verificationStatus: 'returned' }, pagination)).total).toBe(0);
+});
+
+test('request updates are reflected and validation rejects unknown statuses', async () => {
+  await ExpertReviewModel.updateOne({ reviewId: oldReview }, { $set: { status: 'in_progress' } });
+  expect((await listContracts(String(org), { verificationStatus: 'in_progress' }, pagination)).total).toBe(1);
+  expect((await listContracts(String(org), { verificationStatus: 'approved' }, pagination)).total).toBe(0);
+  expect(listContractsQuerySchema.safeParse({ verificationStatus: 'cancelled' }).success).toBe(false);
+});

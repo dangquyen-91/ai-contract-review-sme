@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { verificationDate, verificationStatuses } from "@/lib/review/verification-display";
 import type { ExpertVerification } from "@/types/expert-verification";
 
-export function VerificationRequestDialog({ title, verification, refreshing, error, onClose, onRefresh, onResend }: {
+export function VerificationRequestDialog({ title, verification, refreshing, error, onClose, onRefresh, onResend, resendLabel = "Gửi lại yêu cầu" }: {
   title: string;
   verification: ExpertVerification;
   refreshing: boolean;
@@ -14,6 +14,7 @@ export function VerificationRequestDialog({ title, verification, refreshing, err
   onClose: () => void;
   onRefresh: () => void;
   onResend: () => void;
+  resendLabel?: string;
 }) {
   const { status } = verification;
   const finished = status === "approved" || status === "returned";
@@ -80,7 +81,7 @@ export function VerificationRequestDialog({ title, verification, refreshing, err
           </div>
           <div className="flex items-center justify-end gap-2">
             <Button size="sm" variant={status === "returned" ? "outline" : "default"} onClick={onClose}>Đóng</Button>
-            {status === "returned" && <Button size="sm" onClick={() => { onClose(); onResend(); }}>Gửi lại yêu cầu</Button>}
+            {status === "returned" && <Button size="sm" onClick={() => { onClose(); onResend(); }}>{resendLabel}</Button>}
           </div>
         </DialogFooter>
       </DialogContent>

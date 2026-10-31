@@ -412,6 +412,22 @@ components:
     Contract:
       type: object
       properties:
+        latestReviewId:
+          type: string
+          nullable: true
+          description: List endpoint only. Latest review for the current upload version; compare with expertVerification.reviewId to identify an older request.
+        expertVerification:
+          type: object
+          nullable: true
+          description: List endpoint only. Most recently requested verification within this contract and org, without notes or contract text. Null means this contract has never been sent.
+          properties:
+            _id: { type: string }
+            reviewId: { type: string }
+            status: { type: string, enum: [requested, in_progress, approved, returned] }
+            attempt: { type: integer }
+            requestedAt: { type: string, format: date-time }
+            assignedAt: { type: string, format: date-time }
+            completedAt: { type: string, format: date-time }
         reviewBilling:
           $ref: '#/components/schemas/ReviewBillingQuote'
         id:
@@ -2776,6 +2792,10 @@ paths:
         - in: query
           name: riskLevel
           schema: { type: string }
+        - in: query
+          name: verificationStatus
+          schema: { type: string, enum: [not_sent, requested, in_progress, approved, returned] }
+          description: Filters by the contract's most recently requested expert verification, before pagination. not_sent means no request exists for the contract in this org.
         - in: query
           name: search
           schema: { type: string }
