@@ -403,6 +403,8 @@ erDiagram
         ObjectId requestedBy FK
         String requestNote
         Date requestedAt
+        Date consentedAt
+        ObjectId consentedBy FK
         ObjectId expertId FK
         Date assignedAt
         Date completedAt
@@ -567,7 +569,7 @@ erDiagram
 - **`CONTRACT_VER.keyTerms[].clauseId` points to `CLAUSE`** of the same version — not drawn as a separate line to keep the diagram readable.
 - **`orgId` is repeated on CLAUSE, RISK_FINDING, REVIEW, CHAT_MESSAGE, USAGE_RUN and DRAFT_PROPOSAL** to scope data per organization; the diagram only draws the main ownership relationships.
 - **Two kinds of risk finding:** `clause_risk` is tied to one `CLAUSE`; `missing_clause` has no `CLAUSE` and points to the missing clause type (`expectedClauseTypeId`).
-- **Expert verification:** at most 1 `EXPERT_REVIEW` per `REVIEW`; while it is `requested` or `in_progress`, the contract cannot start or retry a review, because a new review replaces the findings. `RISK_FINDING.verification` is a copy of the latest `EXPERT_ACTION` for fast reads; `EXPERT_ACTION` keeps the full history, and its `riskFindingId` may point to a finding that a later review or a remove action deleted, which is why each action keeps snapshots. Rejected findings stay stored but are left out of chat context, share summaries and the overall risk level recomputed on approval.
+- **Expert verification:** experts are LawScan platform accounts with no `orgId`; organizations and personal accounts both send requests to one shared queue, and every request records the requester's consent to share (`consentedAt`, `consentedBy`). At most 1 `EXPERT_REVIEW` per `REVIEW`; while it is `requested` or `in_progress`, the contract cannot start or retry a review, because a new review replaces the findings. `RISK_FINDING.verification` is a copy of the latest `EXPERT_ACTION` for fast reads; `EXPERT_ACTION` keeps the full history, and its `riskFindingId` may point to a finding that a later review or a remove action deleted, which is why each action keeps snapshots. Rejected findings stay stored but are left out of chat context, share summaries and the overall risk level recomputed on approval.
 - **At most 1 running review per contract** (`REVIEW.activeLock`) and at most 1 reserved analysis credit per contract; **at most 1 open payment order per organization** (`PAYMENT.isOpen`); **1 subscription record per organization** (`ORG_SUB.orgId` is unique).
 - **Each REVIEW holds exactly 1 USAGE_RUN of kind analysis**; chats also go through USAGE_RUN (kind chat), but CHAT_MESSAGE does not store a link to the charged run.
 - **How credits are charged today:** an analysis run takes `units` computed from the page count of the reviewed version (`pageCount`, `versionId`) out of `SUB_PERIOD.analysisLimit`; a chat run takes 1 unit. A drafting run (kind drafting) points to CONTRACT_DRAFT through `draftId` and has no contract.

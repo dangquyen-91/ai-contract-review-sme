@@ -8,7 +8,6 @@ import {
   ExpertReviewModel,
   OPEN_EXPERT_REVIEW_STATUSES,
 } from '../../models/expertReview.model';
-import { OrganizationModel } from '../../models/organization.model';
 import { ReviewModel } from '../../models/review.model';
 import { RiskCitationModel } from '../../models/riskCitation.model';
 import { RiskFinding, RiskFindingModel } from '../../models/riskFinding.model';
@@ -72,22 +71,19 @@ async function loadVerifiableReview(orgId: string, reviewId: string) {
   return review;
 }
 
-async function assertOrganizationHasExpert(orgId: string) {
-  const organization = await OrganizationModel.findById(orgId).select('isPersonal');
-  if (!organization || organization.isPersonal) {
-    throw AppError.badRequest('Tài khoản cá nhân chưa hỗ trợ gửi chuyên gia xác minh.', 'VERIFICATION_UNAVAILABLE');
-  }
+async function assertExpertAvailable() {
   const expertRole = await getRoleByCode('expert');
-  const hasExpert = await UserModel.exists({ orgId, roleId: expertRole._id, isActive: true, deletedAt: null });
+  const hasExpert = await UserModel.exists({ roleId: expertRole._id, isActive: true, deletedAt: null });
   if (!hasExpert) {
-    throw AppError.conflict('Tổ chức chưa có chuyên gia. Hãy mời chuyên gia trước khi gửi xác minh.', 'NO_EXPERT');
+    throw AppError.conflict('Hiện chưa có chuyên gia LawScan nhận xác minh. Vui lòng thử lại sau.', 'NO_EXPERT');
   }
 }
 
 export async function requestVerification(orgId: string, userId: string, reviewId: string, note?: string) {
   const review = await loadVerifiableReview(orgId, reviewId);
-  await assertOrganizationHasExpert(orgId);
+  await assertExpertAvailable();
   const now = new Date();
+  const consent = { consentedAt: now, consentedBy: userId };
   const existing = await ExpertReviewModel.findOne({ reviewId: review._id });
   if (existing) {
     if (existing.status !== 'returned') {
@@ -99,7 +95,7 @@ export async function requestVerification(orgId: string, userId: string, reviewI
     const reopened = await ExpertReviewModel.findOneAndUpdate(
       { _id: existing._id, status: 'returned' },
       {
-        $set: { status: 'requested', requestedBy: userId, requestedAt: now, ...(note ? { requestNote: note } : {}) },
+        $set: { status: 'requested', requestedBy: userId, requestedAt: now, ...consent, ...(note ? { requestNote: note } : {}) },
         $inc: { attempt: 1 },
         $unset: { expertId: '', assignedAt: '', completedAt: '', decisionNote: '', ...(note ? {} : { requestNote: '' }) },
       },
@@ -117,6 +113,7 @@ export async function requestVerification(orgId: string, userId: string, reviewI
       requestedBy: userId,
       requestNote: note,
       requestedAt: now,
+      ...consent,
     });
   } catch (err) {
     if ((err as { code?: number }).code === 11000) {

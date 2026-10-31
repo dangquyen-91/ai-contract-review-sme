@@ -12,7 +12,7 @@ export const getVerificationHandler = asyncHandler(async (req: Request, res: Res
 
 export const requestVerificationHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);
-  ok(res, await verificationService.requestVerification(user.orgId, user.sub, req.params.reviewId, req.body?.note), 201);
+  ok(res, await verificationService.requestVerification(user.orgId, user.sub, req.params.reviewId, req.body.note), 201);
 });
 
 export const startVerificationHandler = asyncHandler(async (req: Request, res: Response) => {

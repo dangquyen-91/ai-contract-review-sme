@@ -14,6 +14,8 @@ const expertReviewSchema = new Schema(
     requestedBy: { type: Types.ObjectId, ref: 'User', required: true },
     requestNote: { type: String },
     requestedAt: { type: Date, required: true },
+    consentedAt: { type: Date },
+    consentedBy: { type: Types.ObjectId, ref: 'User' },
     expertId: { type: Types.ObjectId, ref: 'User' },
     assignedAt: { type: Date },
     completedAt: { type: Date },

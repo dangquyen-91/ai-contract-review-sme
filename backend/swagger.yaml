@@ -1112,6 +1112,13 @@ components:
         requestedAt:
           type: string
           format: date-time
+        consentedAt:
+          type: string
+          format: date-time
+          description: When the requester consented to share the contract with LawScan experts
+        consentedBy:
+          type: string
+          description: User who gave the consent
         expertId:
           type: string
           description: Expert who claimed the request, or the populated user (name) on read endpoints
@@ -3808,15 +3815,21 @@ paths:
       tags: [Reviews]
       summary: Send a completed review to an expert for verification
       description: |
-        Only the latest fully completed review of the contract's current version can be sent, and not while another review of the contract runs. Personal accounts cannot request verification, and the organization needs at least one active expert. Sending a returned verification again reopens it and increments attempt; earlier decisions on findings are kept. While the verification is requested or in progress, new reviews and retries of the contract return 409 VERIFICATION_IN_PROGRESS. Verification does not use analysis credits.
-        Roles - owner, manager, staff.
+        Only the latest fully completed review of the contract's current version can be sent, and not while another review of the contract runs. Verification is done by LawScan platform experts, so organizations and personal accounts can both request it; at least one active expert must exist on the platform. The requester must send consent true to share the contract with LawScan experts; consentedAt and consentedBy are recorded on every request. Sending a returned verification again reopens it and increments attempt; earlier decisions on findings are kept. While the verification is requested or in progress, new reviews and retries of the contract return 409 VERIFICATION_IN_PROGRESS. Verification does not use analysis credits.
+        Roles - owner, manager, staff, user.
       requestBody:
+        required: true
         content:
           application/json:
             schema:
               type: object
               additionalProperties: false
+              required: [consent]
               properties:
+                consent:
+                  type: boolean
+                  enum: [true]
+                  description: Consent to share the contract with LawScan experts
                 note:
                   type: string
                   maxLength: 2000
@@ -3828,7 +3841,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/ExpertReview'
         '400':
-          description: VERIFICATION_UNAVAILABLE - personal account
+          description: Validation error, including missing consent
           content:
             application/json:
               schema:
@@ -3844,7 +3857,7 @@ paths:
             REVIEW_NOT_VERIFIABLE - the review is not fully completed.
             REVIEW_OUTDATED - a newer review or contract version exists.
             REVIEW_RUNNING - another review of the contract is running.
-            NO_EXPERT - the organization has no active expert.
+            NO_EXPERT - no active LawScan expert on the platform.
             VERIFICATION_EXISTS - already requested, in progress or approved.
           content:
             application/json:

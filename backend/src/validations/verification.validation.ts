@@ -9,7 +9,14 @@ export const verificationFindingParamSchema = reviewIdParamSchema.extend({
   findingId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid finding id'),
 });
 
-export const requestVerificationBodySchema = z.object({ note: note.optional() }).strict().default({});
+export const requestVerificationBodySchema = z
+  .object({
+    note: note.optional(),
+    consent: z.literal(true, {
+      errorMap: () => ({ message: 'Consent to share the contract with LawScan experts is required' }),
+    }),
+  })
+  .strict();
 
 const findingContent = {
   severity: z.enum(RISK_SEVERITIES).optional(),
