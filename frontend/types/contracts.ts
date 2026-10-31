@@ -133,6 +133,7 @@ export type RiskFinding = {
     articleRef?: string;
     chunkText: string;
     relevanceScore: number;
+    inKnowledgeBase?: boolean;
   }[];
   clause?: {
     index: number;
@@ -211,6 +212,7 @@ export type ContractChatMessage = {
   contractVersionId: string;
   role: "user" | "assistant";
   content: string;
+  legalSources?: { legalKnowledgeChunkId: string; citationLabel: string; sourceTitle: string; articleRef?: string }[];
   createdAt: string;
   updatedAt: string;
 };
