@@ -4,6 +4,12 @@ import { ok } from '../utils/ApiResponse';
 import { getContractUser } from '../middlewares/auth.middleware';
 import * as verificationService from '../services/review/verification.service';
 import { AddFindingInput, DecideFindingInput } from '../validations/verification.validation';
+import { ExpertWorkQuery } from '../validations/verification.validation';
+import { listExpertWork } from '../services/review/expertWork.service';
+
+export const listExpertWorkHandler = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, await listExpertWork(req.user!.sub, req.query as unknown as ExpertWorkQuery));
+});
 
 export const getVerificationHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);
@@ -16,7 +22,7 @@ export const requestVerificationHandler = asyncHandler(async (req: Request, res:
 });
 
 export const getExpertWorkspaceHandler = asyncHandler(async (req: Request, res: Response) => {
-  ok(res, await verificationService.getExpertWorkspace(req.user!.sub, req.params.reviewId));
+  ok(res, await verificationService.getExpertWorkspace(req.user!.sub, req.params.reviewId, req.query.attempt === undefined ? undefined : Number(req.query.attempt)));
 });
 
 export const startVerificationHandler = asyncHandler(async (req: Request, res: Response) => {

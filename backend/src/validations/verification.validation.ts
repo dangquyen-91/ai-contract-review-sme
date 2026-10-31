@@ -72,5 +72,23 @@ export const verificationQueueQuerySchema = z.object({
   status: z.enum(['requested', 'in_progress', 'all']).optional(),
 });
 
+const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine((value) => {
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}, 'Invalid calendar date');
+
+export const expertWorkQuerySchema = z.object({
+  status: z.enum(['all', 'in_progress', 'approved', 'returned']).default('all'),
+  search: z.string().trim().max(100).optional(),
+  type: z.string().trim().regex(/^[a-z_]{1,60}$/).optional(),
+  from: calendarDate.optional(),
+  to: calendarDate.optional(),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+}).refine((value) => !value.from || !value.to || value.from <= value.to, { message: 'Ngày bắt đầu phải trước hoặc bằng ngày kết thúc.', path: ['to'] });
+
+export const expertWorkspaceQuerySchema = z.object({ attempt: z.coerce.number().int().min(1).max(100000).optional() });
+export type ExpertWorkQuery = z.infer<typeof expertWorkQuerySchema>;
+
 export type DecideFindingInput = z.infer<typeof decideFindingBodySchema>;
 export type AddFindingInput = z.infer<typeof addFindingBodySchema>;

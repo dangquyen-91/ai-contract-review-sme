@@ -16,6 +16,7 @@ import {
   getExpertWorkspaceHandler,
   getVerificationHandler,
   listVerificationQueueHandler,
+  listExpertWorkHandler,
   removeFindingHandler,
   requestVerificationHandler,
   returnVerificationHandler,
@@ -31,11 +32,15 @@ import {
   returnVerificationBodySchema,
   verificationFindingParamSchema,
   verificationQueueQuerySchema,
+  expertWorkQuerySchema,
+  expertWorkspaceQuerySchema,
 } from '../validations/verification.validation';
 
 const router = Router();
 
 router.use(requireAuth);
+
+router.get('/my-verifications', requireRole('expert'), validate({ query: expertWorkQuerySchema }), listExpertWorkHandler);
 
 router.get(
   '/verification-queue',
@@ -73,7 +78,7 @@ router.get(
 router.get(
   '/:reviewId/verification/workspace',
   requireRole('expert'),
-  validate({ params: reviewIdParamSchema }),
+  validate({ params: reviewIdParamSchema, query: expertWorkspaceQuerySchema }),
   getExpertWorkspaceHandler,
 );
 

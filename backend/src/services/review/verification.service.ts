@@ -20,6 +20,7 @@ import { listVersionFindings } from '../analysis/risk.service';
 import { getCurrentVersion } from '../contract/contractVersion.service';
 import { redactionPolicyFor } from '../contract/redactionPolicy.service';
 import { getRoleByCode } from '../identity/role.service';
+import { archiveExpertWork, historicalExpertWork } from './expertWork.service';
 
 type RiskLevel = (typeof RISK_LEVELS)[number];
 type ExpertActionType = (typeof EXPERT_ACTIONS)[number];
@@ -96,17 +97,21 @@ export async function requestVerification(orgId: string, userId: string, reviewI
         'VERIFICATION_EXISTS',
       );
     }
+    const previousWorkspace = existing.expertId ? await getExpertWorkspace(existing.expertId.toString(), reviewId) : null;
+    return mongoose.connection.transaction(async (dbSession) => {
     const reopened = await ExpertReviewModel.findOneAndUpdate(
-      { _id: existing._id, status: 'returned' },
+      { _id: existing._id, status: 'returned', attempt: existing.attempt },
       {
         $set: { status: 'requested', requestedBy: userId, requestedAt: now, ...consent, ...(note ? { requestNote: note } : {}) },
         $inc: { attempt: 1 },
         $unset: { expertId: '', assignedAt: '', completedAt: '', decisionNote: '', ...(note ? {} : { requestNote: '' }) },
       },
-      { new: true },
+      { new: true, session: dbSession },
     );
     if (!reopened) throw AppError.conflict('Yêu cầu xác minh vừa thay đổi. Vui lòng tải lại.', 'VERIFICATION_EXISTS');
+    if (previousWorkspace) await archiveExpertWork(existing, previousWorkspace, dbSession);
     return reopened;
+    });
   }
   try {
     return await ExpertReviewModel.create({
@@ -278,6 +283,7 @@ export async function approveVerification(expertId: string, reviewId: string, de
     if (finding.verification?.verdict === 'rejected') continue;
     if (SEVERITY_RANK[finding.severity] > SEVERITY_RANK[overallRiskLevel]) overallRiskLevel = finding.severity;
   }
+  const workspace = await getExpertWorkspace(expertId, reviewId);
   return mongoose.connection.transaction(async (dbSession) => {
     const approved = await ExpertReviewModel.findOneAndUpdate(
       { _id: session._id, status: 'in_progress', expertId },
@@ -286,19 +292,24 @@ export async function approveVerification(expertId: string, reviewId: string, de
     );
     if (!approved) throw AppError.conflict('Yêu cầu xác minh vừa thay đổi. Vui lòng tải lại.', 'VERIFICATION_NOT_OPEN');
     await ContractVersionModel.updateOne({ _id: review.versionId }, { $set: { overallRiskLevel } }, { session: dbSession });
+    await archiveExpertWork(approved, workspace, dbSession);
     return approved;
   });
 }
 
 export async function returnVerification(expertId: string, reviewId: string, reason: string) {
   const { session } = await loadOwnSession(expertId, reviewId);
+  const workspace = await getExpertWorkspace(expertId, reviewId);
+  return mongoose.connection.transaction(async (dbSession) => {
   const returned = await ExpertReviewModel.findOneAndUpdate(
     { _id: session._id, status: 'in_progress', expertId },
     { $set: { status: 'returned', completedAt: new Date(), decisionNote: reason } },
-    { new: true },
+    { new: true, session: dbSession },
   );
   if (!returned) throw AppError.conflict('Yêu cầu xác minh vừa thay đổi. Vui lòng tải lại.', 'VERIFICATION_NOT_OPEN');
+  await archiveExpertWork(returned, workspace, dbSession);
   return returned;
+  });
 }
 
 export async function getVerification(orgId: string, reviewId: string) {
@@ -359,7 +370,8 @@ function maskTextFields<T extends object>(item: T, mask: (text: string) => strin
   return masked as T;
 }
 
-export async function getExpertWorkspace(expertId: string, reviewId: string) {
+export async function getExpertWorkspace(expertId: string, reviewId: string, attempt?: number) {
+  if (attempt !== undefined) return historicalExpertWork(expertId, reviewId, attempt);
   const session = await ExpertReviewModel.findOne({ reviewId });
   if (!session) throw AppError.notFound('Kết quả rà soát này chưa được gửi xác minh.');
   if (session.status !== 'requested' && session.expertId?.toString() !== expertId) {
