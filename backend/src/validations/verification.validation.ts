@@ -9,7 +9,7 @@ export const verificationFindingParamSchema = reviewIdParamSchema.extend({
   findingId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid finding id'),
 });
 
-export const requestVerificationBodySchema = z.object({ note: note.optional() }).strict();
+export const requestVerificationBodySchema = z.object({ note: note.optional() }).strict().default({});
 
 const findingContent = {
   severity: z.enum(RISK_SEVERITIES).optional(),
@@ -57,7 +57,7 @@ export const addFindingBodySchema = z
   })
   .strict();
 
-export const approveVerificationBodySchema = z.object({ decisionNote: note.optional() }).strict();
+export const approveVerificationBodySchema = z.object({ decisionNote: note.optional() }).strict().default({});
 
 export const returnVerificationBodySchema = z.object({ reason: note }).strict();
 

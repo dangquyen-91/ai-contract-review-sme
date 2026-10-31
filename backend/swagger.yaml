@@ -1038,8 +1038,8 @@ components:
           enum: [open, acknowledged, dismissed, resolved]
         detectedBy:
           type: string
-          enum: [rule, llm, hybrid, checklist]
-          description: rule = a fixed legal rule fired (ruleCode is set); llm = found by the LLM; hybrid = a missing clause found by the taxonomy check and described by the LLM; checklist = a missing clause found by the taxonomy check that the LLM did not describe (generic text). Findings saved before checklist existed may still use rule for that last case.
+          enum: [rule, llm, hybrid, checklist, expert]
+          description: rule = a fixed legal rule fired (ruleCode is set); llm = found by the LLM; hybrid = a missing clause found by the taxonomy check and described by the LLM; checklist = a missing clause found by the taxonomy check that the LLM did not describe (generic text); expert = added by an expert during verification. Findings saved before checklist existed may still use rule for that last case.
         riskCode:
           type: string
           enum: [UNLAWFUL_TERM, MISSING_MANDATORY_FORM, UNILATERAL_TERMINATION, AUTO_RENEWAL, EXCESSIVE_PENALTY, LIABILITY_LIMITATION, ONE_SIDED_INDEMNITY, UNFAVORABLE_PAYMENT, ONE_SIDED_OBLIGATION, BROAD_EXCLUSION, IP_DATA_RISK, UNFAVORABLE_DISPUTE_FORUM, VAGUE_SCOPE, AMBIGUOUS_TERM, MISSING_CLAUSE, MISSING_PROTECTION, OTHER]
@@ -1052,6 +1052,8 @@ components:
         ruleVersion:
           type: integer
           description: Version of the rule that produced the finding
+        verification:
+          $ref: '#/components/schemas/FindingVerification'
         citations:
           type: array
           description: Legal sources behind this finding. For a rule finding these are the exact articles the rule cites (relevanceScore 1), attached only when that law is in the knowledge base and the article text contains the rule's expected wording. For an LLM finding these are the retrieved excerpts it relied on.
@@ -1063,6 +1065,202 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    FindingVerification:
+      type: object
+      description: Latest expert decision on the finding, copied from the newest ExpertAction. Absent until an expert acts on it.
+      properties:
+        verdict:
+          type: string
+          enum: [confirmed, adjusted, rejected, added]
+          description: added = the expert created the finding. Rejected findings stay in the list and are left out of the overall risk level once the verification is approved.
+        originalSeverity:
+          type: string
+          enum: [high, medium, low]
+          description: Severity the AI gave, kept so the UI can show AI vs expert severity. Absent on findings the expert added.
+        reason:
+          type: string
+        verifiedBy:
+          type: string
+        verifiedAt:
+          type: string
+          format: date-time
+
+    ExpertReview:
+      type: object
+      description: Expert (lawyer) verification of one completed review. One per review; a returned verification can be requested again, which increments attempt.
+      properties:
+        _id:
+          type: string
+        reviewId:
+          type: string
+        contractId:
+          type: string
+          description: Contract id, or on GET /reviews/verification-queue the populated contract (title, type, overallRiskLevel)
+        orgId:
+          type: string
+        status:
+          type: string
+          enum: [requested, in_progress, approved, returned]
+        attempt:
+          type: integer
+        requestedBy:
+          type: string
+          description: User id, or the populated user (name) on read endpoints
+        requestNote:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+        expertId:
+          type: string
+          description: Expert who claimed the request, or the populated user (name) on read endpoints
+        assignedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        decisionNote:
+          type: string
+          description: Expert summary when approved, or the reason when returned
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ExpertFindingSnapshot:
+      type: object
+      properties:
+        findingType:
+          type: string
+          enum: [clause_risk, missing_clause]
+        severity:
+          type: string
+          enum: [high, medium, low]
+        riskCode:
+          type: string
+        title:
+          type: string
+        problem:
+          type: array
+          items:
+            type: string
+        consequences:
+          type: array
+          items:
+            type: string
+        recommendations:
+          type: array
+          items:
+            type: string
+        clauseIndex:
+          type: integer
+
+    ExpertAction:
+      type: object
+      description: Append-only log of expert decisions. before holds the finding as it was (the AI result on the first action), after holds it once the action applied, so the log survives a later re-review that replaces the findings.
+      properties:
+        _id:
+          type: string
+        expertReviewId:
+          type: string
+        riskFindingId:
+          type: string
+        expertId:
+          type: string
+          description: User id, or the populated user (name)
+        attempt:
+          type: integer
+        action:
+          type: string
+          enum: [confirm, adjust, reject, add, remove]
+        reason:
+          type: string
+        before:
+          $ref: '#/components/schemas/ExpertFindingSnapshot'
+        after:
+          $ref: '#/components/schemas/ExpertFindingSnapshot'
+        createdAt:
+          type: string
+          format: date-time
+
+    DecideFindingRequest:
+      type: object
+      required: [verdict]
+      additionalProperties: false
+      properties:
+        verdict:
+          type: string
+          enum: [confirmed, adjusted, rejected]
+          description: Findings added by an expert accept only adjusted.
+        reason:
+          type: string
+          maxLength: 2000
+          description: Required when verdict is rejected
+        severity:
+          type: string
+          enum: [high, medium, low]
+        riskCode:
+          type: string
+        title:
+          type: string
+          maxLength: 300
+        problem:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        consequences:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        recommendations:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+      description: Content fields are allowed only with verdict adjusted, and at least one of them must change.
+
+    AddExpertFindingRequest:
+      type: object
+      required: [severity, riskCode, title, problem]
+      additionalProperties: false
+      properties:
+        clauseIndex:
+          type: integer
+          minimum: 0
+          description: Clause the risk belongs to. Omit for a missing clause.
+        severity:
+          type: string
+          enum: [high, medium, low]
+        riskCode:
+          type: string
+        title:
+          type: string
+          maxLength: 300
+        problem:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+        consequences:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        recommendations:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        reason:
+          type: string
+          maxLength: 2000
 
     RiskCitation:
       type: object
@@ -3356,7 +3554,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: A review or complete analysis is already running for this contract, or the Idempotency-Key was used for a different request
+          description: A review or complete analysis is already running for this contract, the Idempotency-Key was used for a different request, or VERIFICATION_IN_PROGRESS - an expert verification of the latest result is requested or in progress
           content:
             application/json:
               schema:
@@ -3496,6 +3694,7 @@ paths:
             REVIEW_RUNNING - another review of the contract is running.
             REVIEW_BUSY - the previous attempt is still shutting down; try again shortly.
             CONTRACT_NOT_CONFIRMED - the contract type is not confirmed.
+            VERIFICATION_IN_PROGRESS - an expert verification of the contract is requested or in progress.
           content:
             application/json:
               schema:
@@ -3533,6 +3732,365 @@ paths:
                 type: string
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/verification-queue:
+    get:
+      tags: [Reviews]
+      summary: Expert verification queue of the organization
+      description: |
+        Open requests waiting for an expert, plus the requests the calling expert is working on, oldest first (max 100).
+        Roles - expert.
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [requested, in_progress, all]
+            default: all
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExpertReview'
+
+  /reviews/{reviewId}/verification:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Reviews]
+      summary: Expert verification of a review, with its action history
+      description: Roles - administrator, owner, manager, staff, expert, user.
+      responses:
+        '200':
+          description: verification is null when the review was never sent for verification
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verification:
+                    allOf:
+                      - $ref: '#/components/schemas/ExpertReview'
+                    nullable: true
+                  actions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExpertAction'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/request:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Send a completed review to an expert for verification
+      description: |
+        Only the latest fully completed review of the contract's current version can be sent, and not while another review of the contract runs. Personal accounts cannot request verification, and the organization needs at least one active expert. Sending a returned verification again reopens it and increments attempt; earlier decisions on findings are kept. While the verification is requested or in progress, new reviews and retries of the contract return 409 VERIFICATION_IN_PROGRESS. Verification does not use analysis credits.
+        Roles - owner, manager, staff.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                note:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '201':
+          description: Requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertReview'
+        '400':
+          description: VERIFICATION_UNAVAILABLE - personal account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: |
+            REVIEW_NOT_VERIFIABLE - the review is not fully completed.
+            REVIEW_OUTDATED - a newer review or contract version exists.
+            REVIEW_RUNNING - another review of the contract is running.
+            NO_EXPERT - the organization has no active expert.
+            VERIFICATION_EXISTS - already requested, in progress or approved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/start:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Claim a verification request
+      description: |
+        Moves the request to in_progress and assigns it to the calling expert. Calling it again on your own request returns it unchanged.
+        Roles - expert.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertReview'
+        '404':
+          description: The review was not sent for verification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: VERIFICATION_NOT_OPEN - another expert claimed it, or it was approved or returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/findings:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Add a risk the AI missed
+      description: |
+        Creates a finding with detectedBy expert and verdict added. With clauseIndex it is a clause risk, without it a missing clause. Recorded as an add action.
+        Roles - expert who claimed the verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddExpertFindingRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskFinding'
+        '400':
+          description: CLAUSE_NOT_FOUND - no clause with that index in this review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: VERIFICATION_NOT_ASSIGNED - another expert holds the verification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: VERIFICATION_NOT_OPEN - claim the request first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/findings/{findingId}:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: findingId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    put:
+      tags: [Reviews]
+      summary: Confirm, adjust or reject a finding
+      description: |
+        Updates the finding (adjusted changes its content in place) and its verification, and records a confirm, adjust or reject action with before/after snapshots, in one transaction. The expert can change a decision by calling it again.
+        Roles - expert who claimed the verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecideFindingRequest'
+      responses:
+        '200':
+          description: The updated finding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskFinding'
+        '400':
+          description: |
+            INVALID_VERDICT - findings added by an expert accept only adjusted.
+            NOTHING_TO_ADJUST - the adjusted content equals the current content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: VERIFICATION_NOT_ASSIGNED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: The finding is not part of this review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: VERIFICATION_NOT_OPEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Reviews]
+      summary: Remove a finding the expert added
+      description: |
+        Only findings with detectedBy expert can be removed; reject AI findings instead. Recorded as a remove action.
+        Roles - expert who claimed the verification.
+      responses:
+        '204':
+          description: Removed
+        '400':
+          description: INVALID_VERDICT - the finding was found by the AI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/approve:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Approve the verified result
+      description: |
+        Every finding needs a decision first. Recomputes the overall risk level from the final severities, leaving out rejected findings, and saves it on the contract and its current version. Review.result keeps the original AI result.
+        Roles - expert who claimed the verification.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                decisionNote:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '200':
+          description: Approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertReview'
+        '400':
+          description: VERIFICATION_INCOMPLETE - some findings have no decision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: VERIFICATION_NOT_OPEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/return:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Return the review to the requester
+      description: |
+        Ends the verification with status returned and the reason in decisionNote. The contract can then be reviewed again, or the verification requested again.
+        Roles - expert who claimed the verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '200':
+          description: Returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertReview'
+        '409':
+          description: VERIFICATION_NOT_OPEN
           content:
             application/json:
               schema:
