@@ -15,18 +15,19 @@ export const requestVerificationHandler = asyncHandler(async (req: Request, res:
   ok(res, await verificationService.requestVerification(user.orgId, user.sub, req.params.reviewId, req.body.note), 201);
 });
 
+export const getExpertWorkspaceHandler = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, await verificationService.getExpertWorkspace(req.user!.sub, req.params.reviewId));
+});
+
 export const startVerificationHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getContractUser(req);
-  ok(res, await verificationService.startVerification(user.orgId, user.sub, req.params.reviewId));
+  ok(res, await verificationService.startVerification(req.user!.sub, req.params.reviewId));
 });
 
 export const decideFindingHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getContractUser(req);
   ok(
     res,
     await verificationService.decideFinding(
-      user.orgId,
-      user.sub,
+      req.user!.sub,
       req.params.reviewId,
       req.params.findingId,
       req.body as DecideFindingInput,
@@ -35,28 +36,23 @@ export const decideFindingHandler = asyncHandler(async (req: Request, res: Respo
 });
 
 export const addFindingHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getContractUser(req);
-  ok(res, await verificationService.addFinding(user.orgId, user.sub, req.params.reviewId, req.body as AddFindingInput), 201);
+  ok(res, await verificationService.addFinding(req.user!.sub, req.params.reviewId, req.body as AddFindingInput), 201);
 });
 
 export const removeFindingHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getContractUser(req);
-  await verificationService.removeFinding(user.orgId, user.sub, req.params.reviewId, req.params.findingId);
+  await verificationService.removeFinding(req.user!.sub, req.params.reviewId, req.params.findingId);
   res.status(204).send();
 });
 
 export const approveVerificationHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getContractUser(req);
-  ok(res, await verificationService.approveVerification(user.orgId, user.sub, req.params.reviewId, req.body?.decisionNote));
+  ok(res, await verificationService.approveVerification(req.user!.sub, req.params.reviewId, req.body?.decisionNote));
 });
 
 export const returnVerificationHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getContractUser(req);
-  ok(res, await verificationService.returnVerification(user.orgId, user.sub, req.params.reviewId, req.body.reason));
+  ok(res, await verificationService.returnVerification(req.user!.sub, req.params.reviewId, req.body.reason));
 });
 
 export const listVerificationQueueHandler = asyncHandler(async (req: Request, res: Response) => {
-  const user = getContractUser(req);
   const status = req.query.status as 'requested' | 'in_progress' | 'all' | undefined;
-  ok(res, await verificationService.listVerificationQueue(user.orgId, user.sub, status));
+  ok(res, await verificationService.listVerificationQueue(req.user!.sub, status));
 });

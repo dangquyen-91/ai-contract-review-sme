@@ -13,6 +13,7 @@ import {
   addFindingHandler,
   approveVerificationHandler,
   decideFindingHandler,
+  getExpertWorkspaceHandler,
   getVerificationHandler,
   listVerificationQueueHandler,
   removeFindingHandler,
@@ -64,9 +65,16 @@ router.post(
 
 router.get(
   '/:reviewId/verification',
-  requireRole(...CONTRACT_REVIEW_ROLES),
+  requireRole(...CONTRACT_REVIEW_ROLES.filter((role) => role !== 'expert')),
   validate({ params: reviewIdParamSchema }),
   getVerificationHandler,
+);
+
+router.get(
+  '/:reviewId/verification/workspace',
+  requireRole('expert'),
+  validate({ params: reviewIdParamSchema }),
+  getExpertWorkspaceHandler,
 );
 
 router.post(

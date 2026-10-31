@@ -3747,9 +3747,9 @@ paths:
   /reviews/verification-queue:
     get:
       tags: [Reviews]
-      summary: Expert verification queue of the organization
+      summary: Shared LawScan expert verification queue
       description: |
-        Open requests waiting for an expert, plus the requests the calling expert is working on, oldest first (max 100).
+        Experts are LawScan platform accounts, so the queue spans every organization and personal account. It lists open requests waiting for any expert, plus the requests the calling expert is working on, oldest first (max 100).
         Roles - expert.
       parameters:
         - in: query
@@ -3779,7 +3779,7 @@ paths:
     get:
       tags: [Reviews]
       summary: Expert verification of a review, with its action history
-      description: Roles - administrator, owner, manager, staff, expert, user.
+      description: For the requester side. Experts read requests through GET /reviews/{reviewId}/verification/workspace. Roles - administrator, owner, manager, staff, user.
       responses:
         '200':
           description: verification is null when the review was never sent for verification
@@ -3796,6 +3796,78 @@ paths:
                     type: array
                     items:
                       $ref: '#/components/schemas/ExpertAction'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/workspace:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Reviews]
+      summary: Redacted contract, clauses and findings of a verification request for the expert
+      description: |
+        Any expert can read a request that is still requested, to decide whether to claim it. Once claimed, only the assigned expert can read it. Sensitive data allowed by the contract profile's redaction policy is masked for display (names become aliases, IDs and dates are hidden, bank accounts and phones keep their last digits) in the contract title, document text, clause titles, text and summaries, finding text, proposed revisions and action snapshots. Clause offsets are omitted because they refer to the unmasked text.
+        Roles - expert.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verification:
+                    $ref: '#/components/schemas/ExpertReview'
+                  contract:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      title: { type: string }
+                      type: { type: string }
+                      ourParty: { type: string }
+                      industry: { type: string }
+                  document:
+                    type: object
+                    properties:
+                      text: { type: string }
+                      mimeType: { type: string }
+                      redactionSpans:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type: { type: string }
+                            start: { type: integer }
+                            end: { type: integer }
+                  clauses:
+                    type: array
+                    description: Clauses of the reviewed version without startOffset and endOffset
+                    items:
+                      type: object
+                  findings:
+                    type: array
+                    description: Findings of the reviewed version with citations; clause holds only index and title
+                    items:
+                      type: object
+                  actions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExpertAction'
+        '403':
+          description: VERIFICATION_NOT_ASSIGNED - another expert has claimed the request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '404':
           description: Not found
           content:

@@ -1,6 +1,7 @@
 import mongoose, { ClientSession, HydratedDocument, Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { ClauseModel } from '../../models/clause.model';
+import { ContractModel } from '../../models/contract.model';
 import { ContractVersionModel, RISK_LEVELS } from '../../models/contractVersion.model';
 import { EXPERT_ACTIONS, ExpertActionModel } from '../../models/expertAction.model';
 import {
@@ -14,7 +15,10 @@ import { RiskFinding, RiskFindingModel } from '../../models/riskFinding.model';
 import { UserModel } from '../../models/user.model';
 import { normalizeUploadFileName } from '../../utils/uploadFileName';
 import { AddFindingInput, DecideFindingInput } from '../../validations/verification.validation';
+import { createRedactor } from '../ai/redaction.service';
+import { listVersionFindings } from '../analysis/risk.service';
 import { getCurrentVersion } from '../contract/contractVersion.service';
+import { redactionPolicyFor } from '../contract/redactionPolicy.service';
 import { getRoleByCode } from '../identity/role.service';
 
 type RiskLevel = (typeof RISK_LEVELS)[number];
@@ -123,14 +127,14 @@ export async function requestVerification(orgId: string, userId: string, reviewI
   }
 }
 
-export async function startVerification(orgId: string, expertId: string, reviewId: string) {
+export async function startVerification(expertId: string, reviewId: string) {
   const claimed = await ExpertReviewModel.findOneAndUpdate(
-    { reviewId, orgId, status: 'requested' },
+    { reviewId, status: 'requested' },
     { $set: { status: 'in_progress', expertId, assignedAt: new Date() } },
     { new: true },
   );
   if (claimed) return claimed;
-  const session = await ExpertReviewModel.findOne({ reviewId, orgId });
+  const session = await ExpertReviewModel.findOne({ reviewId });
   if (!session) throw AppError.notFound('Kết quả rà soát này chưa được gửi xác minh.');
   if (session.status === 'in_progress' && session.expertId?.toString() === expertId) return session;
   throw AppError.conflict(
@@ -139,8 +143,8 @@ export async function startVerification(orgId: string, expertId: string, reviewI
   );
 }
 
-async function loadOwnSession(orgId: string, expertId: string, reviewId: string) {
-  const session = await ExpertReviewModel.findOne({ reviewId, orgId });
+async function loadOwnSession(expertId: string, reviewId: string) {
+  const session = await ExpertReviewModel.findOne({ reviewId });
   if (!session) throw AppError.notFound('Kết quả rà soát này chưa được gửi xác minh.');
   if (session.status !== 'in_progress') {
     throw AppError.conflict('Hãy nhận yêu cầu xác minh trước khi thao tác.', 'VERIFICATION_NOT_OPEN');
@@ -180,14 +184,13 @@ async function recordAction(
 }
 
 export async function decideFinding(
-  orgId: string,
   expertId: string,
   reviewId: string,
   findingId: string,
   input: DecideFindingInput,
 ) {
-  const { session, review } = await loadOwnSession(orgId, expertId, reviewId);
-  const finding = await RiskFindingModel.findOne({ _id: findingId, orgId, contractVersionId: review.versionId });
+  const { session, review } = await loadOwnSession(expertId, reviewId);
+  const finding = await RiskFindingModel.findOne({ _id: findingId, orgId: session.orgId, contractVersionId: review.versionId });
   if (!finding) throw AppError.notFound('Không tìm thấy rủi ro trong kết quả rà soát này.');
   const addedByExpert = finding.detectedBy === 'expert';
   if (addedByExpert && input.verdict !== 'adjusted') {
@@ -218,8 +221,8 @@ export async function decideFinding(
   return finding;
 }
 
-export async function addFinding(orgId: string, expertId: string, reviewId: string, input: AddFindingInput) {
-  const { session, review } = await loadOwnSession(orgId, expertId, reviewId);
+export async function addFinding(expertId: string, reviewId: string, input: AddFindingInput) {
+  const { session, review } = await loadOwnSession(expertId, reviewId);
   let clauseId: Types.ObjectId | null = null;
   if (input.clauseIndex !== undefined) {
     const clause = await ClauseModel.findOne({ contractVersionId: review.versionId, index: input.clauseIndex }).select('_id');
@@ -228,7 +231,7 @@ export async function addFinding(orgId: string, expertId: string, reviewId: stri
   }
   const finding = new RiskFindingModel({
     contractVersionId: review.versionId,
-    orgId,
+    orgId: session.orgId,
     clauseId,
     findingType: clauseId ? 'clause_risk' : 'missing_clause',
     severity: input.severity,
@@ -248,9 +251,9 @@ export async function addFinding(orgId: string, expertId: string, reviewId: stri
   return finding;
 }
 
-export async function removeFinding(orgId: string, expertId: string, reviewId: string, findingId: string) {
-  const { session, review } = await loadOwnSession(orgId, expertId, reviewId);
-  const finding = await RiskFindingModel.findOne({ _id: findingId, orgId, contractVersionId: review.versionId });
+export async function removeFinding(expertId: string, reviewId: string, findingId: string) {
+  const { session, review } = await loadOwnSession(expertId, reviewId);
+  const finding = await RiskFindingModel.findOne({ _id: findingId, orgId: session.orgId, contractVersionId: review.versionId });
   if (!finding) throw AppError.notFound('Không tìm thấy rủi ro trong kết quả rà soát này.');
   if (finding.detectedBy !== 'expert') {
     throw AppError.badRequest('Chỉ có thể xóa rủi ro do chuyên gia thêm. Hãy bác bỏ rủi ro do AI phát hiện.', 'INVALID_VERDICT');
@@ -263,8 +266,8 @@ export async function removeFinding(orgId: string, expertId: string, reviewId: s
   });
 }
 
-export async function approveVerification(orgId: string, expertId: string, reviewId: string, decisionNote?: string) {
-  const { session, review } = await loadOwnSession(orgId, expertId, reviewId);
+export async function approveVerification(expertId: string, reviewId: string, decisionNote?: string) {
+  const { session, review } = await loadOwnSession(expertId, reviewId);
   const findings = await RiskFindingModel.find({ contractVersionId: review.versionId }).select('severity verification');
   const pending = findings.filter((finding) => !finding.verification);
   if (pending.length) {
@@ -287,8 +290,8 @@ export async function approveVerification(orgId: string, expertId: string, revie
   });
 }
 
-export async function returnVerification(orgId: string, expertId: string, reviewId: string, reason: string) {
-  const { session } = await loadOwnSession(orgId, expertId, reviewId);
+export async function returnVerification(expertId: string, reviewId: string, reason: string) {
+  const { session } = await loadOwnSession(expertId, reviewId);
   const returned = await ExpertReviewModel.findOneAndUpdate(
     { _id: session._id, status: 'in_progress', expertId },
     { $set: { status: 'returned', completedAt: new Date(), decisionNote: reason } },
@@ -312,7 +315,6 @@ export async function getVerification(orgId: string, reviewId: string) {
 }
 
 export async function listVerificationQueue(
-  orgId: string,
   expertId: string,
   status: 'requested' | 'in_progress' | 'all' = 'all',
 ) {
@@ -320,7 +322,7 @@ export async function listVerificationQueue(
     ...(status !== 'in_progress' ? [{ status: 'requested' }] : []),
     ...(status !== 'requested' ? [{ status: 'in_progress', expertId: new Types.ObjectId(expertId) }] : []),
   ];
-  const sessions = await ExpertReviewModel.find({ orgId, $or: filters })
+  const sessions = await ExpertReviewModel.find({ $or: filters })
     .sort({ requestedAt: 1 })
     .limit(100)
     .populate('requestedBy', 'name')
@@ -332,4 +334,91 @@ export async function listVerificationQueue(
     const item = session.toObject();
     return item.contractId ? { ...item, contractId: { ...item.contractId, title: normalizeUploadFileName(item.contractId.title) } } : item;
   });
+}
+
+const MASKED_TEXT_FIELDS = ['title', 'problem', 'consequences', 'recommendations', 'summary', 'text'] as const;
+
+function maskTextFields<T extends object>(item: T, mask: (text: string) => string): T {
+  const masked = { ...item } as Record<string, unknown>;
+  for (const field of MASKED_TEXT_FIELDS) {
+    const value = masked[field];
+    if (typeof value === 'string') masked[field] = mask(value);
+    else if (Array.isArray(value)) masked[field] = value.map((entry) => (typeof entry === 'string' ? mask(entry) : entry));
+  }
+  return masked as T;
+}
+
+export async function getExpertWorkspace(expertId: string, reviewId: string) {
+  const session = await ExpertReviewModel.findOne({ reviewId });
+  if (!session) throw AppError.notFound('Kết quả rà soát này chưa được gửi xác minh.');
+  if (session.status !== 'requested' && session.expertId?.toString() !== expertId) {
+    throw AppError.forbidden('Yêu cầu xác minh này do chuyên gia khác phụ trách.', 'VERIFICATION_NOT_ASSIGNED');
+  }
+  await session.populate([
+    { path: 'requestedBy', select: 'name' },
+    { path: 'expertId', select: 'name' },
+  ]);
+  const [review, contract] = await Promise.all([
+    ReviewModel.findById(session.reviewId).select('versionId'),
+    ContractModel.findById(session.contractId).select('title type ourParty industry'),
+  ]);
+  if (!review || !contract) throw AppError.notFound('Không tìm thấy hợp đồng của yêu cầu xác minh.');
+  const versionId = review.versionId.toString();
+  const [version, clauses, findings, actions, policy] = await Promise.all([
+    ContractVersionModel.findById(versionId).select('+extractedText mimeType'),
+    ClauseModel.find({ contractVersionId: versionId }).sort({ index: 1 }).populate('clauseTypeId'),
+    listVersionFindings(versionId),
+    ExpertActionModel.find({ expertReviewId: session._id }).sort({ createdAt: 1 }).populate('expertId', 'name'),
+    redactionPolicyFor(contract.type),
+  ]);
+  if (!version) throw AppError.notFound('Không tìm thấy phiên bản hợp đồng đã rà soát.');
+
+  const source = version.extractedText ?? '';
+  const redactor = createRedactor(source, policy);
+  const mask = (text: string) => redactor.maskForDisplay(text).text;
+  const document = redactor.maskForDisplay(source);
+  return {
+    verification: session,
+    contract: {
+      id: contract.id as string,
+      title: mask(normalizeUploadFileName(contract.title)),
+      type: contract.type,
+      ourParty: contract.ourParty,
+      industry: contract.industry,
+    },
+    document: { text: document.text, redactionSpans: document.spans, mimeType: version.mimeType },
+    clauses: clauses.map((clause) => {
+      const item: Record<string, unknown> = clause.toObject();
+      delete item.startOffset;
+      delete item.endOffset;
+      return maskTextFields(item, mask);
+    }),
+    findings: findings.map((finding) => {
+      const item = finding as typeof finding & {
+        clause: { index: number; title?: string | null } | null;
+        proposedRevision?: { originalText?: string | null; revisedText: string; reason?: string | null };
+      };
+      return {
+        ...maskTextFields(item, mask),
+        clause: item.clause ? { index: item.clause.index, title: item.clause.title ? mask(item.clause.title) : item.clause.title } : null,
+        ...(item.proposedRevision
+          ? {
+              proposedRevision: {
+                ...item.proposedRevision,
+                originalText: item.proposedRevision.originalText ? mask(item.proposedRevision.originalText) : item.proposedRevision.originalText,
+                revisedText: mask(item.proposedRevision.revisedText),
+              },
+            }
+          : {}),
+      };
+    }),
+    actions: actions.map((action) => {
+      const item = action.toObject();
+      return {
+        ...item,
+        ...(item.before ? { before: maskTextFields(item.before, mask) } : {}),
+        ...(item.after ? { after: maskTextFields(item.after, mask) } : {}),
+      };
+    }),
+  };
 }

@@ -616,6 +616,11 @@ export async function listRiskFindings(orgId: string, contractId: string) {
   return attachCitations(sortFindings(findings));
 }
 
+export async function listVersionFindings(contractVersionId: string) {
+  const findings = await RiskFindingModel.find({ contractVersionId }).populate('expectedClauseTypeId');
+  return attachCitations(sortFindings(findings));
+}
+
 async function loadFindingOfCurrentVersion(orgId: string, contractId: string, findingId: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
