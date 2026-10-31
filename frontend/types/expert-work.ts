@@ -16,5 +16,6 @@ export type ExpertWorkItem = {
   completedAt?: string;
   historical: boolean;
   available: boolean;
+  decisionPreview?: string;
 };
 export type ExpertWorkResult = { items: ExpertWorkItem[]; total: number; page: number; limit: number; pages: number };

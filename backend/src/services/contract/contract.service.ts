@@ -146,7 +146,41 @@ export async function listContracts(
       },
     },
     { $unwind: { path: '$currentVersion', preserveNullAndEmptyArrays: true } },
+    {
+      $lookup: {
+        from: ReviewModel.collection.name,
+        let: { contractId: '$_id', versionId: '$currentVersion._id' },
+        pipeline: [
+          { $match: { orgId: new Types.ObjectId(orgId), $expr: { $and: [{ $eq: ['$contractId', '$$contractId'] }, { $eq: ['$versionId', '$$versionId'] }] } } },
+          { $sort: { createdAt: -1, _id: -1 } },
+          { $limit: 1 },
+          { $project: { _id: 1 } },
+        ],
+        as: '_latestReview',
+      },
+    },
+    {
+      $lookup: {
+        from: ExpertReviewModel.collection.name,
+        let: { contractId: '$_id' },
+        pipeline: [
+          { $match: { orgId: new Types.ObjectId(orgId), $expr: { $eq: ['$contractId', '$$contractId'] } } },
+          { $sort: { requestedAt: -1, _id: -1 } },
+          { $limit: 1 },
+          { $project: { _id: 1, reviewId: 1, status: 1, attempt: 1, requestedAt: 1, assignedAt: 1, completedAt: 1 } },
+        ],
+        as: '_verification',
+      },
+    },
+    { $set: { latestReviewId: { $ifNull: [{ $arrayElemAt: ['$_latestReview._id', 0] }, null] }, expertVerification: { $ifNull: [{ $arrayElemAt: ['$_verification', 0] }, null] } } },
+    { $project: { _latestReview: 0, _verification: 0 } },
   ];
+
+  if (query.verificationStatus) {
+    pipeline.push({ $match: query.verificationStatus === 'not_sent'
+      ? { expertVerification: null }
+      : { 'expertVerification.status': query.verificationStatus } });
+  }
 
   if (query.riskLevel) {
     pipeline.push({ $match: { 'currentVersion.overallRiskLevel': query.riskLevel } });

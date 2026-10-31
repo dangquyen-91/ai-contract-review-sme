@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { contractsApi } from "@/lib/api/contracts";
 import { expertVerificationApi } from "@/lib/api/expert-verification";
 import { expertVerificationKeys } from "@/lib/query-keys/expert-verification";
+import { contractKeys } from "@/lib/query-keys/contracts";
 import { latestVerifiableRun } from "@/lib/review/expert-verification";
 import type { RequestVerificationInput, ExpertVerificationResult } from "@/types/expert-verification";
 
@@ -44,6 +45,7 @@ export function useRequestExpertVerification(reviewId: string, contractId: strin
       }));
     },
     onSettled: () => Promise.all([
+      client.invalidateQueries({ queryKey: contractKeys.lists }),
       client.invalidateQueries({ queryKey: expertVerificationKeys.detail(reviewId) }),
       client.invalidateQueries({ queryKey: expertVerificationKeys.runs(contractId) }),
     ]),

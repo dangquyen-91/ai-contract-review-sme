@@ -34,6 +34,7 @@ export const listContractsQuerySchema = z.object({
   industry: codeSchema.optional(),
   status: z.enum(CONTRACT_STATUSES).optional(),
   riskLevel: z.enum(RISK_LEVELS).optional(),
+  verificationStatus: z.enum(['not_sent', 'requested', 'in_progress', 'approved', 'returned']).optional(),
   search: z.string().optional(),
 });
 

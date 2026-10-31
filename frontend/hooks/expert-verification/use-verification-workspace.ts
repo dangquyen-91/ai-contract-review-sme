@@ -36,6 +36,7 @@ export function useExpertCommand(reviewId: string, contractId?: string) {
         client.invalidateQueries({ queryKey: keys.workspace(reviewId) }),
         client.invalidateQueries({ queryKey: keys.queues }),
         client.invalidateQueries({ queryKey: keys.workLists }),
+        client.invalidateQueries({ queryKey: contractKeys.lists }),
         client.invalidateQueries({ queryKey: keys.detail(reviewId), exact: true }),
         ...(contractId ? [client.invalidateQueries({ queryKey: contractKeys.result(contractId) }), client.invalidateQueries({ queryKey: contractKeys.findings(contractId) })] : []),
       ]);

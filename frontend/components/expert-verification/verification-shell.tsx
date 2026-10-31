@@ -4,8 +4,9 @@ import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { DashboardShell } from "@/components/layouts/dashboard/dashboard-shell";
 import { routes } from "@/config/routes";
+import { VerificationNavigationProvider } from "@/providers/verification-navigation-provider";
 
-export function VerificationShell({ name, children }: { name: string; children: ReactNode }) {
+export function VerificationShell({ name, expertId, children }: { name: string; expertId: string; children: ReactNode }) {
   const pathname = usePathname();
   const overview = pathname === routes.expertOverview;
   const myWork = pathname === routes.expertMyWork;
@@ -16,7 +17,7 @@ export function VerificationShell({ name, children }: { name: string; children: 
       workspaceName="LawScan" workspaceLabel="Không gian chuyên gia"
       name={name} roleLabel="Chuyên gia" homeHref={routes.expertOverview}
     >
-      {children}
+      <VerificationNavigationProvider expertId={expertId}>{children}</VerificationNavigationProvider>
     </DashboardShell>
   );
 }

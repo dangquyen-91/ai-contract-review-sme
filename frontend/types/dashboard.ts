@@ -1,6 +1,10 @@
 import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
 
-export type DashboardContractFilter = { status?: ContractStatus; riskLevel?: ContractRiskLevel };
+export type DashboardContractFilter = {
+  status?: ContractStatus;
+  riskLevel?: ContractRiskLevel;
+  verificationStatus?: "not_sent" | "requested" | "in_progress" | "approved" | "returned";
+};
 
 export type DashboardOrganization = {
   id: string;

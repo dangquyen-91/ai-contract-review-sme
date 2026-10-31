@@ -41,6 +41,16 @@ export type ContractClassification = {
 
 export type DashboardContract = {
   orgId?: string;
+  latestReviewId?: string | null;
+  expertVerification?: {
+    _id: string;
+    reviewId: string;
+    status: "requested" | "in_progress" | "approved" | "returned";
+    attempt: number;
+    requestedAt: string;
+    assignedAt?: string;
+    completedAt?: string;
+  } | null;
   reviewBilling?: { versionId: string; pageCount: number | null; pagesPerUnit: number; units: number | null; ready: boolean; reason: string | null; purchaseStatus?: "available" | "reserved" | "consumed" | null };
   id?: string;
   _id?: string;

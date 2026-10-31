@@ -16,6 +16,7 @@ const schema = new Schema({
   requestedAt: Date,
   assignedAt: Date,
   completedAt: { type: Date, required: true },
+  decisionNote: { type: String, select: false, ...encryptedString },
   workspaceJson: { type: String, required: true, select: false, ...encryptedString },
 }, { timestamps: true, ...decryptOnSerialize });
 

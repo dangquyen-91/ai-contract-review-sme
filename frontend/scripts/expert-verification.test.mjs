@@ -50,6 +50,7 @@ test('status queries poll only while open and stop polling on errors', () => {
   const hooks = load('../hooks/expert-verification/use-expert-verification.ts', {
     '@tanstack/react-query': { useQuery: (options) => options },
     '@/lib/api/contracts': { contractsApi: {} },
+    '@/lib/query-keys/contracts': { contractKeys: { lists: ['contracts', 'list'] } },
     '@/lib/api/expert-verification': { expertVerificationApi: {} },
     '@/lib/query-keys/expert-verification': { expertVerificationKeys: { detail: (id) => ['verification', id] } },
     '@/lib/review/expert-verification': helpers,
@@ -75,6 +76,7 @@ test('sending never retries POST automatically and always reconciles server stat
       }),
     },
     '@/lib/api/contracts': { contractsApi: {} },
+    '@/lib/query-keys/contracts': { contractKeys: { lists: ['contracts', 'list'] } },
     '@/lib/api/expert-verification': { expertVerificationApi: { request: async (id, input) => ({ _id: 'verification', reviewId: id, ...input }) } },
     '@/lib/query-keys/expert-verification': { expertVerificationKeys: { detail: (id) => ['verification', id], runs: (id) => ['runs', id] } },
     '@/lib/review/expert-verification': helpers,
@@ -85,7 +87,7 @@ test('sending never retries POST automatically and always reconciles server stat
   await mutation.onSuccess(result);
   assert.equal(cache.get('verification/review').verification._id, 'verification');
   await mutation.onSettled();
-  assert.deepEqual(invalidated, ['verification/review', 'runs/contract']);
+  assert.deepEqual(invalidated, ['contracts/list', 'verification/review', 'runs/contract']);
 });
 
 test('request form starts with consent unchecked and submit disabled', () => {

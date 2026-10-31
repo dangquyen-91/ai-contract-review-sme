@@ -334,6 +334,7 @@ export async function listVerificationQueue(
     ...(status !== 'requested' ? [{ status: 'in_progress', expertId: new Types.ObjectId(expertId) }] : []),
   ];
   const sessions = await ExpertReviewModel.find({ $or: filters })
+    .select('reviewId contractId orgId status attempt requestedBy requestedAt assignedAt expertId requestNote')
     .sort({ requestedAt: 1 })
     .limit(100)
     .populate('requestedBy', 'name')
@@ -344,17 +345,17 @@ export async function listVerificationQueue(
   return Promise.all(
     sessions.map(async (session) => {
       const item = session.toObject();
-      if (!item.contractId) return item;
-      const mask = await displayMaskFor(String(session.reviewId), item.contractId.type);
-      return { ...item, contractId: { ...item.contractId, title: mask(normalizeUploadFileName(item.contractId.title)) } };
+      if (!item.contractId) return { ...item, requestNote: undefined };
+      const mask = await displayMaskFor(String(session.reviewId), item.contractId.type, item.requestNote ?? '');
+      return { ...item, requestNote: item.requestNote ? mask(item.requestNote) : undefined, contractId: { ...item.contractId, title: mask(normalizeUploadFileName(item.contractId.title)) } };
     }),
   );
 }
 
-async function displayMaskFor(reviewId: string, contractType?: string | null) {
+async function displayMaskFor(reviewId: string, contractType?: string | null, extraText = '') {
   const review = await ReviewModel.findById(reviewId).select('versionId');
   const version = review ? await ContractVersionModel.findById(review.versionId).select('+extractedText') : null;
-  const redactor = createRedactor(version?.extractedText ?? '', await redactionPolicyFor(contractType));
+  const redactor = createRedactor(`${version?.extractedText ?? ''}\n${extraText}`, await redactionPolicyFor(contractType));
   return (text: string) => redactor.maskForDisplay(text).text;
 }
 

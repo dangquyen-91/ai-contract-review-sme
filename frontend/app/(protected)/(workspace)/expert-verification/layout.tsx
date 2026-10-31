@@ -5,7 +5,7 @@ import { VerificationShell } from "@/components/expert-verification/verification
 export default async function VerificationLayout({ children }: { children: ReactNode }) {
   const { user } = await requirePermission("expertVerification");
   return (
-    <VerificationShell name={user.name}>
+    <VerificationShell name={user.name} expertId={user.id}>
       {children}
     </VerificationShell>
   );
