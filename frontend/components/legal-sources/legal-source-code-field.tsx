@@ -12,7 +12,11 @@ function codeHint(code: string, catalog?: LegalSourceCatalogEntry[]) {
   if (!entry) return { warning: true, text: "Mã ngoài danh mục: nguồn không gắn với loại hợp đồng nào, chỉ được tra cứu khi kho chưa có văn bản chính của hợp đồng đang rà soát." };
   if (entry.legalSource) return { warning: true, text: `Mã này đã có nguồn “${entry.legalSource.title}” trong kho.` };
   const profiles = entry.usedByProfiles.map((profile) => profile.name).join(", ");
-  return { warning: false, text: `${entry.label}. Dùng khi rà soát: ${profiles || "chưa có loại hợp đồng nào"}.` };
+  const usage = [
+    profiles && `Dùng khi rà soát: ${profiles}.`,
+    entry.ruleCodes.length > 0 && `Là căn cứ của ${entry.ruleCodes.length} quy tắc pháp lý cố định.`,
+  ].filter(Boolean).join(" ");
+  return { warning: false, text: `${entry.label}. ${usage || "Chưa gắn với loại hợp đồng hay quy tắc nào."}` };
 }
 
 export function LegalSourceCodeField({ defaultCode = "" }: { defaultCode?: string }) {
