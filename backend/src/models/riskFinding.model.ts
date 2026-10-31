@@ -7,7 +7,9 @@ export const RISK_SEVERITIES = ['high', 'medium', 'low'] as const;
 
 export const RISK_FINDING_STATUSES = ['open', 'acknowledged', 'dismissed', 'resolved'] as const;
 
-export const RISK_DETECTED_BY = ['rule', 'llm', 'hybrid', 'checklist'] as const;
+export const RISK_DETECTED_BY = ['rule', 'llm', 'hybrid', 'checklist', 'expert'] as const;
+
+export const FINDING_VERDICTS = ['confirmed', 'adjusted', 'rejected', 'added'] as const;
 
 export const RISK_CODES = [
   'UNLAWFUL_TERM',
@@ -56,6 +58,17 @@ const proposedRevisionSchema = new Schema(
   { _id: false, ...decryptOnSerialize },
 );
 
+const findingVerificationSchema = new Schema(
+  {
+    verdict: { type: String, enum: FINDING_VERDICTS, required: true },
+    originalSeverity: { type: String, enum: RISK_SEVERITIES },
+    reason: { type: String },
+    verifiedBy: { type: Types.ObjectId, ref: 'User', required: true },
+    verifiedAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 const riskFindingSchema = new Schema(
   {
     contractVersionId: {
@@ -80,6 +93,7 @@ const riskFindingSchema = new Schema(
     riskCode: { type: String, enum: RISK_CODES },
     ruleCode: { type: String },
     ruleVersion: { type: Number },
+    verification: { type: findingVerificationSchema, default: undefined },
   },
   { timestamps: true, ...decryptOnSerialize },
 );
