@@ -1,7 +1,6 @@
 import mongoose, { ClientSession, HydratedDocument, Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { ClauseModel } from '../../models/clause.model';
-import { ContractModel } from '../../models/contract.model';
 import { ContractVersionModel, RISK_LEVELS } from '../../models/contractVersion.model';
 import { EXPERT_ACTIONS, ExpertActionModel } from '../../models/expertAction.model';
 import {
@@ -287,7 +286,6 @@ export async function approveVerification(orgId: string, expertId: string, revie
     );
     if (!approved) throw AppError.conflict('Yêu cầu xác minh vừa thay đổi. Vui lòng tải lại.', 'VERIFICATION_NOT_OPEN');
     await ContractVersionModel.updateOne({ _id: review.versionId }, { $set: { overallRiskLevel } }, { session: dbSession });
-    await ContractModel.updateOne({ _id: review.contractId, orgId }, { $set: { overallRiskLevel } }, { session: dbSession });
     return approved;
   });
 }

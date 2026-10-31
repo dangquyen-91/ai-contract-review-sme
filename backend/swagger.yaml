@@ -4024,7 +4024,7 @@ paths:
       tags: [Reviews]
       summary: Approve the verified result
       description: |
-        Every finding needs a decision first. Recomputes the overall risk level from the final severities, leaving out rejected findings, and saves it on the contract and its current version. Review.result keeps the original AI result.
+        Every finding needs a decision first. Recomputes the overall risk level from the final severities, leaving out rejected findings, and saves it on the current contract version (which contract lists and detail read). Review.result keeps the original AI result.
         Roles - expert who claimed the verification.
       requestBody:
         content:
