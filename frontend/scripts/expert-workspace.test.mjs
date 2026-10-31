@@ -20,6 +20,19 @@ function load(file, dependencies = {}, globals = {}) {
 }
 const helpers = load('../lib/review/verification-workspace.ts');
 const summaryHelpers = load('../lib/review/verification-summary.ts');
+test('queue filtering handles Vietnamese accents and sort without mutating server results', () => {
+  const { filterVerificationQueue: filter } = load('../lib/review/verification-queue-list.ts');
+  const rows = [
+    { _id: 'a', requestedAt: '2026-11-02', contractId: { title: 'Đơn dịch vụ', type: 'service' } },
+    { _id: 'b', requestedAt: '2026-11-01', contractId: { title: 'Hợp đồng lao động', type: 'labor' } },
+  ];
+  assert.equal(filter(rows, 'don dich vu', '', 'oldest')[0]._id, 'a');
+  assert.equal(filter(rows, '', 'labor', 'oldest')[0]._id, 'b');
+  assert.equal(filter(rows, '', '', 'oldest')[0]._id, 'b');
+  assert.equal(filter(rows, '', '', 'newest')[0]._id, 'a');
+  assert.equal(rows[0]._id, 'a');
+  assert.equal(filter(rows, 'không tồn tại', '', 'oldest').length, 0);
+});
 test('completion totals distinguish verdicts and exclude rejected items from retained risks', () => {
   const rows = [
     { _id: '1', severity: 'high', verification: { verdict: 'confirmed' } },

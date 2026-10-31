@@ -22,6 +22,7 @@ export async function archiveExpertWork(session: HydratedDocument<ExpertReview>,
       status: session.status, title: workspace.contract.title, contractType: workspace.contract.type,
       requestedAt: session.requestedAt, assignedAt: session.assignedAt, completedAt: session.completedAt,
       workspaceJson: JSON.stringify({ ...snapshot, historical: true }),
+      decisionNote: session.decisionNote,
     },
   }, { upsert: true, session: dbSession });
 }
@@ -41,13 +42,13 @@ const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'
 export async function listExpertWork(expertId: string, query: ExpertWorkQuery) {
   const expert = new Types.ObjectId(expertId);
   // Legacy/current sessions remain visible even if they predate work records.
-  const fields = { expertReviewId: '$_id', reviewId: 1, contractId: 1, expertId: 1, requestedBy: 1, attempt: { $ifNull: ['$attempt', 1] }, status: 1, requestedAt: 1, assignedAt: 1, completedAt: 1, historical: { $literal: false } };
+  const fields = { expertReviewId: '$_id', reviewId: 1, contractId: 1, expertId: 1, requestedBy: 1, attempt: { $ifNull: ['$attempt', 1] }, status: 1, requestedAt: 1, assignedAt: 1, completedAt: 1, decisionNote: 1, historical: { $literal: false } };
   const pipeline: PipelineStage[] = [
     { $match: { expertId: expert, status: { $in: ['in_progress', 'approved', 'returned'] } } },
     { $project: fields },
     { $unionWith: { coll: ExpertWorkRecordModel.collection.name, pipeline: [
       { $match: { expertId: expert } },
-      { $project: { workspaceJson: 0 } },
+      { $project: { workspaceJson: 0, decisionNote: 0 } },
       { $set: { historical: true } },
     ] } },
     { $sort: { historical: -1 } },
@@ -68,22 +69,42 @@ export async function listExpertWork(expertId: string, query: ExpertWorkQuery) {
   pipeline.push({ $match: match }, { $sort: { sortDate: -1, expertReviewId: -1, attempt: -1 } }, {
     $facet: {
       count: [{ $count: 'total' }],
-      items: [{ $skip: (query.page - 1) * query.limit }, { $limit: query.limit }, { $project: { _id: 0, expertReviewId: 1, reviewId: 1, contractId: 1, requestedBy: 1, attempt: 1, status: 1, requestedAt: 1, assignedAt: 1, completedAt: 1, historical: 1, displayTitle: 1, contractType: 1, available: { $ne: [{ $ifNull: ['$contract._id', null] }, null] } } }],
+      items: [{ $skip: (query.page - 1) * query.limit }, { $limit: query.limit }, { $project: { _id: 0, expertReviewId: 1, reviewId: 1, contractId: 1, requestedBy: 1, attempt: 1, status: 1, requestedAt: 1, assignedAt: 1, completedAt: 1, decisionNote: 1, historical: 1, displayTitle: 1, contractType: 1, available: { $ne: [{ $ifNull: ['$contract._id', null] }, null] }, } }],
     },
   });
   const [data] = await ExpertReviewModel.aggregate(pipeline);
   const rows = data?.items ?? [];
+  const ids = rows.map((row: { expertReviewId: Types.ObjectId }) => row.expertReviewId);
+  const selectedAttempts = rows.length
+    ? { $or: rows.map((row: { expertReviewId: Types.ObjectId; attempt: number }) => ({ expertReviewId: row.expertReviewId, attempt: row.attempt })) }
+    : { _id: { $in: [] } };
+  const [archives, currentNotes, previewPolicy] = await Promise.all([
+    ExpertWorkRecordModel.find({ expertId: expert, ...selectedAttempts }).select('expertReviewId attempt').select('+decisionNote'),
+    ExpertReviewModel.find({ expertId: expert, _id: { $in: ids } }).select('attempt decisionNote'),
+    redactionPolicyFor(),
+  ]);
+  const notes = new Map(archives.filter((record) => record.decisionNote).map((record) => [`${record.expertReviewId}:${record.attempt}`, record.decisionNote!]));
+  for (const record of currentNotes) {
+    const noteKey = `${record._id}:${record.attempt}`;
+    if (!notes.has(noteKey) && record.decisionNote) notes.set(noteKey, record.decisionNote);
+  }
   const users = await UserModel.find({ _id: { $in: rows.map((row: { requestedBy: Types.ObjectId }) => row.requestedBy) } }).select('name');
   const names = new Map(users.map((user) => [user.id, user.name]));
-  const items = await Promise.all(rows.map(async (row: { reviewId: Types.ObjectId; contractType?: string; displayTitle?: string; requestedBy: Types.ObjectId; historical: boolean }) => {
+  const items = await Promise.all(rows.map(async (row: { expertReviewId: Types.ObjectId; attempt: number; status: string; decisionNote?: string; reviewId: Types.ObjectId; contractType?: string; displayTitle?: string; requestedBy: Types.ObjectId; historical: boolean }) => {
     let title = row.displayTitle || 'Hợp đồng không còn khả dụng';
     if (!row.historical) {
       const review = await ReviewModel.findById(row.reviewId).select('versionId');
       const version = review ? await ContractVersionModel.findById(review.versionId).select('+extractedText') : null;
       title = createRedactor(version?.extractedText ?? '', await redactionPolicyFor(row.contractType)).maskForDisplay(normalizeUploadFileName(title)).text;
     }
-    const { displayTitle: _title, ...rest } = row;
-    return { ...rest, title, requestedBy: { _id: row.requestedBy, name: names.get(String(row.requestedBy)) ?? 'Tài khoản không còn khả dụng' } };
+    const note = ['approved', 'returned'].includes(row.status) ? notes.get(`${row.expertReviewId}:${row.attempt}`) : undefined;
+    const masked = note ? createRedactor(note, previewPolicy).maskForDisplay(note).text.normalize('NFC') : '';
+    const characters = Array.from(masked);
+    const decisionPreview = characters.length > 240 ? characters.slice(0, 240).join('') + '…' : masked || undefined;
+    const rest = { ...row };
+    delete rest.displayTitle;
+    delete rest.decisionNote;
+    return { ...rest, title, decisionPreview, requestedBy: { _id: row.requestedBy, name: names.get(String(row.requestedBy)) ?? 'Tài khoản không còn khả dụng' } };
   }));
   const total = data?.count[0]?.total ?? 0;
   return { items, total, page: query.page, limit: query.limit, pages: Math.max(1, Math.ceil(total / query.limit)) };

@@ -14,6 +14,8 @@ const { ExpertReviewModel } = require('../dist/models/expertReview.model');
 const { listContracts } = require('../dist/services/contract/contract.service');
 const { listContractsQuerySchema } = require('../dist/validations/contract.validation');
 const { listVerificationQueue } = require('../dist/services/review/verification.service');
+const { ExpertWorkRecordModel } = require('../dist/models/expertWorkRecord.model');
+const { listExpertWork } = require('../dist/services/review/expertWork.service');
 const oid = () => new mongoose.Types.ObjectId();
 const org = oid(), otherOrg = oid();
 const pagination = { page: 1, limit: 10, skip: 0, sortBy: 'updatedAt', sortOrder: -1 };
@@ -80,4 +82,22 @@ test('expert queue redacts priority notes even when their data does not appear i
   expect(row.requestNote).toContain('Ưu tiên thanh toán');
   expect(row.requestNote).not.toContain('priority@example.com');
   expect(row.requestNote).not.toContain('0903123456');
+});
+
+test('personal work previews mask notes and keep the completed attempt after reassignment', async () => {
+  const expertId = oid();
+  const session = await ExpertReviewModel.create({ reviewId: oid(), contractId: sent, orgId: org, expertId, requestedBy: oid(), requestedAt: new Date(), assignedAt: new Date(), completedAt: new Date(), status: 'returned', attempt: 1, decisionNote: 'Cần bổ sung tiêu chuẩn nghiệm thu. Email: expert-note@example.com' });
+  const query = { status: 'all', page: 1, limit: 10 };
+  const current = await listExpertWork(String(expertId), query);
+  expect(current.items[0].decisionPreview).toContain('Cần bổ sung');
+  expect(JSON.stringify(current)).not.toMatch(/expert-note@example.com|decisionNote|workspaceJson/);
+  const record = await ExpertWorkRecordModel.create({ expertReviewId: session._id, reviewId: session.reviewId, contractId: sent, expertId, requestedBy: session.requestedBy, status: 'returned', attempt: 1, title: 'Bản lưu', completedAt: new Date(), requestedAt: session.requestedAt, assignedAt: session.assignedAt, workspaceJson: '{}', decisionNote: 'Kết luận cũ. Email: archived-note@example.com' });
+  const raw = await ExpertWorkRecordModel.collection.findOne({ _id: record._id });
+  expect(raw.decisionNote).not.toContain('archived-note@example.com');
+  await ExpertReviewModel.updateOne({ _id: session._id }, { $set: { attempt: 2, expertId: oid(), status: 'in_progress', decisionNote: 'Kết luận mới không được lẫn vào bản cũ' } });
+  const archived = await listExpertWork(String(expertId), query);
+  expect(archived.total).toBe(1);
+  expect(archived.items[0].decisionPreview).toContain('Kết luận cũ');
+  expect(JSON.stringify(archived)).not.toMatch(/archived-note@example.com|Kết luận mới|decisionNote|workspaceJson/);
+  expect((await listExpertWork(String(oid()), query)).total).toBe(0);
 });

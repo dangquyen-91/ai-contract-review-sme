@@ -12,7 +12,7 @@ const initialFilter: Omit<ExpertWorkFilter, "limit"> = {
   status: "all", search: "", type: "", from: "", to: "", page: 1,
 };
 const params = {
-  status: parseAsStringLiteral(["all", "in_progress", "approved", "returned"] as const).withDefault("all"),
+  status: parseAsStringLiteral(["all", "in_progress", "approved", "returned"] as const).withDefault("in_progress"),
   search: parseAsString.withDefault(""), type: parseAsString.withDefault(""),
   from: parseAsString.withDefault(""), to: parseAsString.withDefault(""), page: paginationPageParser,
 };

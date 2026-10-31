@@ -16,7 +16,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'lawscan-expert-ui-'));
 const reviewId = 'a'.repeat(24), expertId = 'b'.repeat(24);
 const finding = (id, title) => ({ _id: id, title, severity: 'high', riskCode: 'UNFAVORABLE_PAYMENT', problem: ['Điều khoản chưa rõ nghĩa vụ thanh toán.'], consequences: ['Có thể phát sinh tranh chấp.'], recommendations: ['Làm rõ thời hạn thanh toán.'], legalBasis: [], citations: [], clause: { index: 0, title: 'Điều 1' }, detectedBy: 'llm', proposedRevision: { originalText: 'Thanh toán theo thỏa thuận.', revisedText: 'Thanh toán trong vòng 15 ngày.', reason: 'Làm rõ thời hạn.' } });
-let workspace, commands, conflict, overviewFixture, resultRequests;
+let workspace, commands, conflict, overviewFixture, resultRequests, queueFailure = '', queueDelay = 0;
 function reset(mode = '') {
   conflict = mode === 'conflict'; commands = []; overviewFixture = mode === 'overview'; resultRequests = 0;
   workspace = {
@@ -68,6 +68,7 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://fixture');
   const send = (data, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(status < 400 ? { success: true, data } : { success: false, error: data })); };
   if (url.pathname === '/fixture/reset') { reset(url.searchParams.get('mode') || ''); return send(null); }
+  if (url.pathname === '/fixture/queue-state') { queueFailure = url.searchParams.get('failure') || ''; queueDelay = Number(url.searchParams.get('delay') || 0); return send(null); }
   if (url.pathname === '/api/contracts') {
     let rows = Array.from({ length: 12 }, (_, index) => ({ _id: String(index).padStart(24, '0'), title: `Hợp đồng mẫu ${index + 1}`, type: 'service', status: index === 0 ? 'uploaded' : 'reviewed', createdAt: '2026-10-31T10:00:00Z', updatedAt: '2026-10-31T12:00:00Z', overallRiskLevel: 'high', latestReviewId: reviewId,
       expertVerification: index % 3 === 0 ? null : { _id: 'c'.repeat(24), reviewId: index === 2 ? '8'.repeat(24) : reviewId, status: index % 3 === 1 ? 'requested' : 'approved', attempt: 1, requestedAt: '2026-10-31T10:00:00Z' } }));
@@ -93,8 +94,10 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/app.js') { res.setHeader('Content-Type', 'application/javascript'); res.end(bundle); return; }
   if (url.pathname === '/api/reviews/verification-queue') {
     const rows = [{ ...workspace.verification, contractId: { _id: workspace.contract.id, title: workspace.contract.title, type: 'service' } }];
-    if (overviewFixture) rows.push({ ...rows[0], _id: '2'.repeat(24), reviewId: '3'.repeat(24), status: 'requested', contractId: { ...rows[0].contractId, title: 'Yêu cầu mới đang chờ' } });
+    if (overviewFixture) rows.push({ ...rows[0], _id: '2'.repeat(24), reviewId: '3'.repeat(24), status: 'requested', requestedAt: '2026-10-30T10:00:00Z', contractId: { ...rows[0].contractId, title: 'Yêu cầu mới đang chờ' } });
     const status = url.searchParams.get('status') || 'all';
+    if (queueDelay) await new Promise(resolve => setTimeout(resolve, queueDelay));
+    if (queueFailure === status) return send({ message: 'Lỗi mạng kiểm thử' }, 503);
     return send(rows.filter(row => status === 'all' || row.status === status));
   }
   if (url.pathname === '/api/reviews/my-verifications') {
@@ -102,7 +105,7 @@ const server = http.createServer(async (req, res) => {
       title: `Công việc mẫu ${index + 1}`, contractType: 'service', requestedBy: workspace.verification.requestedBy,
       status: index === 0 ? 'in_progress' : index === 1 ? 'returned' : 'approved', attempt: index + 1,
       requestedAt: '2026-10-30T10:00:00Z', assignedAt: '2026-10-31T11:00:00Z',
-      completedAt: index > 0 ? '2026-10-31T12:00:00Z' : undefined, historical: index > 0, available: true }));
+      completedAt: index > 0 ? '2026-10-31T12:00:00Z' : undefined, historical: index > 0, available: true, decisionPreview: index > 0 ? 'Đã đối chiếu phạm vi dịch vụ và nghĩa vụ thanh toán.' : undefined }));
     const status = url.searchParams.get('status') || 'all';
     const search = url.searchParams.get('search') || '';
     items = items.filter(item => (status === 'all' || item.status === status) && item.title.includes(search));
@@ -235,11 +238,29 @@ try {
   await call('Emulation.setEmulatedMedia', { features: [] });
   console.log('PASS contract tracking for user/staff/owner, URL filters, pagination, request dialog, old review warning and responsive cards');
   await fetch(origin + '/fixture/reset?mode=overview');
+  await fetch(origin + '/fixture/queue-state?delay=700');
   await navigate('/expert-verification/overview');
+  await wait('!!document.querySelector("[aria-label=\\"Đang tải danh sách\\"]")');
   await wait('document.body.textContent.includes("Tiếp tục kiểm tra") && document.body.textContent.includes("Yêu cầu mới đang chờ")');
+  await fetch(origin + '/fixture/queue-state');
   await wait('!!document.querySelector("[aria-labelledby=verification-distribution-title] ul")');
   assert.equal(await evaluate('document.querySelectorAll("[aria-label=\\"Tình trạng công việc xác minh\\"]>a").length'), 3);
   assert.ok(await evaluate('[...document.querySelectorAll("[aria-labelledby=verification-distribution-title] [style]")].some(e=>e.style.background.includes("conic-gradient"))'), 'Expected real distribution chart');
+  await fetch(origin + '/fixture/queue-state?failure=requested');
+  await click('Làm mới');
+  await wait('!!document.querySelector("[role=alert]")');
+  assert.ok(await evaluate('!!document.querySelector("[aria-labelledby=verification-distribution-title] ul")'), 'A failed refetch must keep the previous chart');
+  assert.ok(await evaluate('document.body.textContent.includes("Tiếp tục kiểm tra")'));
+  await fetch(origin + '/fixture/queue-state');
+  await click('Thử lại');
+  await wait('!document.querySelector("[role=alert]")');
+  await fetch(origin + '/fixture/queue-state?failure=in_progress');
+  await navigate('/expert-verification/overview');
+  await wait('!!document.querySelector("[role=alert]") && document.body.textContent.includes("Yêu cầu mới đang chờ")');
+  assert.ok(await evaluate('document.body.textContent.includes("Chưa tải đủ dữ liệu")'));
+  await fetch(origin + '/fixture/queue-state');
+  await click('Thử lại');
+  await wait('!document.querySelector("[role=alert]") && document.body.textContent.includes("Tiếp tục kiểm tra")');
   await click('Chờ tiếp nhận');
   await wait('document.querySelector("[aria-label=\\"Nhóm công việc cần xử lý\\"] [aria-pressed=true]")?.textContent==="Chờ tiếp nhận"');
   await click('Tôi đang xử lý');
@@ -257,7 +278,28 @@ try {
   assert.match(await evaluate('location.search'), /status=in_progress/);
   assert.equal(await evaluate('document.querySelectorAll("tbody tr").length'), 1);
   console.log('PASS overview separate lists, responsive layout and filtered queue navigation');
+  await navigate('/expert-verification?status=all');
+  await wait('document.querySelectorAll("tbody tr").length===2');
+  await fill('input[placeholder="Tên hợp đồng…"]', 'yeu cau moi');
+  await click('Tìm kiếm');
+  await wait('document.querySelectorAll("tbody tr").length===1');
+  assert.match(await evaluate('location.search'), /queueSearch=/);
+  await evaluate(`(()=>{const e=document.querySelector('select[aria-label="Loại hợp đồng trong hàng đợi"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,'labor');e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await wait('document.body.textContent.includes("Chưa có yêu cầu phù hợp")');
+  await click('Xóa bộ lọc');
+  await wait('document.querySelectorAll("tbody tr").length===2');
+  assert.ok(await evaluate('document.querySelector("tbody tr").textContent.includes("Yêu cầu mới đang chờ")'));
+  await evaluate(`(()=>{const e=document.querySelector('select[aria-label="Thứ tự gửi"]');Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(e,'newest');e.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+  await wait('document.querySelector("tbody tr").textContent.includes("Hợp đồng dịch vụ kiểm thử")');
+  assert.ok(await evaluate('document.documentElement.scrollWidth<=innerWidth+1'), 'Queue mobile layout overflows');
+  assert.ok(await evaluate('document.querySelector("tbody a").getBoundingClientRect().right<=innerWidth'), 'Mobile action should be visible without horizontal scrolling');
+  const queueShot = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+  await fs.writeFile(path.join(dir, 'queue-mobile.png'), Buffer.from(queueShot.data, 'base64'));
+  console.log('PASS skeletons, independent error recovery, cached chart, local queue filters/sort and mobile actions');
   await navigate('/expert-verification/my-work');
+  await wait('document.querySelectorAll("tbody tr").length===1');
+  assert.equal(await evaluate('document.querySelector("[aria-pressed=true]").textContent'), 'Đang xử lý');
+  await click('Tất cả');
   await wait('document.querySelectorAll("tbody tr").length===10');
   await click('Sau');
   await wait('document.querySelectorAll("tbody tr").length===2');
@@ -273,6 +315,7 @@ try {
   await click('Đã trả lại');
   await wait('document.querySelectorAll("tbody tr").length===1');
   assert.ok(await evaluate('document.body.textContent.includes("Trang 1/1")'));
+  assert.ok(await evaluate('document.querySelector("tbody").textContent.includes("Đã đối chiếu phạm vi dịch vụ")'));
   await click('Tất cả');
   await wait('document.querySelectorAll("tbody tr").length===10');
   await fill('input[type=text]', 'Công việc mẫu 12');
