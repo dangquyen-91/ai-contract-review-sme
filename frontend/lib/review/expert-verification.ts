@@ -17,6 +17,11 @@ export function verificationErrorMessage(error: unknown) {
     REVIEW_RUNNING: "Hợp đồng đang được rà soát lại. Hãy chờ hoàn tất trước khi gửi yêu cầu.",
     VERIFICATION_EXISTS: "Kết quả này đã được gửi xác minh. Trạng thái đang được cập nhật.",
     VERIFICATION_IN_PROGRESS: "Kết quả đang được chuyên gia kiểm tra. Hãy chờ yêu cầu kết thúc trước khi rà soát lại.",
+    VERIFICATION_NOT_OPEN: "Yêu cầu đã thay đổi hoặc được chuyên gia khác tiếp nhận. Hãy làm mới để kiểm tra trạng thái.",
+    VERIFICATION_NOT_ASSIGNED: "Bạn không còn phụ trách yêu cầu này. Hãy quay về hàng đợi hoặc làm mới trạng thái.",
+    VERIFICATION_INCOMPLETE: "Vẫn còn rủi ro chưa được xử lý. Hãy kiểm tra bộ lọc Chưa xử lý trước khi hoàn tất.",
+    NOTHING_TO_ADJUST: "Nội dung chưa thay đổi. Hãy điều chỉnh ít nhất một trường trước khi lưu.",
+    INVALID_VERDICT: "Thao tác không phù hợp với rủi ro này. Hãy làm mới và kiểm tra lại.",
   };
   return (error.serverCode && messages[error.serverCode]) || error.message;
 }

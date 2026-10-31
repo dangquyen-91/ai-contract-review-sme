@@ -111,6 +111,14 @@ export type ContractClause = {
   endOffset: number;
 };
 
+export type FindingVerification = {
+  verdict: "confirmed" | "adjusted" | "rejected" | "added";
+  originalSeverity?: "high" | "medium" | "low";
+  reason?: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+};
+
 export type RiskFinding = {
   _id?: string;
   id?: string;
@@ -125,7 +133,8 @@ export type RiskFinding = {
   recommendations: string[];
   proposedRevision?: { originalText?: string; revisedText: string; reason?: string; isEdited: boolean };
   status?: "open" | "acknowledged" | "dismissed" | "resolved";
-  detectedBy?: "rule" | "llm" | "hybrid" | "checklist";
+  detectedBy?: "rule" | "llm" | "hybrid" | "checklist" | "expert";
+  verification?: FindingVerification | null;
   riskCode?: RiskCode;
   ruleCode?: string;
   citations: {

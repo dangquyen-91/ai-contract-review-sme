@@ -31,6 +31,12 @@ const supportNavigation: NavigationItem[] = [
 
 export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
   if (role === "administrator") return adminNavigation;
+  if (role === "expert") return [
+    { key: "expert-overview", href: routes.expertOverview, label: "Tổng quan", icon: "chart", group: "Không gian chuyên gia", mobile: true },
+    { key: "verification", href: routes.expertVerification, label: "Yêu cầu xác minh", icon: "shield", mobile: true },
+    { key: "expert-my-work", href: routes.expertMyWork, label: "Công việc của tôi", icon: "briefcase", mobile: true },
+    { key: "profile", href: "/ho-so", label: "Hồ sơ cá nhân", icon: "user", mobile: true },
+  ];
   if (role === "manager") return [
     { key: "organizations", href: "/management/organizations", label: "Tổ chức", icon: "building", group: "Không gian quản lý", mobile: true },
     { key: "legal-sources", href: "/management/legal-sources", label: "Kho pháp lý", icon: "scales", mobile: true },
@@ -46,7 +52,7 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
 
   return [
     { key: "overview", href: organizationDashboardPath(role), label: "Tổng quan", icon: "building", group: role === "owner" ? "Quản lý tổ chức" : "Không gian làm việc", mobile: true, workspaceTab: true },
-    { key: "upload", href: organizationDashboardPath(role, "upload"), label: role === "expert" ? "Rà soát hợp đồng" : "Tải & rà soát", icon: role === "expert" ? "shield" : "upload", mobile: true, workspaceTab: true },
+    { key: "upload", href: organizationDashboardPath(role, "upload"), label: "Tải & rà soát", icon: "upload", mobile: true, workspaceTab: true },
     { key: "contracts", href: organizationDashboardPath(role, "contracts"), label: "Hợp đồng", icon: "document", count: true, mobile: true, workspaceTab: true },
     ...(["owner", "staff"].includes(role) ? [{ key: "drafts", href: "/contract-drafts", label: "Tạo hợp đồng", icon: "document" as const, mobile: true }] : []),
     ...(role === "owner" ? [

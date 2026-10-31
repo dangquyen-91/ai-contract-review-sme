@@ -8,6 +8,7 @@ import { useExpertVerification, useRequestExpertVerification, useVerificationRev
 import { verificationErrorMessage } from "@/lib/review/expert-verification";
 import { RequestVerificationDialog } from "./request-verification-dialog";
 import { VerificationStatus } from "./verification-status";
+import { useVerificationResultSync } from "@/hooks/expert-verification/use-verification-result-sync";
 
 export function ReviewVerification({ contractId, title, complete, findingCount, role, versionId }: {
   contractId: string;
@@ -21,6 +22,7 @@ export function ReviewVerification({ contractId, title, complete, findingCount, 
   const runs = useVerificationReview(contractId, allowed && complete, versionId);
   const reviewId = allowed && complete ? runs.data?._id ?? "" : "";
   const query = useExpertVerification(reviewId);
+  useVerificationResultSync(contractId, query.data, query.dataUpdatedAt);
   const request = useRequestExpertVerification(reviewId, contractId);
   const [dialogOpen, setDialogOpen] = useState(false);
   const verification = query.data?.verification;
