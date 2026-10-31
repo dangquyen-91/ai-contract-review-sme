@@ -330,10 +330,21 @@ export async function listVerificationQueue(
       'contractId',
       'title type overallRiskLevel',
     );
-  return sessions.map((session) => {
-    const item = session.toObject();
-    return item.contractId ? { ...item, contractId: { ...item.contractId, title: normalizeUploadFileName(item.contractId.title) } } : item;
-  });
+  return Promise.all(
+    sessions.map(async (session) => {
+      const item = session.toObject();
+      if (!item.contractId) return item;
+      const mask = await displayMaskFor(String(session.reviewId), item.contractId.type);
+      return { ...item, contractId: { ...item.contractId, title: mask(normalizeUploadFileName(item.contractId.title)) } };
+    }),
+  );
+}
+
+async function displayMaskFor(reviewId: string, contractType?: string | null) {
+  const review = await ReviewModel.findById(reviewId).select('versionId');
+  const version = review ? await ContractVersionModel.findById(review.versionId).select('+extractedText') : null;
+  const redactor = createRedactor(version?.extractedText ?? '', await redactionPolicyFor(contractType));
+  return (text: string) => redactor.maskForDisplay(text).text;
 }
 
 const MASKED_TEXT_FIELDS = ['title', 'problem', 'consequences', 'recommendations', 'summary', 'text'] as const;
