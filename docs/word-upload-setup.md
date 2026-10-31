@@ -6,16 +6,12 @@ không cần cài trên máy chỉ mở trình duyệt.
 
 ## Máy Windows chạy backend trực tiếp
 
-Trong thư mục `backend`:
+Cài LibreOffice bằng WinGet:
 
 ```powershell
-npm install
-npm run setup:word:windows
-npm run check:word
+winget install --id TheDocumentFoundation.LibreOffice --exact --source winget
 ```
 
-Lệnh setup kiểm tra trước; nếu LibreOffice đã chạy được thì không cài lại.
-Nếu chưa có, lệnh gọi WinGet với ID `TheDocumentFoundation.LibreOffice`.
 Windows có thể yêu cầu quyền quản trị. Nếu chưa có WinGet, dùng trình cài từ
 https://www.libreoffice.org/download/download-libreoffice/.
 
@@ -26,9 +22,15 @@ Nếu cài ở thư mục khác, đặt trong `backend/.env`:
 LIBREOFFICE_PATH="C:/Program Files/LibreOffice/program/soffice.exe"
 ```
 
+Kiểm tra phiên bản trong PowerShell:
+
+```powershell
+& "C:\Program Files\LibreOffice\program\soffice.com" --version
+```
+
 Biến môi trường của tiến trình được ưu tiên hơn `.env`.
-Lệnh kiểm tra chỉ xác nhận gọi được LibreOffice, không xác nhận mọi file DOCX đều chuyển đổi được.
-Không tự cài phần mềm hệ thống trong `postinstall`; người thiết lập chủ động chạy lệnh setup.
+Kiểm tra phiên bản chỉ xác nhận gọi được LibreOffice, không xác nhận mọi file DOCX đều chuyển đổi được.
+`npm install` không tự cài LibreOffice; người thiết lập cài phần mềm hệ thống riêng.
 
 ## Docker và server
 
