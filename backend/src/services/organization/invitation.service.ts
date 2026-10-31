@@ -36,6 +36,12 @@ async function assertCanJoinOrganization(
   }
 }
 
+function assertPersonalAccount(role: unknown) {
+  if ((role as Role | null)?.code !== 'user') {
+    throw AppError.conflict('Only personal accounts can join an organization');
+  }
+}
+
 async function requireOwner(userId: string, orgId: string, session?: ClientSession) {
   const user = await UserModel.findOne({ _id: userId, orgId, isActive: true })
     .populate('roleId')
@@ -84,7 +90,8 @@ export async function createInvitation(
     throw AppError.badRequest('Owners can only invite staff members');
   }
   ensureInvitationEmailConfigured();
-  const existing = await UserModel.findOne({ email: input.email });
+  const existing = await UserModel.findOne({ email: input.email }).populate('roleId');
+  if (existing) assertPersonalAccount(existing.roleId);
   await assertCanJoinOrganization(existing?.orgId?.toString(), orgId);
   const token = randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -271,7 +278,9 @@ export async function declineReceivedInvitation(userId: string, invitationId: st
 
 export async function acceptInvitation(userId: string, token?: string, invitationId?: string) {
   return mongoose.connection.transaction(async (session) => {
-    const user = await UserModel.findOne({ _id: userId, isActive: true }).session(session);
+    const user = await UserModel.findOne({ _id: userId, isActive: true })
+      .populate('roleId')
+      .session(session);
     if (!user) throw AppError.unauthorized();
     const invitation = invitationId
       ? await OrganizationInvitationModel.findOne({
@@ -281,8 +290,10 @@ export async function acceptInvitation(userId: string, token?: string, invitatio
           expiresAt: { $gt: new Date() },
         }).session(session)
       : (await getPendingInvitation(token ?? '', user.email, session)).invitation;
-    if (!invitation) throw AppError.badRequest('Invitation is no longer available');
+    if (!invitation || invitation.role === 'expert')
+      throw AppError.badRequest('Invitation is no longer available');
     await assertCanJoinOrganization(user.orgId?.toString(), invitation.orgId.toString(), session);
+    assertPersonalAccount(user.roleId);
     const role = await getRoleByCode(invitation.role);
     // Writing the organization serializes acceptance against organization deletion.
     const organization = await OrganizationModel.findOneAndUpdate(
