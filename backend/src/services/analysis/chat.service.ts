@@ -53,7 +53,10 @@ async function buildContractContext(
   },
 ): Promise<string> {
   const clauses = await ClauseModel.find({ contractVersionId: version._id }).sort({ index: 1 });
-  const findings = await RiskFindingModel.find({ contractVersionId: version._id }).populate<{
+  const findings = await RiskFindingModel.find({
+    contractVersionId: version._id,
+    'verification.verdict': { $ne: 'rejected' },
+  }).populate<{
     expectedClauseTypeId: { name: string } | null;
   }>('expectedClauseTypeId');
 

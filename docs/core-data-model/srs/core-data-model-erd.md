@@ -1,12 +1,12 @@
 ---
 type: srs-erd
 feature: core-data-model
-updated: 2026-10-27
+updated: 2026-10-31
 ---
 
 # core-data-model — Entity Relationship Diagram
 
-> Scope: full data model of AI Contract Review — 30 entities (23 implemented, 7 planned), 7 business groups
+> Scope: full data model of AI Contract Review — 30 entities (25 implemented, 5 planned), 7 business groups
 
 ## Diagram
 
@@ -61,7 +61,8 @@ erDiagram
     REVIEW ||--o| EXPERT_REVIEW : ""
     USER ||--o{ EXPERT_REVIEW : ""
     EXPERT_REVIEW ||--o{ EXPERT_ACTION : ""
-    RISK_FINDING ||--o{ EXPERT_ACTION : ""
+    RISK_FINDING |o--o{ EXPERT_ACTION : ""
+    USER ||--o{ EXPERT_ACTION : ""
     EXPERT_REVIEW ||--o{ COMMENT : ""
     USER ||--o{ COMMENT : ""
     CLAUSE |o--o{ COMMENT : ""
@@ -314,6 +315,7 @@ erDiagram
         String riskCode
         String ruleCode
         Number ruleVersion
+        FindingVerification verification "embedded"
     }
 
     REVIEW {
@@ -392,25 +394,32 @@ erDiagram
     }
 
     EXPERT_REVIEW {
-        ObjectId _id PK "planned"
-        ObjectId reviewId FK
+        ObjectId _id PK
+        ObjectId reviewId FK "unique"
+        ObjectId contractId FK
         ObjectId orgId FK
-        ObjectId reviewerId FK
         String status
-        String decisionNote
+        Number attempt
+        ObjectId requestedBy FK
+        String requestNote
+        Date requestedAt
+        ObjectId expertId FK
         Date assignedAt
-        Date startedAt
         Date completedAt
+        String decisionNote
     }
 
     EXPERT_ACTION {
-        ObjectId _id PK "planned"
+        ObjectId _id PK
         ObjectId expertReviewId FK
+        ObjectId orgId FK
         ObjectId riskFindingId FK
+        ObjectId expertId FK
+        Number attempt
         String action
         String reason
-        Mixed before
-        Mixed after
+        FindingSnapshot before "embedded"
+        FindingSnapshot after "embedded"
     }
 
     COMMENT {
@@ -540,8 +549,8 @@ erDiagram
 | RISK_CITATION | RiskCitation | Legal Knowledge | Implemented | Link between a risk finding and a cited legal chunk, with relevance score |
 | CONTRACT_DRAFT | ContractDraft | Contract Drafting | Implemented | Contract drafted from a built-in template with AI help, approved and published as a CONTRACT |
 | DRAFT_PROPOSAL | DraftAssistantProposal | Contract Drafting | Implemented | One edit suggested by the drafting assistant, applied or dismissed by the user |
-| EXPERT_REVIEW | — | Expert Review & Reporting | Planned | Lawyer verification session for one AI review (approve or return) |
-| EXPERT_ACTION | — | Expert Review & Reporting | Planned | One lawyer decision on a finding, with before/after snapshot |
+| EXPERT_REVIEW | ExpertReview | Expert Review & Reporting | Implemented | Expert (lawyer) verification of one completed AI review: requested, claimed, then approved or returned |
+| EXPERT_ACTION | ExpertAction | Expert Review & Reporting | Implemented | Append-only log of expert decisions on findings (confirm, adjust, reject, add, remove) with before/after snapshots |
 | COMMENT | — | Expert Review & Reporting | Planned | Lawyer comment on a clause or finding during expert review |
 | REPORT | — | Expert Review & Reporting | Planned | Exported PDF/DOCX review report |
 | AUDIT_LOG | — | Audit & Notifications | Planned | Record of who did what to which record, and the outcome |
@@ -554,10 +563,11 @@ erDiagram
 - **Links matched by code, not by `ObjectId`:** `CONTRACT.type` matches `CT_PROFILE.code` or one of its aliases; `CONTRACT.industry` and `ORGANIZATION.industry` match `INDUSTRY.code`; `CT_PROFILE` points to `LEGAL_SOURCE`, `CLAUSE_TYPE` and `INDUSTRY` via code lists; `PAYMENT.planCode`, `ORG_SUB.scheduledDowngrade.planCode` and `SUB_PERIOD.plan.code` match `PLAN.code`. These fields are marked `FK` but hold a `String` code. Changing a code in a catalog entity breaks these links.
 - **SUB_PERIOD snapshots the full plan details** (`plan`: code, price, limits) at grant time — changing price/limits on PLAN does not affect running periods.
 - **N:N relationships drawn without a junction table:** `CT_PROFILE` with `LEGAL_SOURCE` / `CLAUSE_TYPE` / `INDUSTRY` is stored as code lists inside `CT_PROFILE`; `RISK_FINDING` with `LEGAL_CHUNK` is stored as `legalKnowledgeChunkIds` inside each `RISK_FINDING.legalBasis` item. Only `RISK_CITATION` is a real link entity, with an extra relevance score.
-- **Embedded sub-documents:** extraction progress/quality, redaction summary and key terms on `CONTRACT_VER`; automatic classification on `CONTRACT`; legal basis and proposed revision on `RISK_FINDING`; stage statuses and result snapshot on `REVIEW`; cited legal sources on `CHAT_MESSAGE`; coverage, ingestion progress and uploaded parts on `LEGAL_SOURCE`; parent headings on `LEGAL_CHUNK`; parties and industry rules on `CT_PROFILE`; scheduled downgrade on `ORG_SUB`; plan snapshot on `SUB_PERIOD`.
+- **Embedded sub-documents:** extraction progress/quality, redaction summary and key terms on `CONTRACT_VER`; automatic classification on `CONTRACT`; legal basis, proposed revision and latest expert decision (`verification`) on `RISK_FINDING`; finding snapshots (`before`/`after`) on `EXPERT_ACTION`; stage statuses and result snapshot on `REVIEW`; cited legal sources on `CHAT_MESSAGE`; coverage, ingestion progress and uploaded parts on `LEGAL_SOURCE`; parent headings on `LEGAL_CHUNK`; parties and industry rules on `CT_PROFILE`; scheduled downgrade on `ORG_SUB`; plan snapshot on `SUB_PERIOD`.
 - **`CONTRACT_VER.keyTerms[].clauseId` points to `CLAUSE`** of the same version — not drawn as a separate line to keep the diagram readable.
 - **`orgId` is repeated on CLAUSE, RISK_FINDING, REVIEW, CHAT_MESSAGE, USAGE_RUN and DRAFT_PROPOSAL** to scope data per organization; the diagram only draws the main ownership relationships.
 - **Two kinds of risk finding:** `clause_risk` is tied to one `CLAUSE`; `missing_clause` has no `CLAUSE` and points to the missing clause type (`expectedClauseTypeId`).
+- **Expert verification:** at most 1 `EXPERT_REVIEW` per `REVIEW`; while it is `requested` or `in_progress`, the contract cannot start or retry a review, because a new review replaces the findings. `RISK_FINDING.verification` is a copy of the latest `EXPERT_ACTION` for fast reads; `EXPERT_ACTION` keeps the full history, and its `riskFindingId` may point to a finding that a later review or a remove action deleted, which is why each action keeps snapshots. Rejected findings stay stored but are left out of chat context, share summaries and the overall risk level recomputed on approval.
 - **At most 1 running review per contract** (`REVIEW.activeLock`) and at most 1 reserved analysis credit per contract; **at most 1 open payment order per organization** (`PAYMENT.isOpen`); **1 subscription record per organization** (`ORG_SUB.orgId` is unique).
 - **Each REVIEW holds exactly 1 USAGE_RUN of kind analysis**; chats also go through USAGE_RUN (kind chat), but CHAT_MESSAGE does not store a link to the charged run.
 - **How credits are charged today:** an analysis run takes `units` computed from the page count of the reviewed version (`pageCount`, `versionId`) out of `SUB_PERIOD.analysisLimit`; a chat run takes 1 unit. A drafting run (kind drafting) points to CONTRACT_DRAFT through `draftId` and has no contract.
