@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
-import { workspacePath } from "@/lib/workspace-path";
+import { workspacePath } from "@/lib/routing/workspace-path";
 
 import { Brand } from "@/components/ui/brand";
 import { Button } from "@/components/ui/button";

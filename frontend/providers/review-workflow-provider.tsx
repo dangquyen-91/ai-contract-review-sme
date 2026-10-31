@@ -2,10 +2,10 @@
 
 import { createContext, useCallback, useContext, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { useDashboardWorkspace } from "@/hooks/use-dashboard-workspace";
-import { useReviewWorkflow } from "@/hooks/use-review-workflow";
-import { useReviewResultNavigation } from "@/hooks/use-review-result-navigation";
-import { useReviewTimelineScroll } from "@/hooks/use-review-timeline-scroll";
+import { useDashboardWorkspace } from "@/hooks/dashboard/use-dashboard-workspace";
+import { useReviewWorkflow } from "@/hooks/review/use-review-workflow";
+import { useReviewResultNavigation } from "@/hooks/review/use-review-result-navigation";
+import { useReviewTimelineScroll } from "@/hooks/review/use-review-timeline-scroll";
 
 type ReviewWorkflow = ReturnType<typeof useReviewWorkflow>;
 const ReviewWorkflowContext = createContext<ReviewWorkflow | null>(null);
@@ -14,7 +14,7 @@ const ReviewWorkflowContext = createContext<ReviewWorkflow | null>(null);
 export function ReviewWorkflowProvider({ children }: { children: ReactNode; initialRole?: string }) {
   const { access, data } = useDashboardWorkspace();
   const router = useRouter();
-  const workflow = useReviewWorkflow({ access, workspaceReady: Boolean(data?.organization?.id) });
+  const workflow = useReviewWorkflow({ access, workspaceReady: Boolean(data?.contractScopeId || data?.organization?.id), personal: data?.role === "user" });
   useReviewTimelineScroll(workflow.timelineScrollRequest, workflow.reviewTimelineRef);
   const contract = workflow.reviewResult?.contract;
   const contractId = contract?.id ?? contract?._id;

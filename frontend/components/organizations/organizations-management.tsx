@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { useOrganizationsList } from "@/hooks/use-organizations";
-import { usePaginationPage } from "@/hooks/use-pagination-page";
+import { useOrganizationsList } from "@/hooks/organizations/use-organizations";
+import { usePaginationPage } from "@/hooks/shared/use-pagination-page";
 import type { Organization } from "@/types/organization";
-import { useIndustryOptions } from "./organization-industry-dialog";
+import { useIndustryOptions } from "@/hooks/organizations/use-industry-options";
 import styles from "@/styles/user_management/user-management.module.css";
 
 function formatDate(value: string) {

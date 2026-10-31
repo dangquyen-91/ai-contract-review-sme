@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import { toast } from "sonner";
-import { useUpdateOrganization } from "@/hooks/use-organizations";
+import { useUpdateOrganization } from "@/hooks/organizations/use-organizations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";

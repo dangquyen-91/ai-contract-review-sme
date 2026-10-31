@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { LegalSourceUploadActions } from "./legal-source-upload-actions";
 import { legalSourceStatuses, legalSourceTypes } from "@/config/legal-source-display";
-import type { useLegalSourceUpload } from "@/hooks/use-legal-source-upload";
+import type { useLegalSourceUpload } from "@/hooks/legal-sources/use-legal-source-upload";
 import { LegalSourcePreview } from "./legal-source-preview";
 import { LegalSourceFileFields, legalSourceFieldClass as field } from "./legal-source-file-fields";
 

@@ -1,7 +1,10 @@
-import type { TemplateStudioState } from "@/hooks/use-template-studio";
+import type { TemplateStudioState } from "@/hooks/contract-drafts/use-template-studio";
 import type { AuthUser } from "@/types/auth";
-import { readLineItems, totalLineItems } from "@/lib/draft-line-items";
-import { studioCharacterCount } from "@/lib/studio-document";
+import {
+  readLineItems,
+  totalLineItems,
+} from "@/lib/contract-drafts/draft-line-items";
+import { studioCharacterCount } from "@/lib/contract-drafts/studio-document";
 
 export type StudioPresentation = ReturnType<typeof getStudioPresentation>;
 export function getStudioPresentation(
@@ -9,7 +12,11 @@ export function getStudioPresentation(
   user: AuthUser,
 ) {
   const { draft, values, busy, dirty, error } = studio;
-  const owner = user.role === "owner";
+  const owner =
+    user.role === "owner" ||
+    (user.role === "user" && draft.createdBy === user.id);
+  const canFinalize =
+    owner || (user.role === "staff" && draft.createdBy === user.id);
   const readOnly = draft.status !== "draft";
   const editable = !readOnly && (!busy || busy === "save");
   const canExport =
@@ -38,9 +45,11 @@ export function getStudioPresentation(
   const characterCount = studioCharacterCount(values.document, draft.template);
   return {
     owner,
+    canFinalize,
     readOnly,
     editable,
     canExport,
+    canPublish: canFinalize && Boolean(user.orgId) && draft.templateCode !== 'rental',
     missing,
     outline,
     status,

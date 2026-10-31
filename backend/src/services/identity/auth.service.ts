@@ -9,6 +9,7 @@ import { startEmailVerification, completeEmailVerification } from './emailVerifi
 import { AccessTokenPayload } from '../../middlewares/auth.middleware';
 import { LoginInput, RegisterInput } from '../../validations/auth.validation';
 import { getPendingInvitation } from '../organization/invitation.service';
+import { getRoleByCode } from './role.service';
 
 function roleCodeOf(user: { roleId: unknown }) {
   const role = user.roleId as Role | null | undefined;
@@ -112,11 +113,23 @@ export async function refresh(refreshToken: string, invitationToken?: string) {
     throw AppError.unauthorized('Invalid or expired refresh token');
   }
 
-  const user = await UserModel.findById(payload.sub).populate('roleId');
+  let user = await UserModel.findById(payload.sub).populate('roleId');
   if (!user || !user.isActive || (payload.authVersion ?? 0) !== (user.authVersion ?? 0)) {
     throw AppError.unauthorized('Invalid refresh token');
   }
   if (!user.emailVerifiedAt) throw AppError.unauthorized('Verify your email by signing in again');
+
+  // Legacy organization deletion removed orgId but left the Owner role behind.
+  // Repair only that orphan state, preserving the account's refresh session.
+  if (!user.orgId && roleCodeOf(user) === 'owner') {
+    const personalRole = await getRoleByCode('user');
+    await UserModel.updateOne(
+      { _id: user._id, roleId: user.roleId, orgId: null },
+      { $set: { roleId: personalRole._id, hasCompletedOnboarding: true }, $inc: { permissionsVersion: 1 } },
+    );
+    user = await UserModel.findById(payload.sub).populate('roleId');
+    if (!user || !user.isActive || (payload.authVersion ?? 0) !== (user.authVersion ?? 0)) throw AppError.unauthorized('Invalid refresh token');
+  }
 
   if (invitationToken) await getPendingInvitation(invitationToken, user.email);
 

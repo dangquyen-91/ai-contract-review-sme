@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isSameOriginRequest } from '@/lib/request-origin';
-import { encodeSessionUser, userSessionCookie } from '@/lib/auth-session';
-import { rememberedCookieAge } from '@/lib/token-expiry';
-import { emailVerificationCookie } from '@/lib/email-verification-session';
+import { isSameOriginRequest } from '@/lib/api/request-origin';
+import { encodeSessionUser, userSessionCookie } from '@/lib/auth/auth-session';
+import { rememberedCookieAge } from '@/lib/auth/token-expiry';
+import { emailVerificationCookie } from '@/lib/auth/email-verification-session';
 import { getApiSession } from '@/lib/auth/api-session';
 
 export async function proxyProfile(request: NextRequest, action: '' | 'avatar' | 'password' = '') {

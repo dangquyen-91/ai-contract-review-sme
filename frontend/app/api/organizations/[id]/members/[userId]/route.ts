@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { proxyOrganizationMutation } from "@/lib/api/organization-proxy";
-import { isSameOriginRequest } from "@/lib/request-origin";
+import { isSameOriginRequest } from "@/lib/api/request-origin";
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string; userId: string }> }) {
   if (!isSameOriginRequest(request)) {

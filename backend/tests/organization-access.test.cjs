@@ -2,7 +2,7 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 
 jest.mock('../src/config/env', () => ({
-  env: { JWT_ACCESS_SECRET: 'organization-access-test-only' },
+  env: { JWT_ACCESS_SECRET: 'organization-access-test-only', DATA_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64') },
 }));
 
 jest.mock('../src/models/user.model', () => ({
@@ -12,8 +12,10 @@ jest.mock('../src/models/user.model', () => ({
 jest.mock('../src/controllers/organization.controller', () => ({
   createOrganizationHandler: jest.fn((_req, res) => res.status(201).json({ success: true })),
   getOrganizationHandler: jest.fn(),
+  listOrganizationsHandler: jest.fn(),
   updateOrganizationHandler: jest.fn(),
   deleteOrganizationHandler: jest.fn(),
+  organizationAddressOptionsHandler: jest.fn(),
 }));
 
 const router = require('../src/routes/organization.routes').default;
@@ -52,7 +54,7 @@ async function createOrganization(role, orgId) {
     headers.Authorization = `Bearer ${token}`;
   }
   const response = await fetch(`${baseUrl}/organizations`, {
-    method: 'POST', headers, body: JSON.stringify({ name: 'Test organization' }),
+    method: 'POST', headers, body: JSON.stringify({ name: 'Test organization', taxCode: '0312345678', industry: 'other', addressDetails: { provinceCode: '01', wardCode: '00004', addressLine: '12 Test' } }),
   });
   await response.json();
   return response.status;
@@ -68,7 +70,7 @@ test('unauthenticated requests cannot create organizations', async () => {
   expect(createOrganizationHandler).not.toHaveBeenCalled();
 });
 
-test.each(['owner', 'manager', 'staff', 'reviewer', 'user'])('%s retains access to the creation handler', async (role) => {
+test.each(['owner', 'manager', 'staff', 'expert', 'user'])('%s retains access to the creation handler', async (role) => {
   expect(await createOrganization(role)).toBe(201);
   expect(createOrganizationHandler).toHaveBeenCalledTimes(1);
 });

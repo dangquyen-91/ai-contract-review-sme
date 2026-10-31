@@ -6,11 +6,12 @@ import { toast } from "sonner";
 import { AnalysisFocusDialog } from "@/components/review/upload/analysis-focus-dialog";
 import { Button } from "@/components/ui/button";
 import { reviewableTypeLabels } from "@/config/contract-display";
-import { useConfirmProfileMutation, useContractClassification, useContractProfiles, useDeleteContract, useRetryClassificationMutation } from "@/hooks/use-contracts";
-import { confirmationView, detectedNamesFor, LOW_CONFIDENCE, otherPartyNames, suggestedProfile } from "@/lib/contract-classification";
-import { classificationOutcomeCopy, serverCodeMessage } from "@/lib/review-error-codes";
+import { useConfirmProfileMutation, useContractClassification, useContractProfiles, useDeleteContract, useRetryClassificationMutation } from "@/hooks/contracts/use-contracts";
+import { confirmationView, detectedNamesFor, extractionFailureCopy, LOW_CONFIDENCE, otherPartyNames, suggestedProfile } from "@/lib/contracts/contract-classification";
+import { classificationOutcomeCopy, serverCodeMessage } from "@/lib/review/review-error-codes";
 import { isApiClientError } from "@/lib/api/client";
 import type { ClassificationOutcome, ReviewBillingConfirmation } from "@/types/contracts";
+import { ContractReviewPayment } from "./contract-review-payment";
 
 type ContractConfirmationDialogProps = {
   contractId: string;
@@ -139,7 +140,8 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
   } else if (view === "classifying") {
     status = <StatusLine>AI đang nhận diện loại hợp đồng và vai trò của bạn…</StatusLine>;
   } else if (view === "extraction_failed") {
-    status = <Notice title="Không đọc được nội dung tệp" actions={deleteButton}>Hãy tải lên tệp rõ hơn hoặc ở định dạng khác. Bạn chưa bị trừ lượt nào.</Notice>;
+    const copy = extractionFailureCopy(contract);
+    status = <Notice title={copy.title} actions={deleteButton}>{copy.message}</Notice>;
   } else if (view === "classify_failed") {
     status = <Notice title="AI chưa nhận diện được hợp đồng" actions={<Button variant="outline" size="sm" onClick={retryClassification} loading={reclassify.isPending} disabled={busy}>Nhận diện lại</Button>}>Bạn có thể thử lại hoặc tự chọn loại hợp đồng bên dưới.</Notice>;
   } else if (view === "blocked" && classification?.outcome) {
@@ -171,6 +173,9 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
 
   const waiting = view === "reading" || view === "classifying";
   return <AnalysisFocusDialog contractTitle={contractTitle} orgId={orgId} role={role}
+    paymentOption={personal && orgId && canStart && contract.reviewBilling?.ready ? <ContractReviewPayment key={contract.reviewBilling.versionId} contractId={contractId} accountId={orgId} disabled={busy} onPrepare={async () => {
+      if (changed) await confirm.mutateAsync({ contractId, type: selected.type!, ourParty: selectedParty });
+    }} /> : undefined}
     billing={contract.reviewBilling}
     isReviewing={busy}
     title={waiting ? "Đang chuẩn bị hợp đồng" : "Xác nhận hợp đồng"}

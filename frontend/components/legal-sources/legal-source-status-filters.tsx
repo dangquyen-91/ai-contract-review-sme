@@ -1,6 +1,6 @@
 import { ListFilter, LoaderCircle, CircleAlert, FileSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { SourceGroup } from "@/lib/legal-source-filtering";
+import type { SourceGroup } from "@/lib/legal-sources/legal-source-filtering";
 
 const groups = [
   { value: "all", label: "Tất cả", icon: ListFilter },

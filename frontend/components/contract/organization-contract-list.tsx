@@ -1,6 +1,6 @@
 "use client";
 
-import type { OrganizationWorkflow } from "@/hooks/use-organization-workflow";
+import type { OrganizationWorkflow } from "@/hooks/organizations/use-organization-workflow";
 import { ContractTable } from "@/components/contract/contract-table";
 import { OrganizationContractsView } from "@/components/contract/organization-contracts-view";
 

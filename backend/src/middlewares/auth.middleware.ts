@@ -69,3 +69,12 @@ export function getOrganizationUser(req: Request): OrganizationAccessTokenPayloa
   if (!req.user.orgId) throw AppError.forbidden('Organization setup required');
   return req.user as OrganizationAccessTokenPayload;
 }
+
+// Contract storage and billing share a scope key. Standalone personal accounts
+// use their own ID, without changing membership or the authenticated token.
+export function getContractUser(req: Request): OrganizationAccessTokenPayload {
+  if (!req.user) throw AppError.unauthorized();
+  if (req.user.orgId) return req.user as OrganizationAccessTokenPayload;
+  if (req.user.role !== 'user') throw AppError.forbidden('Organization setup required');
+  return { ...req.user, orgId: req.user.sub };
+}

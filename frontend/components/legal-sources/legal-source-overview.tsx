@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useAdminHealth, useLegalSources } from "@/hooks/use-legal-sources";
+import { useAdminHealth, useLegalSources } from "@/hooks/legal-sources/use-legal-sources";
 import { LegalSourceMetrics } from "./legal-source-metrics";
 
 export function AvailableOverview({

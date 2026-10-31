@@ -61,12 +61,15 @@ export function buildStudioTemplate(
         text(', chúng tôi gồm:'),
       ]),
       heading(`BÊN A — ${party.name.toLocaleUpperCase('vi-VN')}`),
-      p([text(`Tên doanh nghiệp: ${companyName}`)]),
+      template.code === 'rental'
+        ? p([text('Họ và tên: '), field('representative')])
+        : p([text(`Tên doanh nghiệp: ${companyName}`)]),
       ...template.fields
         .filter(
           (item) =>
             item.group === 'parties' &&
             !item.key.startsWith('partner') &&
+            !(template.code === 'rental' && item.key === 'representative') &&
             !['reference', 'signingDate', 'signingPlace'].includes(item.key),
         )
         .map((item) => p([text(`${item.label}: `), field(item.key)])),
@@ -91,8 +94,8 @@ export function buildStudioTemplate(
         type: 'table',
         attrs: { blockId: randomUUID(), layout: 'signature' },
         content: [
-          ['ĐẠI DIỆN BÊN A', template.code === 'labor' ? 'NGƯỜI LAO ĐỘNG' : 'ĐẠI DIỆN BÊN B'],
-          ['(Ký, ghi rõ họ tên, chức vụ; đóng dấu nếu có)', '(Ký, ghi rõ họ tên)'],
+          [template.code === 'rental' ? party.name.toLocaleUpperCase('vi-VN') : 'ĐẠI DIỆN BÊN A', template.code === 'rental' ? partner.toLocaleUpperCase('vi-VN') : template.code === 'labor' ? 'NGƯỜI LAO ĐỘNG' : 'ĐẠI DIỆN BÊN B'],
+          [template.code === 'rental' ? '(Ký, ghi rõ họ tên)' : '(Ký, ghi rõ họ tên, chức vụ; đóng dấu nếu có)', '(Ký, ghi rõ họ tên)'],
           ['', ''],
           ['', ''],
           ['', ''],
@@ -115,7 +118,7 @@ export function buildStudioTemplate(
               type: 'tableRow',
               content: [
                 field('representative'),
-                field(template.code === 'labor' ? 'partnerName' : 'partnerRepresentative'),
+                field(template.code === 'labor' || template.code === 'rental' ? 'partnerName' : 'partnerRepresentative'),
               ].map((value) => ({ type: 'tableCell', content: [p([value])] })),
             },
           ]),

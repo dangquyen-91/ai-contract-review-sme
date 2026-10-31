@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { useReceivedInvitations, useAcceptReceivedInvitationMutation, useDeclineReceivedInvitationMutation } from "@/hooks/use-invitations";
-import { workspacePath } from "@/lib/workspace-path";
+import { useReceivedInvitations, useAcceptReceivedInvitationMutation, useDeclineReceivedInvitationMutation } from "@/hooks/organizations/use-invitations";
+import { workspacePath } from "@/lib/routing/workspace-path";
 
 const labels = { staff: "Nhân viên", manager: "Quản lý", expert: "Chuyên viên rà soát" };
 export function ReceivedInvitations() {

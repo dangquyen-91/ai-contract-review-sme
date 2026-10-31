@@ -11,6 +11,7 @@ import { validate } from '../middlewares/validate.middleware';
 import { contractFileUpload } from '../middlewares/upload.middleware';
 import {
   confirmContractProfileHandler,
+  contractReviewQuoteHandler,
   createContractHandler,
   deleteContractHandler,
   getContractFileHandler,
@@ -62,6 +63,7 @@ router.post(
 );
 
 router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandler);
+router.get('/:id/review-payment', validate({ params: contractIdParamSchema }), contractReviewQuoteHandler);
 
 router.patch(
   '/:id/profile',

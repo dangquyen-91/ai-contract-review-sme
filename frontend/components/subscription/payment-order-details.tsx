@@ -1,4 +1,4 @@
-import { formatMoney } from "@/lib/subscription-plans";
+import { formatMoney } from "@/lib/subscription/subscription-plans";
 import type { PaymentOrder } from "@/types/payment";
 
 export function PaymentOrderDetails({
@@ -10,6 +10,15 @@ export function PaymentOrderDetails({
 }) {
   return (
     <dl className="mt-6 grid gap-3 rounded-xl bg-[#f5f8fc] p-4 text-sm">
+      {order.purpose === "contract_review" && (
+        <div className="flex flex-wrap justify-between gap-2">
+          <dt>Nội dung</dt>
+          <dd>
+            Rà soát riêng · {order.pageCount} trang · không thay đổi gói hiện
+            tại
+          </dd>
+        </div>
+      )}
       <div className="flex flex-wrap justify-between gap-2">
         <dt>Mã đơn</dt>
         <dd className="font-semibold">#{order.orderCode}</dd>

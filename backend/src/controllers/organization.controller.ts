@@ -11,6 +11,11 @@ import {
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok, paginated } from '../utils/ApiResponse';
 import { listOrganizationsQuerySchema } from '../validations/organization.validation';
+import { vietnamAddressDirectory } from '../services/organization/vietnamAddress';
+
+export const organizationAddressOptionsHandler = asyncHandler(async (_req, res) => {
+  ok(res, vietnamAddressDirectory);
+});
 
 function toOrganizationResponse(organization: Awaited<ReturnType<typeof getOrganization>>) {
   return {
@@ -18,6 +23,7 @@ function toOrganizationResponse(organization: Awaited<ReturnType<typeof getOrgan
     name: organization.name,
     taxCode: organization.taxCode ?? null,
     address: organization.address ?? null,
+    addressDetails: organization.addressDetails ?? null,
     industry: organization.industry ?? null,
     createdAt: organization.createdAt,
     updatedAt: organization.updatedAt,

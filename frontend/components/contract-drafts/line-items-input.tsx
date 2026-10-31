@@ -2,8 +2,8 @@
 import { Plus, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { centsToMoney, emptyLineItem, lineItemAmount, readLineItems, totalLineItems, type DraftLineItem } from '@/lib/draft-line-items';
-import { formatMoneyInput } from '@/lib/money-input';
+import { centsToMoney, emptyLineItem, lineItemAmount, readLineItems, totalLineItems, type DraftLineItem } from '@/lib/contract-drafts/draft-line-items';
+import { formatMoneyInput } from '@/lib/contract-drafts/money-input';
 import { MoneyInput } from './money-input';
 
 export function LineItemsInput({ value, disabled, compact = false, onChange }: { value: string; disabled: boolean; compact?: boolean; onChange: (value: string, total: string) => void }) {

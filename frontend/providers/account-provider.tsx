@@ -1,7 +1,7 @@
 "use client";
 import type { ReactNode } from 'react';
 import { DashboardContext } from './dashboard-provider';
-import { useLogoutWorkflow } from '@/hooks/use-logout-workflow';
+import { useLogoutWorkflow } from '@/hooks/auth/use-logout-workflow';
 
 export function AccountProvider({ children }: { children: ReactNode }) {
   const session = useLogoutWorkflow();

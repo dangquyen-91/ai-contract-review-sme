@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { workspacePath } from "@/lib/workspace-path";
+import { workspacePath } from "@/lib/routing/workspace-path";
+import { billingAccountId } from "@/lib/subscription/billing-account";
 import { PaymentOrderStatus } from "./payment-order-status";
 import type { AuthUser } from "@/types/auth";
 
@@ -32,7 +33,8 @@ export function PaymentResult({
         </Button>
       </section>
     );
-  if (!user?.orgId) {
+  const accountId = user && billingAccountId(user);
+  if (!user || !accountId) {
     const returnTo = `/thanh-toan/${cancelled ? "huy" : "ket-qua"}?orderCode=${orderCode}`;
     return (
       <section className="rounded-2xl border border-[#dce4ef] bg-white p-7">
@@ -53,9 +55,9 @@ export function PaymentResult({
   }
   return (
     <PaymentOrderStatus
-      key={`${user.orgId}:${orderCode}`}
+      key={`${accountId}:${orderCode}`}
       user={user}
-      orgId={user.orgId}
+      orgId={accountId}
       orderCode={orderCode}
       cancelled={cancelled}
     />

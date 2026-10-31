@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { isApiClientError } from "@/lib/api/client";
-import { useContractChatMessages, useStreamChatMutation } from "@/hooks/use-contracts";
+import { useContractChatMessages, useStreamChatMutation } from "@/hooks/contracts/use-contracts";
 
 function errorMessage(error: unknown) {
   return isApiClientError(error) ? error.message : "Vui lòng thử lại sau.";

@@ -1,4 +1,4 @@
-import { PipelineStage, Types } from 'mongoose';
+import mongoose, { PipelineStage, Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { PaginationParams } from '../../utils/pagination';
 import { ContractModel } from '../../models/contract.model';
@@ -24,6 +24,10 @@ import { redactionPolicyFor } from './redactionPolicy.service';
 import { createRedactor, SensitiveDataType } from '../ai/redaction.service';
 import { DOCX_MIME, redactDocx } from './docxRedaction.service';
 import { reviewCost } from '../billing/reviewCost';
+import { ContractReviewPurchaseModel } from '../../models/contractReviewPurchase.model';
+import { PaymentModel } from '../../models/payment.model';
+import { lockSubscriptionOrganization } from '../billing/subscription.service';
+import { contractDisplayNames } from './contractDisplayNames';
 
 interface CreateContractParams {
   orgId: string;
@@ -67,7 +71,14 @@ export async function createContract({
       ourParty: input.ourParty,
       industry: input.industry,
       classification: profile
-        ? { status: 'completed', outcome: 'supported', type: profile.code, ourParty: input.ourParty, source: 'user', confirmedAt: new Date() }
+        ? {
+            status: 'completed',
+            outcome: 'supported',
+            type: profile.code,
+            ourParty: input.ourParty,
+            source: 'user',
+            confirmedAt: new Date(),
+          }
         : { status: 'pending' },
     });
     contractId = contract._id;
@@ -171,7 +182,7 @@ export async function listContracts(
     ContractModel.aggregate([...pipeline, { $count: 'total' }]),
   ]);
 
-  return { items, total: totalResult[0]?.total ?? 0 };
+  return { items: items.map((item) => contractDisplayNames(item)), total: totalResult[0]?.total ?? 0 };
 }
 
 export async function getContractById(orgId: string, id: string) {
@@ -180,28 +191,67 @@ export async function getContractById(orgId: string, id: string) {
     throw AppError.notFound('Contract not found');
   }
   const currentVersion = await getCurrentVersion(id);
-  return { ...contract.toObject(), currentVersion: currentVersion.toObject(), reviewBilling: { ...reviewCost(currentVersion), versionId: currentVersion.id } };
+  const purchase = await ContractReviewPurchaseModel.findOne({
+    orgId,
+    contractId: id,
+    versionId: currentVersion.id,
+  }).select('status');
+  return contractDisplayNames({
+    ...contract.toObject(),
+    currentVersion: currentVersion.toObject(),
+    reviewBilling: {
+      ...reviewCost(currentVersion),
+      versionId: currentVersion.id,
+      purchaseStatus: purchase?.status ?? null,
+    },
+  });
+}
+
+async function assertContractDeletable(
+  orgId: string,
+  contractId: string,
+  session: import('mongoose').ClientSession,
+) {
+  if (
+    (await PaymentModel.exists({ orgId, contractId, isOpen: true }).session(session)) ||
+    (await ContractReviewPurchaseModel.exists({
+      orgId,
+      contractId,
+      status: { $in: ['available', 'reserved'] },
+    }).session(session))
+  )
+    throw AppError.conflict(
+      'Hợp đồng có đơn thanh toán đang chờ hoặc quyền rà soát đã mua chưa sử dụng. Hãy hủy đơn đang chờ hoặc hoàn tất rà soát trước khi xóa.',
+    );
 }
 
 export async function deleteContract(orgId: string, id: string) {
-  const contract = await ContractModel.findOne({ _id: id, orgId });
-  if (!contract) {
-    throw AppError.notFound('Contract not found');
-  }
+  const versions = await mongoose.connection.transaction(async (session) => {
+    await lockSubscriptionOrganization(orgId, session);
+    const contract = await ContractModel.findOne({ _id: id, orgId }).session(session);
+    if (!contract) {
+      throw AppError.notFound('Contract not found');
+    }
 
-  const versions = await ContractVersionModel.find({ contractId: id });
-  const versionIds = versions.map((v) => v._id);
+    await assertContractDeletable(orgId, id, session);
+    const versions = await ContractVersionModel.find({ contractId: id }).session(session);
+    const versionIds = versions.map((v) => v._id);
 
-  const findingIds = await RiskFindingModel.find({
-    contractVersionId: { $in: versionIds },
-  }).distinct('_id');
-  await RiskCitationModel.deleteMany({ riskFindingId: { $in: findingIds } });
-  await RiskFindingModel.deleteMany({ contractVersionId: { $in: versionIds } });
-  await ReviewModel.deleteMany({ contractId: id });
-  await ClauseModel.deleteMany({ contractVersionId: { $in: versionIds } });
-  await ChatMessageModel.deleteMany({ contractVersionId: { $in: versionIds } });
-  await ContractVersionModel.deleteMany({ contractId: id });
-  await ContractModel.deleteOne({ _id: id, orgId });
+    const findingIds = await RiskFindingModel.find({
+      contractVersionId: { $in: versionIds },
+    })
+      .distinct('_id')
+      .session(session);
+    await RiskCitationModel.deleteMany({ riskFindingId: { $in: findingIds } }).session(session);
+    await RiskFindingModel.deleteMany({ contractVersionId: { $in: versionIds } }).session(session);
+    await ReviewModel.deleteMany({ contractId: id }).session(session);
+    await ClauseModel.deleteMany({ contractVersionId: { $in: versionIds } }).session(session);
+    await ChatMessageModel.deleteMany({ contractVersionId: { $in: versionIds } }).session(session);
+    await ContractVersionModel.deleteMany({ contractId: id }).session(session);
+    await ContractModel.deleteOne({ _id: id, orgId }).session(session);
+
+    return versions;
+  });
 
   await Promise.all(
     versions.map(async (version) => {
@@ -217,7 +267,12 @@ export async function deleteContract(orgId: string, id: string) {
   );
 }
 
-export async function getContractText(orgId: string, id: string, redacted = false, redactionMode: 'token' | 'partial' = 'token') {
+export async function getContractText(
+  orgId: string,
+  id: string,
+  redacted = false,
+  redactionMode: 'token' | 'partial' = 'token',
+) {
   const contract = await ContractModel.findOne({ _id: id, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
@@ -237,7 +292,9 @@ export async function getContractText(orgId: string, id: string, redacted = fals
   return {
     text: shownText,
     redacted,
-    ...(redacted ? { redactionMode, ...(redactionMode === 'partial' ? { redactionSpans } : {}) } : {}),
+    ...(redacted
+      ? { redactionMode, ...(redactionMode === 'partial' ? { redactionSpans } : {}) }
+      : {}),
     extractionStatus: version.extractionStatus,
     fileName: version.fileName,
     mimeType: version.mimeType,
@@ -248,11 +305,16 @@ export async function getRedactedContractDocx(orgId: string, id: string) {
   const contract = await ContractModel.findOne({ _id: id, orgId });
   if (!contract) throw AppError.notFound('Contract not found');
   const version = await getCurrentVersionWithText(id);
-  if (version.mimeType !== DOCX_MIME) throw AppError.badRequest('Redacted file preview is supported only for DOCX');
+  if (version.mimeType !== DOCX_MIME)
+    throw AppError.badRequest('Redacted file preview is supported only for DOCX');
   const file = storedFileOf(version);
   if (!file) throw AppError.notFound('This contract has no uploaded file');
   return {
-    buffer: await redactDocx(await downloadContractFile(file), version.extractedText ?? '', await redactionPolicyFor(contract.type)),
+    buffer: await redactDocx(
+      await downloadContractFile(file),
+      version.extractedText ?? '',
+      await redactionPolicyFor(contract.type),
+    ),
     fileName: `${(version.fileName ?? 'contract.docx').replace(/\.docx$/i, '')}-redacted.docx`,
   };
 }

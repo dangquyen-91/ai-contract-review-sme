@@ -16,6 +16,9 @@ function ensureOrganizationAccess(organizationId: string, userOrganizationId: st
 }
 
 export async function createOrganization(userId: string, input: CreateOrganizationInput) {
+  if (input.industry && !(await IndustryModel.exists({ code: input.industry }))) {
+    throw AppError.badRequest('Ngành kinh doanh không hợp lệ. Vui lòng chọn lại.');
+  }
   const user = await UserModel.findById(userId).select('orgId roleId');
   if (!user) throw AppError.notFound('User not found');
 
@@ -31,7 +34,7 @@ export async function createOrganization(userId: string, input: CreateOrganizati
     if (!organization) throw AppError.conflict('Organization has already been configured');
     await UserModel.updateOne(
       { _id: userId, orgId: personal._id },
-      { $set: { roleId: ownerRole._id } },
+      { $set: { roleId: ownerRole._id, hasCompletedOnboarding: true } },
     );
     return organization;
   }
@@ -87,12 +90,13 @@ export async function updateOrganization(
   input: UpdateOrganizationInput,
 ) {
   ensureOrganizationAccess(organizationId, userOrganizationId);
+
   if (input.industry && !(await IndustryModel.exists({ code: input.industry }))) {
     throw AppError.badRequest(`Unknown industry: ${input.industry}`);
   }
   const organization = await OrganizationModel.findByIdAndUpdate(
     organizationId,
-    { $set: input },
+    { $set: input, ...('address' in input ? { $unset: { addressDetails: 1 } } : {}) },
     { new: true, runValidators: true },
   );
   if (!organization) throw AppError.notFound('Organization not found');
@@ -105,6 +109,7 @@ export async function deleteOrganization(
   userId: string,
 ) {
   ensureOrganizationAccess(organizationId, userOrganizationId);
+  const personalRole = await getRoleByCode('user');
 
   await mongoose.connection.transaction(async (session) => {
     // Lock the organization before counting members; invitation acceptance writes it too.
@@ -120,7 +125,11 @@ export async function deleteOrganization(
     if (memberCount > 1) throw AppError.conflict('Organization still has other members');
     const detachedUser = await UserModel.findOneAndUpdate(
       { _id: userId, orgId: organizationId },
-      { $unset: { orgId: 1 } },
+      {
+        $unset: { orgId: 1 },
+        $set: { roleId: personalRole._id, hasCompletedOnboarding: true },
+        $inc: { permissionsVersion: 1 },
+      },
       { session },
     );
     if (!detachedUser) throw AppError.forbidden();

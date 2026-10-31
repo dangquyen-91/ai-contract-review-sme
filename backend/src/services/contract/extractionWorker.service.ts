@@ -71,7 +71,7 @@ async function processExtraction(job: Job<ExtractionJobData>): Promise<Extractio
     { _id: versionId },
     {
       $set: { extractionStatus: 'processing', extractionStartedAt: new Date() },
-      $unset: { extractionError: '', extractionProgress: '' },
+      $unset: { extractionError: '', extractionErrorCode: '', extractionProgress: '' },
     },
   );
 
@@ -96,6 +96,7 @@ async function processExtraction(job: Job<ExtractionJobData>): Promise<Extractio
     extractedText: result.text,
     extractionStatus: result.status,
     extractionError: result.error,
+    extractionErrorCode: result.errorCode,
     extractionQuality: result.quality,
     extractionProgress: undefined,
     redactionSummary: await summarizeSensitiveText(fresh.contractId.toString(), result.text),

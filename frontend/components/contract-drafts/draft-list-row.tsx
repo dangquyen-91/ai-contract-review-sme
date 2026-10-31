@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, MoreHorizontal, Pin, PinOff, Trash2 } from "lucide-react";
 import { DropdownMenu } from "radix-ui";
-import { useDraftListActions } from "@/hooks/use-draft-list-actions";
+import { useDraftListActions } from "@/hooks/contract-drafts/use-draft-list-actions";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -109,7 +109,7 @@ export function DraftListRow({
             </DropdownMenu.Item>
             {!canDelete && (
               <p className="max-w-56 px-3 pb-2 text-[10px] leading-4 text-slate-400">
-                Chỉ xóa bản nháp chưa gửi duyệt.
+                Chỉ xóa hợp đồng còn ở trạng thái bản nháp.
               </p>
             )}
           </DropdownMenu.Content>

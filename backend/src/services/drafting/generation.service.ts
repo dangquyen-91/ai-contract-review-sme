@@ -7,6 +7,7 @@ import { SENSITIVE_DATA_TYPES } from '../../models/contractProfile.model';
 import { ContractTemplate, getTemplate, TemplateCode } from './templates';
 import { displayMoney, lineItemsTable } from './line-items';
 import { buildLaborStudioTemplate } from './studioTemplate.labor';
+import { buildStudioTemplate } from './studioTemplate';
 import { studioText, type StudioNode } from './studioDocument';
 import { studioParagraph, studioTextNode } from './studioNodes';
 
@@ -26,8 +27,8 @@ const responseSchema = {
 const privateFields = new Set(['companyName', 'companyTaxCode', 'companyAddress', 'representative', 'authorization', 'partnerName', 'partnerAddress', 'partnerIdentifier', 'partnerRepresentative', 'partnerBirthDate', 'partnerIdIssuedDate', 'partnerIdIssuedPlace']);
 
 export function renderDraftDocument(code: TemplateCode, input: Record<string, string>, companyName: string, ourParty: string, additions: Map<string, string> = new Map(), template: ContractTemplate = getTemplate(code)) {
-  if (code === 'labor' && template.version >= 4) {
-    const document = buildLaborStudioTemplate(template, input, companyName);
+  if (code === 'rental' || (code === 'labor' && template.version >= 4)) {
+    const document = code === 'rental' ? buildStudioTemplate(template, input, companyName, ourParty) : buildLaborStudioTemplate(template, input, companyName);
     const content: StudioNode[] = [];
     let sectionIndex = -1;
     const addComment = () => { const addition = additions.get(template.sections[sectionIndex]?.key); if (addition) content.push(studioParagraph([studioTextNode(addition)])); };

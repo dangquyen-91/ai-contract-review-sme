@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { isApiClientError } from "@/lib/api/client";
-import { useRemoveProposedRevisionMutation, useUpdateProposedRevisionMutation } from "@/hooks/use-contracts";
+import { useRemoveProposedRevisionMutation, useUpdateProposedRevisionMutation } from "@/hooks/contracts/use-contracts";
 import type { RiskFinding } from "@/types/contracts";
 
 function errorMessage(error: unknown) {

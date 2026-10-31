@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { useReviewAllowance } from "@/hooks/use-review-allowance";
+import { useReviewAllowance } from "@/hooks/review/use-review-allowance";
 
 export function ReviewAllowanceSummary({ orgId, role }: { orgId?: string; role?: string }) {
   const query = useReviewAllowance(orgId);

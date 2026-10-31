@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
-import { isSameOriginRequest } from "@/lib/request-origin";
+import { isSameOriginRequest } from "@/lib/api/request-origin";
 
 const draftIdPattern = /^[a-f\d]{24}$/i;
 const postActions = new Set([
@@ -37,11 +37,11 @@ export async function proxyContractDraft(request: NextRequest, path: string[]) {
     return NextResponse.json({ success: false }, { status: 403 });
   const session = await getApiSession();
   if (session.error) return session.error;
-  if (!session.user.orgId || !["owner", "staff"].includes(session.user.role))
+  if (session.user.role !== "user" && (!session.user.orgId || !["owner", "staff"].includes(session.user.role)))
     return NextResponse.json(
       {
         success: false,
-        error: { message: "Chức năng chỉ dành cho doanh nghiệp." },
+        error: { message: "Bạn không có quyền soạn hợp đồng." },
       },
       { status: 403 },
     );

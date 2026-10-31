@@ -76,6 +76,7 @@ const contractVersionSchema = new Schema(
     extractedText: { type: String, select: false, ...encryptedString },
     extractionStatus: { type: String, enum: EXTRACTION_STATUSES, default: 'pending', index: true },
     extractionError: { type: String },
+    extractionErrorCode: { type: String },
     extractionStartedAt: { type: Date },
     extractionProgress: { type: extractionProgressSchema, default: undefined },
     extractionQuality: { type: extractionQualitySchema, default: undefined },

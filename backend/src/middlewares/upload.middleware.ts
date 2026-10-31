@@ -1,5 +1,6 @@
 import multer from 'multer';
 import { AppError } from '../errors/AppError';
+import { normalizeUploadFileName } from '../utils/uploadFileName';
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
@@ -17,6 +18,7 @@ export const contractFileUpload = multer({
     if (!ALLOWED_MIME_TYPES.has(file.mimetype)) {
       return cb(AppError.badRequest(`Unsupported file type: ${file.mimetype}`));
     }
+    file.originalname = normalizeUploadFileName(file.originalname);
     cb(null, true);
   },
 });
@@ -35,6 +37,7 @@ export const legalDocUpload = multer({
     if (!LEGAL_DOC_MIME_TYPES.has(file.mimetype)) {
       return cb(AppError.badRequest(`Unsupported file type: ${file.mimetype}`));
     }
+    file.originalname = normalizeUploadFileName(file.originalname);
     cb(null, true);
   },
 });

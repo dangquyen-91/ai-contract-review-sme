@@ -2,8 +2,8 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { StaffOrganizationRequired } from "@/components/organizations/staff-organization-required";
 import { getSession } from "@/lib/auth/session";
-import { workspacePath } from "@/lib/workspace-path";
-import type { OrganizationDashboardRole } from "@/lib/organization-dashboard-route";
+import { workspacePath } from "@/lib/routing/workspace-path";
+import type { OrganizationDashboardRole } from "@/lib/routing/organization-dashboard-route";
 import { OrganizationDashboardFrame } from "@/components/layouts/dashboard/organization-workspace";
 
 export async function DashboardAccessLayout({ role, children }: { role: "user" | OrganizationDashboardRole; children: ReactNode }) {

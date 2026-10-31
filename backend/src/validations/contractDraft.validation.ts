@@ -5,7 +5,7 @@ import { validateLineItems } from '../services/drafting/line-items';
 export const draftIdSchema = z.object({ id: z.string().regex(/^[a-f\d]{24}$/i) });
 const inputSchema = z.record(z.string().trim().max(16000)).refine(value => Object.keys(value).length <= 64 && Object.entries(value).every(([key, text]) => key === 'lineItems' || text.length <= 4000));
 export const createDraftSchema = z.object({
-  templateCode: z.enum(['labor', 'service', 'sales']),
+  templateCode: z.enum(['labor', 'service', 'sales', 'rental']),
   title: z.string().trim().min(2).max(200),
   ourParty: z.string().min(1).max(30),
   input: inputSchema,
@@ -31,7 +31,8 @@ export function inputErrors(code: TemplateCode, values: Record<string, string>, 
     const value = values[field.key]?.trim();
     if (complete && field.required && !value) errors.push(`Vui lòng nhập ${field.label.toLowerCase()}`);
     if (!value) continue;
-    if (field.kind === 'number' && (!/^\d+(\.\d{1,2})?$/.test(value) || Number(value) <= 0 || Number(value) > 1e15)) errors.push(`${field.label} phải là số dương hợp lệ`);
+    const allowsZero = code === 'rental' && field.key === 'depositAmount';
+    if (field.kind === 'number' && (!/^\d+(\.\d{1,2})?$/.test(value) || (allowsZero ? Number(value) < 0 : Number(value) <= 0) || Number(value) > 1e15)) errors.push(`${field.label} phải là số ${allowsZero ? 'không âm' : 'dương'} hợp lệ`);
     if (field.kind === 'date' && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) errors.push(`${field.label} không hợp lệ`);
     if (field.options && !field.options.some(option => option.value === value)) errors.push(`${field.label} không hợp lệ`);
     if (field.kind === 'items') {
@@ -43,6 +44,7 @@ export function inputErrors(code: TemplateCode, values: Record<string, string>, 
     if (complete && field.kind === 'textarea' && (/^[bcdfghjklmnpqrstvwxz]{8,}$/i.test(value) || /^(.)\1{7,}$/.test(value))) errors.push(`${field.label} đang chứa ký tự thử, vui lòng nhập nội dung có nghĩa.`);
   }
   if (values.startDate && values.endDate && values.endDate < values.startDate) errors.push('Ngày kết thúc phải từ ngày bắt đầu trở đi');
+  if (code === 'rental' && values.startDate && values.endDate === values.startDate) errors.push('Ngày kết thúc thuê phải sau ngày bắt đầu thuê.');
   if (code === 'labor') {
     if (complete && /^(công\s*ty|cty|doanh\s*nghiệp|tập\s*đoàn)(\s|$)/i.test(values.partnerName ?? '')) errors.push('Bên B của hợp đồng lao động phải là tên cá nhân người lao động, không phải tên công ty.');
     if (complete && /^(staff|owner|manager|expert|administrator)$/i.test(values.representative ?? '')) errors.push('Người đại diện phải là họ tên người ký, không phải vai trò tài khoản.');

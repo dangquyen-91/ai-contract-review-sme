@@ -9,8 +9,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
-import { useContractDraft } from "@/hooks/use-contract-drafts";
-import { useTemplateStudio } from "@/hooks/use-template-studio";
+import { useContractDraft } from "@/hooks/contract-drafts/use-contract-drafts";
+import { useTemplateStudio } from "@/hooks/contract-drafts/use-template-studio";
 import type { AuthUser } from "@/types/auth";
 import type { ContractDraft } from "@/types/contract-drafts";
 import type { StudioSelection } from "@/types/template-studio";
