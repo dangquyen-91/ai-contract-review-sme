@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import type { ContractReviewResult } from "@/types/contracts";
+import { ReviewVerification } from "@/components/expert-verification/review-verification";
 
 const levels = [
   { severity: "high", label: "Rủi ro cao", tone: "border-rose-200 bg-rose-50 text-rose-800" },
@@ -10,7 +11,7 @@ const levels = [
   { severity: "low", label: "Rủi ro thấp", tone: "border-blue-200 bg-blue-50 text-blue-800" },
 ] as const;
 
-export function ReviewResultHeader({ result, onShareSummary }: { result: ContractReviewResult; onShareSummary: () => void }) {
+export function ReviewResultHeader({ result, onShareSummary, role }: { result: ContractReviewResult; onShareSummary: () => void; role?: string }) {
   const version = result.contract.currentVersion;
   const risksComplete = version?.riskDetectionStatus === "completed";
   const complete = risksComplete && version?.summaryStatus === "completed";
@@ -38,5 +39,16 @@ export function ReviewResultHeader({ result, onShareSummary }: { result: Contrac
         <dd className="m-0 text-xl font-bold leading-none tabular-nums">{result.findings.filter((finding) => finding.severity === severity).length}</dd>
       </div>)}
     </dl>
+    {contractId && (
+      <ReviewVerification
+        key={`${contractId}:${version?.updatedAt ?? ""}`}
+        contractId={contractId}
+        versionId={version?._id ?? version?.id ?? result.contract.reviewBilling?.versionId}
+        title={result.contract.title}
+        complete={complete}
+        findingCount={result.findings.length}
+        role={role}
+      />
+    )}
   </header>;
 }

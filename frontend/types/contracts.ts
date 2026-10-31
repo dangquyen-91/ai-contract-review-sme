@@ -52,6 +52,8 @@ export type DashboardContract = {
   status: ContractStatus;
   overallRiskLevel: ContractRiskLevel;
   currentVersion?: {
+    _id?: string;
+    id?: string;
     updatedAt?: string;
     overallRiskLevel?: ContractRiskLevel;
     overallAssessment?: string[];
@@ -162,6 +164,7 @@ export type ReviewErrorCode =
 
 export type ContractReviewRun = {
   _id: string;
+  versionId?: string;
   contractId: string;
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   errorCode?: ReviewErrorCode;
