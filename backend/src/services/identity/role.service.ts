@@ -49,6 +49,10 @@ export async function seedDefaultRoles(): Promise<void> {
     }
   }
   await OrganizationInvitationModel.updateMany({ role: 'reviewer' }, { $set: { role: 'expert' } });
+  await OrganizationInvitationModel.updateMany(
+    { role: 'expert', status: 'pending' },
+    { $set: { status: 'revoked' } },
+  );
 
   await Promise.all(
     DEFAULT_ROLES.map((role) =>
@@ -59,6 +63,14 @@ export async function seedDefaultRoles(): Promise<void> {
       ),
     ),
   );
+
+  const expertRole = await RoleModel.findOne({ code: 'expert' });
+  if (expertRole) {
+    await UserModel.updateMany(
+      { roleId: expertRole._id, orgId: { $ne: null } },
+      { $unset: { orgId: 1 }, $set: { hasCompletedOnboarding: true }, $inc: { permissionsVersion: 1 } },
+    );
+  }
 }
 
 export async function getRoleByCode(code: RoleCode) {

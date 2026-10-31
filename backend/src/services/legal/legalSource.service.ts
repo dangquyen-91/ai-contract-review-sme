@@ -2,12 +2,15 @@ import { Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { LegalSourceModel } from '../../models/legalSource.model';
 import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model';
-import { CreateLegalSourceInput } from '../../validations/legalSource.validation';
+import { CreateLegalSourceInput, UpdateLegalSourceInput } from '../../validations/legalSource.validation';
 import { AnalyzedLegalText, analyzeLegalText, extractLegalText } from './legalKnowledgeIngest.service';
 import { buildLegalCoverage, LegalChunkDraft } from './legalDocumentParser.service';
 import { isLegalIngestionJobAlive, queueLegalIngestion } from './legalIngestionWorker.service';
 import { isLlmConfigured } from '../ai/llm.service';
 import { logger } from '../../config/logger';
+import { ContractProfileModel } from '../../models/contractProfile.model';
+import { isCatalogLegalSourceCode, LEGAL_SOURCE_CATALOG, LegalSourceCode } from './legalSourceCatalog.data';
+import { LEGAL_RULES } from './legalRules.data';
 
 const PREVIEW_TEXT_CHARS = 120;
 
@@ -229,6 +232,7 @@ export async function listLegalSources() {
   return sources.map((source) => ({
     ...source.toObject(),
     chunkCount: countBySourceId.get(source._id.toString()) ?? 0,
+    inCatalog: isCatalogLegalSourceCode(source.code),
   }));
 }
 
@@ -238,7 +242,69 @@ export async function getLegalSource(id: string) {
     throw AppError.notFound('Legal source not found');
   }
   const chunkCount = await LegalKnowledgeChunkModel.countDocuments({ legalSourceId: source._id });
-  return { ...source.toObject(), chunkCount };
+  return { ...source.toObject(), chunkCount, inCatalog: isCatalogLegalSourceCode(source.code) };
+}
+
+export async function listLegalSourceCatalog() {
+  const codes = Object.keys(LEGAL_SOURCE_CATALOG) as LegalSourceCode[];
+  const [sources, profiles] = await Promise.all([
+    LegalSourceModel.find({ code: { $in: codes } }).select('code title status ingestion.status'),
+    ContractProfileModel.find({ legalSourceCodes: { $in: codes } }).select('code name legalSourceCodes'),
+  ]);
+
+  return codes.map((code) => {
+    const source = sources.find((s) => s.code === code);
+    return {
+      code,
+      label: LEGAL_SOURCE_CATALOG[code],
+      usedByProfiles: profiles
+        .filter((p) => p.legalSourceCodes.includes(code))
+        .map((p) => ({ code: p.code, name: p.name })),
+      ruleCodes: LEGAL_RULES.filter((r) => r.citations.some((c) => c.sourceCode === code)).map((r) => r.code),
+      legalSource: source
+        ? { _id: source.id, title: source.title, status: source.status, ingestionStatus: source.ingestion?.status ?? null }
+        : null,
+    };
+  });
+}
+
+export async function updateLegalSource(id: string, input: UpdateLegalSourceInput) {
+  const source = await LegalSourceModel.findById(id);
+  if (!source) throw AppError.notFound('Legal source not found');
+  const { expectedArticleCount, ...fields } = input;
+
+  const effectiveDate = fields.effectiveDate === undefined ? source.effectiveDate : fields.effectiveDate;
+  const expiryDate = fields.expiryDate === undefined ? source.expiryDate : fields.expiryDate;
+  if (effectiveDate && expiryDate && expiryDate <= effectiveDate) {
+    throw AppError.badRequest('expiryDate must be after effectiveDate');
+  }
+
+  const set: Record<string, unknown> = {};
+  const unset: Record<string, ''> = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === null) unset[key] = '';
+    else if (value !== undefined) set[key] = value;
+  }
+  if (expectedArticleCount !== undefined) {
+    set.coverage = await coverageOfStoredChunks(
+      source._id,
+      source.coverage?.headingCount ?? 0,
+      expectedArticleCount ?? undefined,
+    );
+  }
+
+  await LegalSourceModel.updateOne(
+    { _id: source._id },
+    {
+      ...(Object.keys(set).length ? { $set: set } : {}),
+      ...(Object.keys(unset).length ? { $unset: unset } : {}),
+    },
+    { runValidators: true },
+  );
+  if (fields.status && fields.status !== source.status) {
+    logger.info('Legal source status changed', { legalSourceId: id, from: source.status, to: fields.status });
+  }
+  return getLegalSource(source.id);
 }
 
 export async function deleteLegalSource(id: string) {

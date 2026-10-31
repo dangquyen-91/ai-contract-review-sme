@@ -19,7 +19,7 @@ const fields = z.object({
 export const createUserBody = fields
   .extend({
     password: registerSchema.shape.password,
-    role: z.enum(['user', 'administrator']).default('user'),
+    role: z.enum(['user', 'administrator', 'expert']).default('user'),
     isActive: z.boolean().default(true),
   })
   .strict();

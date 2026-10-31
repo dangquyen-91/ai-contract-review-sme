@@ -16,6 +16,10 @@ export interface RuleFinding {
   recommendations: string[];
 }
 
+export function hasLegalRules(profileCode: string): boolean {
+  return LEGAL_RULES.some((rule) => rule.profiles.includes(profileCode));
+}
+
 export function evaluateLegalRules(context: ReviewContext, keyTerms: ExtractedKeyTerm[]): RuleFinding[] {
   const byKey = new Map(keyTerms.map((t) => [t.key, t]));
   const terms: Terms = {

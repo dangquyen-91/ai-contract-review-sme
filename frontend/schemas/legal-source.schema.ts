@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { LegalSource, LegalSourceUpdate } from "@/types/legal-sources";
 
 export const legalSourceSchema = z.object({
   code: z.string().trim().toLowerCase().min(2).max(60).regex(/^[a-z0-9]+(?:_[a-z0-9]+)*$/, "Mã nguồn chỉ gồm chữ thường, số và dấu gạch dưới."),
@@ -35,4 +36,42 @@ export function prepareLegalUpload(form: HTMLFormElement, metadata: boolean) {
     body.set("code", parsed.data.code);
   }
   return body;
+}
+
+const dateInput = (value?: string) => value?.slice(0, 10) ?? "";
+
+export function legalSourceFormValues(source: LegalSource) {
+  return {
+    title: source.title,
+    citationLabel: source.citationLabel,
+    sourceType: source.sourceType,
+    status: source.status ?? "in_force",
+    documentNumber: source.documentNumber ?? "",
+    issuingBody: source.issuingBody ?? "",
+    issuedDate: dateInput(source.issuedDate),
+    effectiveDate: dateInput(source.effectiveDate),
+    expiryDate: dateInput(source.expiryDate),
+    expectedArticleCount: source.coverage?.expectedArticleCount?.toString() ?? "",
+  };
+}
+
+export function prepareLegalSourceUpdate(form: HTMLFormElement, source: LegalSource): LegalSourceUpdate {
+  const current = legalSourceFormValues(source);
+  const body = new FormData(form);
+  const next = Object.fromEntries((Object.keys(current) as (keyof typeof current)[]).map((key) => [key, String(body.get(key) ?? "").trim()])) as typeof current;
+  if (next.title.length < 2 || next.title.length > 300) throw new Error("Tên nguồn cần từ 2 đến 300 ký tự.");
+  if (!next.citationLabel || next.citationLabel.length > 100) throw new Error("Nhập mã trích dẫn tối đa 100 ký tự.");
+  if (next.effectiveDate && next.expiryDate && next.expiryDate <= next.effectiveDate) throw new Error("Ngày hết hiệu lực phải sau ngày hiệu lực.");
+  if (next.expectedArticleCount) {
+    const count = Number(next.expectedArticleCount);
+    if (!Number.isInteger(count) || count < 1 || count > 5000) throw new Error("Số điều dự kiến phải từ 1 đến 5000.");
+  }
+  const update: Record<string, unknown> = {};
+  for (const key of Object.keys(current) as (keyof typeof current)[]) {
+    if (next[key] === current[key]) continue;
+    if (key === "expectedArticleCount") update[key] = next[key] ? Number(next[key]) : null;
+    else update[key] = next[key] || null;
+  }
+  if (!Object.keys(update).length) throw new Error("Chưa có thay đổi nào để lưu.");
+  return update as LegalSourceUpdate;
 }

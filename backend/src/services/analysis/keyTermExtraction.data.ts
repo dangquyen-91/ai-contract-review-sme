@@ -36,6 +36,11 @@ export const KEY_TERMS = {
     description: 'Interest charged on late payment, converted to percent per year (a monthly rate x 12, a daily rate x 365), e.g. 0.1%/day -> 36.5.',
     ...percent,
   },
+  price_in_foreign_currency: {
+    type: 'boolean',
+    label: 'Ghi giá hoặc thanh toán bằng ngoại tệ',
+    description: 'true when the contract states a price, contract value or payment in a foreign currency (USD, EUR, ...), or converts or adjusts the price by a foreign currency amount; false when every amount is in Vietnamese dong (VND). Omit it when the contract states no price.',
+  },
   deposit_percent: {
     type: 'number',
     label: 'Tiền đặt cọc (% giá bán)',
@@ -181,6 +186,16 @@ export const KEY_TERMS = {
     label: 'Không tham gia bảo hiểm xã hội bắt buộc',
     description: 'true when the contract says the employee will not join compulsory social insurance, or receives the contribution as cash in the salary instead.',
   },
+  wage_in_foreign_currency: {
+    type: 'boolean',
+    label: 'Lương ghi hoặc trả bằng ngoại tệ',
+    description: 'true when the wage is stated or paid in a foreign currency (USD, EUR, ...); false when it is stated and paid in Vietnamese dong (VND). Omit it when the contract states no wage.',
+  },
+  employee_is_foreigner: {
+    type: 'boolean',
+    label: 'Người lao động là người nước ngoài',
+    description: 'true when the contract shows the employee is a foreign national (non-Vietnamese nationality, foreign passport, work permit); false when it shows Vietnamese nationality or a Vietnamese citizen ID (CCCD/CMND). Omit it when the contract does not show the nationality.',
+  },
 } satisfies Record<string, Omit<KeyTermDefinition, 'key'>>;
 
 export type KeyTermKey = keyof typeof KEY_TERMS;
@@ -191,9 +206,9 @@ const definitionsOf = (keys: KeyTermKey[]): KeyTermDefinition[] =>
 const CIVIL_PENALTY_TERMS: KeyTermKey[] = ['penalty_agreed', 'damages_also_claimable', 'late_payment_interest_percent_per_year'];
 
 export const KEY_TERMS_BY_PROFILE: Record<string, KeyTermDefinition[]> = {
-  sales: definitionsOf(['penalty_percent']),
-  service: definitionsOf(['penalty_percent']),
-  office_lease: definitionsOf(CIVIL_PENALTY_TERMS),
+  sales: definitionsOf(['penalty_percent', 'late_payment_interest_percent_per_year', 'price_in_foreign_currency']),
+  service: definitionsOf(['penalty_percent', 'late_payment_interest_percent_per_year', 'price_in_foreign_currency']),
+  office_lease: definitionsOf([...CIVIL_PENALTY_TERMS, 'price_in_foreign_currency']),
   housing_purchase: definitionsOf([
     ...CIVIL_PENALTY_TERMS,
     'deposit_percent',
@@ -222,6 +237,8 @@ export const KEY_TERMS_BY_PROFILE: Record<string, KeyTermDefinition[]> = {
     'employee_deposit_required',
     'monetary_fines',
     'social_insurance_excluded',
+    'wage_in_foreign_currency',
+    'employee_is_foreigner',
   ]),
   life_insurance: [],
 };

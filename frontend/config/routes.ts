@@ -6,5 +6,8 @@ export const routes = {
   admin: "/admin", users: "/admin/users",
   contract: (id: string) => "/contract/" + encodeURIComponent(id),
   review: (contractId: string, reviewId: string) => "/contract/" + encodeURIComponent(contractId) + "/reviews/" + encodeURIComponent(reviewId),
-  home: (role: DashboardRole) => role === "administrator" ? "/admin" : role === "manager" ? "/management" : "/dashboard",
+  expertVerification: "/expert-verification",
+  expertOverview: "/expert-verification/overview",
+  expertMyWork: "/expert-verification/my-work",
+  home: (role: DashboardRole) => role === "administrator" ? "/admin" : role === "manager" ? "/management" : role === "expert" ? "/expert-verification/overview" : "/dashboard",
 };

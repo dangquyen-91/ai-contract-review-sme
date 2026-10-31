@@ -53,7 +53,7 @@ export function ReviewUploadWorkspace({ access, roleLabel, role, orgId, reviewBl
         {access.upload ? <ContractUploadForm {...formProps} isReviewing={reviewing ?? stage === "reviewing"} isLoadingResult={loadingResult} /> : <div className="flex min-h-[220px] items-center gap-4 p-6 text-ui text-[#607087]"><Icon name="lock" /><div><h3 className="m-0 text-ui-section font-semibold">Vai trò của bạn không có quyền tải lên</h3><p className="mb-0 mt-2">{access.review ? "Bạn vẫn có thể rà soát các hợp đồng đã được đội ngũ tải lên." : "Liên hệ quản trị viên để được cấp quyền phù hợp."}</p></div></div>}
       </section>}
       timeline={<div ref={timelineRef} className="scroll-mt-6"><ReviewTimeline role={role} blocked={reviewBlocked} review={reviewProgress} result={stage === "done" ? reviewResult : null} uploading={stage === "uploading"} reviewing={reviewing ?? stage === "reviewing"} loadingResult={loadingResult} reconnecting={reconnecting} error={reviewError} failureKind={retryKind} roleLabel={roleLabel} access={access} onRetry={onRetry} onCancel={onCancel} cancelling={cancelling} /></div>}
-      result={reviewResult && <div id="review-result" ref={resultRef} tabIndex={-1} aria-label="Kết quả rà soát hợp đồng" className="scroll-mt-6 focus:outline-none"><ReviewResults result={reviewResult} canAsk={canAsk} showAiContext={showAiContext} /></div>}
+      result={reviewResult && <div id="review-result" ref={resultRef} tabIndex={-1} aria-label="Kết quả rà soát hợp đồng" className="scroll-mt-6 focus:outline-none"><ReviewResults result={reviewResult} role={role} canAsk={canAsk} showAiContext={showAiContext} /></div>}
     />
   </>;
 }

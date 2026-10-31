@@ -1,6 +1,6 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
-import { RISK_LEVELS } from './contractVersion.model';
-import { RISK_DETECTED_BY, RISK_FINDING_TYPES, RISK_SEVERITIES } from './riskFinding.model';
+import { LEGAL_RETRIEVAL_STATUSES, RISK_LEVELS, RULE_CHECK_STATUSES } from './contractVersion.model';
+import { RISK_CODES, RISK_DETECTED_BY, RISK_FINDING_TYPES, RISK_SEVERITIES } from './riskFinding.model';
 
 export const REVIEW_STATUSES = ['queued', 'running', 'completed', 'failed', 'cancelled'] as const;
 
@@ -33,6 +33,7 @@ const findingSnapshotSchema = new Schema(
     clauseIndex: { type: Number },
     clauseTitle: { type: String },
     detectedBy: { type: String, enum: RISK_DETECTED_BY },
+    riskCode: { type: String, enum: RISK_CODES },
     ruleCode: { type: String },
   },
   { _id: false },
@@ -50,6 +51,8 @@ const reviewResultSchema = new Schema(
       low: { type: Number, default: 0 },
     },
     findings: { type: [findingSnapshotSchema], default: [] },
+    legalRetrievalStatus: { type: String, enum: LEGAL_RETRIEVAL_STATUSES },
+    ruleCheckStatus: { type: String, enum: RULE_CHECK_STATUSES },
     partial: { type: Boolean, default: false },
   },
   { _id: false },
@@ -73,6 +76,7 @@ const reviewSchema = new Schema(
       riskDetection: stageStatus,
     },
     analysisFocus: { type: String },
+    aiModel: { type: String },
     error: { type: String },
     errorCode: { type: String, enum: REVIEW_ERROR_CODES },
     cancelRequested: { type: Boolean },

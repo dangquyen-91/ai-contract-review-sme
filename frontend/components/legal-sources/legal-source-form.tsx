@@ -8,9 +8,10 @@ import { legalSourceStatuses, legalSourceTypes } from "@/config/legal-source-dis
 import type { useLegalSourceUpload } from "@/hooks/legal-sources/use-legal-source-upload";
 import { LegalSourcePreview } from "./legal-source-preview";
 import { LegalSourceFileFields, legalSourceFieldClass as field } from "./legal-source-file-fields";
+import { LegalSourceCodeField } from "./legal-source-code-field";
 
-export function LegalSourceForm({ upload, onCancel, onChange }: {
-  upload: ReturnType<typeof useLegalSourceUpload>; onCancel: () => void; onChange: () => void;
+export function LegalSourceForm({ upload, defaultCode, onCancel, onChange }: {
+  upload: ReturnType<typeof useLegalSourceUpload>; defaultCode?: string; onCancel: () => void; onChange: () => void;
 }) {
   const contentRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLHeadingElement>(null);
@@ -24,7 +25,7 @@ export function LegalSourceForm({ upload, onCancel, onChange }: {
     <div hidden={Boolean(upload.preview)}>
     <fieldset disabled={upload.pending} className="grid gap-4 disabled:opacity-60 sm:grid-cols-2">
       <label className="grid gap-2 text-ui">Tên nguồn *<input name="title" required minLength={2} maxLength={300} className={field} /></label>
-      <label className="grid gap-2 text-ui">Mã nguồn *<input name="code" required minLength={2} maxLength={60} pattern="[a-z0-9]+(_[a-z0-9]+)*" placeholder="commercial_law_2005" className={field} /><span className="text-ui-meta text-muted-foreground">Mã duy nhất gồm chữ thường, số và dấu gạch dưới.</span></label>
+      <LegalSourceCodeField defaultCode={defaultCode} />
       <label className="grid gap-2 text-ui">Loại nguồn<select name="sourceType" className={field}>{Object.entries(legalSourceTypes).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="grid gap-2 text-ui">Hiệu lực văn bản<select name="status" className={field}>{Object.entries(legalSourceStatuses).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
       <label className="grid gap-2 text-ui">Mã trích dẫn *<input name="citationLabel" required maxLength={100} placeholder="91/2015/QH13" className={field} /></label>

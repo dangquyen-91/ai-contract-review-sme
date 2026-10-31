@@ -9,13 +9,14 @@ export function useLegalSourceDetail(id: string, onDeleted: () => void) {
   const resume = useResumeLegalSourceMutation(id);
   const remove = useRemoveLegalSourceMutation();
   const [append, setAppend] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState("");
   const lock = useRef(false);
   const busy = resume.isPending || remove.isPending;
 
   async function resumeSource() {
-    if (lock.current || busy || append || deleting) return;
+    if (lock.current || busy || append || editing || deleting) return;
     lock.current = true;
     setError("");
     try { await resume.mutateAsync(); toast.success("Đã tiếp nhận yêu cầu tiếp tục xử lý."); }
@@ -33,12 +34,14 @@ export function useLegalSourceDetail(id: string, onDeleted: () => void) {
   }
 
   return {
-    query, source: query.data, busy, append, deleting, error,
+    query, source: query.data, busy, append, editing, deleting, error,
     resumePending: resume.isPending, deletePending: remove.isPending,
     resumeSource, deleteSource,
-    openAppend: () => { if (!busy && !lock.current && !deleting) setAppend(true); },
+    openAppend: () => { if (!busy && !lock.current && !deleting && !editing) setAppend(true); },
     closeAppend: () => setAppend(false),
-    openDeletion: () => { if (!busy && !lock.current && !append) { setError(""); setDeleting(true); } },
+    openEdit: () => { if (!busy && !lock.current && !deleting && !append) setEditing(true); },
+    closeEdit: () => setEditing(false),
+    openDeletion: () => { if (!busy && !lock.current && !append && !editing) { setError(""); setDeleting(true); } },
     cancelDeletion: () => { if (!busy && !lock.current) { setDeleting(false); setError(""); } },
   };
 }

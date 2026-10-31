@@ -3,6 +3,8 @@
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import type { ContractReviewResult } from "@/types/contracts";
+import { ReviewVerification } from "@/components/expert-verification/review-verification";
+import { activeRiskFindings } from "@/lib/review/verification-findings";
 
 const levels = [
   { severity: "high", label: "Rủi ro cao", tone: "border-rose-200 bg-rose-50 text-rose-800" },
@@ -10,8 +12,10 @@ const levels = [
   { severity: "low", label: "Rủi ro thấp", tone: "border-blue-200 bg-blue-50 text-blue-800" },
 ] as const;
 
-export function ReviewResultHeader({ result, onShareSummary }: { result: ContractReviewResult; onShareSummary: () => void }) {
+export function ReviewResultHeader({ result, onShareSummary, role }: { result: ContractReviewResult; onShareSummary: () => void; role?: string }) {
   const version = result.contract.currentVersion;
+  const activeFindings = activeRiskFindings(result.findings);
+  const rejectedCount = result.findings.length - activeFindings.length;
   const risksComplete = version?.riskDetectionStatus === "completed";
   const complete = risksComplete && version?.summaryStatus === "completed";
   const contractId = result.contract.id ?? result.contract._id;
@@ -35,8 +39,20 @@ export function ReviewResultHeader({ result, onShareSummary }: { result: Contrac
     <dl className="m-0 grid grid-cols-1 gap-2 min-[400px]:grid-cols-3 sm:gap-3" aria-label="Tổng quan mức rủi ro">
       {levels.map(({ severity, label, tone }) => <div key={severity} className={`flex min-w-0 items-center justify-between gap-2 rounded-lg border px-3 py-2 ${tone}`}>
         <dt className="text-ui-meta font-semibold">{label}</dt>
-        <dd className="m-0 text-xl font-bold leading-none tabular-nums">{result.findings.filter((finding) => finding.severity === severity).length}</dd>
+        <dd className="m-0 text-xl font-bold leading-none tabular-nums">{activeFindings.filter((finding) => finding.severity === severity).length}</dd>
       </div>)}
     </dl>
+    {rejectedCount > 0 && <p className="m-0 text-ui-meta text-muted-foreground">Số liệu không bao gồm {rejectedCount} mục đã được chuyên gia bác bỏ. Xem lại trong bộ lọc “Đã bác bỏ”.</p>}
+    {contractId && (
+      <ReviewVerification
+        key={`${contractId}:${version?._id ?? version?.id ?? "current"}`}
+        contractId={contractId}
+        versionId={version?._id ?? version?.id ?? result.contract.reviewBilling?.versionId}
+        title={result.contract.title}
+        complete={complete}
+        findingCount={activeFindings.length}
+        role={role}
+      />
+    )}
   </header>;
 }

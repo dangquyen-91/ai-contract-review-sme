@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
 import { Job, Queue, UnrecoverableError } from 'bullmq';
 import { addJobWithTimeout, createQueue, createQueueEvents, createWorker } from '../../config/queue';
+import { env } from '../../config/env';
 import { logger } from '../../config/logger';
 import { AppError } from '../../errors/AppError';
 import { ClauseModel } from '../../models/clause.model';
@@ -151,7 +152,7 @@ async function buildReviewResult(versionId: string) {
   const [version, clauses, findings] = await Promise.all([
     ContractVersionModel.findById(versionId),
     ClauseModel.find({ contractVersionId: versionId }).select('index title'),
-    RiskFindingModel.find({ contractVersionId: versionId }).select('findingType severity title clauseId detectedBy ruleCode'),
+    RiskFindingModel.find({ contractVersionId: versionId }).select('findingType severity title clauseId detectedBy riskCode ruleCode'),
   ]);
   const clauseById = new Map(clauses.map((c) => [c._id.toString(), c]));
   const counts = { high: 0, medium: 0, low: 0 };
@@ -163,6 +164,8 @@ async function buildReviewResult(versionId: string) {
     summaryPoints: version?.summaryPoints ?? [],
     clauseCount: clauses.length,
     findingCounts: counts,
+    legalRetrievalStatus: version?.legalRetrievalStatus ?? undefined,
+    ruleCheckStatus: version?.ruleCheckStatus ?? undefined,
     findings: findings
       .map((f) => {
         const clause = f.clauseId ? clauseById.get(f.clauseId.toString()) : undefined;
@@ -173,6 +176,7 @@ async function buildReviewResult(versionId: string) {
           clauseIndex: clause?.index,
           clauseTitle: clause?.title ?? undefined,
           detectedBy: f.detectedBy,
+          riskCode: f.riskCode ?? undefined,
           ruleCode: f.ruleCode ?? undefined,
         };
       })
@@ -192,7 +196,14 @@ async function buildPartialResult(versionId: string, stages: ReviewStages) {
     ...(summaryDone ? {} : { summaryPoints: [] }),
     ...(riskDone
       ? {}
-      : { overallRiskLevel: 'none', overallAssessment: [], findingCounts: { high: 0, medium: 0, low: 0 }, findings: [] }),
+      : {
+          overallRiskLevel: 'none',
+          overallAssessment: [],
+          findingCounts: { high: 0, medium: 0, low: 0 },
+          findings: [],
+          legalRetrievalStatus: undefined,
+          ruleCheckStatus: undefined,
+        }),
     partial: true,
   };
 }
@@ -304,7 +315,11 @@ async function runReview(job: Job<ReviewJobData>): Promise<void> {
     }
     const credit = watchReview(job.data.reviewId, usageRunId);
     try {
-      await updateReview(job, { status: 'running', startedAt: review.startedAt ?? new Date() }, ['error']);
+      await updateReview(
+        job,
+        { status: 'running', startedAt: review.startedAt ?? new Date(), aiModel: env.GEMINI_MODEL },
+        ['error'],
+      );
       await runStages(job, review.stages, { orgId, contractId, analysisFocus, versionId }, credit.signal);
       credit.signal.throwIfAborted();
       result = await buildReviewResult(versionId);

@@ -17,13 +17,13 @@ import { DocumentDisclosureDialog } from "@/components/review/document/document-
 import { ShareSummaryDialog } from "@/components/review/sharing/share-summary-dialog";
 import type { ContractReviewResult } from "@/types/contracts";
 
-type ReviewResultsProps = { result: ContractReviewResult; canAsk?: boolean; showAiContext?: boolean };
+type ReviewResultsProps = { result: ContractReviewResult; canAsk?: boolean; showAiContext?: boolean; role?: string };
 
 export function ReviewResults(props: ReviewResultsProps) {
   return <ReviewResultsContent key={props.result.contract.id ?? props.result.contract._id} {...props} />;
 }
 
-function ReviewResultsContent({ result, canAsk = false, showAiContext = false }: ReviewResultsProps) {
+function ReviewResultsContent({ result, canAsk = false, showAiContext = false, role }: ReviewResultsProps) {
   const [activeClause, setActiveClause] = useState<number | null>(null);
   const [originalTarget, setOriginalTarget] = useState<{ index: number; requestId: number } | null>(null);
   const [viewMode, setViewMode] = useState<"original" | "text" | "redacted">("redacted");
@@ -107,8 +107,8 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false }:
 
   return (
     <section className={`overflow-hidden border [background:#fff] shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)] rounded-[14px] border-solid border-[#e4e8ef] ${showAiContext ? workspaceStyles.workspace : ""}`}>
-      {showAiContext && <p className="m-0 border-b border-[#dce7f6] bg-[#f4f8ff] px-5 py-3 text-ui leading-6 text-[#536881]">Kết quả do AI phân tích, chưa thể hiện phê duyệt của chuyên viên.</p>}
-      <ReviewResultHeader result={result} onShareSummary={() => setShareSummaryOpen(true)} />
+      {showAiContext && <p className="m-0 border-b border-[#dce7f6] bg-[#f4f8ff] px-5 py-3 text-ui leading-6 text-[#536881]">Kết quả phân tích từ AI. Trạng thái xác minh của chuyên gia được hiển thị riêng bên dưới.</p>}
+      <ReviewResultHeader result={result} role={role} onShareSummary={() => setShareSummaryOpen(true)} />
       {showAiContext && <nav className={workspaceStyles.navigation} aria-label="Điều hướng kết quả"><a href={`#${sectionId}-analysis`}>Tóm tắt & rủi ro</a><a href={`#${sectionId}-document`}>Nội dung hợp đồng</a></nav>}
       <div className={`${workspaceStyles.resultColumns} grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-stretch [@media_(max-width:_1080px)]:grid-cols-[1fr] ${workspaceStyles.splitPane}`}>
         <ReviewAnalysisPane result={result} sectionId={sectionId} isDocx={isDocx} onJumpToClause={jumpToClause} />

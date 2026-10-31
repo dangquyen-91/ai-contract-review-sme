@@ -3,6 +3,7 @@ import { connectDB, disconnectDB } from './config/db';
 import { env } from './config/env';
 import { logger } from './config/logger';
 import { assertRedisReachable } from './config/queue';
+import { closeRedis } from './config/redis';
 import { seedDefaultRoles } from './services/identity/role.service';
 import {
   ensureLegalTextIndex,
@@ -14,14 +15,12 @@ import { startBackgroundWorkers, stopBackgroundWork } from './services/workers.s
 import { OrganizationInvitationModel } from './models/organizationInvitation.model';
 import { initializeSubscriptionModels } from './models/subscription.model';
 import { seedPlans } from './services/billing/subscription.service';
-import { EmailVerificationModel } from './models/emailVerification.model';
 import { PaymentModel } from './models/payment.model';
 
 async function bootstrap() {
   await connectDB();
   await assertRedisReachable();
   await OrganizationInvitationModel.init();
-  await EmailVerificationModel.init();
   await PaymentModel.init();
   await initializeSubscriptionModels();
   await seedPlans();
@@ -46,6 +45,7 @@ async function bootstrap() {
     logger.info(`${signal} received, shutting down gracefully`);
     server.close(async () => {
       await stopBackgroundWork();
+      await closeRedis();
       await disconnectDB();
       process.exit(0);
     });

@@ -1,12 +1,12 @@
 ---
 type: srs-erd
 feature: core-data-model
-updated: 2026-10-23
+updated: 2026-10-31
 ---
 
 # core-data-model — Entity Relationship Diagram
 
-> Scope: full data model of AI Contract Review — 31 entities (22 implemented, 9 planned), 6 business groups
+> Scope: full data model of AI Contract Review — 30 entities (25 implemented, 5 planned), 7 business groups
 
 ## Diagram
 
@@ -17,7 +17,6 @@ erDiagram
     ORGANIZATION ||--o{ ORG_INVITATION : ""
     USER ||--o{ ORG_INVITATION : ""
     USER |o--o{ ORG_INVITATION : ""
-    USER |o--o{ EMAIL_VERIFY : ""
     ORGANIZATION ||--o| ORG_SUB : ""
     PLAN |o--o{ ORG_SUB : ""
     ORGANIZATION ||--o{ SUB_PERIOD : ""
@@ -29,7 +28,8 @@ erDiagram
     SUB_PERIOD ||--o{ USAGE_RUN : ""
     ORGANIZATION ||--o{ USAGE_RUN : ""
     USER ||--o{ USAGE_RUN : ""
-    CONTRACT ||--o{ USAGE_RUN : ""
+    CONTRACT |o--o{ USAGE_RUN : ""
+    CONTRACT_VER |o--o{ USAGE_RUN : ""
     ORGANIZATION ||--o{ CONTRACT : ""
     USER ||--o{ CONTRACT : ""
     CT_PROFILE ||--o{ CONTRACT : ""
@@ -47,6 +47,7 @@ erDiagram
     USAGE_RUN ||--o| REVIEW : ""
     CONTRACT_VER ||--o{ CHAT_MESSAGE : ""
     USER ||--o{ CHAT_MESSAGE : ""
+    CHAT_MESSAGE }o--o{ LEGAL_CHUNK : ""
     CT_PROFILE }o--o{ CLAUSE_TYPE : ""
     CT_PROFILE }o--o{ INDUSTRY : ""
     CT_PROFILE }o--o{ LEGAL_SOURCE : ""
@@ -60,19 +61,23 @@ erDiagram
     REVIEW ||--o| EXPERT_REVIEW : ""
     USER ||--o{ EXPERT_REVIEW : ""
     EXPERT_REVIEW ||--o{ EXPERT_ACTION : ""
-    RISK_FINDING ||--o{ EXPERT_ACTION : ""
+    RISK_FINDING |o--o{ EXPERT_ACTION : ""
+    USER ||--o{ EXPERT_ACTION : ""
     EXPERT_REVIEW ||--o{ COMMENT : ""
     USER ||--o{ COMMENT : ""
     CLAUSE |o--o{ COMMENT : ""
     RISK_FINDING |o--o{ COMMENT : ""
     REVIEW ||--o{ REPORT : ""
     USER ||--o{ REPORT : ""
-    CT_PROFILE ||--o{ STD_TEMPLATE : ""
-    STD_TEMPLATE ||--|{ STD_CLAUSE : ""
-    CLAUSE_TYPE ||--o{ STD_CLAUSE : ""
     CONTRACT ||--o{ REVIEW_PACKAGE : ""
     PAYMENT |o--o| REVIEW_PACKAGE : ""
     REVIEW_PACKAGE |o--o{ USAGE_RUN : ""
+    ORGANIZATION ||--o{ CONTRACT_DRAFT : ""
+    USER ||--o{ CONTRACT_DRAFT : ""
+    CONTRACT_DRAFT |o--o| CONTRACT : ""
+    CONTRACT_DRAFT |o--o{ USAGE_RUN : ""
+    CONTRACT_DRAFT ||--o{ DRAFT_PROPOSAL : ""
+    USER ||--o{ DRAFT_PROPOSAL : ""
 
     ORGANIZATION {
         ObjectId _id PK
@@ -88,11 +93,15 @@ erDiagram
         ObjectId orgId FK
         ObjectId roleId FK
         String name
+        String phone
+        String avatarUrl
         String email UK
+        Boolean hasPassword
         Boolean isActive
         Date deletedAt
         Boolean hasCompletedOnboarding
         Number permissionsVersion
+        Number authVersion
         Date emailVerifiedAt
         String googleSubject UK
     }
@@ -117,22 +126,6 @@ erDiagram
         Date acceptedAt
     }
 
-    EMAIL_VERIFY {
-        ObjectId _id PK
-        String email UK
-        String name
-        ObjectId userId FK
-        Boolean remember
-        Date expiresAt
-        Date lastSentAt
-        Date windowStartedAt
-        Number sentCount
-        Number attempts
-        Boolean ready
-        Boolean consumed
-        Date purgeAt
-    }
-
     PLAN {
         ObjectId _id PK
         String code UK
@@ -141,6 +134,7 @@ erDiagram
         Number price
         String currency
         Number analysisLimit
+        Number draftingLimit
         Number chatLimit
         Number memberLimit
     }
@@ -163,6 +157,8 @@ erDiagram
         String paymentAction
         Number analysisUsed
         Number analysisReserved
+        Number draftingUsed
+        Number draftingReserved
         Number chatUsed
         Number chatReserved
     }
@@ -172,9 +168,13 @@ erDiagram
         ObjectId orgId FK
         ObjectId userId FK
         ObjectId contractId FK
+        ObjectId versionId FK
+        ObjectId draftId FK
         ObjectId periodId FK
         ObjectId packageId FK "planned"
         String kind
+        Number units
+        Number pageCount
         String idempotencyKey
         String fingerprint
         String status
@@ -241,6 +241,8 @@ erDiagram
         String riskDetectionStatus
         String riskDetectionError
         Date riskDetectionStartedAt
+        String legalRetrievalStatus
+        String ruleCheckStatus
         String summaryStatus
         String summaryError
         Date summaryStartedAt
@@ -310,8 +312,10 @@ erDiagram
         ProposedRevision proposedRevision "embedded"
         String status
         String detectedBy
+        String riskCode
         String ruleCode
         Number ruleVersion
+        FindingVerification verification "embedded"
     }
 
     REVIEW {
@@ -328,6 +332,7 @@ erDiagram
         String stageDetail
         StageStatus stages "embedded"
         String analysisFocus
+        String aiModel
         String error
         String errorCode
         Boolean cancelRequested
@@ -343,6 +348,7 @@ erDiagram
         ObjectId userId FK
         String role
         String content
+        ChatLegalSource[] legalSources "embedded"
     }
 
     LEGAL_SOURCE {
@@ -381,28 +387,41 @@ erDiagram
         ObjectId riskFindingId FK
         ObjectId legalKnowledgeChunkId FK
         Number relevanceScore
+        String citationLabel
+        String sourceTitle
+        String articleRef
+        String chunkText
     }
 
     EXPERT_REVIEW {
-        ObjectId _id PK "planned"
-        ObjectId reviewId FK
+        ObjectId _id PK
+        ObjectId reviewId FK "unique"
+        ObjectId contractId FK
         ObjectId orgId FK
-        ObjectId reviewerId FK
         String status
-        String decisionNote
+        Number attempt
+        ObjectId requestedBy FK
+        String requestNote
+        Date requestedAt
+        Date consentedAt
+        ObjectId consentedBy FK
+        ObjectId expertId FK
         Date assignedAt
-        Date startedAt
         Date completedAt
+        String decisionNote
     }
 
     EXPERT_ACTION {
-        ObjectId _id PK "planned"
+        ObjectId _id PK
         ObjectId expertReviewId FK
+        ObjectId orgId FK
         ObjectId riskFindingId FK
+        ObjectId expertId FK
+        Number attempt
         String action
         String reason
-        Mixed before
-        Mixed after
+        FindingSnapshot before "embedded"
+        FindingSnapshot after "embedded"
     }
 
     COMMENT {
@@ -436,26 +455,6 @@ erDiagram
         String status
     }
 
-    STD_TEMPLATE {
-        ObjectId _id PK "planned"
-        String contractType FK
-        String name
-        Number version
-        String fileKey
-        ObjectId createdBy FK
-        String status
-        Date publishedAt
-    }
-
-    STD_CLAUSE {
-        ObjectId _id PK "planned"
-        ObjectId templateId FK
-        Number order
-        ObjectId clauseTypeId FK
-        String title
-        String text
-    }
-
     AUDIT_LOG {
         ObjectId _id PK "planned"
         ObjectId orgId FK
@@ -479,6 +478,49 @@ erDiagram
         String link
         Date readAt
     }
+
+    CONTRACT_DRAFT {
+        ObjectId _id PK
+        ObjectId orgId FK
+        ObjectId createdBy FK
+        ObjectId contractId FK
+        String title
+        String templateCode
+        Number templateVersion
+        String templateJson
+        String ourParty
+        String inputJson
+        String organizationJson
+        String content
+        String documentJson
+        String status
+        Number revision
+        String notes
+        String decisionNote
+        ObjectId approvedBy FK
+        Date approvedAt
+        Date generatedAt
+        String generatedByModel
+        Date generationStartedAt
+        Date pinnedAt
+        Date deletedAt
+        ObjectId deletedBy FK
+    }
+
+    DRAFT_PROPOSAL {
+        ObjectId _id PK
+        ObjectId orgId FK
+        ObjectId draftId FK
+        ObjectId createdBy FK
+        String requestId
+        Number baseRevision
+        String userMessage
+        String selectionJson
+        String referencesJson
+        String assistantMessage
+        String changesJson
+        String status
+    }
 ```
 
 ## Entity Reference
@@ -489,11 +531,10 @@ erDiagram
 | USER | User | Organization & Accounts | Implemented | Login account (email/password or Google) |
 | ROLE | Role | Organization & Accounts | Implemented | System role catalog |
 | ORG_INVITATION | OrganizationInvitation | Organization & Accounts | Implemented | Email invitation to join an organization |
-| EMAIL_VERIFY | EmailVerification | Organization & Accounts | Implemented | OTP email verification session for sign-up / accepting an invitation |
 | PLAN | Plan | Plans & Payments | Implemented | Service plan catalog with limits |
 | ORG_SUB | OrganizationSubscription | Plans & Payments | Implemented | Organization subscription state, with scheduled downgrade |
 | SUB_PERIOD | SubscriptionPeriod | Plans & Payments | Implemented | A usage period with limits and usage counters |
-| USAGE_RUN | UsageRun | Plans & Payments | Implemented | One reservation/charge of an analysis or chat credit |
+| USAGE_RUN | UsageRun | Plans & Payments | Implemented | One reservation/charge of analysis, chat or drafting credits |
 | PAYMENT | Payment | Plans & Payments | Implemented | Payment order via PayOS |
 | REVIEW_PACKAGE | — | Plans & Payments | Planned | Per-contract review credits: 5 included, more purchased from the 6th review |
 | CONTRACT | Contract | Contracts & Analysis | Implemented | Contract uploaded by a user |
@@ -508,30 +549,34 @@ erDiagram
 | LEGAL_SOURCE | LegalSource | Legal Knowledge | Implemented | Legal document / standard template |
 | LEGAL_CHUNK | LegalKnowledgeChunk | Legal Knowledge | Implemented | Legal text chunk (by article/clause) used to look up legal basis |
 | RISK_CITATION | RiskCitation | Legal Knowledge | Implemented | Link between a risk finding and a cited legal chunk, with relevance score |
-| EXPERT_REVIEW | — | Expert Review & Reporting | Planned | Lawyer verification session for one AI review (approve or return) |
-| EXPERT_ACTION | — | Expert Review & Reporting | Planned | One lawyer decision on a finding, with before/after snapshot |
+| CONTRACT_DRAFT | ContractDraft | Contract Drafting | Implemented | Contract drafted from a built-in template with AI help, approved and published as a CONTRACT |
+| DRAFT_PROPOSAL | DraftAssistantProposal | Contract Drafting | Implemented | One edit suggested by the drafting assistant, applied or dismissed by the user |
+| EXPERT_REVIEW | ExpertReview | Expert Review & Reporting | Implemented | Expert (lawyer) verification of one completed AI review: requested, claimed, then approved or returned |
+| EXPERT_ACTION | ExpertAction | Expert Review & Reporting | Implemented | Append-only log of expert decisions on findings (confirm, adjust, reject, add, remove) with before/after snapshots |
 | COMMENT | — | Expert Review & Reporting | Planned | Lawyer comment on a clause or finding during expert review |
 | REPORT | — | Expert Review & Reporting | Planned | Exported PDF/DOCX review report |
-| STD_TEMPLATE | — | Templates & Audit | Planned | Standard contract template per contract type, for clause-by-clause comparison |
-| STD_CLAUSE | — | Templates & Audit | Planned | Standard clause inside a template, typed by clause type |
-| AUDIT_LOG | — | Templates & Audit | Planned | Record of who did what to which record, and the outcome |
-| NOTIFICATION | — | Templates & Audit | Planned | In-app notification to a user |
+| AUDIT_LOG | — | Audit & Notifications | Planned | Record of who did what to which record, and the outcome |
+| NOTIFICATION | — | Audit & Notifications | Planned | In-app notification to a user |
 
 ## Notes & Assumptions
 
 - **Types follow the mongoose models:** every entity is a MongoDB collection keyed by `ObjectId _id`; field names are the camelCase names used in code; `Number` covers both integers and decimals (VND amounts are whole numbers); `Mixed` is free-form data. A type marked `"embedded"` (e.g. `LegalBasis[]`, `ReviewResult`) is a sub-document stored inside the parent, not a separate collection.
 - **Every entity has `createdAt` / `updatedAt` timestamps** — not repeated in each entity.
-- **Links matched by code, not by `ObjectId`:** `CONTRACT.type` matches `CT_PROFILE.code` or one of its aliases; `CONTRACT.industry` and `ORGANIZATION.industry` match `INDUSTRY.code`; `CT_PROFILE` points to `LEGAL_SOURCE`, `CLAUSE_TYPE` and `INDUSTRY` via code lists; `PAYMENT.planCode`, `ORG_SUB.scheduledDowngrade.planCode` and `SUB_PERIOD.plan.code` match `PLAN.code`; `STD_TEMPLATE.contractType` matches `CT_PROFILE.code`. These fields are marked `FK` but hold a `String` code. Changing a code in a catalog entity breaks these links.
+- **Links matched by code, not by `ObjectId`:** `CONTRACT.type` matches `CT_PROFILE.code` or one of its aliases; `CONTRACT.industry` and `ORGANIZATION.industry` match `INDUSTRY.code`; `CT_PROFILE` points to `LEGAL_SOURCE`, `CLAUSE_TYPE` and `INDUSTRY` via code lists; `PAYMENT.planCode`, `ORG_SUB.scheduledDowngrade.planCode` and `SUB_PERIOD.plan.code` match `PLAN.code`. These fields are marked `FK` but hold a `String` code. Changing a code in a catalog entity breaks these links.
 - **SUB_PERIOD snapshots the full plan details** (`plan`: code, price, limits) at grant time — changing price/limits on PLAN does not affect running periods.
 - **N:N relationships drawn without a junction table:** `CT_PROFILE` with `LEGAL_SOURCE` / `CLAUSE_TYPE` / `INDUSTRY` is stored as code lists inside `CT_PROFILE`; `RISK_FINDING` with `LEGAL_CHUNK` is stored as `legalKnowledgeChunkIds` inside each `RISK_FINDING.legalBasis` item. Only `RISK_CITATION` is a real link entity, with an extra relevance score.
-- **Embedded sub-documents:** extraction progress/quality, redaction summary and key terms on `CONTRACT_VER`; automatic classification on `CONTRACT`; legal basis and proposed revision on `RISK_FINDING`; stage statuses and result snapshot on `REVIEW`; coverage, ingestion progress and uploaded parts on `LEGAL_SOURCE`; parent headings on `LEGAL_CHUNK`; parties and industry rules on `CT_PROFILE`; scheduled downgrade on `ORG_SUB`; plan snapshot on `SUB_PERIOD`.
+- **Embedded sub-documents:** extraction progress/quality, redaction summary and key terms on `CONTRACT_VER`; automatic classification on `CONTRACT`; legal basis, proposed revision and latest expert decision (`verification`) on `RISK_FINDING`; finding snapshots (`before`/`after`) on `EXPERT_ACTION`; stage statuses and result snapshot on `REVIEW`; cited legal sources on `CHAT_MESSAGE`; coverage, ingestion progress and uploaded parts on `LEGAL_SOURCE`; parent headings on `LEGAL_CHUNK`; parties and industry rules on `CT_PROFILE`; scheduled downgrade on `ORG_SUB`; plan snapshot on `SUB_PERIOD`.
 - **`CONTRACT_VER.keyTerms[].clauseId` points to `CLAUSE`** of the same version — not drawn as a separate line to keep the diagram readable.
-- **`orgId` is repeated on CLAUSE, RISK_FINDING, REVIEW, CHAT_MESSAGE and USAGE_RUN** to scope data per organization; the diagram only draws the main ownership relationships.
+- **`orgId` is repeated on CLAUSE, RISK_FINDING, REVIEW, CHAT_MESSAGE, USAGE_RUN and DRAFT_PROPOSAL** to scope data per organization; the diagram only draws the main ownership relationships.
 - **Two kinds of risk finding:** `clause_risk` is tied to one `CLAUSE`; `missing_clause` has no `CLAUSE` and points to the missing clause type (`expectedClauseTypeId`).
+- **Expert verification:** experts are LawScan platform accounts with no `orgId`; organizations and personal accounts both send requests to one shared queue, and every request records the requester's consent to share (`consentedAt`, `consentedBy`). At most 1 `EXPERT_REVIEW` per `REVIEW`; while it is `requested` or `in_progress`, the contract cannot start or retry a review, because a new review replaces the findings. `RISK_FINDING.verification` is a copy of the latest `EXPERT_ACTION` for fast reads; `EXPERT_ACTION` keeps the full history, and its `riskFindingId` may point to a finding that a later review or a remove action deleted, which is why each action keeps snapshots. Rejected findings stay stored but are left out of chat context, share summaries and the overall risk level recomputed on approval.
 - **At most 1 running review per contract** (`REVIEW.activeLock`) and at most 1 reserved analysis credit per contract; **at most 1 open payment order per organization** (`PAYMENT.isOpen`); **1 subscription record per organization** (`ORG_SUB.orgId` is unique).
 - **Each REVIEW holds exactly 1 USAGE_RUN of kind analysis**; chats also go through USAGE_RUN (kind chat), but CHAT_MESSAGE does not store a link to the charged run.
-- **Not included in the ERD:** hashed passwords/OTPs/tokens (`passwordHash`, `otpHash`, `challengeHash`, `invitationHash`, `tokenHash`), the `embedding` vector of legal chunks, and the raw `result` stored on USAGE_RUN.
-- **Planned entities** (REVIEW_PACKAGE, EXPERT_REVIEW, EXPERT_ACTION, COMMENT, REPORT, STD_TEMPLATE, STD_CLAUSE, AUDIT_LOG, NOTIFICATION; marked `"planned"` on their `_id`) are not in code yet — their attributes are a proposed design covering audit log, report export, standard template comparison and lawyer verification from the project scope. `USAGE_RUN.packageId` and the `review_package` value of `PAYMENT.action` are planned additions to existing entities.
-- **STD_TEMPLATE overlaps with `LEGAL_SOURCE.sourceType = standard_template`:** STD_TEMPLATE is meant for clause-by-clause comparison against a contract; LEGAL_SOURCE stays the source for legal-basis lookup. Decide whether standard templates live in one place or both.
+- **How credits are charged today:** an analysis run takes `units` computed from the page count of the reviewed version (`pageCount`, `versionId`) out of `SUB_PERIOD.analysisLimit`; a chat run takes 1 unit. A drafting run (kind drafting) points to CONTRACT_DRAFT through `draftId` and has no contract.
+- **Contract drafting:** `CONTRACT_DRAFT.templateCode` (labor, service, sales) names a template built into the application, not a collection. `revision` goes up on every save so two editors cannot overwrite each other; `DRAFT_PROPOSAL.baseRevision` records which revision a suggestion was made against. An approved draft is published as a new CONTRACT (`contractId`). Deleting a draft only sets `deletedAt` / `deletedBy`.
+- **RISK_CITATION keeps a copy** of `citationLabel`, `sourceTitle`, `articleRef` and `chunkText`, so a citation can be shown without loading the legal chunk.
+- **OTP sessions are not collections:** email verification and password reset codes are kept in Redis with an expiry time, so they do not appear in this ERD.
+- **Not included in the ERD:** hashed passwords/tokens (`passwordHash`, `invitationHash`, `tokenHash`, `generationToken`), the `embedding` vector of legal chunks, and the raw `result` stored on USAGE_RUN.
+- **Planned entities** (REVIEW_PACKAGE, EXPERT_REVIEW, EXPERT_ACTION, COMMENT, REPORT, AUDIT_LOG, NOTIFICATION; marked `"planned"` on their `_id`) are not in code yet — their attributes are a proposed design covering audit log, report export and lawyer verification from the project scope. `USAGE_RUN.packageId` and the `review_package` value of `PAYMENT.action` are planned additions to existing entities.
 - **Expert-added findings:** when a lawyer adds a missed risk (`EXPERT_ACTION.action = add_missing`), a new RISK_FINDING is created, so `RISK_FINDING.detectedBy` will need an `expert` value.
-- **Review package billing:** each contract gets an included package of 5 reviews; from the 6th review the user buys another package (PAYMENT with `review_package` action). A review charges the package through USAGE_RUN.
+- **Review package billing:** each contract gets an included package of 5 reviews; from the 6th review the user buys another package (PAYMENT with `review_package` action). A review charges the package through USAGE_RUN. Not built yet: reviews are still charged per page from the monthly plan (see above).

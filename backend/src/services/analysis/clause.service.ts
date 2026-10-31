@@ -83,7 +83,13 @@ export async function segmentClauses(orgId: string, contractId: string, signal?:
           overallAssessment: [],
           overallRiskLevel: 'none',
         },
-        $unset: { segmentationError: '', summaryError: '', riskDetectionError: '' },
+        $unset: {
+          segmentationError: '',
+          summaryError: '',
+          riskDetectionError: '',
+          legalRetrievalStatus: '',
+          ruleCheckStatus: '',
+        },
       },
     );
     await setContractStatus(contractId, orgId, 'uploaded');

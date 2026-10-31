@@ -4,6 +4,10 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   return proxyLegalSource(request, "detail", (await context.params).id);
 }
 
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  return proxyLegalSource(request, "update", (await context.params).id);
+}
+
 export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
   return mutateLegalSource(request, (await context.params).id);
 }

@@ -532,6 +532,14 @@ components:
           type: string
           format: date-time
           description: When the last risk detection run started (same 10-minute stale rule as segmentation)
+        legalRetrievalStatus:
+          type: string
+          enum: [ok, degraded, no_sources, unavailable]
+          description: How the legal knowledge search went during the last risk detection. ok = vector and text search both ran. degraded = only one of them ran. no_sources = the legal knowledge base has no searchable source. unavailable = the search failed, so the findings were written without legal excerpts (rule checks still ran). Absent until risk detection completes, and cleared when clauses are re-segmented.
+        ruleCheckStatus:
+          type: string
+          enum: [ok, skipped, not_applicable]
+          description: Whether the fixed legal rule checks (detectedBy rule) ran during the last risk detection. ok = key terms were extracted and every rule for this contract type was evaluated. skipped = key term extraction failed, so no rule ran and the findings come from the LLM and the missing-clause check only. not_applicable = this contract type has no fixed legal rules yet. Absent until risk detection completes, and cleared when clauses are re-segmented.
         overallAssessment:
           type: array
           items:
@@ -606,6 +614,10 @@ components:
               enum: [pending, running, completed, failed]
         analysisFocus:
           type: string
+        aiModel:
+          type: string
+          example: gemini-3.1-flash-lite
+          description: Gemini model that ran the latest attempt of this review (GEMINI_MODEL at the time). Absent until the worker starts the review.
         error:
           type: string
           description: Last error message (English, for logs); set while an automatic retry is pending or when the review failed or was cancelled
@@ -651,6 +663,14 @@ components:
                   type: integer
                 low:
                   type: integer
+            legalRetrievalStatus:
+              type: string
+              enum: [ok, degraded, no_sources, unavailable]
+              description: Copied from the contract version (see ContractVersion.legalRetrievalStatus). Absent when risk detection did not finish.
+            ruleCheckStatus:
+              type: string
+              enum: [ok, skipped, not_applicable]
+              description: Copied from the contract version (see ContractVersion.ruleCheckStatus). Absent when risk detection did not finish.
             findings:
               type: array
               items:
@@ -670,7 +690,10 @@ components:
                     type: string
                   detectedBy:
                     type: string
-                    enum: [rule, llm, hybrid]
+                    enum: [rule, llm, hybrid, checklist]
+                  riskCode:
+                    type: string
+                    description: See RiskFinding.riskCode
                   ruleCode:
                     type: string
         createdAt:
@@ -884,9 +907,47 @@ components:
           enum: [user, assistant]
         content:
           type: string
+        legalSources:
+          type: array
+          description: Assistant messages only - the legal excerpts that were given to the model for this answer. Absent on messages saved before legal search was added to chat.
+          items:
+            $ref: '#/components/schemas/ChatLegalSource'
         createdAt:
           type: string
           format: date-time
+
+    ChatLegalSource:
+      type: object
+      properties:
+        legalKnowledgeChunkId:
+          type: string
+        citationLabel:
+          type: string
+          example: Luật Thương mại 2005
+        sourceTitle:
+          type: string
+        articleRef:
+          type: string
+          example: Điều 301
+
+    ChatReply:
+      type: object
+      properties:
+        reply:
+          type: string
+        legalSources:
+          type: array
+          description: Legal excerpts retrieved for the question and given to the model (up to 4, searched within the contract type's governing laws). The model is told to name the article it relies on and not to cite anything else. May be absent on an idempotent replay of an answer saved before legal search was added to chat.
+          items:
+            $ref: '#/components/schemas/ChatLegalSource'
+        legalRetrievalStatus:
+          type: string
+          enum: [ok, degraded, no_sources, unavailable]
+          description: Same meaning as ContractVersion.legalRetrievalStatus, for this question's legal search
+        runId:
+          type: string
+        replayed:
+          type: boolean
 
     RiskFinding:
       type: object
@@ -977,8 +1038,13 @@ components:
           enum: [open, acknowledged, dismissed, resolved]
         detectedBy:
           type: string
-          enum: [rule, llm, hybrid]
-          description: rule = a fixed legal rule (ruleCode is set) or a missing mandatory clause the LLM did not describe; llm = found by the LLM; hybrid = a missing clause found by the taxonomy check and described by the LLM
+          enum: [rule, llm, hybrid, checklist, expert]
+          description: rule = a fixed legal rule fired (ruleCode is set); llm = found by the LLM; hybrid = a missing clause found by the taxonomy check and described by the LLM; checklist = a missing clause found by the taxonomy check that the LLM did not describe (generic text); expert = added by an expert during verification. Findings saved before checklist existed may still use rule for that last case.
+        riskCode:
+          type: string
+          enum: [UNLAWFUL_TERM, MISSING_MANDATORY_FORM, UNILATERAL_TERMINATION, AUTO_RENEWAL, EXCESSIVE_PENALTY, LIABILITY_LIMITATION, ONE_SIDED_INDEMNITY, UNFAVORABLE_PAYMENT, ONE_SIDED_OBLIGATION, BROAD_EXCLUSION, IP_DATA_RISK, UNFAVORABLE_DISPUTE_FORUM, VAGUE_SCOPE, AMBIGUOUS_TERM, MISSING_CLAUSE, MISSING_PROTECTION, OTHER]
+          description: Stable risk type from the risk catalog, used to compare findings across reviews and to measure accuracy per risk type. Fixed legal rules are UNLAWFUL_TERM, missing clauses are MISSING_CLAUSE, and LLM findings pick a code (OTHER when none fits, capped at medium). The severity of LLM findings is kept within the range allowed for the code. Absent on findings saved before the catalog existed.
+          example: UNILATERAL_TERMINATION
         ruleCode:
           type: string
           description: Set when detectedBy is rule and a legal rule fired, e.g. LTM_PENALTY_CAP, BLLD_PROBATION_WAGE
@@ -986,6 +1052,8 @@ components:
         ruleVersion:
           type: integer
           description: Version of the rule that produced the finding
+        verification:
+          $ref: '#/components/schemas/FindingVerification'
         citations:
           type: array
           description: Legal sources behind this finding. For a rule finding these are the exact articles the rule cites (relevanceScore 1), attached only when that law is in the knowledge base and the article text contains the rule's expected wording. For an LLM finding these are the retrieved excerpts it relied on.
@@ -997,6 +1065,209 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    FindingVerification:
+      type: object
+      description: Latest expert decision on the finding, copied from the newest ExpertAction. Absent until an expert acts on it.
+      properties:
+        verdict:
+          type: string
+          enum: [confirmed, adjusted, rejected, added]
+          description: added = the expert created the finding. Rejected findings stay in the list and are left out of the overall risk level once the verification is approved.
+        originalSeverity:
+          type: string
+          enum: [high, medium, low]
+          description: Severity the AI gave, kept so the UI can show AI vs expert severity. Absent on findings the expert added.
+        reason:
+          type: string
+        verifiedBy:
+          type: string
+        verifiedAt:
+          type: string
+          format: date-time
+
+    ExpertReview:
+      type: object
+      description: Expert (lawyer) verification of one completed review. One per review; a returned verification can be requested again, which increments attempt.
+      properties:
+        _id:
+          type: string
+        reviewId:
+          type: string
+        contractId:
+          type: string
+          description: Contract id, or on GET /reviews/verification-queue the populated contract (title, type, overallRiskLevel)
+        orgId:
+          type: string
+        status:
+          type: string
+          enum: [requested, in_progress, approved, returned]
+        attempt:
+          type: integer
+        requestedBy:
+          type: string
+          description: User id, or the populated user (name) on read endpoints
+        requestNote:
+          type: string
+        requestedAt:
+          type: string
+          format: date-time
+        consentedAt:
+          type: string
+          format: date-time
+          description: When the requester consented to share the contract with LawScan experts
+        consentedBy:
+          type: string
+          description: User who gave the consent
+        expertId:
+          type: string
+          description: Expert who claimed the request, or the populated user (name) on read endpoints
+        assignedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        decisionNote:
+          type: string
+          description: Expert summary when approved, or the reason when returned
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ExpertFindingSnapshot:
+      type: object
+      properties:
+        findingType:
+          type: string
+          enum: [clause_risk, missing_clause]
+        severity:
+          type: string
+          enum: [high, medium, low]
+        riskCode:
+          type: string
+        title:
+          type: string
+        problem:
+          type: array
+          items:
+            type: string
+        consequences:
+          type: array
+          items:
+            type: string
+        recommendations:
+          type: array
+          items:
+            type: string
+        clauseIndex:
+          type: integer
+
+    ExpertAction:
+      type: object
+      description: Append-only log of expert decisions. before holds the finding as it was (the AI result on the first action), after holds it once the action applied, so the log survives a later re-review that replaces the findings.
+      properties:
+        _id:
+          type: string
+        expertReviewId:
+          type: string
+        riskFindingId:
+          type: string
+        expertId:
+          type: string
+          description: User id, or the populated user (name)
+        attempt:
+          type: integer
+        action:
+          type: string
+          enum: [confirm, adjust, reject, add, remove]
+        reason:
+          type: string
+        before:
+          $ref: '#/components/schemas/ExpertFindingSnapshot'
+        after:
+          $ref: '#/components/schemas/ExpertFindingSnapshot'
+        createdAt:
+          type: string
+          format: date-time
+
+    DecideFindingRequest:
+      type: object
+      required: [verdict]
+      additionalProperties: false
+      properties:
+        verdict:
+          type: string
+          enum: [confirmed, adjusted, rejected]
+          description: Findings added by an expert accept only adjusted.
+        reason:
+          type: string
+          maxLength: 2000
+          description: Required when verdict is rejected
+        severity:
+          type: string
+          enum: [high, medium, low]
+        riskCode:
+          type: string
+        title:
+          type: string
+          maxLength: 300
+        problem:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        consequences:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        recommendations:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+      description: Content fields are allowed only with verdict adjusted, and at least one of them must change.
+
+    AddExpertFindingRequest:
+      type: object
+      required: [severity, riskCode, title, problem]
+      additionalProperties: false
+      properties:
+        clauseIndex:
+          type: integer
+          minimum: 0
+          description: Clause the risk belongs to. Omit for a missing clause.
+        severity:
+          type: string
+          enum: [high, medium, low]
+        riskCode:
+          type: string
+        title:
+          type: string
+          maxLength: 300
+        problem:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            type: string
+        consequences:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        recommendations:
+          type: array
+          maxItems: 20
+          items:
+            type: string
+        reason:
+          type: string
+          maxLength: 2000
 
     RiskCitation:
       type: object
@@ -1013,6 +1284,10 @@ components:
           description: 'e.g. "Dieu 418, Khoan 2"'
         chunkText:
           type: string
+          description: citationLabel, sourceTitle, articleRef and chunkText are the text as it was when the review ran, so they survive later edits or deletion of the legal source. Citations saved before this snapshot existed are read from the knowledge base instead and disappear if their chunk was deleted.
+        inKnowledgeBase:
+          type: boolean
+          description: False when the cited chunk has since been deleted from the knowledge base (the legal source was deleted)
         relevanceScore:
           type: number
           description: Retrieval relevance (0-1). Excerpts are found by hybrid search (Atlas Vector Search + Atlas Search full text, fused by reciprocal rank); 1 means ranked first by both. Articles linked directly (a rule citation, or an article the LLM named that was not retrieved) have 1.
@@ -1153,6 +1428,9 @@ components:
           type: string
           description: Unique stable code that contract profiles use to reference this source
           example: commercial_law_2005
+        inCatalog:
+          type: boolean
+          description: True when code is one of GET /kb/legal-sources/catalog. False means no contract profile scopes to this source and no legal rule cites it.
         title:
           type: string
           example: Luật Thương mại 2005
@@ -1284,8 +1562,8 @@ components:
           maxLength: 60
           pattern: '^[a-z0-9]+(?:_[a-z0-9]+)*$'
           description: |
-            Lowercased before validation. Contract profiles reference these codes, so use them for the governing laws:
-            commercial_law_2005 (Luật Thương mại 2005), civil_code_2015 (Bộ luật Dân sự 2015), labor_code_2019 (Bộ luật Lao động 2019), decree_145_2020 (Nghị định 145/2020/NĐ-CP), real_estate_business_law_2023 (Luật Kinh doanh bất động sản 2023), housing_law_2023 (Luật Nhà ở 2023), land_law_2024 (Luật Đất đai 2024), insurance_business_law_2022 (Luật Kinh doanh bảo hiểm 2022).
+            Lowercased before validation. Contract profiles and fixed legal rules reference these codes, so use them for the governing laws:
+            commercial_law_2005 (Luật Thương mại 2005), civil_code_2015 (Bộ luật Dân sự 2015), labor_code_2019 (Bộ luật Lao động 2019), decree_145_2020 (Nghị định 145/2020/NĐ-CP), real_estate_business_law_2023 (Luật Kinh doanh bất động sản 2023), housing_law_2023 (Luật Nhà ở 2023), land_law_2024 (Luật Đất đai 2024), insurance_business_law_2022 (Luật Kinh doanh bảo hiểm 2022), foreign_exchange_ordinance_2005 (Pháp lệnh Ngoại hối 2005, sửa đổi 2013).
           example: commercial_law_2005
         title:
           type: string
@@ -1990,7 +2268,7 @@ paths:
         '400': { description: Invalid email or role }
         '401': { description: Missing, expired or stale bearer token }
         '403': { description: Not the owner of this organization }
-        '409': { description: Pending invitation exists or recipient already belongs to an organization }
+        '409': { description: Pending invitation exists, recipient already belongs to an organization, or recipient is not a personal (user) account such as an administrator or platform expert }
         '429': { description: Invitation request limit exceeded }
         '502': { description: Brevo API delivery request failed; invitation marked delivery_failed }
         '503': { description: Brevo API key or sender is not configured }
@@ -2097,7 +2375,7 @@ paths:
     post:
       tags: [Invitations]
       summary: Accept an invitation and receive a new authenticated session
-      description: Requires active user with matching email and no organization. Atomically updates user and consumes invitation using a MongoDB transaction. Call before onboarding completion. Store the returned tokens.
+      description: Requires an active personal (user role) account with matching email and no business organization; administrators, managers and platform experts cannot join, and legacy expert invitations are rejected. Atomically updates user and consumes invitation using a MongoDB transaction. Call before onboarding completion. Store the returned tokens.
       requestBody:
         required: true
         content:
@@ -2112,7 +2390,7 @@ paths:
         '400': { description: Invalid, expired, revoked or consumed invitation }
         '401': { description: Missing, expired or stale bearer token }
         '403': { description: Signed-in email does not match invitation }
-        '409': { description: User already belongs to an organization }
+        '409': { description: User already belongs to an organization or is not a personal account }
 
   /auth/google:
     post:
@@ -3127,7 +3405,7 @@ paths:
       summary: Ask a follow-up question about the contract
       parameters:
         - $ref: '#/components/parameters/IdempotencyKey'
-      description: Requires clauses to be segmented. The answer is grounded in the contract's clauses, summary, risk findings and analysisFocus, plus the last 10 chat messages. Both the question and the answer are saved. Rate-limited (AI cost control).
+      description: Requires clauses to be segmented. The answer is grounded in the contract's clauses, summary, risk findings (with their legal basis) and analysisFocus, the last 10 chat messages, and up to 4 legal excerpts found for the question in the legal knowledge base. The legal search runs after the chat credit is reserved. Both the question and the answer are saved. Rate-limited (AI cost control).
       requestBody:
         required: true
         content:
@@ -3146,10 +3424,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  reply:
-                    type: string
+                $ref: '#/components/schemas/ChatReply'
         '400':
           description: Clauses not segmented yet, or LLM not configured
           content:
@@ -3179,7 +3454,7 @@ paths:
       description: |
         Use `fetch` (not `EventSource`). Events:
         - `token` `{ "text": string }` - next chunk of the answer
-        - `done` `{ reply, runId, replayed }` - the exchange is saved and chat quota finalized
+        - `done` `{ reply, legalSources, legalRetrievalStatus, runId, replayed }` (see ChatReply) - the exchange is saved and chat quota finalized
         - `error` `{ "status": number, "message": string }`
         A `: ping` comment line is sent every 15s to keep proxies from closing an idle connection - SSE clients must ignore lines starting with `:`. Closing the connection cancels the LLM call; if the answer had already finished generating, it is still saved.
         Rate-limited (AI cost control).
@@ -3286,7 +3561,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: A review or complete analysis is already running for this contract, or the Idempotency-Key was used for a different request
+          description: A review or complete analysis is already running for this contract, the Idempotency-Key was used for a different request, or VERIFICATION_IN_PROGRESS - an expert verification of the latest result is requested or in progress
           content:
             application/json:
               schema:
@@ -3426,6 +3701,7 @@ paths:
             REVIEW_RUNNING - another review of the contract is running.
             REVIEW_BUSY - the previous attempt is still shutting down; try again shortly.
             CONTRACT_NOT_CONFIRMED - the contract type is not confirmed.
+            VERIFICATION_IN_PROGRESS - an expert verification of the contract is requested or in progress.
           content:
             application/json:
               schema:
@@ -3463,6 +3739,443 @@ paths:
                 type: string
         '404':
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/verification-queue:
+    get:
+      tags: [Reviews]
+      summary: Shared LawScan expert verification queue
+      description: |
+        Experts are LawScan platform accounts, so the queue spans every organization and personal account. It lists open requests waiting for any expert, plus the requests the calling expert is working on, oldest first (max 100).
+        Roles - expert.
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [requested, in_progress, all]
+            default: all
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ExpertReview'
+
+  /reviews/{reviewId}/verification:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Reviews]
+      summary: Expert verification of a review, with its action history
+      description: For the requester side. Experts read requests through GET /reviews/{reviewId}/verification/workspace. Roles - administrator, owner, manager, staff, user.
+      responses:
+        '200':
+          description: verification is null when the review was never sent for verification
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verification:
+                    allOf:
+                      - $ref: '#/components/schemas/ExpertReview'
+                    nullable: true
+                  actions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExpertAction'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/workspace:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Reviews]
+      summary: Redacted contract, clauses and findings of a verification request for the expert
+      description: |
+        Any expert can read a request that is still requested, to decide whether to claim it. Once claimed, only the assigned expert can read it. Sensitive data allowed by the contract profile's redaction policy is masked for display (names become aliases, IDs and dates are hidden, bank accounts and phones keep their last digits) in the contract title, document text, clause titles, text and summaries, finding text, proposed revisions and action snapshots. Clause offsets are omitted because they refer to the unmasked text.
+        Roles - expert.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  verification:
+                    $ref: '#/components/schemas/ExpertReview'
+                  contract:
+                    type: object
+                    properties:
+                      id: { type: string }
+                      title: { type: string }
+                      type: { type: string }
+                      ourParty: { type: string }
+                      industry: { type: string }
+                  document:
+                    type: object
+                    properties:
+                      text: { type: string }
+                      mimeType: { type: string }
+                      redactionSpans:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            type: { type: string }
+                            start: { type: integer }
+                            end: { type: integer }
+                  clauses:
+                    type: array
+                    description: Clauses of the reviewed version without startOffset and endOffset
+                    items:
+                      type: object
+                  findings:
+                    type: array
+                    description: Findings of the reviewed version with citations; clause holds only index and title
+                    items:
+                      type: object
+                  actions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExpertAction'
+        '403':
+          description: VERIFICATION_NOT_ASSIGNED - another expert has claimed the request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/request:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Send a completed review to an expert for verification
+      description: |
+        Only the latest fully completed review of the contract's current version can be sent, and not while another review of the contract runs. Verification is done by LawScan platform experts, so organizations and personal accounts can both request it; at least one active expert must exist on the platform. The requester must send consent true to share the contract with LawScan experts; consentedAt and consentedBy are recorded on every request. Sending a returned verification again reopens it and increments attempt; earlier decisions on findings are kept. While the verification is requested or in progress, new reviews and retries of the contract return 409 VERIFICATION_IN_PROGRESS. Verification does not use analysis credits.
+        Roles - owner, manager, staff, user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [consent]
+              properties:
+                consent:
+                  type: boolean
+                  enum: [true]
+                  description: Consent to share the contract with LawScan experts
+                note:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '201':
+          description: Requested
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertReview'
+        '400':
+          description: Validation error, including missing consent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: |
+            REVIEW_NOT_VERIFIABLE - the review is not fully completed.
+            REVIEW_OUTDATED - a newer review or contract version exists.
+            REVIEW_RUNNING - another review of the contract is running.
+            NO_EXPERT - no active LawScan expert on the platform.
+            VERIFICATION_EXISTS - already requested, in progress or approved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/start:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Claim a verification request
+      description: |
+        Moves the request to in_progress and assigns it to the calling expert. Calling it again on your own request returns it unchanged.
+        Roles - expert.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertReview'
+        '404':
+          description: The review was not sent for verification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: VERIFICATION_NOT_OPEN - another expert claimed it, or it was approved or returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/findings:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Add a risk the AI missed
+      description: |
+        Creates a finding with detectedBy expert and verdict added. With clauseIndex it is a clause risk, without it a missing clause. Recorded as an add action.
+        Roles - expert who claimed the verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddExpertFindingRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskFinding'
+        '400':
+          description: CLAUSE_NOT_FOUND - no clause with that index in this review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: VERIFICATION_NOT_ASSIGNED - another expert holds the verification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: VERIFICATION_NOT_OPEN - claim the request first
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/findings/{findingId}:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: findingId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    put:
+      tags: [Reviews]
+      summary: Confirm, adjust or reject a finding
+      description: |
+        Updates the finding (adjusted changes its content in place) and its verification, and records a confirm, adjust or reject action with before/after snapshots, in one transaction. The expert can change a decision by calling it again.
+        Roles - expert who claimed the verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DecideFindingRequest'
+      responses:
+        '200':
+          description: The updated finding
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RiskFinding'
+        '400':
+          description: |
+            INVALID_VERDICT - findings added by an expert accept only adjusted.
+            NOTHING_TO_ADJUST - the adjusted content equals the current content.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: VERIFICATION_NOT_ASSIGNED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: The finding is not part of this review
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: VERIFICATION_NOT_OPEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Reviews]
+      summary: Remove a finding the expert added
+      description: |
+        Only findings with detectedBy expert can be removed; reject AI findings instead. Recorded as a remove action.
+        Roles - expert who claimed the verification.
+      responses:
+        '204':
+          description: Removed
+        '400':
+          description: INVALID_VERDICT - the finding was found by the AI
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/approve:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Approve the verified result
+      description: |
+        Every finding needs a decision first. Recomputes the overall risk level from the final severities, leaving out rejected findings, and saves it on the current contract version (which contract lists and detail read). Review.result keeps the original AI result.
+        Roles - expert who claimed the verification.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                decisionNote:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '200':
+          description: Approved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertReview'
+        '400':
+          description: VERIFICATION_INCOMPLETE - some findings have no decision
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: VERIFICATION_NOT_OPEN
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /reviews/{reviewId}/verification/return:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Reviews]
+      summary: Return the review to the requester
+      description: |
+        Ends the verification with status returned and the reason in decisionNote. The contract can then be reviewed again, or the verification requested again.
+        Roles - expert who claimed the verification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              additionalProperties: false
+              properties:
+                reason:
+                  type: string
+                  maxLength: 2000
+      responses:
+        '200':
+          description: Returned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExpertReview'
+        '409':
+          description: VERIFICATION_NOT_OPEN
           content:
             application/json:
               schema:
@@ -3559,6 +4272,60 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /kb/legal-sources/catalog:
+    get:
+      tags: [LegalKB]
+      summary: List the legal source codes that contract profiles and legal rules depend on
+      description: |
+        Manager only. Contract profiles scope the legal search by these codes, and the built-in legal rules cite them. A legal source uploaded under any other code is still searchable, but no profile scopes to it and no rule can cite it. Upload a law the system relies on under the matching code here.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    code:
+                      type: string
+                      example: commercial_law_2005
+                    label:
+                      type: string
+                      example: Luật Thương mại 2005
+                    usedByProfiles:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          code:
+                            type: string
+                          name:
+                            type: string
+                    ruleCodes:
+                      type: array
+                      description: Legal rules that cite this source; their citations can only be verified once it is uploaded
+                      items:
+                        type: string
+                      example: [LTM_PENALTY_CAP]
+                    legalSource:
+                      type: object
+                      nullable: true
+                      description: The uploaded source with this code, or null if none has been uploaded yet
+                      properties:
+                        _id:
+                          type: string
+                        title:
+                          type: string
+                        status:
+                          type: string
+                          enum: [in_force, amended, repealed, not_yet_effective]
+                        ingestionStatus:
+                          type: string
+                          nullable: true
+                          enum: [queued, running, paused, completed, failed]
+
   /kb/legal-sources/preview:
     post:
       tags: [LegalKB]
@@ -3632,10 +4399,94 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+    patch:
+      tags: [LegalKB]
+      summary: Update a legal source's metadata or legal status without re-uploading it
+      description: |
+        Manager only. JSON body; send at least one field. null clears an optional field (documentNumber, issuingBody, issuedDate, effectiveDate, expiryDate, expectedArticleCount). code cannot be changed because contract profiles and legal rules reference it.
+        Setting status to repealed removes the source from legal search and from citation checks of new reviews right away; earlier reviews keep the excerpts they cited. A new citationLabel is used for new citations, but the stored embeddings keep the old label until the source is uploaded again.
+        expectedArticleCount recomputes the coverage report.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                title:
+                  type: string
+                  minLength: 2
+                  maxLength: 300
+                documentNumber:
+                  type: string
+                  nullable: true
+                  maxLength: 60
+                sourceType:
+                  type: string
+                  enum: [law, decree, circular, resolution, standard_template]
+                status:
+                  type: string
+                  enum: [in_force, amended, repealed, not_yet_effective]
+                citationLabel:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                issuingBody:
+                  type: string
+                  nullable: true
+                  maxLength: 200
+                issuedDate:
+                  type: string
+                  format: date
+                  nullable: true
+                effectiveDate:
+                  type: string
+                  format: date
+                  nullable: true
+                expiryDate:
+                  type: string
+                  format: date
+                  nullable: true
+                  description: Must be after effectiveDate (the stored one when effectiveDate is not sent)
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  nullable: true
+            example:
+              status: repealed
+              expiryDate: '2025-01-01'
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalSource'
+        '400':
+          description: Validation failed (unknown field, empty body, or expiryDate not after effectiveDate)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
     delete:
       tags: [LegalKB]
       summary: Delete a legal source and all of its chunks (also stops a running ingestion)
-      description: Manager only.
+      description: Manager only. Risk findings of earlier reviews keep the excerpts they cited (stored with the citation) and show them with inKnowledgeBase=false.
       responses:
         '204':
           description: Deleted

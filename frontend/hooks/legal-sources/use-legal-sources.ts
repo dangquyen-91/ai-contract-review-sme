@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { legalSourcesApi } from "@/lib/api/legal-sources";
 
 import { legalSourceKeys } from "@/lib/query-keys/legal-sources";
+import type { LegalSourceUpdate } from "@/types/legal-sources";
 
 
 export function useLegalSources() {
@@ -18,6 +19,10 @@ export function useLegalSource(id: string) {
   });
 }
 
+export function useLegalSourceCatalog() {
+  return useQuery({ queryKey: legalSourceKeys.catalog, queryFn: ({ signal }) => legalSourcesApi.catalog(signal), retry: false, staleTime: 60_000 });
+}
+
 export function usePreviewLegalSourceMutation() {
   return useMutation({ mutationFn: legalSourcesApi.preview });
 }
@@ -25,6 +30,14 @@ export function usePreviewLegalSourceMutation() {
 export function useAppendLegalSourcePartMutation(id: string) {
   const client = useQueryClient();
   return useMutation({ mutationFn: (data: FormData) => legalSourcesApi.appendPart(id, data),
+    onSettled: () => client.invalidateQueries({ queryKey: legalSourceKeys.list }),
+  });
+}
+
+export function useUpdateLegalSourceMutation(id: string) {
+  const client = useQueryClient();
+  return useMutation({ mutationFn: (data: LegalSourceUpdate) => legalSourcesApi.update(id, data),
+    onSuccess: (source) => { client.setQueryData(legalSourceKeys.detail(id), source); },
     onSettled: () => client.invalidateQueries({ queryKey: legalSourceKeys.list }),
   });
 }

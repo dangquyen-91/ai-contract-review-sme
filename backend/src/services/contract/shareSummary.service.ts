@@ -95,9 +95,11 @@ export async function getShareSummary(
   ) {
     throw AppError.conflict('Complete the analysis before creating a share summary.');
   }
-  const findings = await RiskFindingModel.find({ contractVersionId: version._id, orgId }).select(
-    'severity title recommendations',
-  );
+  const findings = (
+    await RiskFindingModel.find({ contractVersionId: version._id, orgId }).select(
+      'severity title recommendations verification',
+    )
+  ).filter((finding) => finding.verification?.verdict !== 'rejected');
   if (!contract.type) throw AppError.conflict('Complete the analysis before creating a share summary.');
   const profile = await resolveContractProfile(contract.type);
   return buildShareSummary({
