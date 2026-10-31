@@ -9,7 +9,7 @@ import { useLegalSourceUpload } from "@/hooks/legal-sources/use-legal-source-upl
 import { LegalSourceForm } from "./legal-source-form";
 import type { LegalSource } from "@/types/legal-sources";
 
-export function LegalSourceCreateDialog({ onSaved, onClose }: { onSaved: (source: LegalSource) => void; onClose: () => void }) {
+export function LegalSourceCreateDialog({ initialCode, onSaved, onClose }: { initialCode?: string; onSaved: (source: LegalSource) => void; onClose: () => void }) {
   const mutation = useCreateLegalSourceMutation();
   const [dirty, setDirty] = useState(false);
   const [discard, setDiscard] = useState(false);
@@ -38,7 +38,7 @@ export function LegalSourceCreateDialog({ onSaved, onClose }: { onSaved: (source
         </div>
       </div>}
       <div hidden={discard} className={discard ? "hidden" : "flex min-h-0 flex-1 flex-col"}>
-        <LegalSourceForm upload={upload} onCancel={requestClose} onChange={() => setDirty(true)} />
+        <LegalSourceForm upload={upload} defaultCode={initialCode} onCancel={requestClose} onChange={() => setDirty(true)} />
       </div>
     </DialogContent>
   </Dialog>;

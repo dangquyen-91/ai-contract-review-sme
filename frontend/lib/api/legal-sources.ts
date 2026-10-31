@@ -1,7 +1,10 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
-import type { AdminHealth, LegalSource, LegalSourcePreview } from "@/types/legal-sources";
+import type { AdminHealth, LegalSource, LegalSourceCatalogEntry, LegalSourcePreview } from "@/types/legal-sources";
 
 export const legalSourcesApi = {
+  catalog(signal?: AbortSignal) {
+    return apiRequest<LegalSourceCatalogEntry[]>({ url: "/manager/legal-sources/catalog", signal });
+  },
   detail(id: string, signal?: AbortSignal) {
     return apiRequest<LegalSource>({ url: `/manager/legal-sources/${encodeURIComponent(id)}`, signal });
   },

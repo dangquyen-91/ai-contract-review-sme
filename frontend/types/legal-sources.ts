@@ -7,6 +7,7 @@ export type LegalSource = {
   effectiveDate?: string;
   chunkCount: number;
   code?: string;
+  inCatalog?: boolean;
   documentNumber?: string;
   status?: "in_force" | "amended" | "repealed" | "not_yet_effective";
   issuedDate?: string;
@@ -18,5 +19,13 @@ export type LegalSource = {
 
 export type LegalCoverage = { structured: boolean; articleCount: number; expectedArticleCount?: number; missingArticleCount: number; missingRanges: string[]; complete: boolean; warnings: string[]; chunkCount: number };
 export type LegalSourcePreview = { documentNumber?: string; coverage: LegalCoverage; chunks: { order: number; articleRef?: string; articleTitle?: string; characters: number; preview: string }[] };
+
+export type LegalSourceCatalogEntry = {
+  code: string;
+  label: string;
+  usedByProfiles: { code: string; name: string }[];
+  ruleCodes: string[];
+  legalSource: { _id: string; title: string; status?: LegalSource["status"]; ingestionStatus: NonNullable<LegalSource["ingestion"]>["status"] | null } | null;
+};
 
 export type AdminHealth = { status: "ok" };

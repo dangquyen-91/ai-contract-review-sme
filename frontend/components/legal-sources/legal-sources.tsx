@@ -16,6 +16,7 @@ import { LegalSourceMetrics } from "./legal-source-metrics";
 import { LegalSourceStatusFilters } from "./legal-source-status-filters";
 import { LegalSourceCharts } from "./legal-source-charts";
 import { LegalSourceAttentionList } from "./legal-source-attention-list";
+import { LegalSourceCatalogGaps } from "./legal-source-catalog-gaps";
 import { getLegalSourceAnalytics } from "@/lib/legal-sources/legal-source-analytics";
 import type { SourceGroup } from "@/lib/legal-sources/legal-source-filtering";
 import { LegalSourceDetailDialog } from "./legal-source-detail-dialog";
@@ -24,7 +25,9 @@ import type { LegalSource } from "@/types/legal-sources";
 export function LegalSources() {
   const workspace = useLegalSourcesWorkspace();
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [initialCode, setInitialCode] = useState<string>();
   function openDetail(source: LegalSource) { setDetailId(source._id); }
+  function addSource(code?: string) { setInitialCode(code); workspace.openForm(); }
   const { query, search, type, filtered, sources, currentPage, totalPages, showForm, deleting, deletePending, deleteError } = workspace;
   const analytics = getLegalSourceAnalytics(query.data ?? []);
   function showSources(group: SourceGroup, sourceType = "all") {
@@ -42,13 +45,15 @@ export function LegalSources() {
           title="Kho dữ liệu pháp lý"
           description="Tra cứu văn bản pháp luật và mẫu hợp đồng được sử dụng làm nguồn tham chiếu."
         />
-        <LegalSourceToolbar showForm={showForm} fetching={query.isFetching} onAdd={workspace.openForm} onRefresh={() => query.refetch()} />
+        <LegalSourceToolbar showForm={showForm} fetching={query.isFetching} onAdd={() => addSource()} onRefresh={() => query.refetch()} />
       </div>
       <LegalSourceMetrics pending={query.isPending} counts={query.data ? [query.data.length, query.data.filter((source) => source.sourceType !== "standard_template").length, query.data.filter((source) => source.sourceType === "standard_template").length, query.data.reduce((sum, source) => sum + source.chunkCount, 0)] : null} />
       <LegalSourceCharts analytics={analytics} total={query.data?.length ?? 0} pending={query.isPending} unavailable={query.isError && !query.data} onSelectType={(sourceType) => showSources("all", sourceType)} onSelectGroup={(group) => showSources(group)} />
       <LegalSourceAttentionList sources={analytics.attention} pending={query.isPending} unavailable={query.isError && !query.data} onDetail={openDetail} />
+      <LegalSourceCatalogGaps disabled={showForm} onAdd={addSource} />
       {showForm && (
         <LegalSourceCreateDialog
+          initialCode={initialCode}
           onClose={workspace.closeForm}
           onSaved={(source) => { workspace.sourceSaved(); openDetail(source); }}
         />

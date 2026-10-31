@@ -18,6 +18,10 @@ export function useLegalSource(id: string) {
   });
 }
 
+export function useLegalSourceCatalog() {
+  return useQuery({ queryKey: legalSourceKeys.catalog, queryFn: ({ signal }) => legalSourcesApi.catalog(signal), retry: false, staleTime: 60_000 });
+}
+
 export function usePreviewLegalSourceMutation() {
   return useMutation({ mutationFn: legalSourcesApi.preview });
 }
