@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { RiskDetails } from "@/components/review/results/risk-details";
 import { RiskFindingCard } from "@/components/review/results/risk-finding-card";
+import { analysisCoverageNotes } from "@/lib/review/analysis-coverage";
 import workspaceStyles from "@/styles/review/review-workspace.module.css";
 import type { ContractReviewResult, RiskFinding } from "@/types/contracts";
 
@@ -32,6 +33,7 @@ export function ReviewAnalysisPane({ result, sectionId, isDocx, onJumpToClause }
   const summaryComplete = result.contract.currentVersion?.summaryStatus === "completed";
   const risksComplete = result.contract.currentVersion?.riskDetectionStatus === "completed";
   const findings = result.findings;
+  const coverageNotes = analysisCoverageNotes(result.contract.currentVersion);
   const visibleFindings = findings
     .filter((finding) => severityFilter === "all" || finding.severity === severityFilter)
     .sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]
@@ -50,6 +52,11 @@ export function ReviewAnalysisPane({ result, sectionId, isDocx, onJumpToClause }
       <section className="px-[22px] pb-[25px] pt-5" aria-labelledby="review-findings-heading">
         <div className="[&_h3]:text-ui-section [&_h3]:font-semibold [&_h3]:m-0 flex items-center gap-[7px] [&>_span]:grid [&>_span]:min-w-5 [&>_span]:h-5 [&>_span]:place-items-center [&>_span]:text-[#2859aa] [&>_span]:[background:#eaf1ff] [&>_span]:text-ui-caption [&>_span]:font-bold [&>_span]:rounded-[10px]"><h3 id="review-findings-heading">Điểm cần lưu ý</h3><span>{findings.length}</span></div>
         {findings.length > 0 && <p className="mb-0 mt-2 text-ui-meta leading-5 text-muted-foreground">Sắp xếp theo mức độ: Cao → Trung bình → Thấp. Mỗi mục hiển thị ý chính; mở chi tiết để xem toàn bộ phân tích.</p>}
+        {coverageNotes.length > 0 && (
+          <div role="note" className="mb-0 mt-3 grid gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-ui-meta leading-5 text-amber-900">
+            {coverageNotes.map((note) => <p key={note} className="m-0">{note}</p>)}
+          </div>
+        )}
         <div role="group" className={workspaceStyles.filters} aria-label="Lọc mức rủi ro">{(["all", "high", "medium", "low"] as const).map((severity) => <Button variant={severityFilter === severity ? "default" : "outline"} size="sm" type="button" key={severity} aria-pressed={severityFilter === severity} onClick={() => { setSeverityFilter(severity); setExpandedFinding(null); }}>{severity === "all" ? "Tất cả" : severityLabels[severity]} · {severity === "all" ? findings.length : findings.filter((finding) => finding.severity === severity).length}</Button>)}</div>
         {visibleFindings.length ? <ul className="m-0 mt-4 grid list-none gap-3 p-0">{visibleFindings.map((finding) => {
           const clauseIndex = findingClauseIndex(finding, clauses);

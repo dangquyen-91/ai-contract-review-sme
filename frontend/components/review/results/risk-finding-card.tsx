@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
+import { riskCodeLabel } from "@/config/risk-display";
 import type { RiskFinding } from "@/types/contracts";
 
 const tones = {
@@ -25,6 +26,7 @@ export function RiskFindingCard({ finding, expanded, detailId, onToggle, onJump,
   children: ReactNode;
 }) {
   const tone = tones[finding.severity];
+  const riskType = riskCodeLabel(finding.riskCode);
   const preview = [
     { label: "Vấn đề", text: firstPoint(finding.problem) ?? "Chưa có mô tả chi tiết cho vấn đề này." },
     { label: "Ảnh hưởng", text: firstPoint(finding.consequences) ?? "Chưa có mô tả ảnh hưởng trong kết quả phân tích." },
@@ -32,9 +34,16 @@ export function RiskFindingCard({ finding, expanded, detailId, onToggle, onJump,
   ];
 
   return <li data-risk-severity={finding.severity} className={`min-w-0 rounded-xl border border-l-4 bg-card p-4 ${tone.card}`}>
-    <span className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1 text-ui-caption font-semibold ${tone.badge}`}>
-      <Icon name="shield" className="size-3.5 shrink-0" />{tone.label}
-    </span>
+    <div className="flex flex-wrap items-center gap-2">
+      <span className={`inline-flex w-fit items-center gap-1.5 rounded-md px-2 py-1 text-ui-caption font-semibold ${tone.badge}`}>
+        <Icon name="shield" className="size-3.5 shrink-0" />{tone.label}
+      </span>
+      {riskType && (
+        <span data-risk-code={finding.riskCode} className="inline-flex w-fit items-center rounded-md border border-border px-2 py-1 text-ui-caption font-medium text-muted-foreground">
+          {riskType}
+        </span>
+      )}
+    </div>
     <h4 className="mb-0 mt-3 break-words text-ui-section font-semibold leading-6 text-card-foreground [overflow-wrap:anywhere]">{finding.title}</h4>
     {finding.findingType === "missing_clause" && <p className="mb-0 mt-2 text-ui-meta leading-5 text-muted-foreground">Điều khoản này chưa có trong hợp đồng.</p>}
     {!expanded && <dl className="mb-0 mt-3 grid gap-3">

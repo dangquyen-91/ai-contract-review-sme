@@ -1,6 +1,26 @@
 export type ContractStatus = "uploaded" | "processing" | "reviewed" | "archived" | "unsupported";
 export type ReviewBillingConfirmation = { versionId: string; units: number };
 export type ContractRiskLevel = "high" | "medium" | "low" | "none";
+export type LegalRetrievalStatus = "ok" | "degraded" | "no_sources" | "unavailable";
+export type RuleCheckStatus = "ok" | "skipped" | "not_applicable";
+export type RiskCode =
+  | "UNLAWFUL_TERM"
+  | "MISSING_MANDATORY_FORM"
+  | "UNILATERAL_TERMINATION"
+  | "AUTO_RENEWAL"
+  | "EXCESSIVE_PENALTY"
+  | "LIABILITY_LIMITATION"
+  | "ONE_SIDED_INDEMNITY"
+  | "UNFAVORABLE_PAYMENT"
+  | "ONE_SIDED_OBLIGATION"
+  | "BROAD_EXCLUSION"
+  | "IP_DATA_RISK"
+  | "UNFAVORABLE_DISPUTE_FORUM"
+  | "VAGUE_SCOPE"
+  | "AMBIGUOUS_TERM"
+  | "MISSING_CLAUSE"
+  | "MISSING_PROTECTION"
+  | "OTHER";
 
 export type ClassificationOutcome = "supported" | "unsupported_type" | "not_contract" | "not_allowed_for_account";
 
@@ -49,6 +69,8 @@ export type DashboardContract = {
     riskDetectionStatus?: "pending" | "processing" | "completed" | "failed";
     riskDetectionError?: string;
     riskDetectionStartedAt?: string;
+    legalRetrievalStatus?: LegalRetrievalStatus;
+    ruleCheckStatus?: RuleCheckStatus;
     analysisFocus?: string;
     fileName?: string;
     mimeType?: string;
@@ -101,7 +123,9 @@ export type RiskFinding = {
   recommendations: string[];
   proposedRevision?: { originalText?: string; revisedText: string; reason?: string; isEdited: boolean };
   status?: "open" | "acknowledged" | "dismissed" | "resolved";
-  detectedBy?: "rule" | "llm" | "hybrid";
+  detectedBy?: "rule" | "llm" | "hybrid" | "checklist";
+  riskCode?: RiskCode;
+  ruleCode?: string;
   citations: {
     legalKnowledgeChunkId: string;
     citationLabel: string;
@@ -141,7 +165,15 @@ export type ContractReviewRun = {
   status: "queued" | "running" | "completed" | "failed" | "cancelled";
   errorCode?: ReviewErrorCode;
   cancelRequested?: boolean;
-  result?: { partial?: boolean; summaryPoints?: string[]; clauseCount?: number; findingCounts?: { high: number; medium: number; low: number } };
+  result?: {
+    partial?: boolean;
+    summaryPoints?: string[];
+    clauseCount?: number;
+    findingCounts?: { high: number; medium: number; low: number };
+    legalRetrievalStatus?: LegalRetrievalStatus;
+    ruleCheckStatus?: RuleCheckStatus;
+  };
+  aiModel?: string;
   currentStage?: "waiting_for_extraction" | "segmentation" | "summary" | "risk_detection";
   stageDetail?: string;
   stages?: {
