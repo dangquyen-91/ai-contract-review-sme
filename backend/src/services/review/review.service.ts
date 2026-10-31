@@ -12,6 +12,7 @@ import {
 } from './reviewWorker.service';
 import { finishUsage, reserveUsage } from '../billing/usage.service';
 import { assertAccountReviewPolicy } from '../contract/personalReviewPolicy';
+import { assertNoOpenVerification } from './verification.service';
 
 const REVIEW_LEASE_MS = 30 * 60 * 1000;
 
@@ -87,6 +88,7 @@ export async function startReview({ orgId, userId, contractId, idempotencyKey, a
     throw AppError.badRequest('Chưa đọc được nội dung hợp đồng. Vui lòng tải lại tệp.');
   }
 
+  await assertNoOpenVerification(contractId);
   await releaseLostActiveReview(orgId, contractId);
   const active = await ReviewModel.findOne({ contractId, activeLock: true }).select('_id');
   if (active) throw AppError.conflict('Hợp đồng đang được rà soát. Vui lòng chờ yêu cầu hiện tại hoàn tất.', 'REVIEW_RUNNING');
@@ -184,6 +186,7 @@ export async function retryReview({ orgId, userId, reviewId, idempotencyKey, isP
   }
   if (billing && billing.versionId !== version.id) throw AppError.conflict('Phiên bản hợp đồng đã thay đổi. Vui lòng kiểm tra lại số trang.', 'REVIEW_QUOTE_CHANGED');
 
+  await assertNoOpenVerification(contractId);
   await releaseLostActiveReview(orgId, contractId);
   if (await ReviewModel.exists({ contractId, activeLock: true })) {
     throw AppError.conflict('Hợp đồng đang được rà soát. Vui lòng chờ yêu cầu hiện tại hoàn tất.', 'REVIEW_RUNNING');
