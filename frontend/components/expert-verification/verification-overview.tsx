@@ -10,9 +10,11 @@ import { VerificationWorkList } from "./verification-work-list";
 import { VerificationOverviewHero } from "./verification-overview-hero";
 import { VerificationOverviewMetrics } from "./verification-overview-metrics";
 import { VerificationDistributionChart } from "./verification-distribution-chart";
+import { useRestoreVerificationList } from "@/hooks/expert-verification/use-verification-list-navigation";
 
 export function VerificationOverview() {
   const { assigned, waiting, refreshing, updatedAt, refresh } = useVerificationOverview();
+  useRestoreVerificationList(Boolean(assigned.data && waiting.data && !refreshing));
   const [group, setGroup] = useState<"assigned" | "waiting">("assigned");
   const current = group === "assigned" ? assigned : waiting;
   return (

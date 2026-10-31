@@ -1,4 +1,5 @@
-import Link from "next/link";
+"use client";
+import { VerificationWorkspaceLink } from "./verification-workspace-link";
 import { ArrowRight, LockKeyhole } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -10,9 +11,9 @@ function WorkItemAction({ item }: { item: ExpertWorkItem }) {
   if (!item.available) return <span className="text-ui-meta text-muted-foreground">Hợp đồng không còn khả dụng</span>;
   return (
     <Button asChild variant="outline" size="sm">
-      <Link href={`/expert-verification/${encodeURIComponent(item.reviewId)}${item.historical ? `?attempt=${item.attempt}` : ""}`}>
+      <VerificationWorkspaceLink href={`/expert-verification/${encodeURIComponent(item.reviewId)}${item.historical ? `?attempt=${item.attempt}` : ""}`}>
         {item.status === "in_progress" ? "Tiếp tục xử lý" : "Xem kết quả"}<ArrowRight aria-hidden="true" />
-      </Link>
+      </VerificationWorkspaceLink>
     </Button>
   );
 }
@@ -29,7 +30,7 @@ export function MyWorkTable({ items }: { items: ExpertWorkItem[] }) {
       </TableHeader>
       <TableBody>
         {items.map((item) => (
-          <TableRow key={`${item.expertReviewId}:${item.attempt}`}>
+          <TableRow key={`${item.expertReviewId}:${item.attempt}`} data-verification-row={`${item.expertReviewId}:${item.attempt}`}>
             <TableCell className="min-w-52 max-w-80 whitespace-normal">
               <p className="m-0 break-words font-semibold [overflow-wrap:anywhere]">{item.title}</p>
               <p className="mb-0 mt-1 text-ui-meta text-muted-foreground">{contractTypeLabels[item.contractType ?? ""] ?? "Chưa xác định loại"} · Lần {item.attempt}</p>

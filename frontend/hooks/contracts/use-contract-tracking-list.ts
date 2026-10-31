@@ -46,6 +46,7 @@ export function useContractTrackingList(scope: string, enabled: boolean) {
     setFilter: (next: DashboardContractFilter) => setState({ page: 1, status: next.status ?? "", riskLevel: next.riskLevel ?? "", verificationStatus: next.verificationStatus ?? "" }),
     setVerification: (verificationStatus: string) => setState({ page: 1, verificationStatus }),
     setPage: (page: number) => setState({ page }),
+    resetFilters: () => setState({ page: 1, search: "", status: "", riskLevel: "", verificationStatus: "" }),
     dismissUpload,
   };
 }

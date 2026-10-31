@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
+import { VerificationWorkspaceLink } from "./verification-workspace-link";
+import { useVerificationQueueFilter } from "@/hooks/expert-verification/use-verification-queue-filter";
+import { useRestoreVerificationList } from "@/hooks/expert-verification/use-verification-list-navigation";
 import { ArrowRight, RefreshCw, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
@@ -16,8 +17,9 @@ const filters: { value: VerificationQueueFilter; label: string }[] = [
 ];
 
 export function VerificationQueue({ initialFilter = "all" }: { initialFilter?: VerificationQueueFilter }) {
-  const [filter, setFilter] = useState<VerificationQueueFilter>(initialFilter);
+  const [filter, setFilter] = useVerificationQueueFilter(initialFilter);
   const query = useVerificationQueue(filter);
+  useRestoreVerificationList(Boolean(query.data && !query.isFetching));
   return (
     <section className="space-y-6 text-card-foreground">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -42,12 +44,14 @@ export function VerificationQueue({ initialFilter = "all" }: { initialFilter?: V
             <TableHeader><TableRow><TableHead>Hợp đồng</TableHead><TableHead>Người gửi</TableHead><TableHead>Thời gian gửi</TableHead><TableHead>Trạng thái</TableHead><TableHead><span className="sr-only">Thao tác</span></TableHead></TableRow></TableHeader>
             <TableBody>
               {query.data.map((item) => (
-                <TableRow key={item._id}>
-                  <TableCell className="min-w-48 max-w-80 whitespace-normal"><p className="m-0 break-words font-semibold">{item.contractId?.title || "Hợp đồng không còn khả dụng"}</p><p className="mb-0 mt-1 text-ui-meta text-muted-foreground">{contractTypeLabels[item.contractId?.type ?? ""] ?? "Chưa xác định loại"}</p></TableCell>
+                <TableRow key={item._id} data-verification-row={item._id}>
+                  <TableCell className="min-w-48 max-w-80 whitespace-normal"><p className="m-0 break-words font-semibold">{item.contractId?.title || "Hợp đồng không còn khả dụng"}</p><p className="mb-0 mt-1 text-ui-meta text-muted-foreground">{contractTypeLabels[item.contractId?.type ?? ""] ?? "Chưa xác định loại"}</p>
+                    <details className="mt-2 text-ui-meta"><summary className="cursor-pointer font-medium text-primary">Ghi chú ưu tiên</summary><p className="mb-0 mt-1 whitespace-pre-wrap break-words">{item.requestNote || "Người gửi không kèm ghi chú ưu tiên."}</p></details>
+                  </TableCell>
                   <TableCell>{typeof item.requestedBy === "object" ? item.requestedBy?.name || "Tài khoản không còn khả dụng" : "Người gửi"}</TableCell>
                   <TableCell className="min-w-44 text-ui-meta">{verificationDate(item.requestedAt)}</TableCell>
                   <TableCell><span className={`inline-block rounded-full border px-2.5 py-1 text-ui-meta ${verificationStatuses[item.status].tone}`}>{verificationStatuses[item.status].label}</span></TableCell>
-                  <TableCell><Button asChild variant="outline" size="sm"><Link href={`/expert-verification/${item.reviewId}`}>Xem yêu cầu<ArrowRight aria-hidden="true" /></Link></Button></TableCell>
+                  <TableCell>{item.contractId ? <Button asChild variant="outline" size="sm"><VerificationWorkspaceLink href={`/expert-verification/${item.reviewId}`}>Xem yêu cầu<ArrowRight aria-hidden="true" /></VerificationWorkspaceLink></Button> : <span className="text-ui-meta text-muted-foreground">Không còn khả dụng</span>}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

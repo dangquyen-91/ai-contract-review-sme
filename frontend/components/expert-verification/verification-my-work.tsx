@@ -8,11 +8,13 @@ import { MyWorkTable } from "./my-work-table";
 import { useMyVerifications } from "@/hooks/expert-verification/use-my-verifications";
 import { verificationErrorMessage } from "@/lib/review/expert-verification";
 import { routes } from "@/config/routes";
+import { useRestoreVerificationList } from "@/hooks/expert-verification/use-verification-list-navigation";
 
 export function VerificationMyWork() {
   const controller = useMyVerifications();
   const { filter, query, setPage } = controller;
   const data = query.data;
+  useRestoreVerificationList(Boolean(data && !query.isFetching));
   return (
     <section className="space-y-6 text-card-foreground">
       <header className="flex flex-wrap items-start justify-between gap-4">
@@ -26,7 +28,7 @@ export function VerificationMyWork() {
         </Button>
       </header>
       <div className="overflow-hidden rounded-xl border border-border bg-card">
-        <MyWorkFilters controller={controller} />
+        <MyWorkFilters key={`${filter.search}:${filter.type}:${filter.from}:${filter.to}`} controller={controller} />
         {query.isError && <p role="alert" className="m-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-ui text-amber-950">{verificationErrorMessage(query.error)}{data && " Dữ liệu bên dưới là lần tải gần nhất; hãy làm mới để kiểm tra lại."}</p>}
         <div aria-busy={query.isFetching}>
           {query.isPending ? (

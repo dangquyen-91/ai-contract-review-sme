@@ -13,6 +13,7 @@ const { ReviewModel } = require('../dist/models/review.model');
 const { ExpertReviewModel } = require('../dist/models/expertReview.model');
 const { listContracts } = require('../dist/services/contract/contract.service');
 const { listContractsQuerySchema } = require('../dist/validations/contract.validation');
+const { listVerificationQueue } = require('../dist/services/review/verification.service');
 const oid = () => new mongoose.Types.ObjectId();
 const org = oid(), otherOrg = oid();
 const pagination = { page: 1, limit: 10, skip: 0, sortBy: 'updatedAt', sortOrder: -1 };
@@ -69,4 +70,14 @@ test('request updates are reflected and validation rejects unknown statuses', as
   expect((await listContracts(String(org), { verificationStatus: 'in_progress' }, pagination)).total).toBe(1);
   expect((await listContracts(String(org), { verificationStatus: 'approved' }, pagination)).total).toBe(0);
   expect(listContractsQuerySchema.safeParse({ verificationStatus: 'cancelled' }).success).toBe(false);
+});
+
+test('expert queue redacts priority notes even when their data does not appear in the contract', async () => {
+  await ContractModel.collection.updateOne({ _id: sent }, { $unset: { type: '' } });
+  await ExpertReviewModel.updateOne({ reviewId: oldReview }, { $set: { status: 'requested', requestNote: 'Ưu tiên thanh toán. Email: priority@example.com. Điện thoại: 0903123456' } });
+  const rows = await listVerificationQueue(String(oid()), 'requested');
+  const row = rows.find(item => String(item.reviewId) === String(oldReview));
+  expect(row.requestNote).toContain('Ưu tiên thanh toán');
+  expect(row.requestNote).not.toContain('priority@example.com');
+  expect(row.requestNote).not.toContain('0903123456');
 });

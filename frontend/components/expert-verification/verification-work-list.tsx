@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { VerificationWorkspaceLink } from "./verification-workspace-link";
 import { ArrowRight, ClipboardCheck, Inbox } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { contractTypeLabels } from "@/config/contract-display";
@@ -45,7 +46,7 @@ export function VerificationWorkList({ kind, items, pending, error, refreshing, 
       {pending ? <p role="status" className="p-6 text-ui text-muted-foreground">Đang tải danh sách yêu cầu…</p> : items?.length ? (
         <ul className="m-0 list-none divide-y divide-border p-0">
           {items.slice(0, 5).map((item) => (
-            <li key={item._id} className="flex flex-col items-start justify-between gap-3 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
+            <li key={item._id} data-verification-row={item._id} className="flex flex-col items-start justify-between gap-3 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
               <div className="min-w-0 flex-1">
                 <h3 className="m-0 break-words text-ui font-semibold [overflow-wrap:anywhere]">{item.contractId?.title || "Hợp đồng không còn khả dụng"}</h3>
                 <p className="mb-0 mt-1 text-ui-meta text-muted-foreground">{contractTypeLabels[item.contractId?.type ?? ""] ?? "Chưa xác định loại"}</p>
@@ -53,7 +54,7 @@ export function VerificationWorkList({ kind, items, pending, error, refreshing, 
               </div>
               {item.contractId ? (
                 <Button asChild size="sm" variant={assigned ? "default" : "outline"}>
-                  <Link href={`/expert-verification/${item.reviewId}`}>{assigned ? "Tiếp tục kiểm tra" : "Xem yêu cầu"}<ArrowRight aria-hidden="true" /></Link>
+                  <VerificationWorkspaceLink href={`/expert-verification/${item.reviewId}`}>{assigned ? "Tiếp tục kiểm tra" : "Xem yêu cầu"}<ArrowRight aria-hidden="true" /></VerificationWorkspaceLink>
                 </Button>
               ) : <Button size="sm" variant="outline" disabled>Không khả dụng</Button>}
             </li>

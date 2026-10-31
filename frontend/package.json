@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "test:expert-verification": "node --test scripts/expert-verification.test.mjs scripts/expert-workspace.test.mjs",
+    "test:expert-verification": "node --test scripts/expert-verification.test.mjs scripts/expert-workspace.test.mjs scripts/contract-tracking.test.mjs",
     "test:expert-verification:browser": "node scripts/expert-workspace-browser-check.mjs",
     "dev": "next dev",
     "build": "next build",

@@ -19,6 +19,41 @@ function load(file, dependencies = {}, globals = {}) {
   return exports;
 }
 const helpers = load('../lib/review/verification-workspace.ts');
+const summaryHelpers = load('../lib/review/verification-summary.ts');
+test('completion totals distinguish verdicts and exclude rejected items from retained risks', () => {
+  const rows = [
+    { _id: '1', severity: 'high', verification: { verdict: 'confirmed' } },
+    { _id: '2', severity: 'medium', verification: { verdict: 'adjusted' } },
+    { _id: '3', severity: 'high', verification: { verdict: 'rejected' } },
+    { _id: '4', severity: 'low', verification: { verdict: 'added' } },
+    { _id: '5', severity: 'high' },
+  ];
+  assert.equal(JSON.stringify(summaryHelpers.verificationSummary(rows)), JSON.stringify({ confirmed: 1, adjusted: 1, rejected: 1, added: 1, pending: 1, high: 2, medium: 1, low: 1 }));
+  assert.equal(summaryHelpers.nextPendingFinding(rows, '4')._id, '5');
+  assert.equal(summaryHelpers.nextPendingFinding(rows, '5')._id, '5');
+  assert.equal(summaryHelpers.nextPendingFinding(rows.slice(0, 4), '1'), undefined);
+  assert.equal(summaryHelpers.nextPendingFinding([]), undefined);
+});
+
+test('expert return navigation keeps the query and rejects foreign or stale destinations', () => {
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
+  const nav = load('../lib/review/verification-navigation.ts', {}, {
+    URL, sessionStorage: storage, location: { pathname: '/expert-verification/my-work', search: '?page=2&status=returned' }, window: { scrollY: 350 },
+  });
+  nav.saveVerificationReturn('expert', '/expert-verification/' + 'a'.repeat(24) + '?attempt=2', { dataset: { verificationRow: 'row' }, getBoundingClientRect: () => ({ top: 75 }) });
+  const saved = nav.readVerificationReturn('expert');
+  assert.equal(saved.href, '/expert-verification/my-work?page=2&status=returned');
+  assert.equal(saved.offset, 75);
+  assert.equal(nav.readVerificationReturn('another-expert'), null);
+  const key = [...values.keys()][0];
+  for (const href of ['https://outside.example/expert-verification', '//outside.example/expert-verification', '/\\outside.example/expert-verification', '/contract', 'javascript:alert(1)']) {
+    storage.setItem(key, JSON.stringify({ ...saved, href }));
+    assert.equal(nav.readVerificationReturn('expert'), null);
+  }
+  storage.setItem(key, JSON.stringify({ ...saved, savedAt: Date.now() - 3600001 }));
+  assert.equal(nav.readVerificationReturn('expert'), null);
+});
 test('only the expert who claimed an open verification may edit', () => {
   assert.equal(helpers.canEditVerification({ status: 'requested' }, 'expert'), false);
   assert.equal(helpers.canEditVerification({ status: 'in_progress', expertId: 'expert' }, 'expert'), true);
@@ -102,7 +137,13 @@ test('work list applies new filters from page one and does not reuse another fil
   const options = [];
   const keys = load('../lib/query-keys/expert-verification.ts').expertVerificationKeys;
   const { useMyVerifications } = load('../hooks/expert-verification/use-my-verifications.ts', {
-    react: { useState: (initial) => { state ??= initial; return [state, (next) => { state = typeof next === 'function' ? next(state) : next; }]; } },
+    react: { useEffect() {} },
+    nuqs: {
+      parseAsString: { withDefault: value => ({ value }) },
+      parseAsStringLiteral: () => ({ withDefault: value => ({ value }) }),
+      useQueryStates: (params) => { state ??= Object.fromEntries(Object.entries(params).map(([key, parser]) => [key, parser.value])); return [state, (next) => { state = { ...state, ...next }; }]; },
+    },
+    '@/hooks/shared/use-pagination-page': { paginationPageParser: { value: 1 } },
     '@tanstack/react-query': { useQuery: (value) => { options.push(value); return {}; } },
     '@/lib/api/expert-workspace': { expertWorkspaceApi: {} },
     '@/lib/query-keys/expert-verification': { expertVerificationKeys: keys },
