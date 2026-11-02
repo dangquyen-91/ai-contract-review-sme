@@ -40,7 +40,7 @@ export async function assertUsageAccess(input: UsageInput, session: ClientSessio
   }
   const draft = await ContractDraftModel.exists({
     _id: input.draftId,
-    orgId: input.orgId,
+    orgId: input.userId === input.orgId ? null : input.orgId,
     ...(role !== 'owner' ? { createdBy: input.userId } : {}),
   }).session(session);
   if (!draft) throw AppError.forbidden('Bạn không có quyền truy cập bản nháp này.');

@@ -2,15 +2,10 @@
 
 import { useRef, useState } from "react";
 import { LoaderCircle, Paperclip, Scale, X } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { StudioLawPicker } from "./studio-law-picker";
 import { contractDraftsApi } from "@/lib/api/contract-drafts";
 import type { StudioReference } from "@/types/template-studio";
+import type { TemplateCode } from "@/types/contract-drafts";
 
 export function StudioReferenceList({
   references,
@@ -50,16 +45,18 @@ export function StudioReferenceList({
 
 export function StudioChatTools({
   draftId,
-  legalBasis,
-  reviewNotes,
+  templateCode,
+  legalSourceIds,
+  onLegalSourcesChange,
   disabled,
   references,
   onChange,
   onUploading,
 }: {
   draftId: string;
-  legalBasis: string;
-  reviewNotes?: string[];
+  templateCode: TemplateCode;
+  legalSourceIds: string[];
+  onLegalSourcesChange: (ids: string[]) => void;
   disabled: boolean;
   references: StudioReference[];
   onChange: (items: StudioReference[]) => void;
@@ -132,10 +129,16 @@ export function StudioChatTools({
       <button
         type="button"
         onClick={() => setLawOpen(true)}
+        aria-label="Chọn luật áp dụng"
         className="flex shrink-0 items-center gap-1 rounded-md px-1 py-1.5 text-[10px] text-slate-500 hover:bg-slate-100"
       >
         <Scale size={14} />
         Luật áp dụng
+        {legalSourceIds.length > 0 && (
+          <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold text-blue-600">
+            {legalSourceIds.length}
+          </span>
+        )}
       </button>
       {(error || fileHelp) && (
         <div
@@ -158,31 +161,13 @@ export function StudioChatTools({
         </div>
       )}
       {lawOpen && (
-        <Dialog open onOpenChange={setLawOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Luật áp dụng</DialogTitle>
-              <DialogDescription>
-                Căn cứ tham khảo được lưu cùng mẫu hợp đồng này.
-              </DialogDescription>
-            </DialogHeader>
-            <p className="rounded-xl bg-slate-50 p-4 text-sm leading-7 text-slate-700">
-              {legalBasis}
-            </p>
-            {!!reviewNotes?.length && (
-              <div className="space-y-2 rounded-xl bg-amber-50 p-4 text-xs leading-6 text-amber-900">
-                {reviewNotes.map((note) => (
-                  <p key={note}>{note}</p>
-                ))}
-              </div>
-            )}
-            <p className="text-xs leading-6 text-slate-500">
-              Bạn có thể chỉnh phần căn cứ ngay trong văn bản hoặc đính kèm tài
-              liệu để nhờ AI đề xuất. Nội dung này chưa xác nhận hiệu lực pháp
-              luật tại thời điểm ký.
-            </p>
-          </DialogContent>
-        </Dialog>
+        <StudioLawPicker
+          templateCode={templateCode}
+          selectedIds={legalSourceIds}
+          disabled={disabled}
+          onApply={onLegalSourcesChange}
+          onClose={() => setLawOpen(false)}
+        />
       )}
     </>
   );

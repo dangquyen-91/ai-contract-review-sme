@@ -1,160 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import {
-  ArrowUp,
-  Check,
-  Mic,
-  MicOff,
-  Sparkles,
-  X,
-  MessageSquare,
-  LoaderCircle,
-} from "lucide-react";
+import { ArrowUp, Mic, MicOff, Sparkles, X, LoaderCircle } from "lucide-react";
 import { useReviewAllowance } from "@/hooks/review/use-review-allowance";
 import { useStudioVoice } from "@/hooks/contract-drafts/use-studio-voice";
 import type { TemplateStudioState } from "@/hooks/contract-drafts/use-template-studio";
-import type {
-  StudioProposal,
-  StudioSelection,
-  StudioReference,
-} from "@/types/template-studio";
-import { studioFieldText } from "@/lib/contract-drafts/studio-document";
+import type { StudioSelection, StudioReference } from "@/types/template-studio";
 import { StudioChatTools, StudioReferenceList } from "./studio-chat-tools";
-
-function ProposalCard({
-  proposal,
-  studio,
-}: {
-  proposal: StudioProposal;
-  studio: TemplateStudioState;
-}) {
-  const changed =
-    proposal.changes.fields.length + proposal.changes.blocks.length;
-  const stale = proposal.baseRevision !== studio.draft.revision || studio.dirty;
-  const canAct = studio.draft.status === "draft" && !studio.busy;
-  return (
-    <div className="space-y-3">
-      <div className="ml-8 rounded-2xl rounded-tr-sm bg-[#f0f3f9] px-4 py-3 text-[13px] leading-6 text-slate-700 whitespace-pre-wrap">
-        {proposal.userMessage}
-        {!!proposal.referenceNames?.length && (
-          <span className="mt-2 block text-[10px] text-slate-400">
-            Tệp tham khảo: {proposal.referenceNames.join(", ")}
-          </span>
-        )}
-      </div>
-      <div className="flex items-center gap-2 text-xs font-semibold text-slate-700">
-        <span className="grid size-6 place-items-center rounded-lg bg-blue-50 text-blue-600">
-          <Sparkles size={13} />
-        </span>
-        Trợ lý LawScan
-        <span className="ml-auto text-[10px] font-normal text-slate-400">
-          1 lượt soạn
-        </span>
-      </div>
-      <p className="text-[13px] leading-6 whitespace-pre-wrap text-slate-600">
-        {proposal.message}
-      </p>
-      {changed > 0 && (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <p className="border-b border-slate-100 px-3 py-2 text-[11px] font-semibold text-slate-500">
-            {changed} thay đổi được đề xuất
-          </p>
-          <div className="max-h-80 space-y-3 overflow-y-auto p-3">
-            {proposal.changes.fields.map((field) => (
-              <div key={field.key} className="space-y-1 text-xs leading-5">
-                <p className="font-semibold text-slate-700">
-                  {studio.draft.template.fields.find(
-                    (item) => item.key === field.key,
-                  )?.label ?? field.key}
-                </p>
-                <p className="rounded-md bg-red-50 px-2 py-1 text-red-500 line-through break-words">
-                  {field.before
-                    ? studioFieldText(
-                        field.key,
-                        field.before,
-                        studio.draft.template,
-                      ).slice(0, 500)
-                    : "Chưa điền"}
-                </p>
-                <p className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-800 break-words">
-                  {studioFieldText(
-                    field.key,
-                    field.after,
-                    studio.draft.template,
-                  ).slice(0, 500)}
-                </p>
-              </div>
-            ))}
-            {proposal.changes.blocks.map((block, index) => (
-              <div
-                key={`${block.blockId}-${index}`}
-                className="space-y-1 text-xs leading-5"
-              >
-                <p className="font-semibold text-slate-700">
-                  {block.action === "replace"
-                    ? "Chỉnh đoạn văn"
-                    : "Thêm đoạn văn"}
-                </p>
-                {block.action === "replace" && (
-                  <p className="rounded-md bg-red-50 px-2 py-1 text-red-500 line-through whitespace-pre-wrap">
-                    {block.before.slice(0, 800)}
-                  </p>
-                )}
-                <p className="rounded-md bg-emerald-50 px-2 py-1 text-emerald-800 whitespace-pre-wrap">
-                  {block.after.slice(0, 1500)}
-                </p>
-              </div>
-            ))}
-          </div>
-          {proposal.status === "pending" && (
-            <div className="flex gap-2 border-t border-slate-100 p-3">
-              <button
-                type="button"
-                disabled={!canAct || stale}
-                onClick={() => void studio.proposalAction(proposal, "apply")}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
-              >
-                <Check size={13} />
-                Áp dụng
-              </button>
-              <button
-                type="button"
-                disabled={!canAct}
-                onClick={() => void studio.proposalAction(proposal, "dismiss")}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-500 disabled:opacity-40"
-              >
-                Bỏ qua
-              </button>
-            </div>
-          )}
-          {proposal.status === "pending" && stale && (
-            <p className="px-3 pb-3 text-[11px] leading-5 text-amber-700">
-              Văn bản đã thay đổi. Hãy yêu cầu đề xuất mới để tránh ghi đè nội
-              dung.
-            </p>
-          )}
-          {proposal.status !== "pending" && (
-            <p className="border-t border-slate-100 px-3 py-2 text-[11px] text-slate-500">
-              {proposal.status === "applied"
-                ? "Đã áp dụng vào văn bản"
-                : "Đã bỏ qua đề xuất"}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
+import { StudioProposalCard } from "./studio-proposal-card";
+import { StudioClauseCheckButton } from "./studio-clause-check-button";
+import { StudioChatWelcome } from "./studio-chat-welcome";
+import styles from "@/styles/template-studio.module.css";
 
 export function StudioChat({
   studio,
-  orgId,
+  accountId,
   selection,
   onClearSelection,
 }: {
   studio: TemplateStudioState;
-  orgId?: string;
+  accountId?: string;
   selection: StudioSelection;
   onClearSelection: () => void;
 }) {
@@ -162,7 +27,7 @@ export function StudioChat({
   const [references, setReferences] = useState<StudioReference[]>([]);
   const [uploading, setUploading] = useState(false);
   const scroll = useRef<HTMLDivElement>(null);
-  const quota = useReviewAllowance(orgId);
+  const quota = useReviewAllowance(accountId);
   const voice = useStudioVoice((text) =>
     setMessage((current) =>
       `${current}${current ? " " : ""}${text}`.slice(0, 5000),
@@ -173,9 +38,20 @@ export function StudioChat({
     quota.data?.status === "active" && (available > 0 || studio.canRetry);
   const readOnly = studio.draft.status !== "draft";
   const rows = studio.history.data ?? [];
+  const latestProposalId = rows.at(-1)?.id;
+  const latestProposalMode = rows.at(-1)?.mode;
   useEffect(() => {
-    if (scroll.current) scroll.current.scrollTop = scroll.current.scrollHeight;
-  }, [rows.length, studio.busy]);
+    const panel = scroll.current;
+    if (!panel) return;
+    const result =
+      latestProposalMode === "check" && !studio.busy
+        ? panel.querySelector(`[data-proposal-id="${latestProposalId}"]`)
+        : null;
+    if (result)
+      panel.scrollTop +=
+        result.getBoundingClientRect().top - panel.getBoundingClientRect().top;
+    else panel.scrollTop = panel.scrollHeight;
+  }, [latestProposalId, latestProposalMode, studio.busy]);
   async function send() {
     if (
       !message.trim() ||
@@ -196,7 +72,7 @@ export function StudioChat({
       className="flex h-full min-h-0 flex-col bg-white"
       aria-label="Trợ lý chỉnh hợp đồng"
     >
-      <header className="flex h-14 shrink-0 items-center gap-2 border-b border-slate-100 px-5">
+      <header className="flex h-14 shrink-0 items-center gap-2.5 border-b border-slate-100 px-4">
         <span className="grid size-7 place-items-center rounded-lg bg-blue-50 text-blue-600">
           <Sparkles size={15} />
         </span>
@@ -209,46 +85,22 @@ export function StudioChat({
       </header>
       <div
         ref={scroll}
-        className="min-h-0 flex-1 space-y-7 overflow-y-auto px-5 py-6"
+        className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-5"
+        data-studio-messages
       >
         {!rows.length && !studio.history.isPending && (
-          <div className="flex min-h-80 flex-col justify-center">
-            <div className="mb-5 flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-100 text-blue-600">
-              <MessageSquare size={22} />
-            </div>
-            <p className="text-lg font-semibold tracking-tight text-slate-800">
-              Cùng bạn hoàn thiện
-              <br />
-              từng điều khoản.
-            </p>
-            <p className="mt-3 text-[13px] leading-6 text-slate-500">
-              Chỉnh ngay trên mẫu, hoặc nói cho tôi biết bạn muốn thay đổi điều
-              gì.
-            </p>
-            <div className="mt-6 grid gap-2">
-              {[
-                studio.draft.templateCode === "labor"
-                  ? "Điền mức lương 15.000.000 đồng mỗi tháng"
-                  : "Điền giá trị hợp đồng 15.000.000 đồng",
-                "Làm rõ cách bàn giao và nghiệm thu",
-                "Thêm trách nhiệm bảo mật phù hợp",
-              ].map((text) => (
-                <button
-                  key={text}
-                  type="button"
-                  disabled={readOnly || Boolean(studio.busy)}
-                  onClick={() => setMessage(text)}
-                  className="rounded-xl border border-slate-100 bg-slate-50/50 px-3 py-3 text-left text-xs leading-5 text-slate-600 transition-colors hover:border-blue-200 hover:bg-blue-50/50 disabled:opacity-40"
-                >
-                  {text}
-                  <span className="ml-2 text-blue-400">↗</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          <StudioChatWelcome
+            templateCode={studio.draft.templateCode}
+            disabled={readOnly || !!studio.busy}
+            onSuggestion={setMessage}
+          />
         )}
         {rows.map((proposal) => (
-          <ProposalCard key={proposal.id} proposal={proposal} studio={studio} />
+          <StudioProposalCard
+            key={proposal.id}
+            proposal={proposal}
+            studio={studio}
+          />
         ))}
         {studio.history.isError && (
           <button
@@ -269,7 +121,7 @@ export function StudioChat({
           </div>
         )}
       </div>
-      <div className="shrink-0 border-t border-slate-100 p-4">
+      <div className={styles.chatComposer} data-studio-composer>
         {selection.blockIds.length > 0 && (
           <div className="mb-2 flex items-start gap-2 rounded-lg bg-blue-50 p-2 text-[11px] leading-5 text-blue-700">
             <span className="line-clamp-2 flex-1">
@@ -300,8 +152,16 @@ export function StudioChat({
             event.preventDefault();
             void send();
           }}
-          className="rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_4px_20px_-12px_#33415550] focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-50"
+          className="rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_3px_16px_-10px_#33415535] focus-within:border-blue-300 focus-within:ring-2 focus-within:ring-blue-50"
         >
+          <StudioClauseCheckButton
+            studio={studio}
+            selection={selection}
+            canAsk={canAsk}
+            loadingAllowance={quota.isPending && Boolean(accountId)}
+            allowanceError={quota.isError}
+            blocked={readOnly || !!studio.busy || uploading || voice.listening}
+          />
           <StudioReferenceList
             references={references}
             disabled={uploading || Boolean(studio.busy)}
@@ -314,18 +174,19 @@ export function StudioChat({
                 ? "Văn bản đang được khóa chỉnh sửa"
                 : "Bạn muốn sửa điều gì?"
             }
-            rows={3}
+            rows={2}
             maxLength={5000}
             disabled={readOnly || Boolean(studio.busy)}
             value={message}
             onChange={(event) => setMessage(event.target.value)}
-            className="w-full resize-none border-0 bg-transparent text-[13px] leading-6 text-slate-700 outline-none placeholder:text-slate-400 disabled:opacity-50"
+            className="mt-2.5 min-h-14 max-h-36 w-full resize-none border-0 bg-transparent text-[13px] leading-6 text-slate-700 outline-none placeholder:text-slate-400 disabled:opacity-50"
           />
           <div className="relative mt-1 flex items-center gap-1">
             <StudioChatTools
               draftId={studio.draft.id}
-              legalBasis={studio.draft.template.legalBasis}
-              reviewNotes={studio.draft.template.reviewNotes}
+              templateCode={studio.draft.templateCode}
+              legalSourceIds={studio.values.legalSourceIds}
+              onLegalSourcesChange={studio.changeLegalSources}
               disabled={readOnly || Boolean(studio.busy)}
               references={references}
               onChange={setReferences}
@@ -367,19 +228,39 @@ export function StudioChat({
             </button>
           </div>
         </form>
-        <p className="mt-2 text-[10px] leading-4 text-slate-400">
-          {quota.isPending ? "Đang tải lượt…" : `${available} lượt còn lại.`} 1
-          lượt khi AI trả đề xuất thành công. Kiểm tra rồi áp dụng; sửa thủ công
-          không trừ lượt.
-        </p>
-        {!canAsk && !quota.isPending && !readOnly && (
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] leading-4 text-slate-500">
+          <span>
+            {quota.isError
+              ? "Chưa tải được hạn mức"
+              : quota.isPending && accountId
+                ? "Đang tải lượt…"
+                : `${available} lượt soạn còn lại`}
+          </span>
+          <span title="Trừ 1 lượt khi AI trả kết quả thành công. Sửa thủ công không trừ lượt.">
+            1 lượt/kết quả AI · Sửa tay miễn phí
+          </span>
+        </div>
+        {quota.isError && (
+          <button
+            type="button"
+            disabled={quota.isFetching}
+            onClick={() => void quota.refetch()}
+            className="mt-1 text-[11px] font-medium text-blue-600 hover:underline disabled:opacity-50"
+          >
+            {quota.isFetching ? "Đang tải lại hạn mức…" : "Thử tải lại hạn mức"}
+          </button>
+        )}
+        {!canAsk && !quota.isPending && !quota.isError && !readOnly && (
           <p className="mt-1 text-[10px] leading-4 text-amber-700">
             Cần gói đang hoạt động và đủ lượt soạn. Bạn vẫn chỉnh trực tiếp trên
             văn bản được.
           </p>
         )}
         {voice.supported && (
-          <p className="mt-1 text-[10px] leading-4 text-slate-400">
+          <p
+            className="mt-1 line-clamp-1 text-[10px] leading-4 text-slate-400"
+            title="Dịch vụ trình duyệt xử lý giọng nói. Kiểm tra chữ trước khi bấm gửi."
+          >
             Dịch vụ trình duyệt xử lý giọng nói. Kiểm tra chữ trước khi bấm gửi.
           </p>
         )}

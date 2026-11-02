@@ -16,6 +16,7 @@ import type { ContractDraft } from "@/types/contract-drafts";
 import type { StudioSelection } from "@/types/template-studio";
 import { StudioEditor } from "./studio-editor";
 import { StudioChat } from "./studio-chat";
+import { StudioResizeHandle, studioPanelStyle } from "./studio-resize-handle";
 import { StudioTemplateUpdate } from "./studio-template-update";
 import { StudioShell } from "./studio-shell";
 import { StudioHeader } from "./studio-header";
@@ -24,6 +25,7 @@ import { StudioDecisionDialogs } from "./studio-decision-dialogs";
 import { StudioLoadingState, StudioLegacyEntry } from "./studio-entry-state";
 import { getStudioPresentation } from "./studio-presentation";
 import styles from "@/styles/template-studio.module.css";
+import { billingAccountId } from "@/lib/subscription/billing-account";
 
 export function TemplateStudioPage({
   id,
@@ -54,6 +56,7 @@ function Studio({ initial, user }: { initial: ContractDraft; user: AuthUser }) {
     text: "",
   });
   const [chatOpen, setChatOpen] = useState(true);
+  const [chatWidth, setChatWidth] = useState<number | null>(null);
   const [mobilePane, setMobilePane] = useState<"document" | "chat">("document");
   const [inspector, setInspector] = useState<"fields" | "outline" | null>(null);
   const [requestedField, setRequestedField] = useState<string | null>(null);
@@ -125,7 +128,7 @@ function Studio({ initial, user }: { initial: ContractDraft; user: AuthUser }) {
           </p>
         )}
         <nav
-          className="grid shrink-0 grid-cols-2 border-b border-slate-200 bg-white md:hidden"
+          className="grid shrink-0 grid-cols-2 border-b border-slate-200 bg-white xl:hidden"
           aria-label="Không gian soạn trên điện thoại"
         >
           {(
@@ -147,20 +150,22 @@ function Studio({ initial, user }: { initial: ContractDraft; user: AuthUser }) {
           ))}
         </nav>
         <div
-          className={`grid min-h-0 flex-1 ${chatOpen ? "md:grid-cols-[310px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)] 2xl:grid-cols-[350px_minmax(0,1fr)]" : "grid-cols-1"}`}
+          className={`${styles.workspace} ${chatOpen ? styles.workspaceWithChat : ""}`}
+          style={studioPanelStyle(chatWidth)}
         >
           <div
-            className={`min-h-0 border-r border-slate-200 ${mobilePane === "chat" ? "flex flex-col" : "hidden"} ${chatOpen ? "md:flex md:flex-col" : "md:hidden"}`}
+            className={`min-h-0 min-w-0 border-r border-slate-200 ${mobilePane === "chat" ? "flex flex-col" : "hidden"} ${chatOpen ? "xl:flex xl:flex-col" : "xl:hidden"}`}
           >
             <StudioChat
               studio={studio}
-              orgId={user.orgId ?? undefined}
+              accountId={billingAccountId(user) ?? undefined}
               selection={selection}
               onClearSelection={() => setSelection({ blockIds: [], text: "" })}
             />
           </div>
+          {chatOpen && <StudioResizeHandle onResize={setChatWidth} />}
           <section
-            className={`min-h-0 min-w-0 flex-col bg-[#f4f6f9] ${mobilePane === "document" ? "flex" : "hidden"} md:flex`}
+            className={`min-h-0 min-w-0 flex-col bg-[#f4f6f9] ${mobilePane === "document" ? "flex" : "hidden"} xl:flex`}
             aria-label="Trang hợp đồng"
           >
             <div className="flex min-h-12 shrink-0 items-center gap-2 border-b border-slate-200/80 bg-white px-3 text-xs">
@@ -169,7 +174,7 @@ function Studio({ initial, user }: { initial: ContractDraft; user: AuthUser }) {
                 aria-label={chatOpen ? "Ẩn trợ lý" : "Mở trợ lý"}
                 title={chatOpen ? "Ẩn trợ lý" : "Mở trợ lý"}
                 onClick={() => setChatOpen((current) => !current)}
-                className="hidden size-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 md:grid"
+                className="hidden size-8 place-items-center rounded-lg text-slate-500 hover:bg-slate-100 xl:grid"
               >
                 {chatOpen ? (
                   <PanelLeftClose size={17} />

@@ -73,6 +73,7 @@ const {
 } = require('../dist/models/subscription.model');
 const {
   seedPlans,
+  migratePersonalDraftingBenefits,
   getSubscription,
   resolveSubscription,
   lockSubscriptionOrganization,
@@ -372,6 +373,32 @@ test('catalog migration adds drafting benefits to old periods without resetting 
   await SubscriptionPeriodModel.updateOne({ _id: period._id }, { $set: { 'plan.draftingLimit': 7 } });
   await seedPlans(); current = await getSubscription(w.owner.id, w.org.id);
   expect(current.plan.draftingLimit).toBe(7);
+});
+
+test('personal drafting migration grants 3/30 once and preserves usage, custom limits and closed periods', async () => {
+  const personal = await user();
+  const now = new Date('2026-11-02T00:00:00Z');
+  const free = await PlanModel.findOne({ code: 'personal_free' }).lean();
+  const pro = await PlanModel.findOne({ code: 'personal_pro' }).lean();
+  await PlanModel.updateMany({ code: { $in: ['personal_free', 'personal_pro'] } }, { $set: { draftingLimit: 0 } });
+  const make = (plan, extra = {}) => ({ orgId: personal.id, key: randomUUID(), plan: { ...plan, draftingLimit: 0 },
+    startsAt: new Date('2026-11-01'), endsAt: new Date('2026-12-01'), draftingUsed: 1, draftingReserved: 1,
+    analysisUsed: 2, chatUsed: 4, ...extra });
+  const [active, future, custom, expired, cancelled] = await SubscriptionPeriodModel.create([
+    make(free), make(pro, { startsAt: new Date('2026-12-01'), endsAt: new Date('2027-01-01') }),
+    make(free, { plan: { ...free, draftingLimit: 9 } }),
+    make(free, { startsAt: new Date('2026-10-01'), endsAt: new Date('2026-11-01') }),
+    make(pro, { cancelledAt: now }),
+  ]);
+  expect(await migratePersonalDraftingBenefits(now)).toEqual({ plans: 2, periods: 2 });
+  expect((await PlanModel.findOne({ code: 'personal_free' })).draftingLimit).toBe(3);
+  expect((await PlanModel.findOne({ code: 'personal_pro' })).draftingLimit).toBe(30);
+  expect((await SubscriptionPeriodModel.findById(active.id)).toObject()).toMatchObject({ plan: { draftingLimit: 3 }, draftingUsed: 1, draftingReserved: 1, analysisUsed: 2, chatUsed: 4 });
+  expect((await SubscriptionPeriodModel.findById(future.id)).plan.draftingLimit).toBe(30);
+  expect((await SubscriptionPeriodModel.findById(custom.id)).plan.draftingLimit).toBe(9);
+  expect((await SubscriptionPeriodModel.findById(expired.id)).plan.draftingLimit).toBe(0);
+  expect((await SubscriptionPeriodModel.findById(cancelled.id)).plan.draftingLimit).toBe(0);
+  expect(await migratePersonalDraftingBenefits(now)).toEqual({ plans: 0, periods: 0 });
 });
 
 test('free usage resets at calendar boundary without rollover', async () => {

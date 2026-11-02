@@ -12,7 +12,7 @@ import { studioText, type StudioNode } from './studioDocument';
 import { studioParagraph, studioTextNode } from './studioNodes';
 
 const resultSchema = z.object({
-  sections: z.array(z.object({ key: z.string(), addition: z.string().max(3000) }).strict()).max(12),
+  sections: z.array(z.object({ key: z.string(), addition: z.string().max(3000) }).strict()).max(20),
   notes: z.array(z.string().max(500)).max(6),
   issues: z.array(z.object({ field: z.string().max(60), message: z.string().max(300) }).strict()).max(8).default([]),
 }).strict();
@@ -27,8 +27,8 @@ const responseSchema = {
 const privateFields = new Set(['companyName', 'companyTaxCode', 'companyAddress', 'representative', 'authorization', 'partnerName', 'partnerAddress', 'partnerIdentifier', 'partnerRepresentative', 'partnerBirthDate', 'partnerIdIssuedDate', 'partnerIdIssuedPlace']);
 
 export function renderDraftDocument(code: TemplateCode, input: Record<string, string>, companyName: string, ourParty: string, additions: Map<string, string> = new Map(), template: ContractTemplate = getTemplate(code)) {
-  if (code === 'rental' || (code === 'labor' && template.version >= 4)) {
-    const document = code === 'rental' ? buildStudioTemplate(template, input, companyName, ourParty) : buildLaborStudioTemplate(template, input, companyName);
+  if (code === 'rental' || (code === 'sales' && template.version >= 3) || (code === 'labor' && template.version >= 4)) {
+    const document = code === 'labor' ? buildLaborStudioTemplate(template, input, companyName) : buildStudioTemplate(template, input, companyName, ourParty);
     const content: StudioNode[] = [];
     let sectionIndex = -1;
     const addComment = () => { const addition = additions.get(template.sections[sectionIndex]?.key); if (addition) content.push(studioParagraph([studioTextNode(addition)])); };

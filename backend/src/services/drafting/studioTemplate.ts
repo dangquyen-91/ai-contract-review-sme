@@ -3,6 +3,7 @@ import type { ContractTemplate } from './templates';
 import { normalizeStudioDocument, type StudioDocument, type StudioNode } from './studioDocument';
 import { studioParagraph, studioTextNode } from './studioNodes';
 import { buildLaborStudioTemplate } from './studioTemplate.labor';
+import { buildSalesStudioTemplate } from './studioTemplate.sales';
 export { studioParagraph, studioTextNode } from './studioNodes';
 
 export function buildStudioTemplate(
@@ -11,6 +12,8 @@ export function buildStudioTemplate(
   companyName: string,
   ourParty: string,
 ): StudioDocument {
+  if (template.code === 'sales' && template.version >= 3)
+    return buildSalesStudioTemplate(template, input, companyName, ourParty);
   if (template.code === 'labor' && template.version >= 3)
     return buildLaborStudioTemplate(template, input, companyName);
   const field = (key: string): StudioNode => ({

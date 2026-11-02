@@ -26,7 +26,7 @@ export const DEFAULT_PLANS = [
     price: 0,
     currency: 'VND',
     analysisLimit: 3,
-    draftingLimit: 0,
+    draftingLimit: 3,
     chatLimit: 10,
     memberLimit: 1,
   },
@@ -37,7 +37,7 @@ export const DEFAULT_PLANS = [
     price: 99000,
     currency: 'VND',
     analysisLimit: 30,
-    draftingLimit: 0,
+    draftingLimit: 30,
     chatLimit: 200,
     memberLimit: 1,
   },
@@ -80,6 +80,28 @@ export async function seedPlans() {
       { $set: { 'plan.draftingLimit': plan.draftingLimit } },
     );
   }
+  await migratePersonalDraftingBenefits();
+}
+
+// Grant the new personal benefit once, without resetting usage, replacing
+// positive custom limits, or rewriting expired/cancelled period snapshots.
+export async function migratePersonalDraftingBenefits(now = new Date()) {
+  let plans = 0;
+  let periods = 0;
+  for (const plan of DEFAULT_PLANS.filter(item => item.audience === 'personal')) {
+    const updatedPlan = await PlanModel.updateOne(
+      { code: plan.code, $or: [{ draftingLimit: 0 }, { draftingLimit: { $exists: false } }] },
+      { $set: { draftingLimit: plan.draftingLimit } },
+    );
+    const updatedPeriods = await SubscriptionPeriodModel.updateMany(
+      { 'plan.code': plan.code, endsAt: { $gt: now }, cancelledAt: null,
+        $or: [{ 'plan.draftingLimit': 0 }, { 'plan.draftingLimit': { $exists: false } }] },
+      { $set: { 'plan.draftingLimit': plan.draftingLimit } },
+    );
+    plans += updatedPlan.modifiedCount;
+    periods += updatedPeriods.modifiedCount;
+  }
+  return { plans, periods };
 }
 
 export const listPlans = () => PlanModel.find().sort({ price: 1 }).select('-__v').lean();

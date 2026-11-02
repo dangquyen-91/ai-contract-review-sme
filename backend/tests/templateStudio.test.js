@@ -29,6 +29,10 @@ const { UserModel } = require('../dist/models/user.model');
 const { OrganizationModel } = require('../dist/models/organization.model');
 const { ContractDraftModel } = require('../dist/models/contractDraft.model');
 const { DraftAssistantProposalModel } = require('../dist/models/draftAssistantProposal.model');
+const { LegalSourceModel } = require('../dist/models/legalSource.model');
+const { LegalKnowledgeChunkModel } = require('../dist/models/legalKnowledgeChunk.model');
+const { ContractProfileModel } = require('../dist/models/contractProfile.model');
+const { studioLawContext } = require('../dist/services/drafting/studioLegalSources.service');
 const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
 const { tokensForUser } = require('../dist/services/identity/auth.service');
 const { CONTRACT_TEMPLATES } = require('../dist/services/drafting/templates');
@@ -107,6 +111,280 @@ const ask = (
     blockIds,
   });
 const usage = async () => (await getSubscription(staff.id, org.id)).drafting;
+async function lawFixture(overrides = {}) {
+  const code = `studio_law_${++sequence}`;
+  const source = await LegalSourceModel.create({ code, title: `Văn bản kiểm thử lao động ${code}`,
+    documentNumber: `TEST-${sequence}`, citationLabel: `Văn bản ${code}`, sourceType: 'law',
+    status: 'in_force', ingestion: { status: 'completed', totalChunks: 1, embeddedChunks: 1 }, ...overrides });
+  await LegalKnowledgeChunkModel.create({ legalSourceId: source._id, order: 0,
+    articleRef: 'Điều kiểm thử', chunkText: `CONTEXT_${code}: nội dung tiền lương kiểm thử.` });
+  return source;
+}
+
+test('clause checks cite server-owned text, preserve drafts until confirmation and replay without charging twice', async () => {
+  const law = await lawFixture();
+  const chunk = await LegalKnowledgeChunkModel.findOne({ legalSourceId: law._id });
+  const draft = await create();
+  const block = studioBlocks(draft.document, draft.template).find(item => item.editable);
+  const before = await usage();
+  const body = { mode: 'check', revision: draft.revision, requestId: `clause-check-${++sequence}`,
+    message: 'Kiểm tra điều khoản được chọn', blockIds: [block.id], legalSourceIds: [law.id] };
+  generateJson.mockResolvedValue({ message: 'Kết quả đã sẵn sàng', fields: [],
+    blocks: [{ action: 'replace', blockId: block.id, text: 'Nội dung đề xuất kiểm thử.' }],
+    review: { summary: 'Có điểm cần xem xét trong vùng chọn.', findings: [{ blockId: block.id, severity: 'medium',
+      title: 'Điểm cần làm rõ', reason: 'Lý do kiểm thử dựa trên trích đoạn.', citationChunkIds: [chunk.id] }] } });
+  const checked = await call(staff, 'post', `/${draft.id}/assistant`).send(body);
+  expect(checked.status).toBe(200);
+  expect(checked.body.data.mode).toBe('check');
+  expect(checked.body.data.blockIds).toEqual([block.id]);
+  expect(checked.body.data.review.findings[0]).toMatchObject({ blockId: block.id, contractText: block.text,
+    verification: 'source_matched', citations: [{ chunkId: chunk.id, sourceId: law.id, quote: chunk.chunkText }] });
+  expect((await call(staff, 'get', `/${draft.id}`)).body.data.document).toEqual(draft.document);
+  expect((await usage()).used).toBe(before.used + 1);
+  expect((await call(staff, 'post', `/${draft.id}/assistant`).send(body)).body.data.id).toBe(checked.body.data.id);
+  expect((await usage()).used).toBe(before.used + 1);
+  expect((await call(staff, 'post', `/${draft.id}/assistant`).send({ ...body, mode: 'edit' })).status).toBe(409);
+  const raw = await DraftAssistantProposalModel.collection.findOne({ _id: new mongoose.Types.ObjectId(checked.body.data.id) });
+  expect(raw.reviewJson).toMatch(/^enc:v1:/);
+  const history = await call(staff, 'get', `/${draft.id}/assistant`);
+  expect(history.body.data[0].review).toEqual(checked.body.data.review);
+  const applied = await call(staff, 'post', `/${draft.id}/proposals/${checked.body.data.id}`).send({ revision: draft.revision, action: 'apply' });
+  expect(applied.status).toBe(200);
+  expect(applied.body.data.content).toContain('Nội dung đề xuất kiểm thử.');
+});
+
+test('clause checks require a current selection and legal sources before reserving quota', async () => {
+  const law = await lawFixture();
+  const draft = await create();
+  const block = studioBlocks(draft.document, draft.template)[0];
+  const before = await usage();
+  for (const input of [{ blockIds: [], legalSourceIds: [law.id] }, { blockIds: [block.id], legalSourceIds: [] },
+    { blockIds: ['missing-block'], legalSourceIds: [law.id] }]) {
+    const result = await call(staff, 'post', `/${draft.id}/assistant`).send({ mode: 'check', revision: draft.revision,
+      message: 'Kiểm tra điều khoản', requestId: `invalid-clause-${++sequence}`, ...input });
+    expect(result.status).toBe(400);
+  }
+  expect(generateJson).not.toHaveBeenCalled();
+  expect(await usage()).toEqual(before);
+});
+
+test('fabricated citations, unsupported claims and out-of-scope findings are rejected and refunded', async () => {
+  const law = await lawFixture();
+  const chunk = await LegalKnowledgeChunkModel.findOne({ legalSourceId: law._id });
+  const unrelated = await lawFixture();
+  const unrelatedChunk = await LegalKnowledgeChunkModel.findOne({ legalSourceId: unrelated._id });
+  const draft = await create();
+  const blocks = studioBlocks(draft.document, draft.template);
+  const before = await usage();
+  const finding = { blockId: blocks[0].id, severity: 'high', title: 'Điểm cần xem xét', reason: 'Lý do kiểm thử', citationChunkIds: [chunk.id] };
+  for (const invalid of [{ ...finding, citationChunkIds: [unrelatedChunk.id] }, { ...finding, citationChunkIds: [] },
+    { ...finding, blockId: blocks[1].id }]) {
+    generateJson.mockResolvedValue({ message: 'Kiểm thử căn cứ', fields: [], blocks: [], review: { summary: 'Kiểm thử', findings: [invalid] } });
+    const result = await call(staff, 'post', `/${draft.id}/assistant`).send({ mode: 'check', revision: draft.revision,
+      requestId: `bad-citation-${++sequence}`, message: 'Kiểm tra điều khoản', blockIds: [blocks[0].id], legalSourceIds: [law.id] });
+    expect(result.status).toBe(502);
+    expect(await usage()).toEqual(before);
+    expect((await call(staff, 'get', `/${draft.id}`)).body.data.document).toEqual(draft.document);
+  }
+});
+
+test('insufficient legal context remains a note and stale checks cannot overwrite a newer draft', async () => {
+  const law = await lawFixture();
+  const draft = await create();
+  const block = studioBlocks(draft.document, draft.template).find(item => item.editable);
+  generateJson.mockResolvedValue({ message: 'Cần bổ sung căn cứ', fields: [],
+    blocks: [{ action: 'replace', blockId: block.id, text: 'Đề xuất kiểm thử có giới hạn.' }],
+    review: { summary: 'Chưa đủ dữ liệu để kết luận.', findings: [{ blockId: block.id, severity: 'note',
+      title: 'Cần kiểm tra thêm', reason: 'Các trích đoạn hiện có chưa đủ căn cứ.', citationChunkIds: [] }] } });
+  const result = await call(staff, 'post', `/${draft.id}/assistant`).send({ mode: 'check', revision: draft.revision,
+    requestId: `limited-check-${++sequence}`, message: 'Kiểm tra điều khoản', blockIds: [block.id], legalSourceIds: [law.id] });
+  expect(result.status).toBe(200);
+  expect(result.body.data.review.findings[0]).toMatchObject({ verification: 'insufficient_basis', citations: [] });
+  const updated = await call(staff, 'patch', `/${draft.id}`).send({ ...patch(draft), title: 'Changed after checking' });
+  expect(updated.status).toBe(200);
+  expect((await call(staff, 'post', `/${draft.id}/proposals/${result.body.data.id}`).send({ revision: updated.body.data.revision, action: 'apply' })).status).toBe(409);
+  expect((await call(staff, 'get', `/${draft.id}`)).body.data.content).not.toContain('Đề xuất kiểm thử có giới hạn.');
+});
+
+test('legal excerpts rank matching clause terms instead of returning the first articles only', async () => {
+  const law = await lawFixture();
+  await LegalKnowledgeChunkModel.insertMany([
+    { legalSourceId: law._id, order: 1, chunkText: 'bảo mật' },
+    { legalSourceId: law._id, order: 2, chunkText: 'bảo mật đào tạo hoàn trả chi phí' },
+  ]);
+  const sources = await studioLawContext([law.id], 'bảo mật đào tạo hoàn trả chi phí');
+  expect(sources[0].excerpts[0].text).toBe('bảo mật đào tạo hoàn trả chi phí');
+});
+
+test('labor picker reads mapped LegalSource records and never falls back to unrelated laws', async () => {
+  const labor = await lawFixture({ code: 'labor_code_2019', title: 'Lao động: tiêu đề lưu trong database', documentNumber: 'DB-LABOR' });
+  const decree = await lawFixture({ code: 'decree_145_2020', title: 'Nghị định lao động trong database' });
+  const unrelated = await lawFixture({ code: 'insurance_business_law_2022', title: 'Bảo hiểm không thuộc mẫu lao động' });
+  const result = await call(staff, 'get', '/legal-sources').query({ templateCode: 'labor' });
+  expect(result.status).toBe(200);
+  expect(result.body.data.items.map(item => item.id).sort()).toEqual([labor.id, decree.id].sort());
+  expect(result.body.data.items.find(item => item.id === labor.id)).toMatchObject({ title: labor.title, documentNumber: 'DB-LABOR' });
+  expect((await call(staff, 'get', '/legal-sources').query({ templateCode: 'labor', q: 'Bảo hiểm' })).body.data.total).toBe(0);
+  expect((await call(staff, 'get', '/legal-sources').query({ templateCode: 'labor', ids: unrelated.id })).body.data.total).toBe(0);
+  const draft = await create({}, 'labor');
+  const saved = await call(staff, 'patch', `/${draft.id}`).send({ ...patch(draft), legalSourceIds: [labor.id] });
+  expect(saved.status).toBe(200);
+  const before = await usage();
+  expect((await call(staff, 'patch', `/${draft.id}`).send({ ...patch(saved.body.data), legalSourceIds: [unrelated.id] })).status).toBe(400);
+  expect((await call(staff, 'post', `/${draft.id}/assistant`).send({ revision: saved.body.data.revision,
+    requestId: `outside-labor-${++sequence}`, message: 'Kiểm tra luật áp dụng', legalSourceIds: [unrelated.id] })).status).toBe(400);
+  expect(await usage()).toEqual(before);
+  const extra = await lawFixture({ title: 'Văn bản lao động được cấu hình thêm' });
+  const profile = await ContractProfileModel.create({ code: 'labor', name: 'Lao động', promptLabel: 'Lao động',
+    segment: 'business', legalSourceCodes: [labor.code, decree.code, extra.code] });
+  const configured = await call(staff, 'get', '/legal-sources').query({ templateCode: 'labor' });
+  expect(configured.body.data.items.map(item => item.id).sort()).toEqual([labor.id, decree.id, extra.id].sort());
+  await ContractProfileModel.updateOne({ _id: profile._id }, { $set: { legalSourceCodes: [] } });
+  expect((await call(staff, 'get', '/legal-sources').query({ templateCode: 'labor' })).body.data.total).toBe(0);
+  await ContractProfileModel.deleteOne({ _id: profile._id });
+});
+
+test('sales picker only exposes ready sales sources and rejects unrelated law selection', async () => {
+  const commerce = await lawFixture({ code: 'commercial_law_2005' });
+  const quality = await lawFixture({ code: 'product_quality_law_2007', status: 'amended' });
+  const unrelated = await lawFixture({ code: 'outside_sales' });
+  const pending = await lawFixture({ code: 'consumer_protection_law_2023', ingestion: { status: 'running', totalChunks: 1, embeddedChunks: 0 } });
+  const response = await call(staff, 'get', '/legal-sources').query({ templateCode: 'sales' });
+  expect(response.status).toBe(200);
+  expect(response.body.data.items.map(item => item.id).sort()).toEqual([commerce.id, quality.id].sort());
+  const draft = await create({}, 'sales');
+  const before = await usage();
+  for (const law of [unrelated, pending]) {
+    expect((await call(staff, 'patch', `/${draft.id}`).send({ ...patch(draft), legalSourceIds: [law.id] })).status).toBe(400);
+  }
+  expect((await call(staff, 'patch', `/${draft.id}`).send({ ...patch(draft), legalSourceIds: [commerce.id, quality.id] })).status).toBe(200);
+  expect(await usage()).toEqual(before);
+  await LegalKnowledgeChunkModel.deleteMany({ legalSourceId: { $in: [commerce.id, quality.id, unrelated.id, pending.id] } });
+  await LegalSourceModel.deleteMany({ _id: { $in: [commerce.id, quality.id, unrelated.id, pending.id] } });
+});
+
+test.each([['personal_free', 3], ['personal_pro', 30]])('standalone %s grants drafting credits and refunds failed AI calls', async (planCode, limit) => {
+  const personal = await UserModel.create({ name: 'Personal drafter', email: `draft-personal-${++sequence}@example.com`,
+    passwordHash: 'unused', emailVerifiedAt: new Date(), roleId: (await getRoleByCode('user'))._id });
+  await personal.populate('roleId');
+  if (planCode === 'personal_pro') await activatePaidSubscription({ orgId: personal.id, planCode,
+    action: 'purchase', amount: 99000, paymentReference: `personal-drafting-${++sequence}` });
+  const created = await call(personal, 'post').send({ templateCode: 'labor', title: 'Personal drafting', ourParty: 'employer', editorMode: 'studio', input: {} });
+  expect(created.status).toBe(201);
+  const draft = created.body.data;
+  expect((await getSubscription(personal.id, personal.id)).drafting).toMatchObject({ used: 0, available: limit, limit });
+  generateJson.mockResolvedValue({ message: 'Đã kiểm tra yêu cầu.', fields: [], blocks: [] });
+  const ask = requestId => call(personal, 'post', `/${draft.id}/assistant`).send({ revision: draft.revision, requestId,
+    message: 'Làm rõ điều khoản trong hợp đồng' });
+  const proposal = await ask(`personal-success-${++sequence}`);
+  expect(proposal.status).toBe(200);
+  expect((await call(personal, 'get', `/${draft.id}/assistant`)).body.data.map(item => item.id)).toContain(proposal.body.data.id);
+  const applied = await call(personal, 'post', `/${draft.id}/proposals/${proposal.body.data.id}`).send({ revision: draft.revision, action: 'apply' });
+  expect(applied.status).toBe(200);
+  draft.revision = applied.body.data.revision;
+  expect((await getSubscription(personal.id, personal.id)).drafting).toMatchObject({ used: 1, reserved: 0, available: limit - 1 });
+  const { ApiError } = require('@google/genai');
+  generateJson.mockRejectedValue(new ApiError({ status: 503, message: 'Fixture high demand' }));
+  const failure = await ask(`personal-failure-${++sequence}`);
+  expect(failure.status).toBe(503);
+  expect(failure.body.error).toMatchObject({ code: 'AI_UNAVAILABLE', message: expect.stringContaining('không bị trừ lượt') });
+  expect((await getSubscription(personal.id, personal.id)).drafting).toMatchObject({ used: 1, reserved: 0, available: limit - 1 });
+  expect((await UserModel.findById(personal.id)).orgId).toBeFalsy();
+});
+
+test('studio law catalog is read-only, searchable, paginated and hides unavailable sources', async () => {
+  const law = await lawFixture({ signer: 'Người ký kiểm thử', legalField: 'Lĩnh vực kiểm thử',
+    issuingPlace: 'Nơi ban hành kiểm thử', gazette: 'Công báo kiểm thử', issuingBody: 'Cơ quan kiểm thử' });
+  const amended = await lawFixture({ status: 'amended' });
+  const excluded = await Promise.all([
+    lawFixture({ status: 'repealed' }), lawFixture({ status: 'not_yet_effective' }),
+    lawFixture({ effectiveDate: new Date('2100-01-01') }), lawFixture({ expiryDate: new Date('2000-01-01') }),
+    lawFixture({ sourceType: 'standard_template' }),
+    lawFixture({ ingestion: { status: 'running', totalChunks: 1, embeddedChunks: 0 } }),
+  ]);
+  const empty = await LegalSourceModel.create({ code: `empty_${++sequence}`, title: 'No text', citationLabel: 'Empty', sourceType: 'law' });
+  const response = await call(staff, 'get', '/legal-sources').query({ q: 'lao động' });
+  expect(response.status).toBe(200);
+  const ids = response.body.data.items.map(item => item.id);
+  expect(ids).toEqual(expect.arrayContaining([law.id, amended.id]));
+  for (const source of [...excluded, empty]) expect(ids).not.toContain(source.id);
+  const filtered = await call(owner, 'get', '/legal-sources').query({ ids: law.id });
+  expect(filtered.status).toBe(200);
+  expect(filtered.body.data.items.map(item => item.id)).toEqual([law.id]);
+  expect((await call(staff, 'get', '/legal-sources').query({ q: '[' })).body.data.total).toBe(0);
+  expect((await call(staff, 'get', '/legal-sources').query({ page: 0 })).status).toBe(400);
+  expect((await request(app).get('/api/v1/contract-drafts/legal-sources')).status).toBe(401);
+  const manager = await member('manager');
+  expect((await call(manager, 'get', '/legal-sources')).status).toBe(403);
+  const personal = await UserModel.create({ name: 'Personal law reader', email: `law-personal-${++sequence}@example.com`,
+    passwordHash: 'unused', emailVerifiedAt: new Date(), roleId: (await getRoleByCode('user'))._id });
+  await personal.populate('roleId');
+  expect((await call(personal, 'get', '/legal-sources')).status).toBe(200);
+  const preview = await call(staff, 'get', `/legal-sources/${law.id}`);
+  expect(preview.status).toBe(200);
+  expect(preview.body.data.chunks[0].text).toContain(`CONTEXT_${law.code}`);
+  expect(preview.body.data.chunks[0].embedding).toBeUndefined();
+  expect(preview.body.data.source).toMatchObject({ signer: law.signer, legalField: law.legalField,
+    issuingPlace: law.issuingPlace, gazette: law.gazette, issuingBody: law.issuingBody });
+  const longText = 'Nội dung đầy đủ '.repeat(1200);
+  await LegalKnowledgeChunkModel.insertMany(Array.from({ length: 9 }, (_, index) => ({ legalSourceId: law._id,
+    order: index + 1, articleRef: `Điều ${index + 2}`, chunkText: index === 8 ? longText : `Nội dung điều ${index + 2}`,
+    hierarchy: [{ level: 'chapter', number: 'I', title: 'Quy định kiểm thử' }] })));
+  const continued = await call(staff, 'get', `/legal-sources/${law.id}`).query({ page: 2 });
+  expect(continued.body.data).toMatchObject({ page: 2, pages: 2, total: 10 });
+  expect(continued.body.data.chunks.at(-1).text).toBe(longText);
+  expect(continued.body.data.chunks[0].hierarchy).toEqual([{ level: 'chapter', number: 'I', title: 'Quy định kiểm thử' }]);
+  expect((await call(staff, 'get', `/legal-sources/${excluded[0].id}`)).status).toBe(400);
+  expect((await call(staff, 'get', '/legal-sources/not-an-id')).status).toBe(400);
+});
+
+test('selected laws persist with the draft and reach AI from server-owned chunks, with safe replay', async () => {
+  const selected = await lawFixture();
+  const unrelated = await lawFixture();
+  const draft = await create();
+  const saved = await call(staff, 'patch', `/${draft.id}`).send({ ...patch(draft), legalSourceIds: [selected.id] });
+  expect(saved.status).toBe(200);
+  expect(saved.body.data.legalSourceIds).toEqual([selected.id]);
+  const reloaded = await call(staff, 'get', `/${draft.id}`);
+  expect(reloaded.body.data.legalSourceIds).toEqual([selected.id]);
+  const legacySave = await call(staff, 'patch', `/${draft.id}`).send(patch(reloaded.body.data));
+  expect(legacySave.body.data.legalSourceIds).toEqual([selected.id]);
+  const before = await usage();
+  const body = { revision: legacySave.body.data.revision, requestId: `studio-laws-request-${++sequence}`,
+    message: 'Làm rõ tiền lương', legalSourceIds: [selected.id] };
+  generateJson.mockResolvedValue({ message: 'Đã tham khảo văn bản được chọn', fields: [], blocks: [] });
+  const response = await call(staff, 'post', `/${draft.id}/assistant`).send(body);
+  expect(response.status).toBe(200);
+  expect(response.body.data.legalSources).toEqual([{ id: selected.id, title: selected.title, documentNumber: selected.documentNumber }]);
+  const prompt = generateJson.mock.calls.at(-1)[0];
+  expect(prompt).toContain(`CONTEXT_${selected.code}`);
+  expect(prompt).not.toContain(`CONTEXT_${unrelated.code}`);
+  expect((await usage()).used).toBe(before.used + 1);
+  const raw = await DraftAssistantProposalModel.collection.findOne({ _id: new mongoose.Types.ObjectId(response.body.data.id) });
+  expect(raw.legalSourcesJson).toMatch(/^enc:v1:/);
+  expect((await call(staff, 'post', `/${draft.id}/assistant`).send(body)).body.data.id).toBe(response.body.data.id);
+  expect((await usage()).used).toBe(before.used + 1);
+  expect((await call(staff, 'post', `/${draft.id}/assistant`).send({ ...body, legalSourceIds: [unrelated.id] })).status).toBe(409);
+  const cleared = await call(staff, 'patch', `/${draft.id}`).send({ ...patch(legacySave.body.data), legalSourceIds: [] });
+  expect(cleared.body.data.legalSourceIds).toEqual([]);
+});
+
+test('invalid, duplicate, unavailable or more than ten selected laws never consume AI quota', async () => {
+  const draft = await create();
+  const law = await lawFixture();
+  const repealed = await lawFixture({ status: 'repealed' });
+  const many = Array.from({ length: 11 }, () => new mongoose.Types.ObjectId().toString());
+  const before = await usage();
+  for (const ids of [[law.id, law.id], ['not-an-id'], [repealed.id], [new mongoose.Types.ObjectId().toString()], many]) {
+    const saved = await call(staff, 'patch', `/${draft.id}`).send({ ...patch(draft), legalSourceIds: ids });
+    expect(saved.status).toBe(400);
+    const proposed = await call(staff, 'post', `/${draft.id}/assistant`).send({ revision: draft.revision,
+      requestId: `invalid-law-${++sequence}`, message: 'Kiểm tra luật', legalSourceIds: ids });
+    expect(proposed.status).toBe(400);
+  }
+  expect(await usage()).toEqual(before);
+  expect((await call(otherStaff, 'patch', `/${draft.id}`).send({ ...patch(draft), legalSourceIds: [law.id] })).status).toBe(404);
+});
 beforeAll(async () => {
   repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(repl.getUri());
