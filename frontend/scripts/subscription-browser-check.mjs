@@ -156,6 +156,7 @@ try {
           assert.ok(result.text.includes(plan.price.toLocaleString('vi-VN')));
           assert.ok(result.text.includes(`${plan.analysisLimit.toLocaleString('vi-VN')} lượt rà soát`));
           assert.ok(result.text.includes(`${plan.chatLimit.toLocaleString('vi-VN')} lượt chat`));
+          assert.ok(result.text.includes(`${plan.draftingLimit.toLocaleString('vi-VN')} lượt soạn AI / kiểm tra điều khoản`));
         }
         for (const card of result.cards) {
           assert.equal(card.border, '28px', 'Homepage and catalog use the same modern cards');
@@ -178,7 +179,7 @@ try {
   assert.match(await evaluate('document.querySelector("[role=dialog]").textContent'), /200 lượt chat/);
   const href = await evaluate('document.querySelector("[role=dialog] a").getAttribute("href")');
   await call('Page.navigate', { url: `http://127.0.0.1:${port}${href}` });
-  await waitFor('document.body.textContent.includes("99.000")');
+  await waitFor('document.body?.textContent.includes("99.000")');
   assert.ok(!(await evaluate('document.body.textContent')).includes('Doanh nghiệp mẫu'));
   plansAvailable = false;
   await call('Page.navigate', { url: `http://127.0.0.1:${port}/goi-dich-vu` });

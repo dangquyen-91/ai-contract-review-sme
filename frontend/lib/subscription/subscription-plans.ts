@@ -27,9 +27,7 @@ export function describePlan(plan: SubscriptionPlan) {
     features: [
       `${formatPlanNumber(plan.analysisLimit)} lượt rà soát · 1 lượt/5 trang`,
       `${formatPlanNumber(plan.chatLimit)} lượt chat về hợp đồng`,
-      ...(!personal
-        ? [`${formatPlanNumber(plan.draftingLimit ?? 0)} lượt soạn hợp đồng AI`]
-        : []),
+      `${formatPlanNumber(plan.draftingLimit ?? 0)} lượt soạn AI / kiểm tra điều khoản`,
       personal
         ? `${formatPlanNumber(plan.memberLimit)} tài khoản cá nhân`
         : `Tối đa ${formatPlanNumber(plan.memberLimit)} thành viên, bao gồm Owner`,
