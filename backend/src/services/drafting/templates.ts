@@ -27,6 +27,7 @@ export interface ContractTemplate {
 }
 import { buildDetailedTemplate } from './templates.v2';
 import { buildLaborTemplate } from './templates.labor';
+import { buildSalesTemplate } from './templates.sales';
 import { RENTAL_TEMPLATE } from './templates.rental';
 
 const field = (key: string, label: string, kind: TemplateField['kind'] = 'text', required = true, group: TemplateField['group'] = 'terms'): TemplateField => ({ key, label, kind, required, group });
@@ -122,7 +123,7 @@ const BASE_TEMPLATES: readonly ContractTemplate[] = [
 
 export const CONTRACT_TEMPLATES: readonly ContractTemplate[] = [...BASE_TEMPLATES.map(base => {
   const detailed = buildDetailedTemplate(base);
-  return base.code === 'labor' ? buildLaborTemplate(detailed) : detailed;
+  return base.code === 'labor' ? buildLaborTemplate(detailed) : base.code === 'sales' ? buildSalesTemplate(detailed) : detailed;
 }), RENTAL_TEMPLATE];
 
 export function getTemplate(code: TemplateCode) {

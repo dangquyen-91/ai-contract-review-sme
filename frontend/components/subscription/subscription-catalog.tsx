@@ -16,7 +16,7 @@ const faqs = [
   ],
   [
     "Tạo hợp đồng theo mẫu có tốn lượt không?",
-    "Điền mẫu, lưu nháp, sửa thủ công, duyệt và tải Word/PDF không trừ lượt. Mỗi lần AI soạn hoặc tạo lại thành công dùng 1 lượt soạn riêng của tổ chức. Soạn xong rồi chạy rà soát sẽ tính thêm lượt rà soát theo số trang.",
+    "Điền mẫu, lưu nháp, sửa thủ công, hoàn tất và tải Word/PDF không trừ lượt. Mỗi yêu cầu AI soạn, chỉnh sửa hoặc kiểm tra điều khoản thành công dùng 1 lượt soạn của tài khoản cá nhân hoặc tổ chức; AI lỗi không trừ lượt. Tải hợp đồng lên chạy rà soát dùng hạn mức rà soát riêng theo số trang.",
   ],
   [
     "Tổ chức chưa mua gói có được mời thành viên không?",

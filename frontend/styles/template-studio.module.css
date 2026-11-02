@@ -9,6 +9,73 @@
   background: #f6f8fb;
   color: #1e293b;
 }
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+.chatComposer {
+  flex-shrink: 0;
+  max-height: 48%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-top: 1px solid #edf0f5;
+  background: #fff;
+  padding: 14px;
+  scrollbar-width: thin;
+}
+.chatComposer > * {
+  max-width: 640px;
+  margin-inline: auto;
+}
+@media (min-width: 1280px) {
+  .workspaceWithChat {
+    grid-template-columns: clamp(
+        320px,
+        var(--studio-chat-width, min(25vw, 420px)),
+        min(600px, calc(100% - 560px))
+      ) 8px minmax(0, 1fr);
+  }
+}
+.resizeHandle {
+  display: none;
+}
+@media (min-width: 1280px) {
+  .resizeHandle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: col-resize;
+    touch-action: none;
+    user-select: none;
+    background: #f1f5f9;
+    outline: none;
+  }
+  .resizeHandle span {
+    width: 3px;
+    height: 36px;
+    border-radius: 4px;
+    background: #cbd5e1;
+  }
+  .resizeHandle:hover,
+  .resizeHandle:focus-visible,
+  .resizeHandleActive {
+    background: #dbeafe;
+  }
+  .resizeHandle:hover span,
+  .resizeHandle:focus-visible span,
+  .resizeHandleActive span {
+    background: #3b82f6;
+  }
+}
+@media (max-height: 700px) {
+  .chatComposer {
+    max-height: 58%;
+    padding: 10px 12px;
+  }
+}
 .pageBreak {
   display: flex;
   align-items: center;
@@ -78,7 +145,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 30px 32px 60px;
+  padding: 24px 24px 48px;
   background:
     radial-gradient(#dae0e8 0.6px, transparent 0.6px) 0 0 / 14px 14px,
     #f4f6f9;

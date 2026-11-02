@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ContractTemplate, getTemplate, TemplateCode } from '../services/drafting/templates';
 import { validateLineItems } from '../services/drafting/line-items';
+import { studioLawIdsSchema } from '../services/drafting/studioLegalSources.service';
 
 export const draftIdSchema = z.object({ id: z.string().regex(/^[a-f\d]{24}$/i) });
 const inputSchema = z.record(z.string().trim().max(16000)).refine(value => Object.keys(value).length <= 64 && Object.entries(value).every(([key, text]) => key === 'lineItems' || text.length <= 4000));
@@ -18,6 +19,7 @@ export const updateDraftSchema = revisionSchema.extend({
   ourParty: z.string().min(1).max(30),
   content: z.string().max(80000),
   document: z.unknown().optional(),
+  legalSourceIds: studioLawIdsSchema.optional(),
 }).strict();
 export const draftDecisionSchema = revisionSchema.extend({ action: z.enum(['submit', 'approve', 'return']), note: z.string().trim().max(1000).default('') }).strict();
 export type DraftInput = z.infer<typeof createDraftSchema>;
@@ -31,7 +33,8 @@ export function inputErrors(code: TemplateCode, values: Record<string, string>, 
     const value = values[field.key]?.trim();
     if (complete && field.required && !value) errors.push(`Vui lòng nhập ${field.label.toLowerCase()}`);
     if (!value) continue;
-    const allowsZero = code === 'rental' && field.key === 'depositAmount';
+    const allowsZero = (code === 'rental' && field.key === 'depositAmount') ||
+      (code === 'sales' && ['vatAmount', 'advanceAmount', 'remainingAmount', 'storageFee'].includes(field.key));
     if (field.kind === 'number' && (!/^\d+(\.\d{1,2})?$/.test(value) || (allowsZero ? Number(value) < 0 : Number(value) <= 0) || Number(value) > 1e15)) errors.push(`${field.label} phải là số ${allowsZero ? 'không âm' : 'dương'} hợp lệ`);
     if (field.kind === 'date' && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) errors.push(`${field.label} không hợp lệ`);
     if (field.options && !field.options.some(option => option.value === value)) errors.push(`${field.label} không hợp lệ`);
@@ -58,6 +61,6 @@ export function inputErrors(code: TemplateCode, values: Record<string, string>, 
       const adult = new Date(values.partnerBirthDate); adult.setUTCFullYear(adult.getUTCFullYear() + 18);
       if (adult.getTime() > Date.parse(values.startDate)) errors.push('Mẫu này chỉ dành cho người lao động từ đủ 18 tuổi');
     }
-  } else if (complete && !values.endDate) errors.push('Vui lòng nhập ngày kết thúc thực hiện');
+  } else if (complete && fields.has('endDate') && !values.endDate) errors.push('Vui lòng nhập ngày kết thúc thực hiện');
   return errors;
 }

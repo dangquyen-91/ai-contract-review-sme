@@ -2,6 +2,7 @@ import type { ClauseCategory } from '../../models/clauseTypeTaxonomy.model';
 import type { PROFILE_SEGMENTS } from '../../models/contractProfile.model';
 import type { SensitiveDataType } from '../ai/redaction.service';
 import type { LegalSourceCode } from '../legal/legalSourceCatalog.data';
+import { SALES_LEGAL_SOURCE_CODES } from '../legal/legalSourceCatalog.data';
 
 export const DEFAULT_INDUSTRIES = [
   { code: 'fnb', name: 'Ăn uống (F&B)' },
@@ -52,7 +53,7 @@ export const DEFAULT_PROFILES: DefaultProfile[] = [
       { code: 'buyer', name: 'Bên mua' },
       { code: 'seller', name: 'Bên bán' },
     ],
-    legalSources: ['commercial_law_2005', 'civil_code_2015'],
+    legalSources: SALES_LEGAL_SOURCE_CODES,
     clauseCategories: [
       'subject_scope', 'payment', 'delivery_handover', 'warranty', 'confidentiality', 'penalty',
       'indemnity', 'liability', 'termination', 'force_majeure', 'dispute_resolution', 'other',

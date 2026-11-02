@@ -69,10 +69,14 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
                 {current.plan?.audience === "business" &&
                   ` · Thành viên ${current.members.count}/${current.members.limit}`}
               </p>
-              {current.plan?.audience === "business" && (
+              {current.plan && (
                 <p className="text-muted-foreground">
-                  Soạn hợp đồng AI còn {current.drafting?.available ?? 0}/
-                  {current.drafting?.limit ?? 0} lượt · Dùng chung trong tổ chức
+                  Soạn AI / kiểm tra điều khoản còn{" "}
+                  {current.drafting?.available ?? 0}/
+                  {current.drafting?.limit ?? 0} lượt ·{" "}
+                  {current.plan.audience === "personal"
+                    ? "Hạn mức cá nhân"
+                    : "Dùng chung trong tổ chức"}
                 </p>
               )}
               {current.plan &&

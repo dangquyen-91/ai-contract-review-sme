@@ -17,9 +17,11 @@ import { createDraftDocx } from './docx.service';
 import { deleteContractFile, uploadContractFile } from '../contract/storage.service';
 import { countDocxPages } from '../contract/documentPageCount.service';
 import { reserveUsage, finishUsage } from '../billing/usage.service';
+import { draftingError } from './draftingErrors';
 import { buildStudioTemplate, legacyStudioDocument } from './studioTemplate';
 import { normalizeStudioDocument, studioInput, studioText } from './studioDocument';
 import { createStudioDocx } from './studioDocx.service';
+import { validateStudioLaws } from './studioLegalSources.service';
 
 type Draft = InferSchemaType<typeof ContractDraftModel.schema>;
 const lockLifetime = 120_000;
@@ -44,6 +46,7 @@ function view(draft: InstanceType<typeof ContractDraftModel>) {
     template: JSON.parse(draft.templateJson),
     ourParty: draft.ourParty, input: JSON.parse(draft.inputJson), organization: JSON.parse(draft.organizationJson),
     content: draft.content,
+    legalSourceIds: (draft.legalSourceIds ?? []).map(String),
     document: draft.documentJson ? JSON.parse(draft.documentJson) : null,
     createdAt: draft.createdAt,
     notes: JSON.parse(draft.notes || '[]'), decisionNote: draft.decisionNote,
@@ -121,6 +124,9 @@ export async function updateDraft(actor: AccessTokenPayload, id: string, input: 
   await requireDraftAccess(actor);
   const existing = await findDraft(actor, id);
   if (existing.revision !== input.revision) throw AppError.conflict('Bản nháp đã thay đổi. Vui lòng tải lại.');
+  if (input.legalSourceIds && JSON.stringify(input.legalSourceIds) !== JSON.stringify((existing.legalSourceIds ?? []).map(String))) {
+    await validateStudioLaws(input.legalSourceIds, existing.templateCode);
+  }
   const template = JSON.parse(existing.templateJson) as ContractTemplate;
   const document = input.document !== undefined ? normalizeStudioDocument(input.document, template) : null;
   if (existing.documentJson && !document) throw AppError.badRequest('Vui lòng lưu bằng trình soạn văn bản trực tiếp.');
@@ -136,7 +142,7 @@ export async function updateDraft(actor: AccessTokenPayload, id: string, input: 
   const content = document ? studioText(document, template) : changed ? '' : input.content;
   if (content.length > 80000) throw AppError.badRequest('Nội dung hợp đồng quá dài. Vui lòng rút gọn.');
   const draft = await ContractDraftModel.findOneAndUpdate({ ...scope(actor, id), status: 'draft', revision: input.revision, ...unlocked() }, {
-    $set: { title: input.title, ourParty: input.ourParty, inputJson: JSON.stringify(values), content, ...(document ? { documentJson: JSON.stringify(document) } : {}), ...(changed ? { generatedAt: null, generatedByModel: null, notes: '[]' } : {}) },
+    $set: { title: input.title, ourParty: input.ourParty, inputJson: JSON.stringify(values), content, ...(input.legalSourceIds ? { legalSourceIds: input.legalSourceIds } : {}), ...(document ? { documentJson: JSON.stringify(document) } : {}), ...(changed ? { generatedAt: null, generatedByModel: null, notes: '[]' } : {}) },
     $inc: { revision: 1 }, $unset: { generationToken: 1, generationStartedAt: 1 },
   }, { new: true });
   if (!draft) throw AppError.conflict('Bản nháp đã thay đổi, đang tạo bằng AI hoặc không còn ở trạng thái chỉnh sửa. Vui lòng tải lại.');
@@ -168,7 +174,7 @@ export async function copyToLatestTemplate(actor: AccessTokenPayload, id: string
 export async function generateDraft(actor: AccessTokenPayload, id: string, revision: number) {
   await requireDraftAccess(actor);
   const existing = await findDraft(actor, id);
-  if (!actor.orgId) throw AppError.forbidden('Tài khoản chưa có hạn mức soạn hợp đồng AI.', 'AI_PLAN_REQUIRED');
+  const billingId = actor.orgId ?? actor.sub;
   if (existing.revision !== revision) throw AppError.conflict('Bản nháp đã thay đổi. Vui lòng tải lại.');
   if (existing.documentJson) throw AppError.badRequest('Hãy dùng trợ lý AI bên cạnh văn bản để đề xuất chỉnh sửa.');
   const code = existing.templateCode as TemplateCode;
@@ -179,11 +185,11 @@ export async function generateDraft(actor: AccessTokenPayload, id: string, revis
   if (!locked) throw AppError.conflict('Bản nháp đã thay đổi hoặc đang được tạo. Vui lòng tải lại.');
   let usageRunId: string | undefined;
   try {
-    const { run } = await reserveUsage({ orgId: actor.orgId!, userId: actor.sub, draftId: id, kind: 'drafting', idempotencyKey: generationToken, payload: { revision } }, new Date(), lockLifetime);
+    const { run } = await reserveUsage({ orgId: billingId, userId: actor.sub, draftId: id, kind: 'drafting', idempotencyKey: generationToken, payload: { revision } }, new Date(), lockLifetime);
     usageRunId = run.id;
     const generated = await generateDraftContent(code, input, JSON.parse(existing.organizationJson).name, existing.ourParty, JSON.parse(existing.templateJson));
     await requireDraftAccess(actor);
-    await finishUsage(actor.orgId!, run.id, true, { draftId: id, revision: revision + 1 }, async session => {
+    await finishUsage(billingId, run.id, true, { draftId: id, revision: revision + 1 }, async session => {
       const updated = await ContractDraftModel.updateOne({ ...scope(actor, id), status: 'draft', revision, generationToken }, {
         $set: { content: generated.content, notes: JSON.stringify(generated.notes), generatedAt: new Date(), generatedByModel: env.GEMINI_MODEL },
         $inc: { revision: 1 }, $unset: { generationToken: 1, generationStartedAt: 1 },
@@ -192,8 +198,8 @@ export async function generateDraft(actor: AccessTokenPayload, id: string, revis
     });
     return view(await findDraft(actor, id));
   } catch (error) {
-    if (usageRunId) await finishUsage(actor.orgId!, usageRunId, false);
-    throw error;
+    if (usageRunId) await finishUsage(billingId, usageRunId, false);
+    throw draftingError(error);
   } finally {
     await ContractDraftModel.updateOne({ _id: id, generationToken }, { $unset: { generationToken: 1, generationStartedAt: 1 } });
   }

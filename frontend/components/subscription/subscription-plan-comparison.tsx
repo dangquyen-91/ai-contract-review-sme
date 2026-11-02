@@ -19,12 +19,8 @@ export function SubscriptionPlanComparison({
       values: plans.map((plan) => formatPlanNumber(plan.analysisLimit)),
     },
     {
-      label: "Lượt soạn hợp đồng AI / kỳ tháng",
-      values: plans.map((plan) =>
-        plan.audience === "business"
-          ? formatPlanNumber(plan.draftingLimit ?? 0)
-          : "Chưa hỗ trợ",
-      ),
+      label: "Lượt soạn AI / kiểm tra điều khoản mỗi tháng",
+      values: plans.map((plan) => formatPlanNumber(plan.draftingLimit ?? 0)),
     },
     {
       label: "Lượt chat / kỳ tháng",

@@ -25,6 +25,26 @@ function setup({ role = 'owner', orgId = 'b'.repeat(24), authenticated = true, u
 }
 const id = 'a'.repeat(24);
 
+test('studio law proxy forwards search, pagination and selected IDs with read-only access', async () => {
+  for (const options of [{ role: 'owner' }, { role: 'staff' }, { role: 'user', orgId: null }]) {
+    const ctx = setup(options);
+    assert.equal((await ctx.run(['legal-sources'], 'GET', undefined, 'http://localhost', `?q=lao%20%C4%91%E1%BB%99ng&page=2&ids=${id}&templateCode=labor`)).status, 200);
+    const url = new URL(ctx.calls[0].url);
+    assert.equal(url.pathname, '/api/v1/contract-drafts/legal-sources');
+    assert.equal(url.searchParams.get('q'), 'lao động');
+    assert.equal(url.searchParams.get('page'), '2');
+    assert.equal(url.searchParams.get('ids'), id);
+    assert.equal(url.searchParams.get('templateCode'), 'labor');
+    assert.equal((await ctx.run(['legal-sources', id], 'GET', undefined, 'http://localhost', '?page=3')).status, 200);
+    assert.equal(new URL(ctx.calls[1].url).searchParams.get('page'), '3');
+    assert.equal(ctx.calls[0].options.cache, 'no-store');
+    for (const method of ['POST', 'PATCH', 'DELETE']) assert.equal((await ctx.run(['legal-sources'], method, {})).status, 404);
+    assert.equal((await ctx.run(['legal-sources', '../unsafe'])).status, 404);
+  }
+  assert.equal((await setup({ role: 'manager' }).run(['legal-sources'])).status, 403);
+  assert.equal((await setup({ authenticated: false }).run(['legal-sources'])).status, 401);
+});
+
 test('line item totals keep decimal precision and reject incomplete or invalid rows', () => {
   const exports = {};
   const source = ts.transpileModule(fs.readFileSync(new URL('../lib/contract-drafts/draft-line-items.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;

@@ -13,6 +13,7 @@ const schema = new Schema({
   organizationJson: { type: String, required: true, ...encryptedString },
   content: { type: String, default: '', ...encryptedString },
   documentJson: { type: String, default: '', ...encryptedString },
+  legalSourceIds: { type: [Schema.Types.ObjectId], ref: 'LegalSource', default: [] },
   status: { type: String, enum: ['draft', 'pending_approval', 'approved'], default: 'draft', required: true },
   revision: { type: Number, default: 0, required: true },
   pinnedAt: { type: Date, default: null },

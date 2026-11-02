@@ -19,6 +19,7 @@ const editable = (draft: ContractDraft) => ({
   ourParty: draft.ourParty,
   input: draft.input,
   document: draft.document!,
+  legalSourceIds: draft.legalSourceIds ?? [],
 });
 export type TemplateStudioState = ReturnType<typeof useTemplateStudio>;
 
@@ -40,6 +41,8 @@ export function useTemplateStudio(initial: ContractDraft) {
     message: string;
     blockIds: string[];
     references: StudioReference[];
+    legalSourceIds: string[];
+    mode: "edit" | "check";
   } | null>(null);
   const dirty = JSON.stringify(values) !== saved;
   const historyKey = ["contract-drafts", "assistant", draft.id];
@@ -135,6 +138,7 @@ export function useTemplateStudio(initial: ContractDraft) {
     message: string,
     blockIds: string[],
     references: StudioReference[] = [],
+    mode: "edit" | "check" = "edit",
   ) {
     if (lock.current || draft.status !== "draft") return false;
     lock.current = true;
@@ -147,15 +151,20 @@ export function useTemplateStudio(initial: ContractDraft) {
         !prior ||
         prior.revision !== current.revision ||
         prior.message !== message ||
+        prior.mode !== mode ||
         JSON.stringify(prior.blockIds) !== JSON.stringify(blockIds) ||
-        JSON.stringify(prior.references) !== JSON.stringify(references)
+        JSON.stringify(prior.references) !== JSON.stringify(references) ||
+        JSON.stringify(prior.legalSourceIds) !==
+          JSON.stringify(current.legalSourceIds ?? [])
       )
         request.current = {
           revision: current.revision,
           requestId: crypto.randomUUID(),
           message,
+          mode,
           blockIds,
           references,
+          legalSourceIds: current.legalSourceIds ?? [],
         };
       const proposal = await contractDraftsApi.askAssistant(
         current.id,
@@ -301,10 +310,22 @@ export function useTemplateStudio(initial: ContractDraft) {
     canRetry,
     save,
     ask,
+    checkClauses: (blockIds: string[]) =>
+      ask(
+        "Kiểm tra điều khoản đang chọn: nêu điểm cần xem xét, căn cứ trong luật đã chọn và đề xuất sửa trong phạm vi này.",
+        blockIds,
+        [],
+        "check",
+      ),
     proposalAction,
     run,
     reload,
     changeDocument,
     changeTitle,
+    changeLegalSources: (legalSourceIds: string[]) => {
+      if (lock.current || draft.status !== "draft") return;
+      setValues((current) => ({ ...current, legalSourceIds }));
+      setError("");
+    },
   };
 }

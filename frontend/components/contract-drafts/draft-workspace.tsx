@@ -38,11 +38,16 @@ export function DraftWorkspace({ user }: { user: AuthUser }) {
         title: `${template.name} - ${new Date().toLocaleDateString("vi-VN")}`,
         ourParty: parties[template.code] ?? template.parties[0].code,
         editorMode: "studio",
-        input: {
-          signingDate: today,
-          startDate: today,
-          ...(template.code === "labor" ? { termType: "fixed" } : {}),
-        },
+        input: Object.fromEntries(
+          template.fields
+            .filter((field) =>
+              ["signingDate", "startDate", "termType"].includes(field.key),
+            )
+            .map((field) => [
+              field.key,
+              field.key === "termType" ? "fixed" : today,
+            ]),
+        ),
       });
       client.setQueryData(draftKeys.detail(draft.id), draft);
       await client.invalidateQueries({ queryKey: draftKeys.lists });

@@ -47,7 +47,7 @@ function values(code) {
   const template = CONTRACT_TEMPLATES.find(item => item.code === code);
   return Object.fromEntries(template.fields.filter(field => field.required).map(field => [field.key,
     field.kind === 'items' ? JSON.stringify([{ name: 'Máy tính', unit: 'cái', quantity: '1', unitPrice: '30000000' }]) : field.kind === 'date' ? field.key === 'partnerBirthDate' ? '1990-01-01' : '2026-10-25' : field.kind === 'number' ? '30000000' : field.kind === 'select' ? 'fixed' : field.key === 'partnerName' ? 'Nguyễn Văn Kiểm Thử' : field.key === 'partnerIdentifier' ? '012345678901' : field.key === 'partnerAddress' ? '123 Đường Riêng, Hà Nội' : 'Thông tin kiểm thử',
-  ]).concat([['endDate', '2027-10-25']]));
+  ]).concat(template.fields.some(field => field.key === 'endDate') ? [['endDate', '2027-10-25']] : []));
 }
 async function create(member = staff, code = 'service', input = values(code)) {
   const response = await call(member, 'post').send({ templateCode: code, title: 'Hợp đồng kiểm thử', ourParty: CONTRACT_TEMPLATES.find(item => item.code === code).parties[0].code, input });
@@ -101,14 +101,16 @@ test.each([false, true])('personal drafts support creation, editing, approval an
   }
   expect((await decide(personal, draft, 'submit')).status).toBe(400);
   expect((await call(personal, 'get', `/${draft.id}/export`)).status).toBe(409);
-  expect((await generate(personal, draft)).status).toBe(403);
+  const generated = await generate(personal, draft);
+  expect(generated.status).toBe(200);
+  draft = generated.body.data;
   expect((await Drafts.findById(draft.id)).generationStartedAt).toBeUndefined();
   response = await decide(personal, draft, 'approve');
   expect(response.status).toBe(200); draft = response.body.data;
   expect(draft.status).toBe('approved');
   expect((await call(personal, 'patch', `/${draft.id}`).send(changes(draft))).status).toBe(409);
   expect((await call(personal, 'get', `/${draft.id}/export`)).status).toBe(200);
-  expect((await call(personal, 'get', `/${draft.id}/export?format=print`)).body.data.content).toBe(content);
+  expect((await call(personal, 'get', `/${draft.id}/export?format=print`)).body.data.content).toBe(draft.content);
   const copy = await call(personal, 'post', `/${draft.id}/copy-latest`).send({ revision: draft.revision });
   expect(copy.status).toBe(201);
   expect((await call(personal, 'patch', `/${copy.body.data.id}/pin`).send({ pinned: true })).status).toBe(200);
@@ -320,7 +322,8 @@ test('changing form data invalidates generated content instead of retaining mism
 test('deterministic frame uses the organization role for buyer/client and indefinite labor', () => {
   const input = { ...values('labor'), termType: 'indefinite', endDate: '' };
   expect(renderDraftDocument('labor', input, org.name, 'employer')).toContain('Không xác định thời hạn');
-  expect(renderDraftDocument('sales', values('sales'), org.name, 'buyer')).toContain('BÊN A - BÊN MUA');
+  const sales = renderDraftDocument('sales', values('sales'), org.name, 'buyer');
+  expect(sales.slice(sales.indexOf('BÊN B (BÊN MUA)'), sales.indexOf('ĐIỀU 1.'))).toContain('Thông tin kiểm thử');
 });
 
 test('drafts retain the original template snapshot after a catalog update', async () => {
@@ -339,7 +342,7 @@ test('drafts retain the original template snapshot after a catalog update', asyn
 
 test('current forms cover each field once and distinguish labor parties from companies', () => {
   for (const template of CONTRACT_TEMPLATES) {
-    expect(template.version).toBe(template.code === 'labor' ? 4 : template.code === 'rental' ? 1 : 2);
+    expect(template.version).toBe(template.code === 'labor' ? 4 : template.code === 'rental' ? 1 : template.code === 'sales' ? 3 : 2);
     const grouped = template.formGroups.flatMap(group => group.fields);
     expect(grouped.length).toBe(new Set(grouped).size);
     expect(grouped.slice().sort()).toEqual(template.fields.map(field => field.key).sort());
@@ -415,10 +418,10 @@ test('line item decimals round per row, validate totals and export real tables w
   expect(inputErrors('sales', input, true)).toEqual([]);
   expect(inputErrors('sales', { ...input, price: '1' }, true).join()).toContain('khớp');
   const content = renderDraftDocument('sales', input, org.name, 'seller');
-  expect(content).toContain('1.1.'); expect(content).toContain('20.001.125,28');
+  expect(content).toContain('ĐIỀU 15.'); expect(content).toContain('20.001.125,28');
   const zip = await JSZip.loadAsync(await createDraftDocx(content));
   const doc = await zip.file('word/document.xml').async('string');
-  expect(doc.match(/<w:tbl>/g)).toHaveLength(2);
+  expect(doc.match(/<w:tbl>/g)).toHaveLength(3);
   expect(doc).toContain('<w:tblHeader/>'); expect(doc).toContain('Sản phẩm A &amp; B');
-  expect(doc).toContain('ĐẠI DIỆN BÊN B'); expect(doc).not.toContain('| STT');
+  expect(doc).toContain('BÊN MUA (BÊN B)'); expect(doc).not.toContain('| STT');
 });

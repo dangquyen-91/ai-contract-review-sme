@@ -15,6 +15,7 @@ const postActions = new Set([
 function allowedDraftMethods(path: string[]): readonly string[] {
   if (path.length === 0) return ["GET", "POST"];
   if (path.length === 1 && path[0] === "templates") return ["GET"];
+  if (path[0] === "legal-sources" && (path.length === 1 || (path.length === 2 && draftIdPattern.test(path[1])))) return ["GET"];
   if (!draftIdPattern.test(path[0])) return [];
   if (path.length === 1) return ["GET", "PATCH", "DELETE"];
   if (path.length === 2) {
@@ -48,6 +49,12 @@ export async function proxyContractDraft(request: NextRequest, path: string[]) {
   if (!allowedDraftMethods(path).includes(request.method))
     return NextResponse.json({ success: false }, { status: 404 });
   const query = new URLSearchParams();
+  if (path[0] === "legal-sources") {
+    for (const name of ["q", "page", "ids", "templateCode"]) {
+      const value = request.nextUrl.searchParams.get(name);
+      if (value !== null) query.set(name, value);
+    }
+  }
   if (!path.length)
     query.set("page", request.nextUrl.searchParams.get("page") ?? "1");
   if (path[1] === "export")

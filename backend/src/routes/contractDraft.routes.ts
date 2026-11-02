@@ -10,11 +10,20 @@ import { createDraftSchema, draftDecisionSchema, draftIdSchema, revisionSchema, 
 import * as service from '../services/drafting/contractDraft.service';
 import * as assistant from '../services/drafting/studioAssistant.service';
 import { readStudioReference, uploadStudioReference } from '../services/drafting/studioReference.service';
+import { listStudioLaws, previewStudioLaw, studioLawQuerySchema } from '../services/drafting/studioLegalSources.service';
 
 const router = Router();
 router.use(requireAuth, requireRole('owner', 'staff', 'user'));
 router.use((_req, res, next) => { res.setHeader('Cache-Control', 'no-store'); next(); });
 router.get('/templates', asyncHandler(async (req, res) => { ok(res, await service.templateCatalog(req.user!)); }));
+router.get('/legal-sources', validate({ query: studioLawQuerySchema }), asyncHandler(async (req, res) => {
+  await service.requireDraftAccess(req.user!);
+  ok(res, await listStudioLaws(req.query as unknown as z.infer<typeof studioLawQuerySchema>));
+}));
+router.get('/legal-sources/:sourceId', validate({ params: z.object({ sourceId: z.string().regex(/^[a-f\d]{24}$/i) }), query: z.object({ page: z.coerce.number().int().min(1).max(10000).default(1) }) }), asyncHandler(async (req, res) => {
+  await service.requireDraftAccess(req.user!);
+  ok(res, await previewStudioLaw(req.params.sourceId.toLowerCase(), Number(req.query.page)));
+}));
 router.get('/', validate({ query: z.object({ page: z.coerce.number().int().min(1).max(10000).default(1) }) }), asyncHandler(async (req, res) => { ok(res, await service.listDrafts(req.user!, Number(req.query.page))); }));
 router.post('/', validate({ body: createDraftSchema }), asyncHandler(async (req, res) => { ok(res, await service.createDraft(req.user!, req.body), 201); }));
 router.get('/:id', validate({ params: draftIdSchema }), asyncHandler(async (req, res) => { ok(res, await service.getDraft(req.user!, req.params.id)); }));
