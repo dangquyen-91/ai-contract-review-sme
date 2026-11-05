@@ -1,7 +1,7 @@
 ---
 type: srs-states
 feature: ai-review
-updated: 2026-10-26
+updated: 2026-11-05
 ---
 
 # AI Review — States
@@ -22,7 +22,6 @@ stateDiagram-v2
     processing --> reviewed : risk detection completed
     reviewed --> processing : user runs a new review
     processing --> reviewed : stage fails during a re-review
-    archived : archived (reserved)
 ```
 
 ### Invalid transitions
@@ -43,6 +42,7 @@ stateDiagram-v2
     [*] --> queued : user starts review (1 analysis credit reserved)
     queued --> running : analysis starts
     queued --> cancelled : user cancels before analysis starts
+    queued --> failed : review cannot start
     running --> completed : segmentation, summary, risk detection done
     running --> cancelled : user cancels during analysis
     running --> failed : analysis fails
