@@ -9,8 +9,10 @@ export const organizationCreateFormSchema = z.object({
   taxCode: z
     .string()
     .trim()
-    .min(1, "Vui lòng nhập mã số thuế.")
-    .max(50, "Mã số thuế tối đa 50 ký tự."),
+    .regex(
+      /^\d{10}(?:-?\d{3})?$/,
+      "Mã số thuế gồm 10 chữ số hoặc 10 chữ số và mã chi nhánh 3 chữ số.",
+    ),
   industry: z
     .string()
     .trim()

@@ -34,18 +34,26 @@ function routeHarness() {
   let payload = { success: true, data: { challengeId: 'a'.repeat(64), resendAfterSeconds: 60 } };
   const route = load('../app/api/auth/[action]/route.ts', {
     'next/server': { NextRequest, NextResponse }, 'node:crypto': {},
-    '@/lib/auth-session': { userSessionCookie: 'lawscan_user' },
-    '@/lib/token-expiry': {},
-    '@/lib/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
-    '@/lib/email-verification-session': { emailVerificationCookie: 'lawscan_email_verification' },
+    '@/lib/auth/auth-session': { userSessionCookie: 'lawscan_user' },
+    '@/lib/auth/token-expiry': {},
+    '@/lib/api/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
+    '@/lib/auth/api-session': { getApiSession: async () => ({ error: NextResponse.json({}, { status: 401 }) }) },
+    '@/lib/auth/email-verification-session': { emailVerificationCookie: 'lawscan_email_verification' },
   }, { fetch: async (url, options) => { calls.push({ url, options }); return { ok: true, status: url.endsWith('forgot-password') ? 202 : 200, json: async () => payload }; } });
   return {
     calls, setPayload: value => { payload = value; },
+    raw: body => route.POST(new NextRequest('http://localhost/api/auth/login', { method: 'POST', headers: { origin: 'http://localhost', 'content-type': 'application/json' }, body }), { params: Promise.resolve({ action: 'login' }) }),
     post: (action, body, origin = 'http://localhost') => route.POST(new NextRequest(`http://localhost/api/auth/${action}`, {
       method: 'POST', headers: { origin, cookie: 'lawscan_access=old; lawscan_refresh=old' }, body: JSON.stringify(body),
     }), { params: Promise.resolve({ action }) }),
   };
 }
+
+test('auth proxy rejects malformed JSON, null and array bodies as client errors without upstream calls', async () => {
+  const route = routeHarness();
+  for (const body of ['{', 'null', '[]', '"text"']) assert.equal((await route.raw(body)).status, 400);
+  assert.equal(route.calls.length, 0);
+});
 
 test('forgot password does not log out an existing session; reset clears cookies and never logs in automatically', async () => {
   const route = routeHarness();
@@ -78,7 +86,7 @@ function hookHarness(api = {}) {
   const slots = [], calls = [];
   let cursor = 0, now = 100000, tick = () => {};
   class Clock extends Date { static now() { return now; } }
-  const exports = load('../hooks/use-password-recovery.ts', {
+  const exports = load('../hooks/auth/use-password-recovery.ts', {
     react: {
       useRef: initial => { const i = cursor++; return slots[i] ??= { current: initial }; },
       useState: initial => { const i = cursor++; if (!(i in slots)) slots[i] = initial; return [slots[i], value => { slots[i] = value; }]; },
@@ -93,7 +101,7 @@ function hookHarness(api = {}) {
       resetPassword: api.resetPassword ?? (async input => { calls.push(input); return { reset: true }; }),
     } },
     '@/lib/query-keys/auth': { authMutationKeys: { forgotPassword: ['auth', 'forgot-password'], resetPassword: ['auth', 'reset-password'] } },
-    '@/lib/session-cache': { clearSessionCache: async () => { calls.push('clear'); } },
+    '@/lib/auth/session-cache': { clearSessionCache: async () => { calls.push('clear'); } },
   }, { Date: Clock, setInterval: fn => { tick = fn; return 1; }, clearInterval() {} });
   return {
     calls, render: () => { cursor = 0; return exports.usePasswordRecovery(); },

@@ -41,6 +41,12 @@ test('Legal metadata requires code, supports all five types, rejects reversed va
   assert(!schema.legalSourceSchema.safeParse({ ...base, sourceType: 'law', effectiveDate: '2026-10-17', expiryDate: '2026-10-01' }).success);
 });
 
+test('legal dates reject calendar rollover and accept an actual leap day', () => {
+  const base = { code: 'test_law', title: 'Test law', citationLabel: 'LAW', sourceType: 'law', status: 'in_force' };
+  for (const issuedDate of ['2026-02-30', '2025-02-29', '2026-04-31']) assert.equal(schema.legalSourceSchema.safeParse({ ...base, issuedDate }).success, false);
+  assert.equal(schema.legalSourceSchema.safeParse({ ...base, issuedDate: '2024-02-29' }).success, true);
+});
+
 test('Upload omits empty optional dates/counts and validates expected article count', () => {
   const node = form();
   const data = prepareLegalUpload(node, true);
@@ -59,8 +65,8 @@ function harness(previewRequest, save) {
     useState(value) { const index = cursor++; if (!(index in slots)) slots[index] = value; return [slots[index], (next) => { slots[index] = next; }]; },
     useRef(value) { const index = cursor++; return slots[index] ??= { current: value }; },
   };
-  const { useLegalSourceUpload } = load('../hooks/use-legal-source-upload.ts', {
-    react, '@/hooks/use-legal-sources': { usePreviewLegalSourceMutation: () => ({ mutateAsync: previewRequest }) },
+  const { useLegalSourceUpload } = load('../hooks/legal-sources/use-legal-source-upload.ts', {
+    react, '@/hooks/legal-sources/use-legal-sources': { usePreviewLegalSourceMutation: () => ({ mutateAsync: previewRequest }) },
     '@/schemas/legal-source.schema': { prepareLegalUpload },
   });
   const saved = [];

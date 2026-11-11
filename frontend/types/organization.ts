@@ -18,6 +18,7 @@ export type Organization = {
   taxCode: string | null;
   address: string | null;
   industry?: string | null;
+  addressDetails?: CreateOrganizationInput['addressDetails'] | null;
   createdAt: string;
   updatedAt: string;
 };

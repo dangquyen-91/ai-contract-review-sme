@@ -12,6 +12,7 @@ export type DashboardOrganization = {
   taxCode: string | null;
   address: string | null;
   industry?: string | null;
+  addressDetails?: { provinceCode: string; wardCode: string; addressLine: string } | null;
 };
 
 export type DashboardData = {

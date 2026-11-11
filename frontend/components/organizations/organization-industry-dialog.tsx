@@ -19,7 +19,8 @@ export function OrganizationIndustryDialog({ organizationId, industry, options, 
 
   async function save() {
     try {
-      await mutation.mutateAsync(value || null);
+      if (!value) return;
+      await mutation.mutateAsync(value);
       toast.success("Đã cập nhật ngành kinh doanh.");
       onClose();
     } catch {
@@ -35,14 +36,14 @@ export function OrganizationIndustryDialog({ organizationId, industry, options, 
     <label htmlFor={`${id}-industry`} className="grid gap-2 text-sm">Ngành
       <select id={`${id}-industry`} value={value} onChange={(event) => setValue(event.target.value)} disabled={mutation.isPending}
         className="h-10 w-full rounded-md border border-input bg-card px-3 text-sm text-card-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-60">
-        <option value="">Không chọn</option>
+        <option value="" disabled>Vui lòng chọn ngành</option>
         {options.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
       </select>
     </label>
     {mutation.error && <p role="alert" className="text-sm text-destructive">{mutation.error.message}</p>}
     <DialogFooter className="gap-2">
       <Button type="button" variant="outline" disabled={mutation.isPending} onClick={onClose}>Đóng</Button>
-      <Button type="button" loading={mutation.isPending} disabled={value === (industry ?? "")} onClick={save}>Lưu</Button>
+      <Button type="button" loading={mutation.isPending} disabled={!value || value === (industry ?? "")} onClick={save}>Lưu</Button>
     </DialogFooter>
   </DialogContent></Dialog>;
 }

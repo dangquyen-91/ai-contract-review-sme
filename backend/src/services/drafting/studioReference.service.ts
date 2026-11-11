@@ -1,6 +1,6 @@
 import multer from 'multer';
 import type { RequestHandler } from 'express';
-import JSZip from 'jszip';
+import { validateDocxArchive } from '../../utils/uploadContent';
 import mammoth from 'mammoth';
 import pdf from 'pdf-parse';
 import { AppError } from '../../errors/AppError';
@@ -22,7 +22,10 @@ export const uploadStudioReference: RequestHandler = (req, res, next) =>
 export async function readStudioReference(file?: Express.Multer.File) {
   if (!file || file.buffer.length > maxBytes)
     throw AppError.badRequest('Vui lòng chọn tệp tham khảo tối đa 2 MB.');
-  const name = [...file.originalname].filter(character => character.charCodeAt(0) >= 32 && !['/', '\\'].includes(character)).join('').slice(0, 150);
+  const name = [...file.originalname]
+    .filter((character) => character.charCodeAt(0) >= 32 && !['/', '\\'].includes(character))
+    .join('')
+    .slice(0, 150);
   let text = '';
   try {
     if (/\.pdf$/i.test(name) && file.buffer.subarray(0, 5).toString() === '%PDF-') {
@@ -33,17 +36,7 @@ export async function readStudioReference(file?: Express.Multer.File) {
         );
       text = result.text;
     } else if (/\.docx$/i.test(name) && file.buffer.subarray(0, 2).toString() === 'PK') {
-      const archive = await JSZip.loadAsync(file.buffer);
-      const entries = Object.values(archive.files);
-      const total = entries.reduce(
-        (sum, entry) =>
-          sum +
-          ((entry as unknown as { _data?: { uncompressedSize?: number } })._data
-            ?.uncompressedSize ?? 0),
-        0,
-      );
-      if (!archive.file('word/document.xml') || entries.length > 500 || total > 10 * 1024 * 1024)
-        throw AppError.badRequest('Tệp Word không hợp lệ hoặc quá lớn sau giải nén.');
+      await validateDocxArchive(file.buffer, 10 * 1024 * 1024, 500);
       text = (await mammoth.extractRawText({ buffer: file.buffer })).value;
     } else if (/\.txt$/i.test(name)) {
       text = new TextDecoder('utf-8', { fatal: true }).decode(file.buffer);

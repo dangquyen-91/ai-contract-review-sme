@@ -10,10 +10,10 @@ export const organizationsApi = {
     }>("/organizations", { params: { page, limit, ...filters }, signal });
     return { items: response.data.data, ...response.data.meta };
   },
-  update(id: string, input: { name: string; taxCode: string | null; address: string | null }) {
+  update(id: string, input: Partial<CreateOrganizationInput>) {
     return apiRequest<Organization>({ url: `/organizations/${id}`, method: "PATCH", data: input });
   },
-  updateIndustry(id: string, industry: string | null) {
+  updateIndustry(id: string, industry: string) {
     return apiRequest<Organization>({ url: `/organizations/${id}`, method: "PATCH", data: { industry } });
   },
   remove(id: string) {

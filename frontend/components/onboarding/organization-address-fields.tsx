@@ -61,6 +61,7 @@ export function OrganizationAddressFields({ disabled }: { disabled: boolean }) {
         </label>
         <select
           id="organization-province"
+          value={provinceCode ?? ""}
           className={selectClass}
           required
           disabled={disabled || directory.isPending || directory.isError}
@@ -103,6 +104,7 @@ export function OrganizationAddressFields({ disabled }: { disabled: boolean }) {
         </label>
         <select
           id="organization-ward"
+          value={wardCode ?? ""}
           className={selectClass}
           required
           disabled={disabled || !province || directory.isError}
