@@ -62,6 +62,7 @@ export async function getPendingInvitation(token: string, email?: string, sessio
   }).session(session ?? null);
   if (!invitation)
     throw AppError.badRequest('Invitation is invalid, expired, revoked or already used');
+  if (invitation.role !== 'staff') throw AppError.badRequest('Tổ chức chỉ được mời Staff.');
   if (email !== undefined && invitation.email !== email.trim().toLowerCase()) {
     throw AppError.forbidden('Sign in with the email address that received the invitation');
   }
@@ -250,6 +251,7 @@ export async function listReceivedInvitations(userId: string) {
   if (!user) throw AppError.unauthorized();
   const invitations = await OrganizationInvitationModel.find({
     email: user.email,
+    role: 'staff',
     status: 'pending',
     expiresAt: { $gt: new Date() },
   })
@@ -290,7 +292,7 @@ export async function acceptInvitation(userId: string, token?: string, invitatio
           expiresAt: { $gt: new Date() },
         }).session(session)
       : (await getPendingInvitation(token ?? '', user.email, session)).invitation;
-    if (!invitation || invitation.role === 'expert')
+    if (!invitation || invitation.role !== 'staff')
       throw AppError.badRequest('Invitation is no longer available');
     await assertCanJoinOrganization(user.orgId?.toString(), invitation.orgId.toString(), session);
     assertPersonalAccount(user.roleId);

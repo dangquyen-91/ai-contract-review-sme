@@ -13,6 +13,7 @@ export interface AccessTokenPayload {
   role: UserRole;
   orgId?: string;
   permissionsVersion?: number;
+  workspace?: 'personal' | 'organization';
 }
 
 export type OrganizationAccessTokenPayload = AccessTokenPayload & { orgId: string };
@@ -57,7 +58,13 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     ) {
       return next(AppError.unauthorized('Account permissions changed. Refresh your access token.'));
     }
-    req.user = { sub: user.id, role, orgId };
+    if (payload.workspace === 'personal') {
+      if (!['user', 'owner', 'staff'].includes(role))
+        return next(AppError.forbidden('Vai trò này không có không gian cá nhân.'));
+      req.user = { sub: user.id, role: 'user', workspace: 'personal' };
+    } else {
+      req.user = { sub: user.id, role, orgId, workspace: payload.workspace };
+    }
     return next();
   } catch (error) {
     return next(error);
@@ -67,6 +74,7 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 export function getOrganizationUser(req: Request): OrganizationAccessTokenPayload {
   if (!req.user) throw AppError.unauthorized();
   if (!req.user.orgId) throw AppError.forbidden('Organization setup required');
+  if (!['owner', 'staff'].includes(req.user.role)) throw AppError.forbidden('Chỉ Owner và Staff thuộc không gian tổ chức.');
   return req.user as OrganizationAccessTokenPayload;
 }
 
@@ -74,7 +82,8 @@ export function getOrganizationUser(req: Request): OrganizationAccessTokenPayloa
 // use their own ID, without changing membership or the authenticated token.
 export function getContractUser(req: Request): OrganizationAccessTokenPayload {
   if (!req.user) throw AppError.unauthorized();
-  if (req.user.orgId) return req.user as OrganizationAccessTokenPayload;
+  // The user role may still reference a legacy personal workspace.
+  if (req.user.orgId && ['owner', 'staff', 'user'].includes(req.user.role)) return req.user as OrganizationAccessTokenPayload;
   if (req.user.role !== 'user') throw AppError.forbidden('Organization setup required');
   return { ...req.user, orgId: req.user.sub };
 }

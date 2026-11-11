@@ -5,7 +5,7 @@ import { isSameOriginRequest } from "@/lib/api/request-origin";
 export async function proxyExpertVerification(request: NextRequest, reviewId: string, action: "get" | "request") {
   const session = await getApiSession();
   if (session.error) return session.error;
-  if (!["owner", "manager", "staff", "user"].includes(session.user.role)) {
+  if (!["owner", "staff", "user"].includes(session.user.role)) {
     return NextResponse.json({ success: false, error: { message: "Vai trò hiện tại không được gửi yêu cầu xác minh." } }, { status: 403 });
   }
   if (!/^[a-f\d]{24}$/i.test(reviewId)) {

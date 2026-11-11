@@ -28,7 +28,7 @@ export type ManagedUserList = {
 
 export type UpdateManagedUserInput = Partial<Pick<ManagedUser, "name" | "email" | "role" | "isActive">>;
 export type CreateManagedUserInput = Pick<ManagedUser, "name" | "email" | "isActive"> & {
-  role: "user" | "administrator";
+  role: "user" | "administrator" | "manager" | "expert";
   password: string;
 };
 

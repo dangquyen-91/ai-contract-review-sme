@@ -39,12 +39,14 @@ function UserEditorForm({ user, close, saved }: { user: ManagedUser | null; clos
     const data = { name: name.trim(), email: email.trim(), role, isActive };
     const onSuccess = () => { toast.success(user ? "Đã cập nhật người dùng." : "Đã tạo người dùng."); saved(); close(); };
     if (user) mutation.mutate({ id: user.id, data }, { onSuccess });
-    else if (role === "user" || role === "administrator") mutation.mutate({ data: { ...data, role, password } }, { onSuccess });
+    else if (role === "user" || role === "administrator" || role === "manager" || role === "expert") mutation.mutate({ data: { ...data, role, password } }, { onSuccess });
   }
-  const options: ManagedUserRole[] = !user || ["user", "administrator"].includes(user.role) ? ["user", "administrator"] : user.role === "owner" ? ["owner"] : ["manager", "staff", "expert"];
+  const options: ManagedUserRole[] = user?.organization || user?.role === "owner" || user?.role === "staff"
+    ? [user.role]
+    : ["user", "administrator", "manager", "expert"];
   return <Dialog open onOpenChange={(open) => { if (!open && !mutation.isPending) close(); }}><DialogContent busy={mutation.isPending}>
     <DialogTitle>{user ? "Thông tin người dùng" : "Thêm người dùng"}</DialogTitle>
-    <DialogDescription>{user ? "Cập nhật thông tin và quyền truy cập tài khoản." : "Tạo tài khoản cá nhân hoặc quản trị viên. Thành viên tổ chức được thêm qua lời mời của tổ chức."} Tài khoản mới hoặc đổi email cần xác minh email khi đăng nhập.</DialogDescription>
+    <DialogDescription>{user ? "Cập nhật thông tin tài khoản. Owner và Staff được quản lý qua quy trình thành viên tổ chức." : "Tạo tài khoản cá nhân, quản trị hệ thống hoặc chuyên gia. Staff được thêm qua lời mời của tổ chức."} Tài khoản mới hoặc đổi email cần xác minh email khi đăng nhập.</DialogDescription>
     <form onSubmit={submit} className="space-y-4"><fieldset disabled={mutation.isPending} className="space-y-4">
       <label className="block space-y-2 text-sm"><span>Họ tên</span><Input required minLength={2} maxLength={100} value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></label>
       <label className="block space-y-2 text-sm"><span>Email</span><Input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label>

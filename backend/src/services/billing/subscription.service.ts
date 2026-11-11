@@ -123,6 +123,8 @@ export async function requireSubscriptionAccess(userId: string, orgId: string, o
   const organization = await OrganizationModel.findById(orgId);
   if (!organization) throw AppError.notFound('Không tìm thấy tổ chức.');
   const role = (user.roleId as unknown as Role).code;
+  if (!['owner', 'staff'].includes(role) && !(organization.isPersonal && role === 'user'))
+    throw AppError.forbidden('Chỉ thành viên tổ chức được truy cập gói dịch vụ này.');
   if (ownerOnly && role !== 'owner' && !(organization.isPersonal && role === 'user')) {
     throw AppError.forbidden(
       'Chỉ chủ tổ chức hoặc chủ tài khoản cá nhân được quản lý gói dịch vụ.',

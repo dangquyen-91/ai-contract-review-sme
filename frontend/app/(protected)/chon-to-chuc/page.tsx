@@ -18,9 +18,9 @@ export default async function ChooseOrganizationPage() {
   if (!user) redirect("/dang-nhap");
   if (user?.role === "administrator") redirect("/admin");
   if (user?.role === "staff") redirect("/dashboard");
-  if (user?.role === "expert") redirect("/dashboard");
+  if (user?.role === "expert") redirect("/expert-verification/overview");
   if (user?.role === "manager") redirect("/management");
-  if (user?.orgId && ["owner", "manager", "staff", "expert"].includes(user.role)) {
+  if (user?.orgId && ["owner", "staff"].includes(user.role)) {
     redirect(workspacePath(user));
   }
 

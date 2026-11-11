@@ -15,13 +15,13 @@ export async function findBillingAccount(
     : await OrganizationModel.findById(id).session(session);
   if (organization) return { isPersonal: organization.isPersonal, userId: null };
 
-  const filter = { _id: id, orgId: null, isActive: true };
+  const filter = { _id: id, isActive: true };
   const user = await (
     lock
       ? UserModel.findOneAndUpdate(filter, { $inc: { __v: 1 } }, { new: true, session })
       : UserModel.findOne(filter).session(session)
   ).populate('roleId');
-  if (!user || (user.roleId as unknown as { code?: string })?.code !== 'user')
+  if (!user || !['user', 'owner', 'staff'].includes((user.roleId as unknown as { code: string })?.code))
     throw AppError.notFound('Không tìm thấy tài khoản quản lý gói dịch vụ.');
   return { isPersonal: true, userId: user.id as string };
 }

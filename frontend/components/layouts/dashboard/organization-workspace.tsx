@@ -54,7 +54,7 @@ export function OrganizationWorkspace({
     roleLabel,
     selectTab,
   } = workspace;
-  const activeKey = pathname.startsWith("/management/organizations")
+  const activeKey = pathname === "/reports" ? "reports" : pathname.startsWith("/management/organizations")
     ? "organizations"
     : pathname.startsWith("/management/legal-sources")
       ? "legal-sources"
@@ -107,7 +107,7 @@ export function OrganizationWorkspace({
       contractCount={data.totalContracts}
       className="text-sm leading-normal"
       mainClassName={
-        activeTab === "upload" || activeTab === "contracts" ? "" : mainClassName
+        pathname === "/reports" || activeTab === "upload" || activeTab === "contracts" ? "" : mainClassName
       }
     >
       {activeTab !== "upload" &&

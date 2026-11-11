@@ -70,7 +70,12 @@ test('unauthenticated requests cannot create organizations', async () => {
   expect(createOrganizationHandler).not.toHaveBeenCalled();
 });
 
-test.each(['owner', 'manager', 'staff', 'expert', 'user'])('%s retains access to the creation handler', async (role) => {
+test.each(['owner', 'manager', 'staff', 'expert'])('%s cannot create an organization in this role', async (role) => {
+  expect(await createOrganization(role)).toBe(403);
+  expect(createOrganizationHandler).not.toHaveBeenCalled();
+});
+
+test.each(['user'])('%s retains access to the creation handler', async (role) => {
   expect(await createOrganization(role)).toBe(201);
   expect(createOrganizationHandler).toHaveBeenCalledTimes(1);
 });

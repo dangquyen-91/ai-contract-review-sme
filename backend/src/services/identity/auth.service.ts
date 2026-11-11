@@ -26,7 +26,7 @@ const REMEMBER_REFRESH_TOKEN_TTL = env.JWT_REFRESH_REMEMBER_EXPIRES_IN as SignOp
 function signTokens(payload: AccessTokenPayload, remember = false, authVersion = 0) {
   const accessToken = jwt.sign(payload, env.JWT_ACCESS_SECRET, { expiresIn: ACCESS_TOKEN_TTL });
   const refreshToken = jwt.sign(
-    { sub: payload.sub, remember, authVersion },
+    { sub: payload.sub, remember, authVersion, workspace: payload.workspace },
     env.JWT_REFRESH_SECRET,
     {
       expiresIn: remember ? REMEMBER_REFRESH_TOKEN_TTL : REFRESH_TOKEN_TTL,
@@ -101,13 +101,14 @@ export async function login(input: LoginInput) {
   return { user, ...tokens };
 }
 
-export async function refresh(refreshToken: string, invitationToken?: string) {
-  let payload: { sub: string; remember?: boolean; authVersion?: number };
+export async function refresh(refreshToken: string, invitationToken?: string, requestedWorkspace?: AccessTokenPayload['workspace']) {
+  let payload: { sub: string; remember?: boolean; authVersion?: number; workspace?: AccessTokenPayload['workspace'] };
   try {
     payload = jwt.verify(refreshToken, env.JWT_REFRESH_SECRET) as {
       sub: string;
       remember?: boolean;
       authVersion?: number;
+      workspace?: AccessTokenPayload['workspace'];
     };
   } catch {
     throw AppError.unauthorized('Invalid or expired refresh token');
@@ -133,17 +134,26 @@ export async function refresh(refreshToken: string, invitationToken?: string) {
 
   if (invitationToken) await getPendingInvitation(invitationToken, user.email);
 
+  const role = roleCodeOf(user);
+  let workspace = requestedWorkspace ?? payload.workspace;
+  if (workspace === 'personal' && !['user', 'owner', 'staff'].includes(role))
+    throw AppError.forbidden('Vai trò này không có không gian cá nhân.');
+  if (workspace === 'organization' && (!user.orgId || !['owner', 'staff'].includes(role))) {
+    if (requestedWorkspace) throw AppError.forbidden('Bạn không còn là thành viên tổ chức.');
+    workspace = undefined;
+  }
   const tokens = signTokens(
     {
       sub: user.id,
       role: roleCodeOf(user),
       orgId: user.orgId?.toString(),
       permissionsVersion: user.permissionsVersion ?? 0,
+      workspace,
     },
     payload.remember === true,
     user.authVersion ?? 0,
   );
-  return { user, ...tokens };
+  return { user, ...tokens, workspace };
 }
 
 export async function completeOnboarding(userId: string) {

@@ -17,9 +17,7 @@ export type DashboardTab = OrganizationDashboardView;
 // Share data and actions while each dashboard owns its role-specific views.
 export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
   const ownerMode = role === "owner";
-  const managerMode = role === "manager";
   const staffMode = role === "staff";
-  const expertMode = role === "expert";
   const router = useRouter();
   const pathname = usePathname();
   const { contractId: routeContractId, reviewId: routeReviewId } = useParams<{ contractId?: string; reviewId?: string }>();
@@ -106,7 +104,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
     const uploadedId = uploadedContract?.id;
     setUploadedContract(null);
     toast.success("Đã tải hợp đồng lên");
-    if (uploadedTitle && (staffMode || managerMode)) {
+    if (uploadedTitle && staffMode) {
       const params = new URLSearchParams({ search: uploadedTitle, page: "1" });
       if (uploadedId) params.set("uploaded", uploadedId);
       router.replace(`${organizationDashboardPath(role, "contracts")}?${params}`, { scroll: false });
@@ -119,7 +117,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
 
   function reviewExisting(contract: DashboardContract, rerun = false) {
     if (!(contract.id ?? contract._id) || contract.status === "archived" || isReviewing) return;
-    if (staffMode || expertMode || managerMode) {
+    if (staffMode) {
       if (activeTab !== "upload") returnLocation.current = { url: `${pathname}${searchParams.size ? `?${searchParams}` : ""}`, scroll: window.scrollY };
     }
     const contractId = (contract.id ?? contract._id)!;

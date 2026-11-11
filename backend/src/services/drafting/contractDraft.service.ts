@@ -30,8 +30,10 @@ const unlocked = () => ({ $or: [{ generationStartedAt: null }, { generationStart
 
 export async function requireDraftAccess(actor: AccessTokenPayload) {
   if (!['owner', 'staff', 'user'].includes(actor.role) || (!actor.orgId && actor.role !== 'user')) throw AppError.forbidden('Bạn không có quyền soạn hợp đồng.');
-  const member = await UserModel.findOne({ _id: actor.sub, orgId: actor.orgId ?? null, isActive: true }).populate('roleId');
-  if (!member || (member.roleId as unknown as { code: string })?.code !== actor.role) throw AppError.forbidden('Quyền truy cập tổ chức đã thay đổi.');
+  const personal = !actor.orgId && actor.role === 'user';
+  const member = await UserModel.findOne({ _id: actor.sub, ...(!personal ? { orgId: actor.orgId ?? null } : {}), isActive: true }).populate('roleId');
+  const memberRole = (member?.roleId as unknown as { code?: string })?.code;
+  if (!member || (personal ? !['user', 'owner', 'staff'].includes(memberRole ?? '') : memberRole !== actor.role)) throw AppError.forbidden('Quyền truy cập tổ chức đã thay đổi.');
   if (!actor.orgId) return { name: member.name, taxCode: '', address: '' };
   const organization = await OrganizationModel.findById(actor.orgId);
   if (!organization || (actor.role === 'user' ? !organization.isPersonal : organization.isPersonal)) throw AppError.forbidden('Không gian làm việc không phù hợp với tài khoản.');

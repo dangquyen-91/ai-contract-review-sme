@@ -10,5 +10,5 @@ export function ManagementDashboardShell({ name, children }: { name: string; chi
   const legalSources = pathname.startsWith(routes.legalSources);
   return <DashboardShell role="manager" activeKey={legalSources ? "legal-sources" : "organizations"}
     sectionLabel={legalSources ? "Kho pháp lý" : "Tổ chức"} workspaceName="LawScan"
-    workspaceLabel="Không gian quản lý" name={name} roleLabel="Quản lý">{children}</DashboardShell>;
+    workspaceLabel="Không gian quản lý hệ thống" name={name} roleLabel="Quản lý hệ thống">{children}</DashboardShell>;
 }

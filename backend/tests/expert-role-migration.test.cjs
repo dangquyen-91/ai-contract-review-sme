@@ -21,11 +21,11 @@ afterAll(async () => {
   if (mongo) await mongo.stop();
 });
 
-test('new installations seed expert and accept expert invitations', async () => {
+test('new installations seed an independent expert and only allow Staff invitations', async () => {
   await seedDefaultRoles();
   expect((await getRoleByCode('expert')).name).toBe('Expert');
   expect(ROLE_CODES).toContain('expert');
-  expect(INVITATION_ROLES).toContain('expert');
+  expect(INVITATION_ROLES).toEqual(['staff']);
   expect(ROLE_CODES).not.toContain('reviewer');
   expect(INVITATION_ROLES).not.toContain('reviewer');
 });
@@ -48,4 +48,23 @@ test.each([false, true])('migrates legacy memberships and invitations, existing 
   expect((await OrganizationInvitationModel.findById(invitationId)).role).toBe('expert');
   expect(await RoleModel.countDocuments({ code: 'expert' })).toBe(1);
   expect(await RoleModel.countDocuments({ code: 'reviewer' })).toBe(0);
+});
+
+test.each(['administrator', 'manager', 'expert'])('detaches legacy %s membership once, preserving Owner and Staff', async (code) => {
+  await seedDefaultRoles();
+  const role = await getRoleByCode(code);
+  const orgId = new mongoose.Types.ObjectId();
+  const account = await UserModel.create({ name: 'System account', email: 'system@example.com', passwordHash: 'unused', roleId: role._id, orgId });
+  const staff = await UserModel.create({ name: 'Staff', email: 'staff@example.com', passwordHash: 'unused', roleId: (await getRoleByCode('staff'))._id, orgId });
+  const invitationId = new mongoose.Types.ObjectId();
+  await OrganizationInvitationModel.collection.insertOne({ _id: invitationId, role: code, status: 'pending' });
+  await seedDefaultRoles();
+  const migrated = await UserModel.findById(account.id);
+  expect(migrated.orgId).toBeFalsy();
+  expect(migrated.roleId.toString()).toBe(role.id);
+  expect(migrated.permissionsVersion).toBe(1);
+  expect((await UserModel.findById(staff.id)).orgId.toString()).toBe(orgId.toString());
+  expect((await OrganizationInvitationModel.findById(invitationId)).status).toBe('revoked');
+  await seedDefaultRoles();
+  expect((await UserModel.findById(account.id)).permissionsVersion).toBe(1);
 });

@@ -4,7 +4,7 @@ const userRoleLabels: Record<ManagedUserRole, string> = {
   administrator: "Quản trị viên",
   user: "Người dùng cá nhân",
   owner: "Chủ tổ chức",
-  manager: "Quản lý",
+  manager: "Quản lý hệ thống",
   staff: "Nhân viên",
   expert: "Chuyên gia",
 };

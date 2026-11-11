@@ -5,11 +5,17 @@ import { rememberedCookieAge, tokenMaxAge } from "@/lib/auth/token-expiry";
 import type { AuthUser } from "@/types/auth";
 import { isSameOriginRequest } from "@/lib/api/request-origin";
 import { emailVerificationCookie, emailVerificationCookieAge, encodeEmailVerification } from "@/lib/auth/email-verification-session";
+import { getApiSession } from "@/lib/auth/api-session";
 
-const allowedActions = new Set(["login", "register", "refresh", "logout", "verify-email", "resend-verification", "google", "forgot-password", "reset-password"]);
+const allowedActions = new Set(["login", "register", "refresh", "workspace", "logout", "verify-email", "resend-verification", "google", "forgot-password", "reset-password"]);
 
 export async function GET(request: NextRequest, context: RouteContext<"/api/auth/[action]">) {
   const { action } = await context.params;
+  if (action === "workspace") {
+    const session = await getApiSession();
+    if (session.error) return session.error;
+    return NextResponse.json({ success: true, data: session.user }, { headers: { "Cache-Control": "no-store" } });
+  }
   if (action !== "google") return NextResponse.json({ success: false }, { status: 404 });
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) return NextResponse.json({ success: false, error: { message: "Google sign-in is not configured" } }, { status: 503 });
@@ -49,8 +55,24 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
   }
 
   try {
-    const isRefresh = action === "refresh";
-    const requestBody = isRefresh ? {} : await request.json();
+    const switchingWorkspace = action === "workspace";
+    const isRefresh = action === "refresh" || switchingWorkspace;
+    let requestBody: Record<string, unknown> = {};
+    if (action !== "refresh") {
+      let parsed: unknown;
+      try { parsed = await request.json(); }
+      catch { return NextResponse.json({ success: false, error: { message: "Nội dung yêu cầu phải là JSON hợp lệ." } }, { status: 400 }); }
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return NextResponse.json({ success: false, error: { message: "Dữ liệu yêu cầu phải là một đối tượng." } }, { status: 400 });
+      }
+      requestBody = parsed as Record<string, unknown>;
+    }
+    if (switchingWorkspace && !isSameOriginRequest(request)) {
+      return NextResponse.json({ success: false, error: { message: "Yêu cầu không hợp lệ." } }, { status: 403 });
+    }
+    if (switchingWorkspace && (typeof requestBody.workspace !== "string" || !["personal", "organization"].includes(requestBody.workspace))) {
+      return NextResponse.json({ success: false, error: { message: "Không gian làm việc không hợp lệ." } }, { status: 400 });
+    }
     const passwordRecovery = action === "forgot-password" || action === "reset-password";
     if (passwordRecovery && !isSameOriginRequest(request)) {
       return NextResponse.json({ success: false, error: { message: "Yêu cầu không hợp lệ. Vui lòng tải lại trang." } }, { status: 403 });
@@ -75,8 +97,8 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
       return response;
     }
 
-    const upstreamBody = isRefresh ? { refreshToken } : requestBody;
-    const upstream = await fetch(`${apiBaseUrl}/api/v1/auth/${action}`, {
+    const upstreamBody = isRefresh ? { refreshToken, ...(switchingWorkspace ? { workspace: requestBody.workspace } : {}) } : requestBody;
+    const upstream = await fetch(`${apiBaseUrl}/api/v1/auth/${isRefresh ? "refresh" : action}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(upstreamBody),
@@ -118,7 +140,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
     };
     const response = NextResponse.json({
       success: true,
-      data: isRefresh ? { refreshed: true } : { user },
+      data: isRefresh && !switchingWorkspace ? { refreshed: true } : { user },
     });
     response.headers.set("Cache-Control", "no-store");
     const options = cookieOptions(secure);
