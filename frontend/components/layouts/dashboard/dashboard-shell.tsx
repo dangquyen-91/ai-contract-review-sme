@@ -172,6 +172,7 @@ function DashboardFrame({
             roleLabel={roleLabel}
             onLogout={onLogout}
             loggingOut={loggingOut}
+            blockNavigation={blockNavigation}
           />
         </div>
         <DashboardNavigation

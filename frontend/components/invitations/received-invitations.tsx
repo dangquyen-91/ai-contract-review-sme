@@ -40,6 +40,7 @@ export function ReceivedInvitations() {
   const busy = accept.isPending || decline.isPending || navigating;
   return <section aria-label="Lời mời từ tổ chức" className="mb-8 space-y-3">
     <h2 className="flex items-center gap-2 text-lg font-semibold"><Icon name="mail" className="h-5 w-5 text-blue-600" />Lời mời từ tổ chức <span className="text-sm text-muted-foreground">({query.data.length})</span></h2>
+    <p className="text-sm text-muted-foreground">Tham gia tổ chức không ảnh hưởng đến gói và hợp đồng cá nhân. Bạn có thể chuyển giữa hai không gian; hạn mức được tính riêng.</p>
     {query.data.map((invite) => <article key={invite.id} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-blue-100 bg-white p-5 shadow-sm">
       <div><p className="font-semibold">{invite.organizationName} mời bạn tham gia</p><p className="mt-1 text-sm text-muted-foreground">Vai trò: {labels[invite.role]} · Hết hạn {new Intl.DateTimeFormat("vi-VN").format(new Date(invite.expiresAt))}</p></div>
       <div className="flex gap-2"><Button disabled={busy} onClick={() => void respond(invite.id, "accept")}>Chấp nhận</Button><Button variant="outline" disabled={busy} onClick={() => void respond(invite.id, "decline")}>Từ chối</Button></div>

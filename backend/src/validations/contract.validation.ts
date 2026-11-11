@@ -26,7 +26,7 @@ export const CONTRACT_SORT_FIELDS = [
 ] as const;
 
 export const listContractsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional(),
+  page: z.coerce.number().int().min(1).max(10000).optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
   sortBy: z.enum(CONTRACT_SORT_FIELDS).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
@@ -34,8 +34,10 @@ export const listContractsQuerySchema = z.object({
   industry: codeSchema.optional(),
   status: z.enum(CONTRACT_STATUSES).optional(),
   riskLevel: z.enum(RISK_LEVELS).optional(),
-  verificationStatus: z.enum(['not_sent', 'requested', 'in_progress', 'approved', 'returned']).optional(),
-  search: z.string().optional(),
+  verificationStatus: z
+    .enum(['not_sent', 'requested', 'in_progress', 'approved', 'returned'])
+    .optional(),
+  search: z.string().trim().max(300).optional(),
 });
 
 export const contractIdParamSchema = z.object({
@@ -57,7 +59,10 @@ export const shareSummaryQuerySchema = z.object({
 
 export const analysisFocusBodySchema = z.object({
   analysisFocus: z.string().trim().min(1).max(1000).optional(),
-    billing: z.object({ versionId: z.string().regex(/^[a-f\d]{24}$/i), units: z.number().int().positive() }).strict().optional(),
+  billing: z
+    .object({ versionId: z.string().regex(/^[a-f\d]{24}$/i), units: z.number().int().positive() })
+    .strict()
+    .optional(),
 });
 
 export const chatMessageBodySchema = z.object({

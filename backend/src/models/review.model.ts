@@ -88,6 +88,8 @@ const reviewSchema = new Schema(
 );
 
 reviewSchema.index({ contractId: 1, createdAt: -1 });
+reviewSchema.index({ finishedAt: 1, orgId: 1, status: 1 }, { name: 'report_finished_reviews' });
+reviewSchema.index({ status: 1, createdAt: 1, orgId: 1 }, { name: 'report_pending_reviews' });
 reviewSchema.index({ orgId: 1, idempotencyKey: 1 }, { unique: true });
 reviewSchema.index(
   { contractId: 1 },

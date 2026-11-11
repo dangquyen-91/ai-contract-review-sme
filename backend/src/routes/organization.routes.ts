@@ -138,7 +138,7 @@ router.delete(
 );
 router.post(
   '/',
-  requireRole('owner', 'manager', 'staff', 'expert', 'user'),
+  requireRole('user'),
   validate({ body: createOrganizationSchema }),
   createOrganizationHandler,
 );
@@ -151,13 +151,13 @@ router.get(
 router.get('/:id', validate({ params: organizationIdParamSchema }), getOrganizationHandler);
 router.patch(
   '/:id',
-  requireRole('administrator', 'owner'),
+  requireRole('owner'),
   validate({ params: organizationIdParamSchema, body: updateOrganizationSchema }),
   updateOrganizationHandler,
 );
 router.delete(
   '/:id',
-  requireRole('administrator', 'owner'),
+  requireRole('owner'),
   validate({ params: organizationIdParamSchema }),
   deleteOrganizationHandler,
 );

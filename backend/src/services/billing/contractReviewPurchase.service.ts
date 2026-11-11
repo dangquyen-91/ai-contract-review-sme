@@ -14,8 +14,8 @@ export async function contractReviewQuote(userId: string, orgId: string, contrac
   const user = await UserModel.findOne({ _id: userId, isActive: true }).populate('roleId');
   if (
     !user ||
-    (user.roleId as unknown as { code?: string })?.code !== 'user' ||
-    (user.orgId?.toString() ?? user.id) !== orgId
+    !['user', 'owner', 'staff'].includes((user.roleId as unknown as { code: string })?.code) ||
+    (user.id !== orgId && !((user.roleId as unknown as { code?: string })?.code === 'user' && user.orgId?.toString() === orgId))
   )
     throw AppError.forbidden('Thanh toán từng hợp đồng chỉ dành cho tài khoản cá nhân.');
   const contract = await ContractModel.findOne({ _id: contractId, orgId, uploadedBy: userId });

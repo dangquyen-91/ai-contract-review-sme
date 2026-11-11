@@ -19,6 +19,8 @@ export type AuthUser = {
   orgId: string | null;
   hasCompletedOnboarding: boolean;
   avatarUrl?: string | null;
+  workspace?: "personal" | "organization";
+  organizationMembership?: { orgId: string; role: "owner" | "staff" } | null;
 };
 
 export type LoginFormValues = z.infer<typeof loginFormSchema>;

@@ -111,15 +111,15 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
     if (input.role && input.role !== oldRole) {
       const org = user.orgId ? await OrganizationModel.findById(user.orgId) : null;
       const allowed =
-        org && !org.isPersonal ? ['manager', 'staff'] : ['user', 'administrator', 'expert'];
+        org && !org.isPersonal ? ['staff'] : ['user', 'administrator', 'manager', 'expert'];
       if (!allowed.includes(input.role))
         throw AppError.badRequest(
           'Vai trò không phù hợp với tổ chức hiện tại. Hãy dùng quy trình thành viên để thay đổi tổ chức.',
         );
       changes.roleId = (await getRoleByCode(input.role))._id;
-      if (input.role === 'expert') changes.hasCompletedOnboarding = true;
+      if (['administrator', 'manager', 'expert'].includes(input.role)) changes.hasCompletedOnboarding = true;
     }
-    const detach = input.role === 'expert' && input.role !== oldRole && user.orgId;
+    const detach = input.role && ['administrator', 'manager', 'expert'].includes(input.role) && input.role !== oldRole && user.orgId;
     const updated = await UserModel.findOneAndUpdate(
       { _id: user._id, deletedAt: null, permissionsVersion: user.permissionsVersion },
       { $set: changes, ...(detach ? { $unset: { orgId: 1 } } : {}), $inc: { permissionsVersion: 1 } },

@@ -395,15 +395,15 @@ test('received invitations are scoped to the authenticated email and never expos
 
 test('dashboard acceptance assigns orgId and role without needing the email token', async () => {
   const user = await makeUser();
-  const invitation = await seedReceivedInvitation(user.email, 'expert');
+  const invitation = await seedReceivedInvitation(user.email, 'staff');
   const response = await request(app)
     .post(`/api/v1/invitations/received/${invitation.data.id}/accept`)
     .set('Authorization', bearer(user));
   expect(response.status).toBe(200);
-  expect(response.body.data.user).toMatchObject({ orgId: org.id, role: 'expert' });
+  expect(response.body.data.user).toMatchObject({ orgId: org.id, role: 'staff' });
   expect(jwt.verify(response.body.data.accessToken, process.env.JWT_ACCESS_SECRET)).toMatchObject({
     orgId: org.id,
-    role: 'expert',
+    role: 'staff',
   });
   expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
 });

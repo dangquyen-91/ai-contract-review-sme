@@ -84,7 +84,7 @@ router.get(
 
 router.post(
   '/:reviewId/verification/request',
-  requireRole('owner', 'manager', 'staff', 'user'),
+  requireRole('owner', 'staff', 'user'),
   validate({ params: reviewIdParamSchema, body: requestVerificationBodySchema }),
   requestVerificationHandler,
 );

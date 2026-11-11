@@ -15,14 +15,20 @@ export const googleLoginHandler = asyncHandler(async (req, res) => {
   ok(res, { user: toPublicUser(user), ...tokens });
 });
 
-export function toPublicUser(user: HydratedDocument<User>) {
+export function toPublicUser(user: HydratedDocument<User>, workspace?: 'personal' | 'organization') {
+  const role = (user.roleId as unknown as Role).code;
+  const membership = user.orgId && ['owner', 'staff'].includes(role)
+    ? { orgId: user.orgId.toString(), role }
+    : null;
   return {
     id: user._id.toString(),
     name: user.name,
     email: user.email,
     avatarUrl: user.avatarUrl ?? null,
-    role: (user.roleId as unknown as Role).code,
-    orgId: user.orgId?.toString() ?? null,
+    role: workspace === 'personal' ? 'user' : role,
+    orgId: workspace === 'personal' ? null : user.orgId?.toString() ?? null,
+    organizationMembership: membership,
+    workspace: workspace ?? (membership ? 'organization' : 'personal'),
     hasCompletedOnboarding: user.hasCompletedOnboarding,
     emailVerified: Boolean(user.emailVerifiedAt),
   };
@@ -60,11 +66,13 @@ export const resendVerificationHandler = asyncHandler(async (req, res) => {
 });
 
 export const refreshHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { user, ...tokens } = await authService.refresh(
+  res.setHeader('Cache-Control', 'no-store');
+  const { user, workspace, ...tokens } = await authService.refresh(
     req.body.refreshToken,
     req.body.invitationToken,
+    req.body.workspace,
   );
-  ok(res, { user: toPublicUser(user), ...tokens });
+  ok(res, { user: toPublicUser(user, workspace), ...tokens });
 });
 
 export const completeOnboardingHandler = asyncHandler(async (req: Request, res: Response) => {

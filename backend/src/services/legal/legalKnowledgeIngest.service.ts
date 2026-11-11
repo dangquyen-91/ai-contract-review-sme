@@ -1,4 +1,5 @@
 import mammoth from 'mammoth';
+import { validateUploadContent } from '../../utils/uploadContent';
 import pdfParse from 'pdf-parse';
 import WordExtractor from 'word-extractor';
 import mongoose from 'mongoose';
@@ -105,6 +106,7 @@ async function readLegalText(buffer: Buffer, mimeType: string): Promise<string> 
 
 export async function extractLegalText(buffer: Buffer, mimeType: string): Promise<string> {
   try {
+    await validateUploadContent(buffer, mimeType);
     return normalizeExtractedText(await readLegalText(buffer, mimeType));
   } catch (err) {
     if (err instanceof AppError) throw err;

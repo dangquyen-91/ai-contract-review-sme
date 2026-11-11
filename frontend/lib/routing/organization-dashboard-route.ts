@@ -1,9 +1,9 @@
 import { routes } from "@/config/routes";
 
-export type OrganizationDashboardRole = "owner" | "manager" | "staff" | "expert";
+export type OrganizationDashboardRole = "owner" | "staff";
 
 export function isOrganizationDashboardRole(role: string): role is OrganizationDashboardRole {
-  return role === "owner" || role === "manager" || role === "staff" || role === "expert";
+  return role === "owner" || role === "staff";
 }
 export type OrganizationDashboardView = "overview" | "upload" | "contracts" | "administration" | "members";
 

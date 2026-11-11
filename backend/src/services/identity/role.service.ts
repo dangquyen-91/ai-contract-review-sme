@@ -7,22 +7,22 @@ const DEFAULT_ROLES: Array<{ code: RoleCode; name: string; description: string }
   {
     code: 'administrator',
     name: 'Administrator',
-    description: 'Full access: manage organization, users, and all contracts',
+    description: 'System administrator: manage user accounts and monitor system operations',
   },
   {
     code: 'manager',
     name: 'Manager',
-    description: 'Manage contracts and review outcomes for the organization',
+    description: 'System manager: manage legal knowledge sources and look up organizations',
   },
   {
     code: 'staff',
     name: 'Staff',
-    description: 'Upload and view contracts assigned to them',
+    description: 'Organization member: upload, draft and review contracts in their organization',
   },
   {
     code: 'owner',
     name: 'Owner',
-    description: 'Full access to manage their own contracts and review outcomes',
+    description: 'Organization owner: manage organization settings, Staff, subscriptions and contracts',
   },
   {
     code: 'expert',
@@ -50,7 +50,7 @@ export async function seedDefaultRoles(): Promise<void> {
   }
   await OrganizationInvitationModel.updateMany({ role: 'reviewer' }, { $set: { role: 'expert' } });
   await OrganizationInvitationModel.updateMany(
-    { role: 'expert', status: 'pending' },
+    { role: { $ne: 'staff' }, status: 'pending' },
     { $set: { status: 'revoked' } },
   );
 
@@ -58,16 +58,16 @@ export async function seedDefaultRoles(): Promise<void> {
     DEFAULT_ROLES.map((role) =>
       RoleModel.findOneAndUpdate(
         { code: role.code },
-        { $setOnInsert: { ...role, isSystemRole: true } },
+        { $setOnInsert: { code: role.code, name: role.name, isSystemRole: true }, $set: { description: role.description } },
         { upsert: true },
       ),
     ),
   );
 
-  const expertRole = await RoleModel.findOne({ code: 'expert' });
-  if (expertRole) {
+  const independentRoles = await RoleModel.find({ code: { $in: ['administrator', 'manager', 'expert'] } });
+  if (independentRoles.length) {
     await UserModel.updateMany(
-      { roleId: expertRole._id, orgId: { $ne: null } },
+      { roleId: { $in: independentRoles.map(role => role._id) }, orgId: { $ne: null } },
       { $unset: { orgId: 1 }, $set: { hasCompletedOnboarding: true }, $inc: { permissionsVersion: 1 } },
     );
   }

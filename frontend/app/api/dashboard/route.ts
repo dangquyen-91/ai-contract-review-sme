@@ -8,6 +8,9 @@ export async function GET() {
     const accessToken = session.accessToken;
 
     const claims = session.user;
+    if (!["owner", "staff", "user"].includes(claims.role)) {
+      return NextResponse.json({ success: false, error: { message: "Vai trò này sử dụng trang tổng quan riêng." } }, { status: 403 });
+    }
     const personal = !claims.orgId && claims.role === "user";
     if (!claims.orgId && !personal) {
       return NextResponse.json(
@@ -114,7 +117,7 @@ export async function GET() {
     });
 
     let distribution;
-    if (["staff", "expert", "manager"].includes(claims.role ?? "")) {
+    if (claims.role === "staff") {
       const filters = [
         "status=uploaded",
         "status=archived",

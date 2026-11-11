@@ -47,6 +47,7 @@ const schema = new Schema(
   { timestamps: true },
 );
 schema.index({ orgId: 1, idempotencyKey: 1 }, { unique: true });
+schema.index({ status: 1, currency: 1, paidAt: 1, orgId: 1 }, { name: 'report_paid_receipts' });
 schema.index({ orgId: 1 }, { unique: true, partialFilterExpression: { isOpen: true } });
 export const PaymentModel = model('Payment', schema);
 export type Payment = InferSchemaType<typeof schema>;

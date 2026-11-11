@@ -11,17 +11,19 @@ import type { UsageInput } from './usage.service';
 export async function assertUsageAccess(input: UsageInput, session: ClientSession) {
   const query = UserModel.findOne({
     _id: input.userId,
-    ...(input.userId === input.orgId ? { orgId: null } : { orgId: input.orgId }),
+    ...(input.userId === input.orgId ? {} : { orgId: input.orgId }),
     isActive: true,
   })
     .select('roleId')
+    .populate('roleId')
     .session(session);
-  if (input.kind === 'drafting' || input.userId === input.orgId) query.populate('roleId');
   const user = await query;
   if (!user) throw AppError.forbidden('Bạn không còn quyền truy cập tổ chức này.');
+  if (!['owner', 'staff', 'user'].includes((user.roleId as unknown as { code: string })?.code))
+    throw AppError.forbidden('Vai trò này không được sử dụng hạn mức hợp đồng.');
   if (
     input.userId === input.orgId &&
-    (user.roleId as unknown as { code?: string })?.code !== 'user'
+    !['user', 'owner', 'staff'].includes((user.roleId as unknown as { code: string })?.code)
   )
     throw AppError.forbidden('Bạn không có quyền truy cập tài khoản cá nhân này.');
 
@@ -41,7 +43,7 @@ export async function assertUsageAccess(input: UsageInput, session: ClientSessio
   const draft = await ContractDraftModel.exists({
     _id: input.draftId,
     orgId: input.userId === input.orgId ? null : input.orgId,
-    ...(role !== 'owner' ? { createdBy: input.userId } : {}),
+    ...(input.userId === input.orgId || role !== 'owner' ? { createdBy: input.userId } : {}),
   }).session(session);
   if (!draft) throw AppError.forbidden('Bạn không có quyền truy cập bản nháp này.');
 }

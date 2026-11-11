@@ -96,7 +96,7 @@ export async function updateOrganization(
   }
   const organization = await OrganizationModel.findByIdAndUpdate(
     organizationId,
-    { $set: input, ...('address' in input ? { $unset: { addressDetails: 1 } } : {}) },
+    { $set: input },
     { new: true, runValidators: true },
   );
   if (!organization) throw AppError.notFound('Organization not found');

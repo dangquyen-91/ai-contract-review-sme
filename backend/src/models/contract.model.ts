@@ -58,6 +58,7 @@ const contractSchema = new Schema(
 );
 
 contractSchema.index({ title: 'text' });
+contractSchema.index({ createdAt: 1, orgId: 1 }, { name: 'report_uploads' });
 contractSchema.index(
   { status: 1, updatedAt: 1 },
   { partialFilterExpression: { status: 'unsupported' }, name: 'unsupported_cleanup' },

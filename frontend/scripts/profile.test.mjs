@@ -37,10 +37,10 @@ function proxyHarness(status = 200) {
   const { proxyProfile } = load('../lib/api/profile-proxy.ts', {
     'next/server': { NextRequest, NextResponse },
     '@/lib/auth/api-session': { getApiSession: async () => authenticated ? { accessToken: 'access', user: profile.user } : { error: NextResponse.json({ success: false }, { status: 401 }) } },
-    '@/lib/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
-    '@/lib/auth-session': { userSessionCookie: 'lawscan_user', encodeSessionUser: user => JSON.stringify(user) },
-    '@/lib/token-expiry': { rememberedCookieAge: () => ({ maxAge: 604800 }) },
-    '@/lib/email-verification-session': { emailVerificationCookie: 'lawscan_email_verification' },
+    '@/lib/api/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
+    '@/lib/auth/auth-session': { userSessionCookie: 'lawscan_user', encodeSessionUser: user => JSON.stringify(user) },
+    '@/lib/auth/token-expiry': { rememberedCookieAge: () => ({ maxAge: 604800 }) },
+    '@/lib/auth/email-verification-session': { emailVerificationCookie: 'lawscan_email_verification' },
   }, { fetch: async (url, options) => { calls.push({ url, options }); return NextResponse.json(status === 200 ? { success: true, data: profile } : { success: false, error: { message: 'Invalid profile' } }, { status }); } });
   function run(method, action = '', body, headers = {}) {
     authenticated = true;
@@ -104,11 +104,11 @@ test('avatar proxy enforces upload limits and forwards the file without a client
 
 test('saving profile mutations updates shared identity data and invalidates dashboard summaries', async () => {
   const calls = [];
-  const { useProfileUpdates, useChangeProfilePassword } = load('../hooks/use-profile.ts', {
+  const { useProfileUpdates, useChangeProfilePassword } = load('../hooks/profile/use-profile.ts', {
     '@tanstack/react-query': { useQueryClient: () => ({ setQueryData: (key, value) => calls.push({ key: [...key], value }), invalidateQueries: async options => calls.push({ invalidate: [...options.queryKey] }) }), useMutation: options => options },
     '@/lib/api/profile': { profileApi: { update() {}, avatar() {}, removeAvatar() {}, changePassword() {} } },
     '@/lib/query-keys/dashboard': { dashboardKeys: { all: ['dashboard'] } },
-    '@/lib/session-cache': { clearSessionCache: async () => calls.push({ clearSessionCache: true }) },
+    '@/lib/auth/session-cache': { clearSessionCache: async () => calls.push({ clearSessionCache: true }) },
   });
   await useProfileUpdates().update.onSuccess(profile);
   assert.equal(calls[0].value.user.name, profile.user.name);

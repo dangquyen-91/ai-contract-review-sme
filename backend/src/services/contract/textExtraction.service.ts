@@ -1,4 +1,5 @@
 import mammoth from 'mammoth';
+import { validateDocxArchive } from '../../utils/uploadContent';
 import { createScheduler, createWorker, Scheduler } from 'tesseract.js';
 import { env } from '../../config/env';
 import { EXTRACTION_METHODS, EXTRACTION_STATUSES } from '../../models/contractVersion.model';
@@ -199,6 +200,7 @@ async function extractFromPdf(
 }
 
 async function extractFromDocx(buffer: Buffer): Promise<{ text: string; quality: ExtractionQuality }> {
+  await validateDocxArchive(buffer);
   const { value } = await mammoth.extractRawText({ buffer });
   const pageCount = await countDocxPages(buffer);
   return {

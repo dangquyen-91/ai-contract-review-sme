@@ -30,8 +30,8 @@ function harness({ data = [], error, request = async () => ({ user: { role: 'sta
     '@/components/ui/button': { Button: props => jsx.jsx('button', props) },
     '@/components/ui/icon': { Icon: () => null },
     '@/lib/api/client': { apiClient: {}, apiRequest: async input => { calls.push(input); return request(input); } },
-    '@/lib/session-cache': { clearSessionCache: async () => calls.push('clear') },
-    '@/lib/workspace-path': { workspacePath: () => '/dashboard/staff' },
+    '@/lib/auth/session-cache': { clearSessionCache: async () => calls.push('clear') },
+    '@/lib/routing/workspace-path': { workspacePath: () => '/dashboard/staff' },
   };
   function load(file) {
     const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
@@ -47,7 +47,7 @@ function harness({ data = [], error, request = async () => ({ user: { role: 'sta
   deps['@/lib/api/invitations'] = load('../lib/api/invitations.ts');
   deps['@/lib/query-keys/invitations'] = load('../lib/query-keys/invitations.ts');
   deps['@/lib/query-keys/dashboard'] = { dashboardKeys: { all: ['dashboard'] } };
-  deps['@/hooks/use-invitations'] = load('../hooks/use-invitations.ts');
+  deps['@/hooks/organizations/use-invitations'] = load('../hooks/organizations/use-invitations.ts');
   const exports = load('../components/invitations/received-invitations.tsx');
   return { calls, render: () => { cursor = 0; return exports.ReceivedInvitations(); } };
 }
@@ -119,9 +119,9 @@ function proxyRoute(file, fetch, authenticated = true) {
   const dependencies = {
     'next/server': { NextRequest, NextResponse },
     '@/lib/auth/api-session': { getApiSession: async () => authenticated ? { accessToken: 'old-access' } : { error: NextResponse.json({ success: false }, { status: 401 }) } },
-    '@/lib/auth-session': { userSessionCookie: 'lawscan_user', encodeSessionUser: user => JSON.stringify(user) },
-    '@/lib/token-expiry': { tokenMaxAge: () => 900, rememberedCookieAge: () => ({ maxAge: 604800 }) },
-    '@/lib/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
+    '@/lib/auth/auth-session': { userSessionCookie: 'lawscan_user', encodeSessionUser: user => JSON.stringify(user) },
+    '@/lib/auth/token-expiry': { tokenMaxAge: () => 900, rememberedCookieAge: () => ({ maxAge: 604800 }) },
+    '@/lib/api/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
   };
   vm.runInNewContext(source, { exports, fetch, process: { env: {} }, require: name => dependencies[name] });
   return exports;
