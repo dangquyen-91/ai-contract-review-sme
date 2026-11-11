@@ -20,7 +20,7 @@ const adminNavigation: NavigationItem[] = [
   { key: "overview", href: "/admin", label: "Tổng quan", icon: "briefcase", group: "Không gian quản trị", mobile: true },
   { key: "userManagement", href: userManagementPath, label: "Người dùng", icon: "team", mobile: true },
   { key: "ai-jobs", href: "/admin/ai-jobs", label: "Giám sát AI", icon: "sparkle", group: "Vận hành", pending: true, mobile: true },
-  { key: "reports", href: "/admin/reports", label: "Báo cáo & thống kê", icon: "chart", pending: true, mobile: true },
+  { key: "reports", href: "/admin/reports", label: "Báo cáo & thống kê", icon: "chart", mobile: true },
   { key: "audit-log", href: "/admin/audit-log", label: "Nhật ký quản trị", icon: "shield", pending: true, mobile: true },
 ];
 
@@ -56,6 +56,7 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
     { key: "contracts", href: organizationDashboardPath(role, "contracts"), label: "Hợp đồng", icon: "document", count: true, mobile: true, workspaceTab: true },
     ...(["owner", "staff"].includes(role) ? [{ key: "drafts", href: "/contract-drafts", label: "Tạo hợp đồng", icon: "document" as const, mobile: true }] : []),
     ...(role === "owner" ? [
+      { key: "reports", href: "/reports", label: "Báo cáo & thống kê", icon: "chart" as const, mobile: true },
       { key: "administration", href: organizationDashboardPath(role, "administration"), label: "Quản trị", icon: "team" as const, mobile: true, workspaceTab: true },
       { key: "members", href: organizationDashboardPath(role, "members"), label: "Thành viên & lời mời", icon: "team" as const, mobile: true, workspaceTab: true },
     ] : []),

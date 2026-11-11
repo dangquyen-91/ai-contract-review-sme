@@ -98,6 +98,7 @@ const usageRunSchema = new Schema(
   { timestamps: true },
 );
 usageRunSchema.index({ orgId: 1, kind: 1, idempotencyKey: 1 }, { unique: true });
+usageRunSchema.index({ status: 1, updatedAt: 1, orgId: 1, kind: 1 }, { name: 'report_consumed_units' });
 usageRunSchema.index(
   { orgId: 1, contractId: 1 },
   {
