@@ -73,6 +73,7 @@ const contractVersionSchema = new Schema(
     fileFormat: { type: String },
     fileName: { type: String },
     mimeType: { type: String },
+    fileHash: { type: String, index: true },
     extractedText: { type: String, select: false, ...encryptedString },
     extractionStatus: { type: String, enum: EXTRACTION_STATUSES, default: 'pending', index: true },
     extractionError: { type: String },

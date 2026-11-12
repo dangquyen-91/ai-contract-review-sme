@@ -1,7 +1,35 @@
+import { createHash } from 'crypto';
 import { Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { ContractModel, CONTRACT_STATUSES } from '../../models/contract.model';
 import { ContractVersionModel } from '../../models/contractVersion.model';
+
+export const fileHashOf = (buffer: Buffer) => createHash('sha256').update(buffer).digest('hex');
+
+export async function findVersionByFileHash(orgId: string, fileHash: string, contractId?: string) {
+  const versions = await ContractVersionModel.find({
+    fileHash,
+    ...(contractId ? { contractId } : {}),
+  })
+    .select('contractId versionNumber createdAt')
+    .sort({ createdAt: 1 })
+    .lean();
+  if (!versions.length) return null;
+  const contract = await ContractModel.findOne({
+    _id: { $in: versions.map((version) => version.contractId) },
+    orgId,
+  })
+    .select('title')
+    .lean();
+  if (!contract) return null;
+  const version = versions.find((item) => String(item.contractId) === contract._id.toString())!;
+  return {
+    contractId: contract._id.toString(),
+    title: contract.title,
+    versionNumber: version.versionNumber,
+    uploadedAt: version.createdAt,
+  };
+}
 
 export async function getCurrentVersion(contractId: string) {
   const version = await ContractVersionModel.findOne({ contractId }).sort({ versionNumber: -1 });

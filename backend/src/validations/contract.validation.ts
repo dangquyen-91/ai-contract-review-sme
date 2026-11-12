@@ -9,6 +9,10 @@ export const createContractSchema = z.object({
   type: codeSchema.optional(),
   ourParty: codeSchema.optional(),
   industry: codeSchema.optional(),
+  allowDuplicate: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((value) => value === 'true'),
 });
 
 export const confirmContractProfileSchema = z.object({

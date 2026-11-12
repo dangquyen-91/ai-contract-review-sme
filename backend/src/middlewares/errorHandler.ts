@@ -49,7 +49,11 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     }
     return res.status(err.statusCode).json({
       success: false,
-      error: { message: err.message, ...(err.code ? { code: err.code } : {}) },
+      error: {
+        message: err.message,
+        ...(err.code ? { code: err.code } : {}),
+        ...(err.meta ? { meta: err.meta } : {}),
+      },
     });
   }
 

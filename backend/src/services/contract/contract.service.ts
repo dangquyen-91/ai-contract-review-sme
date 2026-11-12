@@ -20,7 +20,12 @@ import {
   uploadContractFile,
 } from './storage.service';
 import { enqueueExtraction, waitForExtraction } from './extractionWorker.service';
-import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
+import {
+  fileHashOf,
+  findVersionByFileHash,
+  getCurrentVersion,
+  getCurrentVersionWithText,
+} from './contractVersion.service';
 import { resolveContractProfile, validateContractContext } from './contractProfile.service';
 import { redactionPolicyFor } from './redactionPolicy.service';
 import { createRedactor, SensitiveDataType } from '../ai/redaction.service';
@@ -59,6 +64,18 @@ export async function createContract({
   if (profile) await validateContractContext(profile, input);
   else if (input.ourParty) throw AppError.badRequest('ourParty requires a contract type');
 
+  const fileHash = file ? fileHashOf(file.buffer) : undefined;
+  if (fileHash && !input.allowDuplicate) {
+    const duplicate = await findVersionByFileHash(orgId, fileHash);
+    if (duplicate) {
+      throw AppError.conflict(
+        `Tệp này giống hệt hợp đồng "${duplicate.title}" (phiên bản ${duplicate.versionNumber}) đã tải lên trước đó.`,
+        'DUPLICATE_CONTRACT',
+        duplicate,
+      );
+    }
+  }
+
   const stored = file ? await uploadContractFile(file.buffer, orgId, file.name) : undefined;
 
   let contractId: Types.ObjectId | undefined;
@@ -96,6 +113,7 @@ export async function createContract({
       fileFormat: stored?.format,
       fileName: file?.name,
       mimeType: file?.mimeType,
+      fileHash,
       extractionStatus: stored ? 'processing' : 'pending',
       extractionStartedAt: stored ? new Date() : undefined,
     });

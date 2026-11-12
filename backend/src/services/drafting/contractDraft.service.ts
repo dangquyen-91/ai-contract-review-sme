@@ -16,6 +16,7 @@ import { generateDraftContent } from './generation.service';
 import { createDraftDocx } from './docx.service';
 import { deleteContractFile, uploadContractFile } from '../contract/storage.service';
 import { countDocxPages } from '../contract/documentPageCount.service';
+import { fileHashOf } from '../contract/contractVersion.service';
 import { reserveUsage, finishUsage } from '../billing/usage.service';
 import { draftingError } from './draftingErrors';
 import { buildStudioTemplate, legacyStudioDocument } from './studioTemplate';
@@ -255,7 +256,7 @@ export async function publishDraft(actor: AccessTokenPayload, id: string, revisi
     const contractId = await mongoose.connection.transaction(async session => {
       const [contract] = await ContractModel.create([{ ownerType: 'organization', orgId: actor.orgId, uploadedBy: actor.sub, title: draft.title, type: draft.templateCode, ourParty: draft.ourParty,
         classification: { status: 'completed', outcome: 'supported', type: draft.templateCode, ourParty: draft.ourParty, source: 'user', confirmedAt: new Date() } }], { session });
-      await ContractVersionModel.create([{ contractId: contract._id, versionNumber: 1, createdBy: actor.sub, extractedText: draft.content, extractionStatus: 'completed', extractionQuality: { method: 'docx', pageCount, ocrPageCount: 0, lowConfidence: false }, fileKey: stored.key, fileResourceType: stored.resourceType, fileDeliveryType: stored.deliveryType, fileFormat: stored.format, fileName: filename, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }], { session });
+      await ContractVersionModel.create([{ contractId: contract._id, versionNumber: 1, createdBy: actor.sub, extractedText: draft.content, extractionStatus: 'completed', extractionQuality: { method: 'docx', pageCount, ocrPageCount: 0, lowConfidence: false }, fileKey: stored.key, fileResourceType: stored.resourceType, fileDeliveryType: stored.deliveryType, fileFormat: stored.format, fileName: filename, fileHash: fileHashOf(buffer), mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }], { session });
       const updated = await ContractDraftModel.updateOne({ ...scope(actor, id), status: 'approved', revision, contractId: null }, { $set: { contractId: contract._id }, $inc: { revision: 1 } }, { session });
       if (!updated.modifiedCount) throw AppError.conflict('Bản nháp đã được chuyển sang rà soát. Vui lòng tải lại.');
       return contract.id;
