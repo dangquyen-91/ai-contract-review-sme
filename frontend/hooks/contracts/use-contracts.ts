@@ -228,6 +228,33 @@ export function useUploadContractMutation() {
   });
 }
 
+export function useContractVersions(contractId: string) {
+  return useQuery({
+    queryKey: contractKeys.versions(contractId),
+    queryFn: ({ signal }) => contractsApi.listVersions(contractId, signal),
+    enabled: Boolean(contractId),
+  });
+}
+
+export function useUploadContractVersionMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation<
+    DashboardContract,
+    ApiClientError,
+    { contractId: string; formData: FormData }
+  >({
+    mutationKey: contractMutationKeys.uploadVersion,
+    mutationFn: ({ contractId, formData }) => contractsApi.uploadVersion(contractId, formData),
+    onSuccess: (_contract, { contractId }) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["contracts", contractId] }),
+        queryClient.invalidateQueries({ queryKey: contractKeys.lists }),
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+      ]),
+  });
+}
+
 export function useContractFile(
   contractId: string,
   version?: string,

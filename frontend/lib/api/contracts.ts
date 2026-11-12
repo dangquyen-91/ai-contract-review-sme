@@ -1,6 +1,6 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
-import type { ContractShareSummary, ReviewBillingConfirmation } from "@/types/contracts";
+import type { ContractShareSummary, ContractVersionSummary, ReviewBillingConfirmation } from "@/types/contracts";
 import { readContractStream } from "@/lib/api/contract-stream";
 import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyTerms, ContractListResult, ContractProfile, ContractReviewResult, ContractReviewRun, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
@@ -68,6 +68,20 @@ export const contractsApi = {
   upload(formData: FormData) {
     return apiRequest<DashboardContract>({
       url: "/contracts",
+      method: "POST",
+      data: formData,
+      headers: { Prefer: "respond-async" },
+      timeout: 60_000,
+    });
+  },
+
+  listVersions(contractId: string, signal?: AbortSignal) {
+    return apiRequest<ContractVersionSummary[]>({ url: `/contracts/${contractId}/versions`, signal });
+  },
+
+  uploadVersion(contractId: string, formData: FormData) {
+    return apiRequest<DashboardContract>({
+      url: `/contracts/${contractId}/versions`,
       method: "POST",
       data: formData,
       headers: { Prefer: "respond-async" },

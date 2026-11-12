@@ -24,10 +24,19 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/cont
     return NextResponse.json({ error: "Mã hợp đồng không hợp lệ." }, { status: 400 });
   }
 
+  const versionId = request.nextUrl?.searchParams.get("versionId");
+  if (versionId && !/^[a-f\d]{24}$/i.test(versionId)) {
+    return NextResponse.json({ error: "Mã phiên bản không hợp lệ." }, { status: 400 });
+  }
+
   try {
     const redacted = request.nextUrl?.searchParams.get("redacted") === "true";
+    const query = new URLSearchParams({
+      ...(redacted ? { redacted: "true" } : {}),
+      ...(versionId ? { versionId } : {}),
+    }).toString();
     const metadataResponse = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/file${redacted ? "?redacted=true" : ""}`,
+      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/file${query ? `?${query}` : ""}`,
       { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal: request.signal },
     );
     if (!metadataResponse.ok) {

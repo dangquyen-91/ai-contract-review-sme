@@ -17,9 +17,11 @@ export const contractKeys = {
   keyTerms: (id: string) => ["contracts", id, "key-terms"] as const,
   findings: (id: string) => ["contracts", id, "findings"] as const,
   chat: (id: string) => ["contracts", id, "chat"] as const,
+  versions: (id: string) => ["contracts", id, "versions"] as const,
 };
 
 export const contractMutationKeys = {
   upload: ["contracts", "upload"] as const,
+  uploadVersion: ["contracts", "upload-version"] as const,
   review: ["contracts", "review"] as const,
 };
