@@ -1,7 +1,9 @@
 import { Schema, model } from 'mongoose';
 import { decryptOnSerialize, encryptedString } from '../utils/fieldEncryption';
+import { OWNER_TYPES } from './contract.model';
 
 const schema = new Schema({
+  ownerType: { type: String, enum: OWNER_TYPES, required: true },
   orgId: { type: Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
   createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   title: { type: String, required: true },

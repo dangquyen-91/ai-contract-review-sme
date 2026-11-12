@@ -66,6 +66,7 @@ export async function createContract({
   let job: Awaited<ReturnType<typeof enqueueExtraction>> | undefined;
   try {
     const contract = await ContractModel.create({
+      ownerType: orgId === uploadedBy ? 'personal' : 'organization',
       orgId,
       uploadedBy,
       title: input.title ?? titleFromFileName(file?.name),

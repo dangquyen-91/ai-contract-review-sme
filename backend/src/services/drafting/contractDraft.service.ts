@@ -116,7 +116,7 @@ export async function createDraft(actor: AccessTokenPayload, input: DraftInput) 
   const template = getTemplate(input.templateCode);
   const document = input.editorMode === 'studio' ? buildStudioTemplate(template, values, organization.name, input.ourParty) : null;
   const draft = await ContractDraftModel.create({
-    orgId: actor.orgId ?? null, createdBy: actor.sub, title: input.title,
+    ownerType: actor.orgId ? 'organization' : 'personal', orgId: actor.orgId ?? null, createdBy: actor.sub, title: input.title,
     templateCode: input.templateCode, templateVersion: getTemplate(input.templateCode).version, ourParty: input.ourParty,
     templateJson: JSON.stringify(getTemplate(input.templateCode)),
     inputJson: JSON.stringify(values), organizationJson: JSON.stringify({ name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }),
@@ -253,7 +253,7 @@ export async function publishDraft(actor: AccessTokenPayload, id: string, revisi
   try {
     await requireDraftAccess(actor);
     const contractId = await mongoose.connection.transaction(async session => {
-      const [contract] = await ContractModel.create([{ orgId: actor.orgId, uploadedBy: actor.sub, title: draft.title, type: draft.templateCode, ourParty: draft.ourParty,
+      const [contract] = await ContractModel.create([{ ownerType: 'organization', orgId: actor.orgId, uploadedBy: actor.sub, title: draft.title, type: draft.templateCode, ourParty: draft.ourParty,
         classification: { status: 'completed', outcome: 'supported', type: draft.templateCode, ourParty: draft.ourParty, source: 'user', confirmedAt: new Date() } }], { session });
       await ContractVersionModel.create([{ contractId: contract._id, versionNumber: 1, createdBy: actor.sub, extractedText: draft.content, extractionStatus: 'completed', extractionQuality: { method: 'docx', pageCount, ocrPageCount: 0, lowConfidence: false }, fileKey: stored.key, fileResourceType: stored.resourceType, fileDeliveryType: stored.deliveryType, fileFormat: stored.format, fileName: filename, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }], { session });
       const updated = await ContractDraftModel.updateOne({ ...scope(actor, id), status: 'approved', revision, contractId: null }, { $set: { contractId: contract._id }, $inc: { revision: 1 } }, { session });
