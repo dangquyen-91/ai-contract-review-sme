@@ -3,7 +3,7 @@ import { ok, paginated } from '../utils/ApiResponse';
 import { AppError } from '../errors/AppError';
 import * as service from '../services/organization/invitation.service';
 import { tokensForUser } from '../services/identity/auth.service';
-import { toPublicUser } from './auth.controller';
+import { toPublicUser } from '../services/identity/publicUser';
 import { invitationPaginationSchema } from '../validations/invitation.validation';
 
 export const createInvitationHandler = asyncHandler(async (req, res) => {

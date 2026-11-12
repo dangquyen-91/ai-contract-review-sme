@@ -207,7 +207,7 @@ test('joining preserves personal Pro, private contracts and independent organiza
   await invitations.createInvitation(w.owner.id, w.org.id, { email: personal.email, role: 'staff' });
   const member = await invitations.acceptInvitation(personal.id, sendInvitationEmail.mock.calls.at(-1)[0].token);
   const { refresh } = require('../dist/services/identity/auth.service');
-  const { toPublicUser } = require('../dist/controllers/auth.controller');
+  const { toPublicUser } = require('../dist/services/identity/publicUser');
   const personalSession = await refresh(tokensForUser(member).refreshToken, undefined, 'personal');
   expect(toPublicUser(personalSession.user, personalSession.workspace)).toMatchObject({ role: 'user', orgId: null, workspace: 'personal', organizationMembership: { orgId: w.org.id, role: 'staff' } });
   expect((await refresh(personalSession.refreshToken)).workspace).toBe('personal');

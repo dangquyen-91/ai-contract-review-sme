@@ -4,7 +4,7 @@ import type { z } from 'zod';
 import { UserModel } from '../../models/user.model';
 import { OrganizationModel } from '../../models/organization.model';
 import { AppError } from '../../errors/AppError';
-import { toPublicUser } from '../../controllers/auth.controller';
+import { toPublicUser } from './publicUser';
 import { profileUpdateSchema, changePasswordSchema } from '../../validations/profile.validation';
 import { uploadAvatar, removeAvatar } from './avatar.service';
 

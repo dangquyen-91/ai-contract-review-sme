@@ -1,10 +1,8 @@
+import { toPublicUser } from '../services/identity/publicUser';
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import * as authService from '../services/identity/auth.service';
-import { User } from '../models/user.model';
-import { Role } from '../models/role.model';
-import { HydratedDocument } from 'mongoose';
 import { AppError } from '../errors/AppError';
 import { resendEmailVerification } from '../services/identity/emailVerification.service';
 import { googleLogin } from '../services/identity/googleAuth.service';
@@ -14,25 +12,6 @@ export const googleLoginHandler = asyncHandler(async (req, res) => {
   const { user, ...tokens } = await googleLogin(req.body);
   ok(res, { user: toPublicUser(user), ...tokens });
 });
-
-export function toPublicUser(user: HydratedDocument<User>, workspace?: 'personal' | 'organization') {
-  const role = (user.roleId as unknown as Role).code;
-  const membership = user.orgId && ['owner', 'staff'].includes(role)
-    ? { orgId: user.orgId.toString(), role }
-    : null;
-  return {
-    id: user._id.toString(),
-    name: user.name,
-    email: user.email,
-    avatarUrl: user.avatarUrl ?? null,
-    role: workspace === 'personal' ? 'user' : role,
-    orgId: workspace === 'personal' ? null : user.orgId?.toString() ?? null,
-    organizationMembership: membership,
-    workspace: workspace ?? (membership ? 'organization' : 'personal'),
-    hasCompletedOnboarding: user.hasCompletedOnboarding,
-    emailVerified: Boolean(user.emailVerifiedAt),
-  };
-}
 
 export const registerHandler = asyncHandler(async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store');
