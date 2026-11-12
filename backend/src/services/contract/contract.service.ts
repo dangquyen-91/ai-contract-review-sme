@@ -259,7 +259,10 @@ export async function listContractVersions(orgId: string, contractId: string) {
   const latestReviewByVersion = new Map<string, (typeof reviews)[number]>();
   for (const review of reviews) {
     const key = String(review.versionId);
-    if (!latestReviewByVersion.has(key)) latestReviewByVersion.set(key, review);
+    const chosen = latestReviewByVersion.get(key);
+    if (!chosen || (chosen.status !== 'completed' && review.status === 'completed')) {
+      latestReviewByVersion.set(key, review);
+    }
   }
   const verifications = await ExpertReviewModel.find({
     reviewId: { $in: [...latestReviewByVersion.values()].map((review) => review._id) },

@@ -3027,7 +3027,7 @@ paths:
                         latestReview:
                           type: object
                           nullable: true
-                          description: Latest review of this version; open it with GET /reviews/{reviewId}
+                          description: Latest completed review of this version, or its latest attempt when none completed; open it with GET /reviews/{reviewId}
                           properties:
                             id: { type: string }
                             status: { type: string, enum: [queued, running, completed, failed, cancelled] }
