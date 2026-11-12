@@ -289,7 +289,7 @@ components:
         invitationToken:
           type: string
           pattern: '^[a-f0-9]{64}$'
-          description: Validates the invitation email and skips automatic personal workspace creation.
+          description: Validates that the pending invitation was sent to this email.
         email:
           type: string
           format: email
@@ -377,9 +377,17 @@ components:
         invitationToken:
           type: string
           pattern: '^[a-f0-9]{64}$'
-          description: Preserve invitation flow and skip automatic personal workspace creation.
+          description: Validates that the pending invitation was sent to this account's email.
         refreshToken:
           type: string
+        workspace:
+          type: string
+          enum: [personal, organization]
+          description: >-
+            Switch workspace. `personal` is allowed for user, owner and staff accounts and
+            issues a token with role `user` and no orgId. `organization` requires a Membership
+            and returns 403 when the account no longer belongs to an organization. When omitted,
+            the workspace stored in the refresh token is kept.
 
     AuthTokens:
       type: object
@@ -391,6 +399,10 @@ components:
 
     AuthUser:
       type: object
+      description: >-
+        The effective role is derived on every login and refresh. User.platformRole
+        (administrator, manager, expert) wins; otherwise the Membership role (owner, staff)
+        applies; an account with neither is a personal account (user).
       properties:
         emailVerified:
           type: boolean
@@ -400,12 +412,27 @@ components:
           type: string
         email:
           type: string
+        avatarUrl:
+          type: string
+          nullable: true
         role:
           type: string
           enum: [administrator, manager, staff, owner, expert, user]
+          description: Effective role in the current workspace. Always `user` in the personal workspace.
         orgId:
           type: string
           nullable: true
+          description: Organization of the Membership. Null for personal and platform accounts and in the personal workspace.
+        organizationMembership:
+          type: object
+          nullable: true
+          description: The account's Membership, kept even while the personal workspace is active.
+          properties:
+            orgId: { type: string }
+            role: { type: string, enum: [owner, staff] }
+        workspace:
+          type: string
+          enum: [personal, organization]
         hasCompletedOnboarding:
           type: boolean
 
@@ -2336,7 +2363,7 @@ paths:
           name: limit
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
       responses:
-        '200': { description: Paginated members with id, name, email, role and isActive }
+        '200': { description: Paginated members with id, name, email, role (owner or staff, from Membership) and isActive, ordered by join date }
         '403': { description: Not the owner of this organization }
 
   /organizations/{id}/members/{userId}:
@@ -2346,8 +2373,8 @@ paths:
       description: >-
         Only an active owner of this organization may remove a member. Owners cannot
         be removed. Keeps the user account, organization contracts, reviews, chat,
-        purchased plan and consumed quota. Clears the member organization, resets
-        their role to user and onboarding to incomplete, and invalidates old access
+        purchased plan and consumed quota. Deletes the member's Membership, so the
+        account becomes a personal account (role user), resets onboarding to incomplete, and invalidates old access
         tokens even if they later rejoin. Pending invitations for this email in this
         organization are revoked. The user may accept a new invitation or complete
         personal onboarding. Repeated removal returns 404. Requests already running
@@ -2391,7 +2418,7 @@ paths:
     post:
       tags: [Invitations]
       summary: Accept an invitation and receive a new authenticated session
-      description: Requires an active personal (user role) account with matching email and no business organization; administrators, managers and platform experts cannot join, and legacy expert invitations are rejected. Atomically updates user and consumes invitation using a MongoDB transaction. Call before onboarding completion. Store the returned tokens.
+      description: Requires an active personal (user role) account with matching email and no business organization; administrators, managers and platform experts cannot join, and legacy expert invitations are rejected. Creates a staff Membership (with invitedBy) and consumes the invitation in one MongoDB transaction. Call before onboarding completion. Store the returned tokens.
       requestBody:
         required: true
         content:
@@ -2581,8 +2608,8 @@ paths:
   /auth/onboarding/complete:
     post:
       tags: [Auth]
-      summary: Mark onboarding as done (creates a personal workspace for role "user" without an org)
-      description: The access token still carries the old orgId afterwards - call /auth/refresh to get one that includes the new workspace.
+      summary: Mark onboarding as done
+      description: Only sets hasCompletedOnboarding. Personal accounts need no organization record, so nothing else is created.
       responses:
         '200':
           description: OK
@@ -2604,7 +2631,7 @@ paths:
     get:
       tags: [Organizations]
       summary: List all organizations
-      description: Requires the manager role. Includes business and personal organizations across all workspaces, ordered by creation date descending.
+      description: Requires the manager role. Lists business organizations, ordered by creation date descending. Personal accounts have no organization record.
       parameters:
         - in: query
           name: page
@@ -2646,7 +2673,11 @@ paths:
     post:
       tags: [Organizations]
       summary: Create an organization for the current user
-      description: A user can create an organization only when they do not already belong to one. Refresh the access token after success to include the new orgId claim.
+      description: >-
+        Only personal accounts (role user, no Membership) can create an organization. The
+        organization and the caller's owner Membership are created in one transaction, and
+        old access tokens are invalidated. Refresh the access token to receive role owner
+        and the new orgId.
       requestBody:
         required: true
         content:

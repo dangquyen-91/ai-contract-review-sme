@@ -39,10 +39,18 @@ Browser → Next.js route handlers in `frontend/app/api/**` → backend `/api/v1
 Backend responses are always `{ success: true, data, meta? }` (`utils/ApiResponse.ts`) or an error envelope from `errorHandler`; throw `AppError` (`AppError.badRequest/forbidden/...`) instead of writing responses. Layering: `routes` (with `validate({ params, query, body })` zod schemas from `validations/`) → `controllers` (wrapped in `asyncHandler`) → `services/<domain>/` → mongoose `models/`.
 
 ### Multi-tenancy and roles
-Everything is scoped by organization (`orgId`); services filter by it (e.g. `ContractModel.findOne({ _id, orgId })`) and return 404 for other orgs. Roles: `administrator, owner, manager, staff, expert, user` — enforced by `requireRole` and the role lists in `middlewares/rbac.middleware.ts`, mirrored on the frontend in `config/dashboard-roles.ts` and the per-role route trees `app/(dashboard)/dashboard/<role>/`. `user` is a personal account; personal vs. business accounts may only review certain contract types (`services/contract/personalReviewPolicy.ts`).
+Everything is scoped by `orgId`; services filter by it (e.g. `ContractModel.findOne({ _id, orgId })`) and return 404 for other scopes. On data and billing collections `orgId` is the owning account: an organization ID, or the user's own ID for a personal account (`getContractUser` in `auth.middleware.ts`). Personal drafts are the exception and use `orgId: null` with `createdBy`.
+
+Roles: `administrator, owner, manager, staff, expert, user`. `User` has no `orgId`/`roleId`. The effective role is computed in `services/identity/account.service.ts` (`loadAccess`):
+
+- `User.platformRole` (`administrator`, `manager`, `expert`) — LawScan staff, never members of an organization.
+- `Membership (userId unique, orgId, role owner|staff, invitedBy)` — one organization per user, one owner per organization. Create/delete memberships for org creation/deletion, invitation acceptance and member removal, and bump `User.permissionsVersion` whenever access changes.
+- Neither → personal account (`user`).
+
+`Role` is a seeded catalog (`code`, `name`, `scope` platform|organization|personal); `platformRole` and `Membership.role` reference it by `code`. Access tokens carry the effective `role`/`orgId`; `requireAuth` recomputes them from Membership on every request and rejects stale tokens. Owners and staff can switch to the personal workspace (`/auth/refresh` with `workspace`), where they act as `user`. Roles are enforced by `requireRole` and the lists in `middlewares/rbac.middleware.ts`, mirrored on the frontend in `config/dashboard-roles.ts` and the per-role route trees `app/(dashboard)/dashboard/<role>/`. Personal vs. business accounts may only review certain contract types (`services/contract/personalReviewPolicy.ts`). There is no seeded administrator: promote a registered account by setting `platformRole: 'administrator'` in the database.
 
 ### Background pipeline (BullMQ on Redis)
-`services/workers.service.ts` starts three workers, created via helpers in `config/queue.ts` (`createQueue/createWorker/addJobWithTimeout`; enqueue fails with 503 after 5s if Redis is down):
+`services/workers.service.ts` starts five workers (extraction, classification, unsupported-file cleanup, review, legal ingestion), created via helpers in `config/queue.ts` (`createQueue/createWorker/addJobWithTimeout`; enqueue fails with 503 after 5s if Redis is down). The three main ones:
 1. **Extraction** (`contract/extractionWorker.service.ts`): on upload, extracts text from PDF/DOCX/DOC (pdf-parse, mupdf, mammoth, word-extractor, tesseract OCR) into a `ContractVersion`.
 2. **Review** (`review/reviewWorker.service.ts`): a `Review` doc tracks stages `segmentation → summary → riskDetection`; waits for extraction, then runs `analysis/` services. Progress is published via QueueEvents and streamed to clients over SSE (`GET /reviews/:id/events`, `utils/sse.ts`); the frontend falls back to polling. Usage/credits are leased and finalized via `billing/usage.service.ts`.
 3. **Legal ingestion** (`legal/legalIngestionWorker.service.ts`): parses admin-uploaded legal sources into `LegalKnowledgeChunk`s with Gemini embeddings.
@@ -56,4 +64,4 @@ All LLM calls go through `services/ai/llm.service.ts` (Google Gemini via `@googl
 `server.ts` seeds plans, roles, clause taxonomy and contract profiles, and initializes indexes on every boot. Seed data lives in `*.data.ts` files next to their services.
 
 ### Billing
-Subscriptions and plans are in `services/billing/`; payments use payOS. The webhook (`/api/v1/payments/payos/webhook`) is mounted in `app.ts` **before** the rate limiter and JWT auth, and is authenticated by signature. Prices are computed on the server.
+Subscriptions and plans are in `services/billing/`; payments use payOS. Each billing account (organization or personal user, see `findBillingAccount`) has one `Subscription` (`accountType`, pending `scheduledDowngrade`) and many `SubscriptionPeriod`s holding the plan snapshot and usage counters; personal accounts get a free `personal_free` period each month. The webhook (`/api/v1/payments/payos/webhook`) is mounted in `app.ts` **before** the rate limiter and JWT auth, and is authenticated by signature. Prices are computed on the server.
