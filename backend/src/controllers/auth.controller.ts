@@ -3,36 +3,46 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import * as authService from '../services/identity/auth.service';
 import { User } from '../models/user.model';
-import { Role } from '../models/role.model';
 import { HydratedDocument } from 'mongoose';
 import { AppError } from '../errors/AppError';
 import { resendEmailVerification } from '../services/identity/emailVerification.service';
 import { googleLogin } from '../services/identity/googleAuth.service';
+import { AccountAccess } from '../services/identity/account.service';
 
-export const googleLoginHandler = asyncHandler(async (req, res) => {
-  res.setHeader('Cache-Control', 'no-store');
-  const { user, ...tokens } = await googleLogin(req.body);
-  ok(res, { user: toPublicUser(user), ...tokens });
-});
+type Workspace = 'personal' | 'organization';
 
-export function toPublicUser(user: HydratedDocument<User>, workspace?: 'personal' | 'organization') {
-  const role = (user.roleId as unknown as Role).code;
-  const membership = user.orgId && ['owner', 'staff'].includes(role)
-    ? { orgId: user.orgId.toString(), role }
-    : null;
+export function toPublicUser(
+  user: HydratedDocument<User>,
+  access: AccountAccess,
+  workspace?: Workspace,
+) {
+  const personal = workspace === 'personal';
   return {
     id: user._id.toString(),
     name: user.name,
     email: user.email,
     avatarUrl: user.avatarUrl ?? null,
-    role: workspace === 'personal' ? 'user' : role,
-    orgId: workspace === 'personal' ? null : user.orgId?.toString() ?? null,
-    organizationMembership: membership,
-    workspace: workspace ?? (membership ? 'organization' : 'personal'),
+    role: personal ? 'user' : access.role,
+    orgId: personal ? null : (access.orgId ?? null),
+    organizationMembership: access.membership,
+    workspace: workspace ?? (access.membership ? 'organization' : 'personal'),
     hasCompletedOnboarding: user.hasCompletedOnboarding,
     emailVerified: Boolean(user.emailVerifiedAt),
   };
 }
+
+export function sessionResponse(session: Awaited<ReturnType<typeof authService.sessionFor>>) {
+  return {
+    user: toPublicUser(session.user, session.access, session.workspace),
+    accessToken: session.accessToken,
+    refreshToken: session.refreshToken,
+  };
+}
+
+export const googleLoginHandler = asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  ok(res, sessionResponse(await googleLogin(req.body)));
+});
 
 export const registerHandler = asyncHandler(async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -46,18 +56,17 @@ export const loginHandler = asyncHandler(async (req: Request, res: Response) => 
     ok(res, result, 202);
     return;
   }
-  const { user, accessToken, refreshToken } = result;
-  ok(res, { user: toPublicUser(user), accessToken, refreshToken });
+  ok(res, sessionResponse(result));
 });
 
 export const verifyEmailHandler = asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  const { user, ...tokens } = await authService.verifyEmail(
+  const session = await authService.verifyEmail(
     req.body.challengeId,
     req.body.code,
     req.body.invitationToken,
   );
-  ok(res, { user: toPublicUser(user), ...tokens });
+  ok(res, { ...sessionResponse(session), remember: session.remember });
 });
 
 export const resendVerificationHandler = asyncHandler(async (req, res) => {
@@ -67,17 +76,17 @@ export const resendVerificationHandler = asyncHandler(async (req, res) => {
 
 export const refreshHandler = asyncHandler(async (req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store');
-  const { user, workspace, ...tokens } = await authService.refresh(
+  const session = await authService.refresh(
     req.body.refreshToken,
     req.body.invitationToken,
     req.body.workspace,
   );
-  ok(res, { user: toPublicUser(user, workspace), ...tokens });
+  ok(res, sessionResponse(session));
 });
 
 export const completeOnboardingHandler = asyncHandler(async (req: Request, res: Response) => {
   if (!req.user) throw AppError.unauthorized();
 
-  const user = await authService.completeOnboarding(req.user.sub);
-  ok(res, { user: toPublicUser(user) });
+  const { user, access } = await authService.completeOnboarding(req.user.sub);
+  ok(res, { user: toPublicUser(user, access) });
 });

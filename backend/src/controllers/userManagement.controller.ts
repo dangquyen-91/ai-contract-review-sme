@@ -1,10 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
-import { FilterQuery } from 'mongoose';
+import mongoose, { FilterQuery, HydratedDocument } from 'mongoose';
 import { User, UserModel } from '../models/user.model';
-import { Role } from '../models/role.model';
-import { OrganizationModel } from '../models/organization.model';
-import { getRoleByCode } from '../services/identity/role.service';
+import { MembershipModel } from '../models/membership.model';
+import { accessOf, AccountAccess } from '../services/identity/account.service';
 import { AppError } from '../errors/AppError';
 import {
   createUserBody,
@@ -13,30 +12,66 @@ import {
 } from '../validations/userManagement.validation';
 
 const selection =
-  '_id name email roleId orgId isActive emailVerifiedAt createdAt updatedAt permissionsVersion';
-function queryUser(id: string) {
-  return UserModel.findOne({ _id: id, deletedAt: null })
-    .select(selection)
-    .populate('roleId', 'code')
-    .populate('orgId', 'name isPersonal');
+  '_id name email platformRole isActive emailVerifiedAt createdAt updatedAt permissionsVersion';
+
+type ManagedUser = HydratedDocument<User>;
+type UserView = { user: ManagedUser; access: AccountAccess; organizationName: string | null };
+
+async function withAccess(users: ManagedUser[]): Promise<UserView[]> {
+  const memberships = await MembershipModel.find({ userId: { $in: users.map((user) => user._id) } })
+    .populate<{ orgId: { _id: unknown; name: string } | null }>('orgId', 'name')
+    .lean();
+  const byUser = new Map(
+    memberships.map((membership) => [membership.userId.toString(), membership]),
+  );
+  return users.map((user) => {
+    const membership = byUser.get(user.id);
+    const organization = membership?.orgId ?? null;
+    return {
+      user,
+      access: accessOf(
+        user,
+        membership && organization ? { orgId: organization._id, role: membership.role } : null,
+      ),
+      organizationName: organization?.name ?? null,
+    };
+  });
 }
-function serialize(user: NonNullable<Awaited<ReturnType<typeof queryUser>>>) {
-  const org = user.orgId as unknown as { _id: unknown; name: string } | null;
+
+async function findManagedUser(id: string) {
+  const user = await UserModel.findOne({ _id: id, deletedAt: null }).select(selection);
+  if (!user) throw AppError.notFound('Không tìm thấy người dùng.');
+  const [view] = await withAccess([user]);
+  return view;
+}
+
+function serialize({ user, access, organizationName }: UserView) {
   return {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: (user.roleId as unknown as Role).code,
-    organization: org ? { id: String(org._id), name: org.name } : null,
+    role: access.role,
+    organization: access.orgId ? { id: access.orgId, name: organizationName ?? '' } : null,
     isActive: user.isActive,
     emailVerified: Boolean(user.emailVerifiedAt),
     createdAt: user.createdAt,
   };
 }
+
+async function roleFilter(role: string): Promise<FilterQuery<User>> {
+  if (role === 'owner' || role === 'staff') {
+    return { _id: { $in: await MembershipModel.distinct('userId', { role }) } };
+  }
+  if (role === 'user') {
+    return { platformRole: null, _id: { $nin: await MembershipModel.distinct('userId') } };
+  }
+  return { platformRole: role };
+}
+
 export async function listUsers(req: Request, res: Response, next: NextFunction) {
   try {
     const { search, role, status, page, limit } = listUsersQuery.parse(req.query);
-    const filter: FilterQuery<User> = { deletedAt: null };
+    const filter: FilterQuery<User> = { deletedAt: null, ...(role ? await roleFilter(role) : {}) };
     if (search) {
       const pattern = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       filter.$or = [
@@ -44,28 +79,24 @@ export async function listUsers(req: Request, res: Response, next: NextFunction)
         { email: { $regex: pattern, $options: 'i' } },
       ];
     }
-    if (role) filter.roleId = (await getRoleByCode(role))._id;
     if (status) filter.isActive = status === 'active';
     const [users, total] = await Promise.all([
       UserModel.find(filter)
         .select(selection)
-        .populate('roleId', 'code')
-        .populate('orgId', 'name isPersonal')
         .sort({ createdAt: -1, _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
       UserModel.countDocuments(filter),
     ]);
-    res.json({ success: true, data: { users: users.map(serialize), total, page, limit } });
+    const views = await withAccess(users);
+    res.json({ success: true, data: { users: views.map(serialize), total, page, limit } });
   } catch (error) {
     next(error);
   }
 }
 export async function getUser(req: Request, res: Response, next: NextFunction) {
   try {
-    const user = await queryUser(req.params.id);
-    if (!user) throw AppError.notFound('Không tìm thấy người dùng.');
-    res.json({ success: true, data: serialize(user) });
+    res.json({ success: true, data: serialize(await findManagedUser(req.params.id)) });
   } catch (error) {
     next(error);
   }
@@ -73,15 +104,15 @@ export async function getUser(req: Request, res: Response, next: NextFunction) {
 export async function createUser(req: Request, res: Response, next: NextFunction) {
   try {
     const input = createUserBody.parse(req.body);
-    const role = await getRoleByCode(input.role);
     const user = await UserModel.create({
       name: input.name,
       email: input.email,
       passwordHash: await bcrypt.hash(input.password, 12),
-      roleId: role._id,
+      platformRole: input.role === 'user' ? null : input.role,
+      hasCompletedOnboarding: input.role !== 'user',
       isActive: input.isActive,
     });
-    res.status(201).json({ success: true, data: serialize((await queryUser(user.id))!) });
+    res.status(201).json({ success: true, data: serialize(await findManagedUser(user.id)) });
   } catch (error) {
     next(error);
   }
@@ -89,15 +120,11 @@ export async function createUser(req: Request, res: Response, next: NextFunction
 export async function updateUser(req: Request, res: Response, next: NextFunction) {
   try {
     const input = updateUserBody.parse(req.body);
-    const user = await queryUser(req.params.id);
-    if (!user) throw AppError.notFound('Không tìm thấy người dùng.');
-    const oldRole = (user.roleId as unknown as Role).code;
-    if (
-      user.id === req.user!.sub &&
-      (input.isActive === false || (input.role && input.role !== oldRole))
-    )
+    const { user, access } = await findManagedUser(req.params.id);
+    const roleChanged = input.role !== undefined && input.role !== access.role;
+    if (user.id === req.user!.sub && (input.isActive === false || roleChanged))
       throw AppError.conflict('Bạn không thể tự khóa hoặc thay đổi vai trò của mình.');
-    if (oldRole === 'owner' && (input.isActive === false || (input.role && input.role !== oldRole)))
+    if (access.role === 'owner' && (input.isActive === false || roleChanged))
       throw AppError.conflict(
         'Cần chuyển quyền sở hữu tổ chức trước khi thay đổi tài khoản owner.',
       );
@@ -108,45 +135,46 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
       if (input.email !== user.email) changes.emailVerifiedAt = null;
     }
     if (input.isActive !== undefined) changes.isActive = input.isActive;
-    if (input.role && input.role !== oldRole) {
-      const org = user.orgId ? await OrganizationModel.findById(user.orgId) : null;
-      const allowed =
-        org && !org.isPersonal ? ['staff'] : ['user', 'administrator', 'manager', 'expert'];
-      if (!allowed.includes(input.role))
+    if (roleChanged) {
+      if (
+        access.membership ||
+        (input.role !== 'user' && !['administrator', 'manager', 'expert'].includes(input.role!))
+      )
         throw AppError.badRequest(
           'Vai trò không phù hợp với tổ chức hiện tại. Hãy dùng quy trình thành viên để thay đổi tổ chức.',
         );
-      changes.roleId = (await getRoleByCode(input.role))._id;
-      if (['administrator', 'manager', 'expert'].includes(input.role)) changes.hasCompletedOnboarding = true;
+      changes.platformRole = input.role === 'user' ? null : input.role;
+      if (input.role !== 'user') changes.hasCompletedOnboarding = true;
     }
-    const detach = input.role && ['administrator', 'manager', 'expert'].includes(input.role) && input.role !== oldRole && user.orgId;
     const updated = await UserModel.findOneAndUpdate(
       { _id: user._id, deletedAt: null, permissionsVersion: user.permissionsVersion },
-      { $set: changes, ...(detach ? { $unset: { orgId: 1 } } : {}), $inc: { permissionsVersion: 1 } },
+      { $set: changes, $inc: { permissionsVersion: 1 } },
       { new: true, runValidators: true },
-    )
-      .select(selection)
-      .populate('roleId', 'code')
-      .populate('orgId', 'name isPersonal');
+    ).select(selection);
     if (!updated) throw AppError.conflict('Tài khoản vừa thay đổi. Vui lòng tải lại.');
-    res.json({ success: true, data: serialize(updated) });
+    const [view] = await withAccess([updated]);
+    res.json({ success: true, data: serialize(view) });
   } catch (error) {
     next(error);
   }
 }
 export async function deleteUser(req: Request, res: Response, next: NextFunction) {
   try {
-    const user = await queryUser(req.params.id);
-    if (!user) throw AppError.notFound('Không tìm thấy người dùng.');
+    const { user, access } = await findManagedUser(req.params.id);
     if (user.id === req.user!.sub) throw AppError.conflict('Bạn không thể xóa tài khoản của mình.');
-    if ((user.roleId as unknown as Role).code === 'owner')
+    if (access.role === 'owner')
       throw AppError.conflict('Cần chuyển quyền sở hữu tổ chức trước khi xóa tài khoản owner.');
-    // Preserve references from contracts, reviews and audit records.
-    const result = await UserModel.updateOne(
-      { _id: user._id, deletedAt: null, permissionsVersion: user.permissionsVersion },
-      { $set: { deletedAt: new Date(), isActive: false }, $inc: { permissionsVersion: 1 } },
-    );
-    if (!result.modifiedCount) throw AppError.conflict('Tài khoản vừa thay đổi. Vui lòng tải lại.');
+    await mongoose.connection.transaction(async (session) => {
+      // Preserve references from contracts, reviews and audit records.
+      const result = await UserModel.updateOne(
+        { _id: user._id, deletedAt: null, permissionsVersion: user.permissionsVersion },
+        { $set: { deletedAt: new Date(), isActive: false }, $inc: { permissionsVersion: 1 } },
+        { session },
+      );
+      if (!result.modifiedCount)
+        throw AppError.conflict('Tài khoản vừa thay đổi. Vui lòng tải lại.');
+      await MembershipModel.deleteOne({ userId: user._id }, { session });
+    });
     res.status(204).send();
   } catch (error) {
     next(error);

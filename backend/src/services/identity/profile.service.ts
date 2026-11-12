@@ -7,22 +7,24 @@ import { AppError } from '../../errors/AppError';
 import { toPublicUser } from '../../controllers/auth.controller';
 import { profileUpdateSchema, changePasswordSchema } from '../../validations/profile.validation';
 import { uploadAvatar, removeAvatar } from './avatar.service';
+import { loadAccess } from './account.service';
 
 async function requireProfileUser(userId: string) {
-  const user = await UserModel.findOne({ _id: userId, isActive: true })
-    .select('+googleSubject +avatarPublicId')
-    .populate('roleId');
+  const user = await UserModel.findOne({ _id: userId, isActive: true }).select(
+    '+googleSubject +avatarPublicId',
+  );
   if (!user) throw AppError.unauthorized();
   return user;
 }
 export async function getProfile(userId: string) {
   const user = await requireProfileUser(userId);
-  const organization = user.orgId
-    ? await OrganizationModel.findById(user.orgId).select('name isPersonal')
+  const access = await loadAccess(user);
+  const organization = access.orgId
+    ? await OrganizationModel.findById(access.orgId).select('name')
     : null;
   return {
     user: {
-      ...toPublicUser(user),
+      ...toPublicUser(user, access),
       phone: user.phone ?? '',
       createdAt: user.createdAt,
       // Legacy Google-linked accounts do not reliably record whether a password was set.
@@ -30,7 +32,7 @@ export async function getProfile(userId: string) {
       googleLinked: Boolean(user.googleSubject),
     },
     organization: organization
-      ? { id: organization.id, name: organization.name, isPersonal: organization.isPersonal }
+      ? { id: organization.id, name: organization.name, isPersonal: false }
       : null,
   };
 }

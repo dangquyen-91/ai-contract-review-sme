@@ -194,9 +194,7 @@ async function getReportSnapshot(
         },
       },
     ]),
-    OrganizationModel.find(
-      actor.role === 'owner' ? { _id: actor.orgId } : { isPersonal: { $ne: true } },
-    )
+    OrganizationModel.find(actor.role === 'owner' ? { _id: actor.orgId } : {})
       .select('_id name')
       .sort({ name: 1, _id: 1 })
       .limit(200)

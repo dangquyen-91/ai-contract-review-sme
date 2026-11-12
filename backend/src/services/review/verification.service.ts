@@ -19,7 +19,6 @@ import { createRedactor } from '../ai/redaction.service';
 import { listVersionFindings } from '../analysis/risk.service';
 import { getCurrentVersion } from '../contract/contractVersion.service';
 import { redactionPolicyFor } from '../contract/redactionPolicy.service';
-import { getRoleByCode } from '../identity/role.service';
 import { archiveExpertWork, historicalExpertWork } from './expertWork.service';
 
 type RiskLevel = (typeof RISK_LEVELS)[number];
@@ -77,8 +76,7 @@ async function loadVerifiableReview(orgId: string, reviewId: string) {
 }
 
 async function assertExpertAvailable() {
-  const expertRole = await getRoleByCode('expert');
-  const hasExpert = await UserModel.exists({ roleId: expertRole._id, isActive: true, deletedAt: null });
+  const hasExpert = await UserModel.exists({ platformRole: 'expert', isActive: true, deletedAt: null });
   if (!hasExpert) {
     throw AppError.conflict('Hiện chưa có chuyên gia LawScan nhận xác minh. Vui lòng thử lại sau.', 'NO_EXPERT');
   }

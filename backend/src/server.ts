@@ -16,12 +16,14 @@ import { OrganizationInvitationModel } from './models/organizationInvitation.mod
 import { initializeSubscriptionModels } from './models/subscription.model';
 import { seedPlans } from './services/billing/subscription.service';
 import { PaymentModel } from './models/payment.model';
+import { MembershipModel } from './models/membership.model';
 
 async function bootstrap() {
   await connectDB();
   await assertRedisReachable();
   await OrganizationInvitationModel.init();
   await PaymentModel.init();
+  await MembershipModel.init();
   await initializeSubscriptionModels();
   await seedPlans();
   await seedDefaultRoles();

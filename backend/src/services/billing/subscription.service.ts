@@ -3,7 +3,7 @@ import { AppError } from '../../errors/AppError';
 import { OrganizationModel } from '../../models/organization.model';
 import { OrganizationInvitationModel } from '../../models/organizationInvitation.model';
 import { UserModel } from '../../models/user.model';
-import { Role } from '../../models/role.model';
+import { countMembers, findMembership } from '../identity/account.service';
 import {
   OrganizationSubscriptionModel,
   PlanModel,
@@ -117,15 +117,15 @@ export async function requireSubscriptionAccess(userId: string, orgId: string, o
     if (account.userId === userId) return account;
     throw AppError.forbidden('Bạn không có quyền quản lý gói dịch vụ này.');
   }
-  const user = await UserModel.findOne({ _id: userId, orgId, isActive: true }).populate('roleId');
-  if (!user)
+  const [user, membership] = await Promise.all([
+    UserModel.exists({ _id: userId, isActive: true }),
+    findMembership(userId, orgId),
+  ]);
+  if (!user || !membership)
     throw AppError.forbidden('Bạn không thuộc tổ chức này hoặc tài khoản đã bị vô hiệu hóa.');
   const organization = await OrganizationModel.findById(orgId);
   if (!organization) throw AppError.notFound('Không tìm thấy tổ chức.');
-  const role = (user.roleId as unknown as Role).code;
-  if (!['owner', 'staff'].includes(role) && !(organization.isPersonal && role === 'user'))
-    throw AppError.forbidden('Chỉ thành viên tổ chức được truy cập gói dịch vụ này.');
-  if (ownerOnly && role !== 'owner' && !(organization.isPersonal && role === 'user')) {
+  if (ownerOnly && membership.role !== 'owner') {
     throw AppError.forbidden(
       'Chỉ chủ tổ chức hoặc chủ tài khoản cá nhân được quản lý gói dịch vụ.',
     );
@@ -187,7 +187,7 @@ export async function resolveSubscription(orgId: string, session: ClientSession,
       );
     const dates = vietnamCalendarMonth(now);
     const personalUser = await UserModel.findOne(
-      organization.userId ? { _id: organization.userId } : { orgId },
+      { _id: organization.userId },
     )
       .select('_id')
       .session(session);
@@ -231,7 +231,7 @@ export async function getSubscription(userId: string, orgId: string) {
     const state = await resolveSubscription(orgId, session);
     const memberCount = state.organization.userId
       ? 1
-      : await UserModel.countDocuments({ orgId }).session(session);
+      : await countMembers(orgId, session);
     const pendingInvitations = await OrganizationInvitationModel.countDocuments({
       orgId,
       status: 'pending',
@@ -280,7 +280,7 @@ export async function getSubscription(userId: string, orgId: string) {
 // Caller must hold the organization lock inside the same transaction as joining.
 export async function assertMemberCapacity(orgId: string, session: ClientSession) {
   const state = await resolveSubscription(orgId, session);
-  const count = await UserModel.countDocuments({ orgId }).session(session);
+  const count = await countMembers(orgId, session);
   if (count >= state.memberLimit)
     throw AppError.forbidden(
       'Đã đạt giới hạn thành viên. Vui lòng nâng cấp gói hoặc xóa bớt thành viên.',
@@ -292,7 +292,7 @@ export async function assertMemberCapacity(orgId: string, session: ClientSession
 // revoked, expired, or marked delivery_failed.
 export async function assertInvitationCapacity(orgId: string, session: ClientSession) {
   const state = await resolveSubscription(orgId, session);
-  const members = await UserModel.countDocuments({ orgId }).session(session);
+  const members = await countMembers(orgId, session);
   const pending = await OrganizationInvitationModel.countDocuments({
     orgId,
     status: 'pending',
@@ -333,7 +333,7 @@ export async function scheduleDowngrade(userId: string, orgId: string, planCode:
         'Vui lòng chọn gói thấp hơn, cùng loại cá nhân hoặc doanh nghiệp, khi gói trả phí hiện tại còn hiệu lực.',
       );
     }
-    const count = await UserModel.countDocuments({ orgId }).session(session);
+    const count = await countMembers(orgId, session);
     if (count > target.memberLimit)
       throw AppError.conflict(
         'Vui lòng giảm số thành viên cho phù hợp với gói mới trước khi lên lịch hạ gói.',
@@ -466,7 +466,7 @@ async function applyPaidSubscription(
       if (alreadyPaid) throw AppError.conflict('Kỳ hạ gói đã được thanh toán.');
       startsAt = scheduled.effectiveAt > now ? scheduled.effectiveAt : now;
     }
-    const members = await UserModel.countDocuments({ orgId: input.orgId }).session(session);
+    const members = await countMembers(input.orgId, session);
     if (members > plan.memberLimit)
       throw AppError.conflict('Số thành viên hiện tại vượt giới hạn của gói được chọn.');
     if (validateOnly) return null;

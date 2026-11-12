@@ -2,8 +2,8 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok, paginated } from '../utils/ApiResponse';
 import { AppError } from '../errors/AppError';
 import * as service from '../services/organization/invitation.service';
-import { tokensForUser } from '../services/identity/auth.service';
-import { toPublicUser } from './auth.controller';
+import { sessionFor } from '../services/identity/auth.service';
+import { sessionResponse } from './auth.controller';
 import { invitationPaginationSchema } from '../validations/invitation.validation';
 
 export const createInvitationHandler = asyncHandler(async (req, res) => {
@@ -39,7 +39,7 @@ export const acceptInvitationHandler = asyncHandler(async (req, res) => {
   if (!req.user) throw AppError.unauthorized();
   const user = await service.acceptInvitation(req.user.sub, req.body.token);
   res.setHeader('Cache-Control', 'no-store');
-  ok(res, { user: toPublicUser(user), ...tokensForUser(user) });
+  ok(res, sessionResponse(await sessionFor(user)));
 });
 
 export const listReceivedInvitationsHandler = asyncHandler(async (req, res) => {
@@ -51,7 +51,7 @@ export const acceptReceivedInvitationHandler = asyncHandler(async (req, res) => 
   if (!req.user) throw AppError.unauthorized();
   const user = await service.acceptInvitation(req.user.sub, undefined, req.params.invitationId);
   res.setHeader('Cache-Control', 'no-store');
-  ok(res, { user: toPublicUser(user), ...tokensForUser(user) });
+  ok(res, sessionResponse(await sessionFor(user)));
 });
 export const declineReceivedInvitationHandler = asyncHandler(async (req, res) => {
   if (!req.user) throw AppError.unauthorized();
