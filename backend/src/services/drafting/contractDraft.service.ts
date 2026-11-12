@@ -1,3 +1,4 @@
+import { inputErrors } from './draftInputRules';
 import mongoose, { FilterQuery, InferSchemaType } from 'mongoose';
 import { randomBytes } from 'crypto';
 import { z } from 'zod';
@@ -10,7 +11,7 @@ import { UserModel } from '../../models/user.model';
 import { ContractModel } from '../../models/contract.model';
 import { ContractVersionModel } from '../../models/contractVersion.model';
 import { AccessTokenPayload } from '../../middlewares/auth.middleware';
-import { DraftInput, inputErrors, updateDraftSchema } from '../../validations/contractDraft.validation';
+import { DraftInput, updateDraftSchema } from '../../validations/contractDraft.validation';
 import { CONTRACT_TEMPLATES, ContractTemplate, getTemplate, TemplateCode } from './templates';
 import { generateDraftContent } from './generation.service';
 import { createDraftDocx } from './docx.service';

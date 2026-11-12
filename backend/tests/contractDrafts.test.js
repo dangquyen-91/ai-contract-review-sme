@@ -373,7 +373,7 @@ test('copying an old snapshot creates a current draft without altering original 
 });
 
 test('invalid labor party details and nonsense are blocked before AI, while incomplete editing remains allowed', () => {
-  const { inputErrors } = require('../dist/validations/contractDraft.validation');
+  const { inputErrors } = require('../dist/services/drafting/draftInputRules');
   for (const update of [{ partnerName: 'Công ty Khách Hàng' }, { representative: 'Staff' }, { workingTime: 'ghhghhhgh' }]) {
     const input = { ...values('labor'), ...update };
     expect(inputErrors('labor', input, false)).toEqual([]);
@@ -410,7 +410,7 @@ test('unpaid and exhausted organizations can save drafts but cannot call AI', as
 
 test('line item decimals round per row, validate totals and export real tables with signature columns', async () => {
   const { validateLineItems } = require('../dist/services/drafting/line-items');
-  const { inputErrors } = require('../dist/validations/contractDraft.validation');
+  const { inputErrors } = require('../dist/services/drafting/draftInputRules');
   const items = JSON.stringify([{ name: 'Sản phẩm A & B', unit: 'kg', quantity: '1.125', unitPrice: '1000.25' }, { name: 'Sản phẩm B', unit: 'cái', quantity: '2', unitPrice: '10000000' }]);
   expect(validateLineItems(items, true)).toMatchObject({ errors: [], total: '20001125.28' });
   expect(validateLineItems(JSON.stringify([{ name: '', unit: '', quantity: '-1', unitPrice: '5' }]), true).errors.length).toBeGreaterThan(0);

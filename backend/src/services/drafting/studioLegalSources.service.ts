@@ -7,15 +7,8 @@ import { ContractProfileModel } from '../../models/contractProfile.model';
 import { DEFAULT_PROFILES } from '../contract/contractProfile.data';
 import { SALES_LEGAL_SOURCE_CODES } from '../legal/legalSourceCatalog.data';
 
-export const studioLawIdsSchema = z.array(z.string().regex(/^[a-f\d]{24}$/i).transform(id => id.toLowerCase()))
-  .max(10, 'Chỉ chọn tối đa 10 văn bản.').refine(ids => new Set(ids).size === ids.length, 'Văn bản được chọn không được trùng.');
-export const studioLawQuerySchema = z.object({
-  q: z.string().trim().max(100).default(''),
-  page: z.coerce.number().int().min(1).max(10000).default(1),
-  templateCode: z.enum(['labor', 'service', 'sales', 'rental']).optional(),
-  ids: z.string().max(249).optional().transform(value => value ? value.split(',') : undefined)
-    .pipe(studioLawIdsSchema.optional()),
-});
+import { studioLawQuerySchema } from '../../validations/studio.validation';
+export { studioLawIdsSchema, studioLawQuerySchema } from '../../validations/studio.validation';
 const pageSize = 20;
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function availableSources() {

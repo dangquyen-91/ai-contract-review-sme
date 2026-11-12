@@ -10,46 +10,17 @@ import { SENSITIVE_DATA_TYPES } from '../../models/contractProfile.model';
 import { createRedactor } from '../ai/redaction.service';
 import { generateJson, isLlmConfigured } from '../ai/llm.service';
 import { reserveUsage, finishUsage } from '../billing/usage.service';
-import { inputErrors } from '../../validations/contractDraft.validation';
+import { inputErrors } from './draftInputRules';
 import { requireDraftAccess, findDraft, scope, getDraft } from './contractDraft.service';
 import type { ContractTemplate, TemplateCode } from './templates';
 import { studioInput, studioText, type StudioDocument } from './studioDocument';
 import { applyStudioChanges, studioBlocks, type StudioChanges } from './studioChanges';
-import { studioLawContext, studioLawIdsSchema } from './studioLegalSources.service';
+import { studioLawContext } from './studioLegalSources.service';
 import { clauseReviewSchema, clauseReviewResponseSchema, verifyClauseReview } from './studioClauseReview';
 import { draftingError } from './draftingErrors';
+import { assistantRequestSchema } from '../../validations/studio.validation';
+export { assistantRequestSchema, proposalActionSchema } from '../../validations/studio.validation';
 
-export const assistantRequestSchema = z
-  .object({
-    revision: z.number().int().min(0),
-    requestId: z.string().regex(/^[\w-]{8,100}$/),
-    message: z.string().trim().min(2).max(5000),
-    mode: z.enum(['edit', 'check']).default('edit'),
-    legalSourceIds: studioLawIdsSchema.default([]),
-    references: z
-      .array(
-        z
-          .object({
-            name: z.string().trim().min(1).max(150),
-            text: z.string().trim().min(1).max(12000),
-          })
-          .strict(),
-      )
-      .max(3)
-      .default([]),
-    blockIds: z
-      .array(z.string().regex(/^[\w-]{1,80}$/))
-      .max(20)
-      .default([]),
-  })
-  .strict()
-  .refine(
-    (input) => input.references.reduce((sum, item) => sum + item.text.length, 0) <= 24000,
-    'Tài liệu đính kèm vượt quá 24.000 ký tự.',
-  );
-export const proposalActionSchema = z
-  .object({ revision: z.number().int().min(0), action: z.enum(['apply', 'dismiss']) })
-  .strict();
 const outputSchema = z
   .object({
     message: z.string().trim().min(1).max(2000),

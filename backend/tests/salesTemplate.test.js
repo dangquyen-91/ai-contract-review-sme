@@ -8,7 +8,7 @@ const { getTemplate } = require('../dist/services/drafting/templates');
 const { buildStudioTemplate } = require('../dist/services/drafting/studioTemplate');
 const { studioText, studioInput } = require('../dist/services/drafting/studioDocument');
 const { createStudioDocx } = require('../dist/services/drafting/studioDocx.service');
-const { inputErrors } = require('../dist/validations/contractDraft.validation');
+const { inputErrors } = require('../dist/services/drafting/draftInputRules');
 
 const template = getTemplate('sales');
 const values = {
