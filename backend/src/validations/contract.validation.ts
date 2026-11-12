@@ -52,12 +52,19 @@ export const contractIdParamSchema = z.object({
   id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
 });
 
-export const contractTextQuerySchema = z.object({
+export const versionQuerySchema = z.object({
+  versionId: z
+    .string()
+    .regex(/^[a-f\d]{24}$/i, 'Invalid version id')
+    .optional(),
+});
+
+export const contractTextQuerySchema = versionQuerySchema.extend({
   redacted: z.enum(['true', 'false']).optional(),
   redactionMode: z.enum(['token', 'partial']).optional(),
 });
 
-export const contractFileQuerySchema = z.object({
+export const contractFileQuerySchema = versionQuerySchema.extend({
   redacted: z.enum(['true', 'false']).optional(),
 });
 

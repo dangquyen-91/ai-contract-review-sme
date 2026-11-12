@@ -21,6 +21,7 @@ import {
   getCurrentVersionWithText,
   setContractStatus,
   settledStatus,
+  resolveVersion,
 } from '../contract/contractVersion.service';
 import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from '../contract/contractProfile.service';
@@ -604,12 +605,12 @@ export async function detectRisks(
   return attachCitations(sortFindings(savedFindings));
 }
 
-export async function listRiskFindings(orgId: string, contractId: string) {
+export async function listRiskFindings(orgId: string, contractId: string, versionId?: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await getCurrentVersion(contractId);
+  const version = await resolveVersion(contractId, versionId);
   const findings = await RiskFindingModel.find({ contractVersionId: version._id }).populate(
     'expectedClauseTypeId',
   );

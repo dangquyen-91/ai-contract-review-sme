@@ -6,6 +6,10 @@ import * as clauseService from '../services/analysis/clause.service';
 
 export const listClausesHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);
-  const clauses = await clauseService.listClauses(user.orgId, req.params.id);
+  const clauses = await clauseService.listClauses(
+    user.orgId,
+    req.params.id,
+    req.query.versionId as string | undefined,
+  );
   ok(res, clauses);
 });

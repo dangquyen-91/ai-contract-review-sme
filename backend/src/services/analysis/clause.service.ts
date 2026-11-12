@@ -7,10 +7,10 @@ import { RiskCitationModel } from '../../models/riskCitation.model';
 import { segmentContractClauses } from './clauseSegmentation.service';
 import {
   claimStage,
-  getCurrentVersion,
   getCurrentVersionWithText,
   setContractStatus,
   settledStatus,
+  resolveVersion,
 } from '../contract/contractVersion.service';
 import { getTaxonomyByCodes, getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from '../contract/contractProfile.service';
@@ -112,12 +112,12 @@ export async function segmentClauses(orgId: string, contractId: string, signal?:
     .populate('clauseTypeId');
 }
 
-export async function listClauses(orgId: string, contractId: string) {
+export async function listClauses(orgId: string, contractId: string, versionId?: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await getCurrentVersion(contractId);
+  const version = await resolveVersion(contractId, versionId);
   return ClauseModel.find({ contractVersionId: version._id })
     .sort({ index: 1 })
     .populate('clauseTypeId');

@@ -24,7 +24,7 @@ import {
   fileHashOf,
   findVersionByFileHash,
   getCurrentVersion,
-  getCurrentVersionWithText,
+  resolveVersion,
 } from './contractVersion.service';
 import { resolveContractProfile, validateContractContext } from './contractProfile.service';
 import { redactionPolicyFor } from './redactionPolicy.service';
@@ -491,12 +491,13 @@ export async function getContractText(
   id: string,
   redacted = false,
   redactionMode: 'token' | 'partial' = 'token',
+  versionId?: string,
 ) {
   const contract = await ContractModel.findOne({ _id: id, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await getCurrentVersionWithText(id);
+  const version = await resolveVersion(id, versionId, true);
   const text = version.extractedText ?? '';
   let shownText = text;
   let redactionSpans: { type: SensitiveDataType; start: number; end: number }[] = [];
@@ -520,10 +521,10 @@ export async function getContractText(
   };
 }
 
-export async function getRedactedContractDocx(orgId: string, id: string) {
+export async function getRedactedContractDocx(orgId: string, id: string, versionId?: string) {
   const contract = await ContractModel.findOne({ _id: id, orgId });
   if (!contract) throw AppError.notFound('Contract not found');
-  const version = await getCurrentVersionWithText(id);
+  const version = await resolveVersion(id, versionId, true);
   if (version.mimeType !== DOCX_MIME)
     throw AppError.badRequest('Redacted file preview is supported only for DOCX');
   const file = storedFileOf(version);
@@ -538,12 +539,12 @@ export async function getRedactedContractDocx(orgId: string, id: string) {
   };
 }
 
-export async function getContractFileLink(orgId: string, id: string) {
+export async function getContractFileLink(orgId: string, id: string, versionId?: string) {
   const contract = await ContractModel.findOne({ _id: id, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await getCurrentVersion(id);
+  const version = await resolveVersion(id, versionId);
   const file = storedFileOf(version);
   if (!file) {
     throw AppError.notFound('This contract has no uploaded file');

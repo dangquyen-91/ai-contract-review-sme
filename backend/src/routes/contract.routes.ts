@@ -46,6 +46,7 @@ import {
   shareSummaryQuerySchema,
   createContractSchema,
   createContractVersionSchema,
+  versionQuerySchema,
   findingParamSchema,
   listContractsQuerySchema,
   updateProposedRevisionBodySchema,
@@ -113,11 +114,23 @@ router.post(
 
 router.get('/:id/reviews', validate({ params: contractIdParamSchema }), listReviewsHandler);
 
-router.get('/:id/clauses', validate({ params: contractIdParamSchema }), listClausesHandler);
+router.get(
+  '/:id/clauses',
+  validate({ params: contractIdParamSchema, query: versionQuerySchema }),
+  listClausesHandler,
+);
 
-router.get('/:id/risks', validate({ params: contractIdParamSchema }), listRiskFindingsHandler);
+router.get(
+  '/:id/risks',
+  validate({ params: contractIdParamSchema, query: versionQuerySchema }),
+  listRiskFindingsHandler,
+);
 
-router.get('/:id/key-terms', validate({ params: contractIdParamSchema }), listKeyTermsHandler);
+router.get(
+  '/:id/key-terms',
+  validate({ params: contractIdParamSchema, query: versionQuerySchema }),
+  listKeyTermsHandler,
+);
 
 router.patch(
   '/:id/risks/:findingId',
@@ -133,7 +146,11 @@ router.delete(
   removeProposedRevisionHandler,
 );
 
-router.get('/:id/chat', validate({ params: contractIdParamSchema }), listChatMessagesHandler);
+router.get(
+  '/:id/chat',
+  validate({ params: contractIdParamSchema, query: versionQuerySchema }),
+  listChatMessagesHandler,
+);
 
 router.post(
   '/:id/chat',

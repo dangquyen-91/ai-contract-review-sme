@@ -3,7 +3,7 @@ import { ChatMessageModel } from '../../models/chatMessage.model';
 import { ClauseModel } from '../../models/clause.model';
 import { ContractModel } from '../../models/contract.model';
 import { RiskFindingModel } from '../../models/riskFinding.model';
-import { getCurrentVersion, getCurrentVersionWithText } from '../contract/contractVersion.service';
+import { getCurrentVersionWithText, resolveVersion } from '../contract/contractVersion.service';
 import { generateText, generateTextStream } from '../ai/llm.service';
 import { buildReviewContext, describeReviewContext, ReviewContext } from '../contract/contractProfile.service';
 import { createRedactor, placeholderInstruction } from '../ai/redaction.service';
@@ -247,11 +247,11 @@ export async function streamAboutContract(
   return { ...usage.result, runId: usage.runId, replayed: usage.replayed };
 }
 
-export async function listChatMessages(orgId: string, contractId: string) {
+export async function listChatMessages(orgId: string, contractId: string, versionId?: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await getCurrentVersion(contractId);
+  const version = await resolveVersion(contractId, versionId);
   return ChatMessageModel.find({ contractVersionId: version._id }).sort({ createdAt: 1, _id: 1 });
 }

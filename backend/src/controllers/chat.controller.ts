@@ -31,7 +31,11 @@ export const askAboutContractHandler = asyncHandler(async (req: Request, res: Re
 
 export const listChatMessagesHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);
-  const messages = await chatService.listChatMessages(user.orgId, req.params.id);
+  const messages = await chatService.listChatMessages(
+    user.orgId,
+    req.params.id,
+    req.query.versionId as string | undefined,
+  );
   ok(res, messages);
 });
 

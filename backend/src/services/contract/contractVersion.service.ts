@@ -39,6 +39,20 @@ export async function getCurrentVersion(contractId: string) {
   return version;
 }
 
+export async function resolveVersion(contractId: string, versionId?: string, withText = false) {
+  const query = versionId
+    ? ContractVersionModel.findOne({ _id: versionId, contractId })
+    : ContractVersionModel.findOne({ contractId }).sort({ versionNumber: -1 });
+  if (withText) query.select('+extractedText');
+  const version = await query;
+  if (!version) {
+    throw AppError.notFound(
+      versionId ? 'Không tìm thấy phiên bản hợp đồng.' : 'Contract version not found',
+    );
+  }
+  return version;
+}
+
 export async function getCurrentVersionWithText(contractId: string) {
   const version = await ContractVersionModel.findOne({ contractId })
     .sort({ versionNumber: -1 })

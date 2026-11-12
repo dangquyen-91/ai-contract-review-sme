@@ -6,7 +6,7 @@ import { ContractModel } from '../../models/contract.model';
 import { generateJson } from '../ai/llm.service';
 import { describeReviewContext, ReviewContext } from '../contract/contractProfile.service';
 import { placeholderInstruction, Redactor } from '../ai/redaction.service';
-import { getCurrentVersion } from '../contract/contractVersion.service';
+import { resolveVersion } from '../contract/contractVersion.service';
 import { KEY_TERMS, KEY_TERMS_BY_PROFILE, KeyTermDefinition } from './keyTermExtraction.data';
 
 export interface ExtractedKeyTerm {
@@ -140,10 +140,10 @@ export async function extractKeyTerms(
   return [...terms.values()];
 }
 
-export async function listKeyTerms(orgId: string, contractId: string) {
+export async function listKeyTerms(orgId: string, contractId: string, versionId?: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) throw AppError.notFound('Contract not found');
-  const version = await getCurrentVersion(contractId);
+  const version = await resolveVersion(contractId, versionId);
   const terms = version.keyTerms ?? [];
   const clauseIds = terms.flatMap((t) => (t.clauseId ? [t.clauseId] : []));
   const clauses = clauseIds.length

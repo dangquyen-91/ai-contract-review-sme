@@ -97,6 +97,7 @@ export const getContractTextHandler = asyncHandler(async (req: Request, res: Res
     req.params.id,
     req.query.redacted === 'true',
     req.query.redactionMode === 'partial' ? 'partial' : 'token',
+    req.query.versionId as string | undefined,
   );
   ok(res, text);
 });
@@ -104,7 +105,11 @@ export const getContractTextHandler = asyncHandler(async (req: Request, res: Res
 export const getContractFileHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);
   if (req.query.redacted === 'true') {
-    const file = await contractService.getRedactedContractDocx(user.orgId, req.params.id);
+    const file = await contractService.getRedactedContractDocx(
+      user.orgId,
+      req.params.id,
+      req.query.versionId as string | undefined,
+    );
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'Content-Disposition': `inline; filename="contract-redacted.docx"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
@@ -115,6 +120,10 @@ export const getContractFileHandler = asyncHandler(async (req: Request, res: Res
     res.send(file.buffer);
     return;
   }
-  const link = await contractService.getContractFileLink(user.orgId, req.params.id);
+  const link = await contractService.getContractFileLink(
+    user.orgId,
+    req.params.id,
+    req.query.versionId as string | undefined,
+  );
   ok(res, link);
 });
