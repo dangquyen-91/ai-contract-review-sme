@@ -5,7 +5,7 @@ import { OrganizationInvitationModel } from '../../models/organizationInvitation
 import { UserModel } from '../../models/user.model';
 import { countMembers, findMembership } from '../identity/account.service';
 import {
-  OrganizationSubscriptionModel,
+  SubscriptionModel,
   PlanModel,
   PlanCode,
   SubscriptionPeriodModel,
@@ -162,9 +162,9 @@ export async function resolveSubscription(orgId: string, session: ClientSession,
     await run.save({ session });
   }
   const organization = await findBillingAccount(orgId, session);
-  const subscription = await OrganizationSubscriptionModel.findOneAndUpdate(
+  const subscription = await SubscriptionModel.findOneAndUpdate(
     { orgId },
-    { $setOnInsert: { orgId } },
+    { $setOnInsert: { orgId, accountType: organization.isPersonal ? 'personal' : 'organization' } },
     { upsert: true, new: true, session },
   );
   const audience = organization.isPersonal ? 'personal' : 'business';
@@ -356,7 +356,7 @@ export async function cancelDowngrade(userId: string, orgId: string) {
   await requireSubscriptionAccess(userId, orgId, true);
   return mongoose.connection.transaction(async (session) => {
     await lockSubscriptionOrganization(orgId, session);
-    const sub = await OrganizationSubscriptionModel.findOne({ orgId }).session(session);
+    const sub = await SubscriptionModel.findOne({ orgId }).session(session);
     if (!sub?.scheduledDowngrade) throw AppError.notFound('Chưa có lịch hạ gói.');
     const paid = await SubscriptionPeriodModel.exists({
       orgId,
