@@ -10,6 +10,7 @@ import { ContractDeleteButton } from "./contract-delete-button";
 import { ContractVerificationDetails } from "./contract-verification-details";
 import { ContractTrackingStatus, trackingPresentation } from "./contract-tracking-status";
 import { ContractTrackingUpdate } from "./contract-tracking-update";
+import { ContractVersionChip, UploadVersionButton, contractVersionCaption } from "./contract-version-info";
 import type { DashboardContract } from "@/types/contracts";
 
 export function ContractTrackingCard({ contract, highlighted, canReview, canDelete, isReviewing, onReview, onDeleted }: {
@@ -28,8 +29,14 @@ export function ContractTrackingCard({ contract, highlighted, canReview, canDele
         <div className="flex min-w-0 flex-1 basis-64 items-start gap-3">
           <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600"><FileText aria-hidden="true" className="size-5" /></span>
           <div className="min-w-0">
-            <h3 className="m-0 break-words text-ui-section font-semibold [overflow-wrap:anywhere]">{contract.title}</h3>
-            <p className="mb-0 mt-1 text-ui-meta text-muted-foreground">{contractTypeLabels[contract.type ?? ""] ?? "Chưa xác định loại"} · Tải lên {formatContractDate(contract.createdAt)}</p>
+            <div className="flex min-w-0 items-start gap-2">
+              <h3 className="m-0 min-w-0 break-words text-ui-section font-semibold [overflow-wrap:anywhere]">{contract.title}</h3>
+              <span className="mt-0.5"><ContractVersionChip contract={contract} /></span>
+            </div>
+            <p className="mb-0 mt-1 text-ui-meta text-muted-foreground">
+              {contractTypeLabels[contract.type ?? ""] ?? "Chưa xác định loại"} · Tải lên {formatContractDate(contract.createdAt)}
+              {contractVersionCaption(contract) && <> · {contractVersionCaption(contract)}</>}
+            </p>
           </div>
         </div>
         <ContractTrackingStatus contract={contract} oldReview={oldReview} />
@@ -54,6 +61,7 @@ export function ContractTrackingCard({ contract, highlighted, canReview, canDele
           {canReview && <Button size="sm" variant={reviewed && !returned ? "default" : "outline"} disabled={isReviewing || contract.status === "archived"} onClick={() => onReview(contract)}>
             {reviewed ? "Xem báo cáo rà soát" : contract.status === "processing" ? "Theo dõi xử lý" : contract.status === "unsupported" ? "Xem tài liệu" : "Bắt đầu rà soát"}
           </Button>}
+          {canReview && <UploadVersionButton contract={contract} />}
           {verification && <Button size="sm" variant={returned ? "default" : "outline"} onClick={() => setTracking(true)}>{returned ? "Xem lý do trả lại" : "Xem thông tin xác minh"}</Button>}
           {canDelete && <ContractDeleteButton contract={contract} onDeleted={onDeleted} />}
         </div>
