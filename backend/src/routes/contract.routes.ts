@@ -13,11 +13,13 @@ import {
   confirmContractProfileHandler,
   contractReviewQuoteHandler,
   createContractHandler,
+  createContractVersionHandler,
   deleteContractHandler,
   getContractFileHandler,
   getContractHandler,
   getContractTextHandler,
   listContractsHandler,
+  listContractVersionsHandler,
   retryClassificationHandler,
 } from '../controllers/contract.controller';
 import { listClausesHandler } from '../controllers/clause.controller';
@@ -43,6 +45,7 @@ import {
   contractFileQuerySchema,
   shareSummaryQuerySchema,
   createContractSchema,
+  createContractVersionSchema,
   findingParamSchema,
   listContractsQuerySchema,
   updateProposedRevisionBodySchema,
@@ -60,10 +63,20 @@ router.post(
   contractFileUpload.single('file'),
   validate({ body: createContractSchema }),
   createContractHandler,
+  createContractVersionHandler,
 );
 
 router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandler);
 router.get('/:id/review-payment', validate({ params: contractIdParamSchema }), contractReviewQuoteHandler);
+
+router.get('/:id/versions', validate({ params: contractIdParamSchema }), listContractVersionsHandler);
+router.post(
+  '/:id/versions',
+  requireRole(...CONTRACT_UPLOAD_ROLES),
+  contractFileUpload.single('file'),
+  validate({ params: contractIdParamSchema, body: createContractVersionSchema }),
+  createContractVersionHandler,
+);
 
 router.patch(
   '/:id/profile',

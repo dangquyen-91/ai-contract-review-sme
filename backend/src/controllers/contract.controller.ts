@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
+import { AppError } from '../errors/AppError';
 import { ok, paginated } from '../utils/ApiResponse';
 import { parsePagination } from '../utils/pagination';
 import { getContractUser } from '../middlewares/auth.middleware';
@@ -32,6 +33,27 @@ export const createContractHandler = asyncHandler(async (req: Request, res: Resp
 
   if (respondAsync) res.set('Preference-Applied', 'respond-async');
   ok(res, contract, respondAsync ? 202 : 201);
+});
+
+export const createContractVersionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getContractUser(req);
+  if (!req.file) throw AppError.badRequest('Vui lòng chọn tệp hợp đồng cho phiên bản mới.');
+  const respondAsync = /\brespond-async\b/i.test(req.get('Prefer') ?? '');
+  const contract = await contractService.addContractVersion({
+    orgId: user.orgId,
+    uploadedBy: user.sub,
+    contractId: req.params.id,
+    note: req.body.note,
+    file: { name: req.file.originalname, mimeType: req.file.mimetype, buffer: req.file.buffer },
+    waitForExtraction: !respondAsync,
+  });
+  if (respondAsync) res.set('Preference-Applied', 'respond-async');
+  ok(res, contract, respondAsync ? 202 : 201);
+});
+
+export const listContractVersionsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getContractUser(req);
+  ok(res, await contractService.listContractVersions(user.orgId, req.params.id));
 });
 
 export const listContractsHandler = asyncHandler(async (req: Request, res: Response) => {

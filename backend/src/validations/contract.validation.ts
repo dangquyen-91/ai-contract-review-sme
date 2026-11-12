@@ -15,6 +15,10 @@ export const createContractSchema = z.object({
     .transform((value) => value === 'true'),
 });
 
+export const createContractVersionSchema = z.object({
+  note: z.string().trim().max(300).optional(),
+});
+
 export const confirmContractProfileSchema = z.object({
   type: codeSchema,
   ourParty: codeSchema.optional(),
