@@ -273,6 +273,7 @@ function sortFindings<T extends { severity: (typeof RISK_LEVELS)[number]; create
 export async function detectRisks(
   orgId: string,
   contractId: string,
+  reviewId: string,
   analysisFocus?: string,
   onProgress?: (stage: RiskDetectionStage) => void,
   signal?: AbortSignal,
@@ -300,7 +301,7 @@ export async function detectRisks(
   await setContractStatus(contractId, orgId, 'processing');
 
   try {
-    const clauses = await ClauseModel.find({ contractVersionId: version._id })
+    const clauses = await ClauseModel.find({ contractVersionId: version._id, reviewId })
       .sort({ index: 1 })
       .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
     if (clauses.length === 0) {
@@ -435,6 +436,7 @@ export async function detectRisks(
       pending.push({
         doc: {
           contractVersionId: version._id,
+          reviewId,
           orgId,
           clauseId: clause?._id ?? null,
           findingType: 'clause_risk' as const,
@@ -463,6 +465,7 @@ export async function detectRisks(
     for (const finding of llmFindings) {
       const base = {
         contractVersionId: version._id,
+        reviewId,
         orgId,
         riskCode: finding.riskCode,
         severity: finding.severity,
@@ -513,6 +516,7 @@ export async function detectRisks(
       pending.push({
         doc: {
           contractVersionId: version._id,
+          reviewId,
           orgId,
           expectedClauseTypeId: taxonomy._id,
           findingType: 'missing_clause' as const,
@@ -538,6 +542,7 @@ export async function detectRisks(
     onProgress?.('saving_findings');
     const oldFindingIds = await RiskFindingModel.find({
       contractVersionId: version._id,
+      reviewId,
     }).distinct('_id');
     const snapshots = await loadChunkSnapshots(pending.flatMap((p) => p.chunkIds));
 
@@ -599,7 +604,7 @@ export async function detectRisks(
     throw err;
   }
 
-  const savedFindings = await RiskFindingModel.find({ contractVersionId: version._id }).populate(
+  const savedFindings = await RiskFindingModel.find({ contractVersionId: version._id, reviewId }).populate(
     'expectedClauseTypeId',
   );
   return attachCitations(sortFindings(savedFindings));

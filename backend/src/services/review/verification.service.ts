@@ -228,12 +228,13 @@ export async function addFinding(expertId: string, reviewId: string, input: AddF
   const { session, review } = await loadOwnSession(expertId, reviewId);
   let clauseId: Types.ObjectId | null = null;
   if (input.clauseIndex !== undefined) {
-    const clause = await ClauseModel.findOne({ contractVersionId: review.versionId, index: input.clauseIndex }).select('_id');
+    const clause = await ClauseModel.findOne({ contractVersionId: review.versionId, reviewId: review._id, index: input.clauseIndex }).select('_id');
     if (!clause) throw AppError.badRequest('Không tìm thấy điều khoản đã chọn trong hợp đồng.', 'CLAUSE_NOT_FOUND');
     clauseId = clause._id;
   }
   const finding = new RiskFindingModel({
     contractVersionId: review.versionId,
+    reviewId: review._id,
     orgId: session.orgId,
     clauseId,
     findingType: clauseId ? 'clause_risk' : 'missing_clause',

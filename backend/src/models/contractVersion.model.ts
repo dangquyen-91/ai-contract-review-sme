@@ -51,7 +51,7 @@ export const LEGAL_RETRIEVAL_STATUSES = ['ok', 'degraded', 'no_sources', 'unavai
 
 export const RULE_CHECK_STATUSES = ['ok', 'skipped', 'not_applicable'] as const;
 
-const keyTermSchema = new Schema(
+export const keyTermSchema = new Schema(
   {
     key: { type: String, required: true },
     numberValue: { type: Number },

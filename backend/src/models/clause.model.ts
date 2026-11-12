@@ -4,6 +4,7 @@ import { decryptOnSerialize, encryptedString } from '../utils/fieldEncryption';
 const clauseSchema = new Schema(
   {
     contractVersionId: { type: Types.ObjectId, ref: 'ContractVersion', required: true, index: true },
+    reviewId: { type: Types.ObjectId, ref: 'Review', required: true },
     orgId: { type: Types.ObjectId, ref: 'Organization', required: true, index: true },
     index: { type: Number, required: true },
     title: { type: String },
@@ -17,6 +18,7 @@ const clauseSchema = new Schema(
 );
 
 clauseSchema.index({ contractVersionId: 1, index: 1 });
+clauseSchema.index({ reviewId: 1, index: 1 });
 clauseSchema.index({ orgId: 1, clauseTypeId: 1 });
 
 export type Clause = InferSchemaType<typeof clauseSchema>;
