@@ -9,6 +9,8 @@ import { ReviewResults } from "@/components/review/results/review-results";
 import { ReviewLayout } from "@/components/review/review-layout";
 import { ReviewTimeline } from "@/components/review/timeline/review-timeline";
 import { Icon } from "@/components/ui/icon";
+import { DuplicateUploadDialog } from "@/components/review/upload/duplicate-upload-dialog";
+import type { DuplicateUpload } from "@/hooks/review/use-review-workflow";
 import type { ContractReviewResult, ContractReviewRun } from "@/types/contracts";
 
 type ReviewStage = "idle" | "uploading" | "reviewing" | "done";
@@ -37,9 +39,12 @@ type ReviewUploadWorkspaceProps = {
   reconnecting?: boolean;
   reviewError?: string;
   retryKind?: "load" | "run";
+  duplicateUpload?: DuplicateUpload | null;
+  onDismissDuplicate?: () => void;
+  onUploadDuplicate?: () => void;
 };
 
-export function ReviewUploadWorkspace({ access, roleLabel, role, orgId, reviewBlocked, formProps, stage, reviewProgress, onRetry, onCancel, cancelling, reviewResult, resultRef, canAsk, showAiContext, reviewing, loadingResult, reconnecting, reviewError, retryKind }: ReviewUploadWorkspaceProps) {
+export function ReviewUploadWorkspace({ access, roleLabel, role, orgId, reviewBlocked, formProps, stage, reviewProgress, onRetry, onCancel, cancelling, reviewResult, resultRef, canAsk, showAiContext, reviewing, loadingResult, reconnecting, reviewError, retryKind, duplicateUpload, onDismissDuplicate, onUploadDuplicate }: ReviewUploadWorkspaceProps) {
   const { reviewTimelineRef: timelineRef } = useDashboardReviewWorkflow();
   return <>
     <section className="flex [align-items:end] justify-between gap-7 [&_h1]:text-[length:clamp(30px,3vw,42px)] [&_h1]:leading-[1.12] [&_h1]:tracking-[-1.5px] [&_h1]:mt-[7px] [&_h1]:mb-0 [&_h1]:mx-0 [&_div_>_p]:last:max-w-[660px] [&_div_>_p]:last:text-[color:var(--muted)] [&_div_>_p]:last:text-[length:13px] [&_div_>_p]:last:leading-[1.6] [&_div_>_p]:last:mt-[9px] [&_div_>_p]:last:mb-0 [&_div_>_p]:last:mx-0 [@media_(max-width:_580px)]:items-start [@media_(max-width:_580px)]:flex-col [&_h1]:[@media_(max-width:_580px)]:text-[length:31px]"><div><p className="text-[color:var(--accent)] text-[length:10px] font-[780] tracking-[1.1px] uppercase m-0">AI Contract Review</p><h1>Rà soát hợp đồng mới</h1><p>Tải hợp đồng lên để AI tóm tắt, nhận diện điều khoản rủi ro và đề xuất hướng chỉnh sửa.</p></div><div className="flex items-center gap-2.5 flex-none text-[#2b5c51] border [background:#f3faf8] px-[13px] py-2.5 rounded-[10px] border-solid border-[#d7e9e4] [&>_svg]:w-5 [&_span_>_*]:block [&_strong]:text-[length:10px] [&_small]:text-[#6b817c] [&_small]:text-[length:9px] [&_small]:mt-0.5 [@media_(max-width:_580px)]:w-full"><Icon name="shield" /><span><strong>Dữ liệu riêng tư</strong><small>Chỉ tài khoản có quyền mới truy cập được</small></span></div></section>
@@ -55,5 +60,13 @@ export function ReviewUploadWorkspace({ access, roleLabel, role, orgId, reviewBl
       timeline={<div ref={timelineRef} className="scroll-mt-6"><ReviewTimeline role={role} blocked={reviewBlocked} review={reviewProgress} result={stage === "done" ? reviewResult : null} uploading={stage === "uploading"} reviewing={reviewing ?? stage === "reviewing"} loadingResult={loadingResult} reconnecting={reconnecting} error={reviewError} failureKind={retryKind} roleLabel={roleLabel} access={access} onRetry={onRetry} onCancel={onCancel} cancelling={cancelling} /></div>}
       result={reviewResult && <div id="review-result" ref={resultRef} tabIndex={-1} aria-label="Kết quả rà soát hợp đồng" className="scroll-mt-6 focus:outline-none"><ReviewResults result={reviewResult} role={role} canAsk={canAsk} showAiContext={showAiContext} /></div>}
     />
+    {duplicateUpload && onDismissDuplicate && onUploadDuplicate && (
+      <DuplicateUploadDialog
+        duplicate={duplicateUpload}
+        busy={stage === "uploading"}
+        onDismiss={onDismissDuplicate}
+        onUploadAnyway={onUploadDuplicate}
+      />
+    )}
   </>;
 }

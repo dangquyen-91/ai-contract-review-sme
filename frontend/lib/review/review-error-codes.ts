@@ -43,6 +43,9 @@ const serverCodeMessages: Record<string, string> = {
   CONTRACT_ALREADY_CONFIRMED: "Loại hợp đồng đã được xác nhận.",
   EXTRACTION_NOT_READY: "Hệ thống chưa đọc xong nội dung hợp đồng.",
   CLASSIFICATION_NOT_RETRYABLE: "AI đang nhận diện hợp đồng. Vui lòng chờ trong giây lát.",
+  DUPLICATE_CONTRACT: "Tệp này giống hệt một hợp đồng đã tải lên trước đó.",
+  DUPLICATE_VERSION: "Tệp này giống hệt một phiên bản đã có của hợp đồng. Hãy chọn tệp đã chỉnh sửa.",
+  CONTRACT_UNSUPPORTED: "Hợp đồng không thuộc loại được hỗ trợ nên không thể thêm phiên bản.",
 };
 
 export function serverCodeMessage(code?: string) {

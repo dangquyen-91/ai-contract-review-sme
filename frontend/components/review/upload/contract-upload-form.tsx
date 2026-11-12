@@ -1,7 +1,15 @@
 "use client";
 
-import { useState, type ChangeEvent, type DragEvent } from "react";
+import { useMemo, useState, type ChangeEvent, type DragEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/ui/icon";
+import { useContract } from "@/hooks/contracts/use-contracts";
+import type { UploadTarget } from "@/hooks/review/use-review-workflow";
+import {
+  UploadTargetPicker,
+  type UploadTargetState,
+  type VersionCandidate,
+} from "@/components/review/upload/upload-target-picker";
 
 type ContractUploadFormProps = {
   file: File | null;
@@ -10,23 +18,64 @@ type ContractUploadFormProps = {
   isUploading: boolean;
   isReviewing?: boolean;
   isLoadingResult?: boolean;
-  onFileChange: (file?: File) => void;
+  versionCandidates?: VersionCandidate[];
+  onFileChange: (file?: File, target?: UploadTarget) => void;
 };
 
-export function ContractUploadForm({ file, title, supportedTypes = [], isUploading, isReviewing = false, isLoadingResult = false, onFileChange }: ContractUploadFormProps) {
+const objectIdPattern = /^[a-f\d]{24}$/i;
+
+export function ContractUploadForm({ file, title, supportedTypes = [], isUploading, isReviewing = false, isLoadingResult = false, versionCandidates, onFileChange }: ContractUploadFormProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const requestedVersionOf = useSearchParams().get("versionOf") ?? "";
+  const versionOfId = objectIdPattern.test(requestedVersionOf) ? requestedVersionOf : "";
+  const [target, setTarget] = useState<UploadTargetState>({
+    mode: versionOfId ? "version" : "new",
+    contractId: versionOfId,
+    note: "",
+  });
+  const requestedContract = useContract(
+    versionOfId && !versionCandidates?.some((candidate) => candidate.id === versionOfId) ? versionOfId : "",
+  );
+  const candidates = useMemo(() => {
+    const list = versionCandidates ?? [];
+    const extra = requestedContract.data;
+    const extraId = extra?.id ?? extra?._id;
+    if (!extra || !extraId || list.some((candidate) => candidate.id === extraId)) return list;
+    return [{ id: extraId, title: extra.title, versionNumber: extra.currentVersion?.versionNumber }, ...list];
+  }, [versionCandidates, requestedContract.data]);
+  const versionMode = target.mode === "version";
+  const selectedContract = candidates.find((candidate) => candidate.id === target.contractId);
+  const awaitingContract = versionMode && !selectedContract;
   const locked = isUploading || isReviewing || isLoadingResult;
+  const dropDisabled = locked || awaitingContract;
+
+  function submit(nextFile?: File) {
+    if (dropDisabled || !nextFile) return;
+    onFileChange(
+      nextFile,
+      versionMode && selectedContract
+        ? { versionOf: { id: selectedContract.id, title: selectedContract.title }, note: target.note }
+        : undefined,
+    );
+  }
 
   function handleFileInput(event: ChangeEvent<HTMLInputElement>) {
-    if (!locked) onFileChange(event.target.files?.[0]);
+    submit(event.target.files?.[0]);
     event.target.value = "";
   }
 
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setIsDragging(false);
-    if (!locked) onFileChange(event.dataTransfer.files?.[0]);
+    submit(event.dataTransfer.files?.[0]);
   }
+
+  const idleHeading = versionMode ? "Chọn tệp phiên bản mới" : "Chọn tệp hợp đồng để tải lên";
+  const idleHint = awaitingContract
+    ? "Chọn hợp đồng cần thêm phiên bản trước."
+    : versionMode
+      ? `Tệp sẽ được lưu thành phiên bản mới của “${selectedContract?.title}”.`
+      : "Kéo và thả tệp vào đây hoặc nhấn để chọn từ máy tính. Tệp sẽ được tải lên ngay.";
 
   return (
     <div aria-busy={locked || undefined} className="p-5 [&_input:disabled]:cursor-not-allowed [&_select:disabled]:cursor-not-allowed [@media_(max-width:_580px)]:p-[15px]">
@@ -37,10 +86,13 @@ export function ContractUploadForm({ file, title, supportedTypes = [], isUploadi
           <p className="mb-0 mt-1 text-ui-meta">Bạn có thể tải hợp đồng khác sau khi quá trình này kết thúc.</p>
         </div>
       </div>}
-      <label className={`min-h-[146px] flex items-center justify-center gap-3.5 p-[22px] rounded-xl border-[1.5px] border-dashed border-[#b9c8dc] [background:#fafcff] [@media_(max-width:_580px)]:min-h-[135px] [@media_(max-width:_580px)]:flex-col [@media_(max-width:_580px)]:text-center ${locked ? "cursor-not-allowed" : "cursor-pointer hover:border-[color:var(--accent)] hover:[background:#f2f7ff]"} ${isDragging && !locked ? "border-[color:var(--accent)] [background:#f2f7ff]" : ""} ${file ? "[background:#f5fbf9] border-[#78ad9b]" : ""}`} onDragOver={(event) => { event.preventDefault(); if (!locked) setIsDragging(true); }} onDragLeave={() => setIsDragging(false)} onDrop={handleDrop}>
-        <input type="file" accept=".pdf,.docx,.png,.jpg,.jpeg" onChange={handleFileInput} disabled={locked} className="absolute w-px h-px opacity-0" />
+      {versionCandidates && (
+        <UploadTargetPicker value={target} candidates={candidates} disabled={locked} onChange={setTarget} />
+      )}
+      <label className={`min-h-[146px] flex items-center justify-center gap-3.5 p-[22px] rounded-xl border-[1.5px] border-dashed border-[#b9c8dc] [background:#fafcff] [@media_(max-width:_580px)]:min-h-[135px] [@media_(max-width:_580px)]:flex-col [@media_(max-width:_580px)]:text-center ${dropDisabled ? "cursor-not-allowed" : "cursor-pointer hover:border-[color:var(--accent)] hover:[background:#f2f7ff]"} ${isDragging && !dropDisabled ? "border-[color:var(--accent)] [background:#f2f7ff]" : ""} ${file ? "[background:#f5fbf9] border-[#78ad9b]" : ""}`} onDragOver={(event) => { event.preventDefault(); if (!dropDisabled) setIsDragging(true); }} onDragLeave={() => setIsDragging(false)} onDrop={handleDrop}>
+        <input type="file" accept=".pdf,.docx,.png,.jpg,.jpeg" onChange={handleFileInput} disabled={dropDisabled} className="absolute w-px h-px opacity-0" />
         <span className="w-12 h-12 grid place-items-center flex-none text-[#23745e] [background:#e2f3ed] rounded-[13px] [&_svg]:w-[22px]"><Icon name={isReviewing || isLoadingResult ? "lock" : file ? "check" : "upload"} /></span>
-        <span className="[&>*]:block"><strong className="text-[length:13px] [overflow-wrap:anywhere]">{isUploading ? "Đang tải tệp hợp đồng lên…" : isLoadingResult ? "Đang tải kết quả…" : isReviewing ? "Đang rà soát hợp đồng hiện tại" : file ? file.name : "Chọn tệp hợp đồng để tải lên"}</strong><small className="text-[color:var(--muted)] text-ui mt-[5px]">{locked ? "Tạm thời không thể chọn tệp khác." : file ? `${(file.size / 1024 / 1024).toFixed(1)} MB · Nhấn để tải lại hoặc chọn tệp khác` : "Kéo và thả tệp vào đây hoặc nhấn để chọn từ máy tính. Tệp sẽ được tải lên ngay."}</small></span>
+        <span className="[&>*]:block"><strong className="text-[length:13px] [overflow-wrap:anywhere]">{isUploading ? "Đang tải tệp hợp đồng lên…" : isLoadingResult ? "Đang tải kết quả…" : isReviewing ? "Đang rà soát hợp đồng hiện tại" : file ? file.name : idleHeading}</strong><small className="text-[color:var(--muted)] text-ui mt-[5px]">{locked ? "Tạm thời không thể chọn tệp khác." : file ? `${(file.size / 1024 / 1024).toFixed(1)} MB · Nhấn để tải lại hoặc chọn tệp khác` : idleHint}</small></span>
       </label>
       {supportedTypes.length > 0 && <p className="mb-0 mt-3 text-ui-meta leading-5 text-[color:var(--muted)]">AI sẽ tự nhận diện loại hợp đồng và vai trò của bạn. Hiện hỗ trợ: {supportedTypes.join(" · ")}.</p>}
     </div>
