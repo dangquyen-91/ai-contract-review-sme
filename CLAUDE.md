@@ -39,7 +39,7 @@ Browser → Next.js route handlers in `frontend/app/api/**` → backend `/api/v1
 Backend responses are always `{ success: true, data, meta? }` (`utils/ApiResponse.ts`) or an error envelope from `errorHandler`; throw `AppError` (`AppError.badRequest/forbidden/...`) instead of writing responses. Layering: `routes` (with `validate({ params, query, body })` zod schemas from `validations/`) → `controllers` (wrapped in `asyncHandler`) → `services/<domain>/` → mongoose `models/`.
 
 ### Multi-tenancy and roles
-Everything is scoped by `orgId`; services filter by it (e.g. `ContractModel.findOne({ _id, orgId })`) and return 404 for other scopes. On data and billing collections `orgId` is the owning account: an organization ID, or the user's own ID for a personal account (`getContractUser` in `auth.middleware.ts`). Personal drafts are the exception and use `orgId: null` with `createdBy`.
+Everything is scoped by `orgId`; services filter by it (e.g. `ContractModel.findOne({ _id, orgId })`) and return 404 for other scopes. On data and billing collections `orgId` is the owning account: an organization ID, or the user's own ID for a personal account (`getContractUser` in `auth.middleware.ts`). Personal drafts are the exception and use `orgId: null` with `createdBy`. Root documents record the owner kind explicitly: `Contract.ownerType` / `ContractDraft.ownerType` (`organization`|`personal`) and `Subscription.accountType`; set it whenever you create one.
 
 Roles: `administrator, owner, manager, staff, expert, user`. `User` has no `orgId`/`roleId`. The effective role is computed in `services/identity/account.service.ts` (`loadAccess`):
 
@@ -48,6 +48,9 @@ Roles: `administrator, owner, manager, staff, expert, user`. `User` has no `orgI
 - Neither → personal account (`user`).
 
 `Role` is a seeded catalog (`code`, `name`, `scope` platform|organization|personal); `platformRole` and `Membership.role` reference it by `code`. Access tokens carry the effective `role`/`orgId`; `requireAuth` recomputes them from Membership on every request and rejects stale tokens. Owners and staff can switch to the personal workspace (`/auth/refresh` with `workspace`), where they act as `user`. Roles are enforced by `requireRole` and the lists in `middlewares/rbac.middleware.ts`, mirrored on the frontend in `config/dashboard-roles.ts` and the per-role route trees `app/(dashboard)/dashboard/<role>/`. Personal vs. business accounts may only review certain contract types (`services/contract/personalReviewPolicy.ts`). There is no seeded administrator: promote a registered account by setting `platformRole: 'administrator'` in the database.
+
+### Contracts and versions
+A `Contract` is one deal; each uploaded file is a `ContractVersion` (`versionNumber`, `fileHash`, `note`). Version 1 comes from `POST /contracts`; later ones from `POST /contracts/:id/versions`, which keeps the confirmed type/party (no reclassification) and is blocked while a review runs. Uploading a file whose SHA-256 already exists in the same account returns 409 `DUPLICATE_CONTRACT` / `DUPLICATE_VERSION` with the match in `error.meta` (`allowDuplicate=true` overrides for new contracts). Reviews and chat always target the current (highest) version; read endpoints (clauses, risks, key-terms, chat, text, file) accept `?versionId=` via `resolveVersion` in `contract/contractVersion.service.ts`.
 
 ### Background pipeline (BullMQ on Redis)
 `services/workers.service.ts` starts five workers (extraction, classification, unsupported-file cleanup, review, legal ingestion), created via helpers in `config/queue.ts` (`createQueue/createWorker/addJobWithTimeout`; enqueue fails with 503 after 5s if Redis is down). The three main ones:

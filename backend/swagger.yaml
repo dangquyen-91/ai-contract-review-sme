@@ -39,6 +39,12 @@ components:
       description: Reuse for retries of the same request; use a new key for a new review, chat message or purchase.
       schema: { type: string, minLength: 8, maxLength: 128, pattern: '^[a-zA-Z0-9_-]+$' }
       example: review-request-0001
+    VersionIdQuery:
+      in: query
+      name: versionId
+      required: false
+      schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      description: Read a specific version (see GET /contracts/{id}/versions). Defaults to the current (latest) version. A version of another contract returns 404.
   securitySchemes:
     bearerAuth:
       type: http
@@ -200,6 +206,10 @@ components:
           description: Machine-readable reason, present for errors the client is expected to handle (e.g. CONTRACT_NOT_CONFIRMED)
         details:
           type: object
+          description: Field validation errors
+        meta:
+          type: object
+          description: Extra data for errors the client is expected to act on, e.g. the existing contract for DUPLICATE_CONTRACT / DUPLICATE_VERSION
 
     Organization:
       type: object
@@ -459,6 +469,14 @@ components:
           $ref: '#/components/schemas/ReviewBillingQuote'
         id:
           type: string
+        ownerType:
+          type: string
+          enum: [organization, personal]
+          description: Who owns the contract. orgId is an Organization ID for organization and the user's own ID for personal.
+        orgId:
+          type: string
+        uploadedBy:
+          type: string
         title:
           type: string
         type:
@@ -487,7 +505,7 @@ components:
 
     ContractVersion:
       type: object
-      description: All per-upload state for a contract (currently only version 1 is ever created - no re-upload/version-compare UI yet).
+      description: All per-upload state for one version of a contract. Version 1 is created on upload; later versions come from POST /contracts/{id}/versions. Reviews and chat always run on the current (highest) version.
       properties:
         id:
           type: string
@@ -495,6 +513,12 @@ components:
           type: string
         versionNumber:
           type: integer
+        note:
+          type: string
+          description: Optional note given when the version was uploaded
+        fileHash:
+          type: string
+          description: SHA-256 of the uploaded file, used to detect duplicate uploads
         fileName:
           type: string
           description: Original file name. The file itself is stored privately - get a short-lived download link from GET /contracts/{id}/file
@@ -1402,6 +1426,10 @@ components:
           type: string
           description: Optional. Industry code; adds the profile's industry-specific checks and mandatory clauses
           example: fnb
+        allowDuplicate:
+          type: string
+          enum: ['true', 'false']
+          description: Send true to create a new contract even if the same file was already uploaded in this account (otherwise 409 DUPLICATE_CONTRACT)
         file:
           type: string
           format: binary
@@ -2899,6 +2927,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: DUPLICATE_CONTRACT - the same file already exists in this account. error.meta holds { contractId, title, versionNumber, uploadedAt }; resend with allowDuplicate=true to create a new contract anyway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '503':
           description: The background job queue (Redis) is unavailable; nothing was saved
           content:
@@ -2950,6 +2984,141 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /contracts/{id}/versions:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: List the versions of a contract, newest first
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        versionNumber: { type: integer }
+                        isCurrent: { type: boolean }
+                        note: { type: string, nullable: true }
+                        fileName: { type: string, nullable: true }
+                        mimeType: { type: string, nullable: true }
+                        uploadedBy:
+                          type: object
+                          nullable: true
+                          properties:
+                            id: { type: string }
+                            name: { type: string }
+                        uploadedAt: { type: string, format: date-time }
+                        extractionStatus: { type: string, enum: [pending, processing, completed, failed, unsupported] }
+                        pageCount: { type: integer, nullable: true }
+                        latestReview:
+                          type: object
+                          nullable: true
+                          description: Latest review of this version; open it with GET /reviews/{reviewId}
+                          properties:
+                            id: { type: string }
+                            status: { type: string, enum: [queued, running, completed, failed, cancelled] }
+                            finishedAt: { type: string, format: date-time, nullable: true }
+                            overallRiskLevel: { type: string, nullable: true, enum: [high, medium, low, none] }
+                            findingCounts:
+                              type: object
+                              nullable: true
+                              properties:
+                                high: { type: integer }
+                                medium: { type: integer }
+                                low: { type: integer }
+                            verificationStatus: { type: string, nullable: true, enum: [requested, in_progress, approved, returned] }
+        '404':
+          description: Contract not found in this account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Contracts]
+      summary: Upload a new version of a contract
+      description: |
+        Creates version n+1 from the uploaded file and starts text extraction. The contract keeps its confirmed type and party, so no new classification is needed, and its status returns to uploaded until the new version is reviewed.
+        Rejected while a review of the contract is running, when the file is identical to an existing version, and for contracts marked unsupported.
+      parameters:
+        - in: header
+          name: Prefer
+          required: false
+          schema: { type: string, example: respond-async }
+          description: RFC 7240 preference. Send respond-async to get 202 without waiting for extraction.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                note:
+                  type: string
+                  maxLength: 300
+                  description: e.g. "Bản sau đàm phán"
+      responses:
+        '201':
+          description: Created; extraction of the new version has finished
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '202':
+          description: Accepted with Prefer respond-async; extraction is still running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '400':
+          description: Missing file, unsupported file type or note too long
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Contract not found in this account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: REVIEW_RUNNING (a review is running), DUPLICATE_VERSION (same file as an existing version; error.meta holds that version) or CONTRACT_UNSUPPORTED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File exceeds the 20MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background job queue (Redis) is unavailable; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /contracts/{id}/clauses:
     parameters:
       - in: path
@@ -2960,7 +3129,9 @@ paths:
           pattern: '^[a-f\d]{24}$'
     get:
       tags: [Contracts]
-      summary: List clauses segmented/classified for a contract
+      summary: List clauses segmented/classified for a contract version
+      parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
       responses:
         '200':
           description: OK
@@ -2987,7 +3158,9 @@ paths:
           pattern: '^[a-f\d]{24}$'
     get:
       tags: [Contracts]
-      summary: List risk findings detected for a contract
+      summary: List risk findings detected for a contract version
+      parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
       responses:
         '200':
           description: OK
@@ -3014,7 +3187,9 @@ paths:
           pattern: '^[a-f\d]{24}$'
     get:
       tags: [Contracts]
-      summary: List the key terms extracted from the current version during the last review
+      summary: List the key terms extracted from a version (current by default) during its last review
+      parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
       description: |
         During risk detection the LLM extracts the terms that legal rules check for this contract type (e.g. penalty rate, deposit share, probation length, working hours). A term is kept only when its quote appears verbatim in the cited clause. A few yes/no terms have a legal default when the contract is silent (e.g. no notarization, penalty without damages); those are returned with inferredFromSilence true and no clause.
         Life insurance has no rule checks yet, so its list is empty.
@@ -3265,6 +3440,7 @@ paths:
         With `redacted=true` the personal data covered by the contract profile's redactionPolicy is replaced by placeholders such as `[PERSON_1]` or `[PHONE_2]` by default. Clause offsets do not apply to the redacted text.
         Use `redacted=true&redactionMode=partial` for an internal comparison view: bank accounts keep their last 4 digits, phones their last 3 digits, names use consistent numbered labels, emails keep only their first character and domain (for example m•••@gmail.com), and IDs, birth dates and personal addresses are fully concealed. Distinct accounts or phones sharing a visible suffix get numbered labels to prevent confusion. Phone/account format variants use the same display identity. This mode uses the existing contract-read permission and does not change AI prompts or sharing permissions. The returned redactionSpans refer to the displayed text and contain no original sensitive values.
       parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
         - in: query
           name: redacted
           required: false
@@ -3380,6 +3556,7 @@ paths:
       summary: Get the original file link or a separate redacted DOCX reading copy
       description: Without redacted=true, returns a signed link to the original file. With redacted=true, streams a separate DOCX reading copy using partial masking. Both modes use existing organization-scoped contract access.
       parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
         - in: query
           name: redacted
           schema:
@@ -3435,7 +3612,9 @@ paths:
           pattern: '^[a-f\d]{24}$'
     get:
       tags: [Contracts]
-      summary: List the chat history for the contract's current version, oldest first
+      summary: List the chat history of a version (current by default), oldest first. New messages always go to the current version.
+      parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
       responses:
         '200':
           description: OK
