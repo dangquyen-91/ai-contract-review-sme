@@ -21,6 +21,8 @@ import {
   listContractsHandler,
   listContractVersionsHandler,
   getVersionMatchHandler,
+  attachVersionHandler,
+  detachVersionHandler,
   retryClassificationHandler,
 } from '../controllers/contract.controller';
 import { listClausesHandler } from '../controllers/clause.controller';
@@ -47,6 +49,8 @@ import {
   shareSummaryQuerySchema,
   createContractSchema,
   createContractVersionSchema,
+  attachVersionSchema,
+  versionParamSchema,
   versionQuerySchema,
   resultQuerySchema,
   findingParamSchema,
@@ -80,6 +84,18 @@ router.post(
   contractFileUpload.single('file'),
   validate({ params: contractIdParamSchema, body: createContractVersionSchema }),
   createContractVersionHandler,
+);
+router.post(
+  '/:id/versions/attach',
+  requireRole(...CONTRACT_UPLOAD_ROLES),
+  validate({ params: contractIdParamSchema, body: attachVersionSchema }),
+  attachVersionHandler,
+);
+router.post(
+  '/:id/versions/:versionId/detach',
+  requireRole(...CONTRACT_UPLOAD_ROLES),
+  validate({ params: versionParamSchema }),
+  detachVersionHandler,
 );
 
 router.patch(

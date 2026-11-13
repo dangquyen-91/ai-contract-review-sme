@@ -49,7 +49,7 @@ interface CreateContractParams {
   waitForExtraction: boolean;
 }
 
-function titleFromFileName(fileName?: string) {
+export function titleFromFileName(fileName?: string) {
   const base = fileName?.replace(/\.[^.]+$/, '').trim();
   return base && base.length >= 2 ? base.slice(0, 300) : 'Hợp đồng chưa đặt tên';
 }

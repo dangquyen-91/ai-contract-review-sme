@@ -19,6 +19,16 @@ export const createContractVersionSchema = z.object({
   note: z.string().trim().max(300).optional(),
 });
 
+export const attachVersionSchema = z.object({
+  sourceContractId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
+  note: z.string().trim().max(300).optional(),
+});
+
+export const versionParamSchema = z.object({
+  id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
+  versionId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid version id'),
+});
+
 export const confirmContractProfileSchema = z.object({
   type: codeSchema,
   ourParty: codeSchema.optional(),

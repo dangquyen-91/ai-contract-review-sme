@@ -3037,6 +3037,103 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /contracts/{id}/versions/attach:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        description: Contract that receives the new version
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Contracts]
+      summary: Turn a just-uploaded contract into the next version of this contract
+      description: |
+        Moves the only version of the source contract into this contract as version n+1 (keeping its stored file and extracted text), then deletes the source contract. Used when an upload made as a new contract is really a revised version of an existing one.
+        The source must have exactly one version that has no review, payment, review purchase, usage record or chat. The target must not be unsupported, archived or under review, and must not already hold an identical file. The target's status returns to uploaded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceContractId]
+              properties:
+                sourceContractId: { type: string, pattern: '^[a-f\d]{24}$' }
+                note: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: The target contract with its new current version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { type: object }
+        '400':
+          description: Source and target are the same contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Source or target contract not found in this account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: REVIEW_RUNNING, CONTRACT_UNSUPPORTED, VERSION_IN_USE, or DUPLICATE_VERSION (with the matching version in error.meta)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/versions/{versionId}/detach:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: versionId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Contracts]
+      summary: Split the latest version off into a new contract
+      description: |
+        Used when a file was uploaded as a new version of the wrong contract. Creates a new contract of the same owner whose version 1 is this version, and queues classification for it once its text is extracted. The original contract's status is recomputed from its remaining latest version.
+        Only the latest version of a contract with at least two versions can be split off, and only while it has no review, payment, review purchase, usage record or chat.
+      responses:
+        '201':
+          description: The newly created contract
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { type: object }
+        '404':
+          description: Contract or version not found in this account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: REVIEW_RUNNING or VERSION_IN_USE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /contracts/{id}/versions:
     parameters:
       - in: path

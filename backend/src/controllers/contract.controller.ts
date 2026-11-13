@@ -11,6 +11,7 @@ import { retryClassification } from '../services/contract/classificationWorker.s
 import { ListContractsQuery } from '../validations/contract.validation';
 import { contractReviewQuote } from '../services/billing/contractReviewPurchase.service';
 import { findVersionMatch } from '../services/contract/versionMatch.service';
+import { attachAsVersion, detachVersion } from '../services/contract/versionTransfer.service';
 
 export const contractReviewQuoteHandler = asyncHandler(async (req, res) => {
   const user = getContractUser(req);
@@ -60,6 +61,24 @@ export const listContractVersionsHandler = asyncHandler(async (req: Request, res
 export const getVersionMatchHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);
   ok(res, await findVersionMatch(user.orgId, req.params.id));
+});
+
+export const attachVersionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getContractUser(req);
+  ok(
+    res,
+    await attachAsVersion({
+      orgId: user.orgId,
+      targetContractId: req.params.id,
+      sourceContractId: req.body.sourceContractId,
+      note: req.body.note,
+    }),
+  );
+});
+
+export const detachVersionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getContractUser(req);
+  ok(res, await detachVersion({ orgId: user.orgId, contractId: req.params.id, versionId: req.params.versionId }), 201);
 });
 
 export const listContractsHandler = asyncHandler(async (req: Request, res: Response) => {
