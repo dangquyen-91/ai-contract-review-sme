@@ -14,9 +14,8 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ c
   ]);
   if (run.contractId !== contractId) notFound();
   const version = versions.find((item) => item.id === run.versionId);
-  const findingsStored = run.status === "completed" && Boolean(run.versionId) && version?.latestReview?.id === run._id;
-  const findings = findingsStored
-    ? await getWorkspaceResource<RiskFinding[]>("/contracts/" + contractId + "/risks?versionId=" + run.versionId)
+  const findings = run.result
+    ? await getWorkspaceResource<RiskFinding[]>("/contracts/" + contractId + "/risks?reviewId=" + run._id)
     : [];
   return (
     <WorkspaceContent>
@@ -26,7 +25,6 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ c
         version={version}
         current={versions.find((item) => item.isCurrent)}
         findings={findings}
-        findingsStored={findingsStored}
       />
     </WorkspaceContent>
   );

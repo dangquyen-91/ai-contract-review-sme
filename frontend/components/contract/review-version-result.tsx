@@ -77,13 +77,12 @@ function FindingItem({ finding }: { finding: RiskFinding }) {
   );
 }
 
-export function ReviewVersionResult({ contractId, run, version, current, findings, findingsStored }: {
+export function ReviewVersionResult({ contractId, run, version, current, findings }: {
   contractId: string;
   run: ContractReviewRun;
   version?: ContractVersionSummary;
   current?: ContractVersionSummary;
   findings: RiskFinding[];
-  findingsStored: boolean;
 }) {
   const counts = run.result?.findingCounts;
   const sorted = [...findings].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
@@ -140,9 +139,7 @@ export function ReviewVersionResult({ contractId, run, version, current, finding
       )}
       {detailsMissing && (
         <p className="m-0 rounded-lg border border-border bg-slate-50 p-3 text-ui leading-6 text-slate-700">
-          {findingsStored
-            ? "Chi tiết từng rủi ro của lượt này không còn được lưu do một lượt rà soát lại sau đó trên cùng phiên bản đã bị dừng giữa chừng. Số liệu tổng hợp ở trên vẫn đúng với lượt này."
-            : "Chi tiết từng rủi ro chỉ được lưu cho lượt rà soát hoàn tất gần nhất của mỗi phiên bản. Số liệu tổng hợp ở trên vẫn đúng với lượt này."}
+          Chi tiết từng rủi ro không có sẵn cho lượt rà soát này vì lượt được tạo trước khi hệ thống lưu kết quả theo từng lượt. Số liệu tổng hợp ở trên vẫn đúng.
         </p>
       )}
       {sorted.length > 0 && (
