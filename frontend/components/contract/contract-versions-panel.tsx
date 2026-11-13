@@ -8,6 +8,7 @@ import { routes } from "@/config/routes";
 import { useContractVersions } from "@/hooks/contracts/use-contracts";
 import { trackingPresentation } from "@/components/contract/contract-tracking-status";
 import { RiskBadge } from "@/components/contract/risk-badge";
+import { isLikelyWrongContract, similarityPercent } from "@/lib/contracts/version-similarity";
 import type { ContractVersionSummary } from "@/types/contracts";
 
 const reviewStatusLabels: Record<NonNullable<ContractVersionSummary["latestReview"]>["status"], string> = {
@@ -71,6 +72,7 @@ function VersionItem({ contractId, version }: { contractId: string; version: Con
     version.uploadedBy?.name ? `Tải bởi ${version.uploadedBy.name}` : null,
     formatDateTime(version.uploadedAt),
     version.pageCount ? `${version.pageCount} trang` : null,
+    similarityPercent(version) !== null ? `Giống ${similarityPercent(version)}% với phiên bản ${version.versionNumber - 1}` : null,
   ].filter(Boolean);
   return (
     <li className="relative pb-5 pl-7 last:pb-0">
@@ -84,6 +86,7 @@ function VersionItem({ contractId, version }: { contractId: string; version: Con
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="m-0 text-ui-section font-semibold">Phiên bản {version.versionNumber}</h3>
           {version.isCurrent && <Badge variant="info">Hiện tại</Badge>}
+          {isLikelyWrongContract(version) && <Badge variant="warning">Khác nhiều so với bản trước</Badge>}
           {version.note && <span className="min-w-0 text-ui text-slate-700 [overflow-wrap:anywhere]">· {version.note}</span>}
         </div>
         <p className="m-0 text-ui-meta text-muted-foreground">{meta.join(" · ")}</p>

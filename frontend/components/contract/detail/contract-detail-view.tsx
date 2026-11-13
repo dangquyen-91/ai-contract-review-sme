@@ -18,6 +18,7 @@ import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider
 import { ContractDetailHeader } from "./contract-detail-header";
 import { ContractDetailTabs } from "./contract-detail-tabs";
 import { ContractOverviewTab } from "./contract-overview-tab";
+import { VersionMismatchNotice } from "./version-mismatch-notice";
 import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
 import type { ContractReviewResult, ContractVersionSummary, DashboardContract } from "@/types/contracts";
 
@@ -187,6 +188,7 @@ export function ContractDetailView({ contractId, context }: { contractId: string
         onShare={() => setSharing(true)}
         onShowVersions={() => selectTab("versions")}
       />
+      <VersionMismatchNotice contractId={contractId} versions={versions} canEdit={access.upload} />
       {body}
       {result && (
         <p className="m-0 text-right text-ui-meta text-[#8a94a3]">Kết quả do AI hỗ trợ, không thay thế ý kiến tư vấn pháp lý chuyên môn.</p>
