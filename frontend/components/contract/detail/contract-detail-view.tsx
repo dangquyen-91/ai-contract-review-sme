@@ -122,7 +122,7 @@ export function ContractDetailView({ contractId, context }: { contractId: string
   if (result && !running) {
     body = (
       <div ref={reviewResultRef} tabIndex={-1} className="scroll-mt-6 space-y-0 focus:outline-none">
-        <ResultTabs result={result} contractId={contractId} role={data.role} canAsk={access.review} canUpload={access.upload} versionCount={versions.length || undefined} />
+        <ResultTabs key={contractId} result={result} contractId={contractId} role={data.role} canAsk={access.review} canUpload={access.upload} versionCount={versions.length || undefined} />
       </div>
     );
   } else if ((running && !loadingSaved) || failed) {

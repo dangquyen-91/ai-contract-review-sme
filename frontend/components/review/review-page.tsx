@@ -9,7 +9,7 @@ export function ReviewDashboardPage() {
   const workspace = useOptionalOrganizationDashboard();
   if (workspace) {
     if (!workspace.data) return null;
-    return <ReviewContent data={workspace.data} access={workspace.access} roleLabel={workspace.roleLabel} workflow={workspace} onViewAll={() => workspace.selectTab("contracts")} />;
+    return <ReviewContent data={workspace.data} access={workspace.access} roleLabel={workspace.roleLabel} workflow={workspace} />;
   }
   return <DashboardShell view="review">{(context) => <PersonalReviewPage context={context} />}</DashboardShell>;
 }

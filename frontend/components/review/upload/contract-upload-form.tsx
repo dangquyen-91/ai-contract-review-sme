@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState, type ChangeEvent, type DragEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/ui/icon";
@@ -19,12 +20,13 @@ type ContractUploadFormProps = {
   isReviewing?: boolean;
   isLoadingResult?: boolean;
   versionCandidates?: VersionCandidate[];
+  activeHref?: string;
   onFileChange: (file?: File, target?: UploadTarget) => void;
 };
 
 const objectIdPattern = /^[a-f\d]{24}$/i;
 
-export function ContractUploadForm({ file, title, supportedTypes = [], isUploading, isReviewing = false, isLoadingResult = false, versionCandidates, onFileChange }: ContractUploadFormProps) {
+export function ContractUploadForm({ file, title, supportedTypes = [], isUploading, isReviewing = false, isLoadingResult = false, versionCandidates, activeHref, onFileChange }: ContractUploadFormProps) {
   const [isDragging, setIsDragging] = useState(false);
   const requestedVersionOf = useSearchParams().get("versionOf") ?? "";
   const versionOfId = objectIdPattern.test(requestedVersionOf) ? requestedVersionOf : "";
@@ -84,6 +86,7 @@ export function ContractUploadForm({ file, title, supportedTypes = [], isUploadi
         <div className="min-w-0"><p className="m-0 font-semibold">{isLoadingResult ? "Đang tải kết quả hợp đồng hiện tại" : "Đang rà soát hợp đồng hiện tại"}</p>
           {title && <p className="m-0 mt-1 break-words [overflow-wrap:anywhere]">{title}</p>}
           <p className="mb-0 mt-1 text-ui-meta">Bạn có thể tải hợp đồng khác sau khi quá trình này kết thúc.</p>
+          {activeHref && <Link href={activeHref} className="mt-2 inline-block text-ui-meta font-semibold text-blue-800 underline-offset-4 hover:underline">Xem tiến trình rà soát</Link>}
         </div>
       </div>}
       {versionCandidates && (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { toast } from "sonner";
 import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
@@ -10,7 +10,6 @@ import { useLoadContract } from "@/hooks/contracts/use-contracts";
 import { isReviewCancelled } from "@/lib/review/review-session";
 
 export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { contractId: routeContractId } = useParams<{ contractId?: string }>();
   const workflow = useDashboardReviewWorkflow();
@@ -53,7 +52,6 @@ export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) 
 
   return {
     workflow,
-    onViewAll: () => router.push("/contract"),
     onDismissUpload: () => {
       setUploadedContract(null);
       toast.success("Đã tải hợp đồng lên");
