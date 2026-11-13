@@ -1,8 +1,3 @@
-import Link from "next/link";
-import { Upload } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { formatContractDate } from "@/config/contract-display";
-import { routes } from "@/config/routes";
 import type { DashboardContract } from "@/types/contracts";
 
 export function contractVersionNumber(contract: DashboardContract) {
@@ -22,25 +17,5 @@ export function ContractVersionChip({ contract }: { contract: DashboardContract 
     >
       v{versionNumber}
     </span>
-  );
-}
-
-export function contractVersionCaption(contract: DashboardContract) {
-  const versionNumber = contractVersionNumber(contract);
-  const latestAt = contract.currentVersion?.createdAt;
-  if (versionNumber < 2 || !latestAt) return null;
-  return `Phiên bản ${versionNumber} tải ngày ${formatContractDate(latestAt)}`;
-}
-
-export function UploadVersionButton({ contract }: { contract: DashboardContract }) {
-  const id = contract.id ?? contract._id;
-  if (!id || !canAddContractVersion(contract)) return null;
-  return (
-    <Button asChild size="sm" variant="outline">
-      <Link href={routes.uploadVersion(id)}>
-        <Upload aria-hidden="true" className="size-4" />
-        Tải phiên bản mới
-      </Link>
-    </Button>
   );
 }

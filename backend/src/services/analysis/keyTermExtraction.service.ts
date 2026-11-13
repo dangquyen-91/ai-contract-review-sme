@@ -150,7 +150,8 @@ export async function listKeyTerms(orgId: string, contractId: string, versionId?
     ? await ClauseModel.find({ _id: { $in: clauseIds } }).select('index title')
     : [];
   const clauseById = new Map(clauses.map((c) => [c._id.toString(), c]));
-  const labelOf = (key: string) => (KEY_TERMS as Record<string, { label: string }>)[key]?.label ?? key;
+  const definitionOf = (key: string) =>
+    (KEY_TERMS as Record<string, { label: string; unit?: string }>)[key];
 
   return {
     extractedAt: version.keyTermsExtractedAt ?? null,
@@ -158,7 +159,8 @@ export async function listKeyTerms(orgId: string, contractId: string, versionId?
       const clause = t.clauseId ? clauseById.get(t.clauseId.toString()) : undefined;
       return {
         key: t.key,
-        label: labelOf(t.key),
+        label: definitionOf(t.key)?.label ?? t.key,
+        unit: definitionOf(t.key)?.unit ?? null,
         value: t.numberValue ?? t.booleanValue ?? null,
         inferredFromSilence: !t.clauseId,
         clause: clause ? { index: clause.index, title: clause.title ?? null } : null,

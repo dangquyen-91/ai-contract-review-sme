@@ -254,6 +254,7 @@ export type ContractKeyTerms = {
   terms: {
     key: string;
     label: string;
+    unit?: string | null;
     value: number | boolean | null;
     inferredFromSilence: boolean;
     clause: { index: number; title: string | null } | null;

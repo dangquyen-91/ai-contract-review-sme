@@ -1,17 +1,55 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, ShieldCheck } from "lucide-react";
+import { FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { contractTypeLabels, contractStatusLabels, contractRiskLabels, contractRiskTones, formatContractDate } from "@/config/contract-display";
-import { verificationDate } from "@/lib/review/verification-display";
-import { ContractDeleteButton } from "./contract-delete-button";
+import { contractTypeLabels, formatContractDate } from "@/config/contract-display";
+import { ContractCardMenu } from "./contract-card-menu";
 import { ContractVerificationDetails } from "./contract-verification-details";
-import { ContractTrackingStatus, trackingPresentation } from "./contract-tracking-status";
-import { ContractTrackingUpdate } from "./contract-tracking-update";
-import { ContractVersionChip, UploadVersionButton, contractVersionCaption } from "./contract-version-info";
+import { AiResultFact, ExpertFact } from "./contract-tracking-facts";
+import { ContractVersionChip, contractVersionNumber } from "./contract-version-info";
 import type { DashboardContract } from "@/types/contracts";
+
+const primaryLabels: Record<DashboardContract["status"], string> = {
+  reviewed: "Xem báo cáo",
+  processing: "Theo dõi xử lý",
+  uploaded: "Bắt đầu rà soát",
+  unsupported: "Xem tài liệu",
+  archived: "Xem báo cáo",
+};
+
+function cardTone(highlighted: boolean, returned: boolean) {
+  if (highlighted) return "border-emerald-300 ring-2 ring-emerald-100";
+  if (returned) return "border-amber-200 border-l-4 border-l-amber-400";
+  return "border-border";
+}
+
+function ContractIdentity({ contract, canOpen, onOpen }: { contract: DashboardContract; canOpen: boolean; onOpen: () => void }) {
+  const versions = contractVersionNumber(contract);
+  const meta = [
+    contractTypeLabels[contract.type ?? ""] ?? "Chưa xác định loại",
+    versions > 1 ? `${versions} phiên bản` : null,
+    `Cập nhật ${formatContractDate(contract.updatedAt)}`,
+  ].filter(Boolean).join(" · ");
+  return (
+    <div className="flex min-w-0 items-start gap-3">
+      <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600">
+        <FileText aria-hidden="true" className="size-5" />
+      </span>
+      <div className="min-w-0">
+        <h3 className="m-0 min-w-0 text-ui-section font-semibold [overflow-wrap:anywhere]">
+          {canOpen ? (
+            <button type="button" onClick={onOpen} className="inline p-0 text-left hover:text-primary hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+              {contract.title}
+            </button>
+          ) : contract.title}
+          <span className="ml-2 inline-flex align-[2px]"><ContractVersionChip contract={contract} /></span>
+        </h3>
+        <p className="mb-0 mt-1 text-ui-meta text-muted-foreground">{meta}</p>
+      </div>
+    </div>
+  );
+}
 
 export function ContractTrackingCard({ contract, highlighted, canReview, canDelete, isReviewing, onReview, onDeleted }: {
   contract: DashboardContract; highlighted: boolean; canReview: boolean; canDelete: boolean;
@@ -19,54 +57,31 @@ export function ContractTrackingCard({ contract, highlighted, canReview, canDele
 }) {
   const [tracking, setTracking] = useState(false);
   const verification = contract.expertVerification;
-  const oldReview = Boolean(verification && verification.reviewId !== contract.latestReviewId);
-  const reviewed = contract.status === "reviewed";
   const returned = verification?.status === "returned";
-  const risk = contract.currentVersion?.overallRiskLevel ?? contract.overallRiskLevel ?? "none";
+  const canOpen = canReview && !isReviewing && contract.status !== "archived";
+  const open = () => onReview(contract);
   return (
-    <article data-contract-id={contract.id ?? contract._id} tabIndex={-1} className={`min-w-0 space-y-4 rounded-xl border bg-card p-4 text-card-foreground transition-[border-color,box-shadow] duration-200 hover:border-blue-200 hover:shadow-[0_6px_22px_-12px_rgb(37_99_235_/_0.3)] focus-within:border-blue-300 motion-reduce:transition-none sm:p-5 ${highlighted ? "border-emerald-300 ring-2 ring-emerald-100" : returned ? "border-amber-200 border-l-4 border-l-amber-400" : "border-border"}`}>
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex min-w-0 flex-1 basis-64 items-start gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-blue-50 text-blue-600"><FileText aria-hidden="true" className="size-5" /></span>
-          <div className="min-w-0">
-            <div className="flex min-w-0 items-start gap-2">
-              <h3 className="m-0 min-w-0 break-words text-ui-section font-semibold [overflow-wrap:anywhere]">{contract.title}</h3>
-              <span className="mt-0.5"><ContractVersionChip contract={contract} /></span>
-            </div>
-            <p className="mb-0 mt-1 text-ui-meta text-muted-foreground">
-              {contractTypeLabels[contract.type ?? ""] ?? "Chưa xác định loại"} · Tải lên {formatContractDate(contract.createdAt)}
-              {contractVersionCaption(contract) && <> · {contractVersionCaption(contract)}</>}
-            </p>
-          </div>
-        </div>
-        <ContractTrackingStatus contract={contract} oldReview={oldReview} />
-      </header>
-      <div className={`space-y-2 rounded-lg p-3 ${returned ? "bg-amber-50/70" : "bg-muted/40"}`}>
-        <div className="flex items-start gap-2">
-          <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 text-ui-meta font-medium">{verification ? trackingPresentation[verification.status].detail : verification === undefined ? "Chưa tải được trạng thái xác minh" : "Chưa gửi chuyên gia"}</span>
-        </div>
-        {verification ? <>
-          <p className="m-0 text-ui-meta text-muted-foreground">Gửi {verificationDate(verification.requestedAt)} · Lần {verification.attempt}</p>
-          {oldReview && <p className="m-0 text-ui-meta text-amber-900">Yêu cầu thuộc lượt rà soát trước, không xác nhận kết quả AI hiện tại đã được chuyên gia kiểm tra.</p>}
-        </> : <p className="m-0 text-ui-meta text-muted-foreground">{verification === undefined ? "Hãy làm mới danh sách để kiểm tra trạng thái." : reviewed ? "Mở báo cáo để nhờ chuyên gia kiểm tra thêm kết quả AI." : "Hoàn tất rà soát AI trước khi gửi chuyên gia kiểm tra."}</p>}
+    <article
+      data-contract-id={contract.id ?? contract._id}
+      tabIndex={-1}
+      className={`grid min-w-0 gap-4 rounded-xl border bg-card p-4 text-card-foreground transition-[border-color,box-shadow] duration-200 hover:border-blue-200 hover:shadow-[0_6px_22px_-12px_rgb(37_99_235_/_0.3)] focus-within:border-blue-300 motion-reduce:transition-none sm:p-5 lg:grid-cols-[minmax(0,1fr)_minmax(140px,170px)_minmax(160px,205px)_auto] lg:items-start lg:gap-5 ${cardTone(highlighted, returned)}`}
+    >
+      <ContractIdentity contract={contract} canOpen={canOpen} onOpen={open} />
+      <div className="grid grid-cols-2 gap-4 rounded-lg bg-muted/40 p-3 lg:contents">
+        <AiResultFact contract={contract} />
+        <ExpertFact contract={contract} onOpen={() => setTracking(true)} />
       </div>
-      <ContractTrackingUpdate contract={contract} />
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
-        <div className="flex flex-wrap items-center gap-2 text-ui-meta">
-          {verification && <span className="text-muted-foreground">AI: {contractStatusLabels[contract.status]}</span>}
-          {reviewed && <><span className="text-muted-foreground">Mức rủi ro hiện tại</span><Badge variant={contractRiskTones[risk]}>{contractRiskLabels[risk]}</Badge></>}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {canReview && <Button size="sm" variant={reviewed && !returned ? "default" : "outline"} disabled={isReviewing || contract.status === "archived"} onClick={() => onReview(contract)}>
-            {reviewed ? "Xem báo cáo rà soát" : contract.status === "processing" ? "Theo dõi xử lý" : contract.status === "unsupported" ? "Xem tài liệu" : "Bắt đầu rà soát"}
-          </Button>}
-          {canReview && <UploadVersionButton contract={contract} />}
-          {verification && <Button size="sm" variant={returned ? "default" : "outline"} onClick={() => setTracking(true)}>{returned ? "Xem lý do trả lại" : "Xem thông tin xác minh"}</Button>}
-          {canDelete && <ContractDeleteButton contract={contract} onDeleted={onDeleted} />}
-        </div>
-      </footer>
-      {tracking && verification && <ContractVerificationDetails contract={contract} onClose={() => setTracking(false)} onOpenReport={() => onReview(contract)} />}
+      <div className="flex items-center gap-2 sm:justify-end lg:self-center">
+        {canReview && (
+          <Button size="sm" className="flex-1 sm:flex-none" disabled={!canOpen} onClick={open}>
+            {primaryLabels[contract.status]}
+          </Button>
+        )}
+        <ContractCardMenu contract={contract} canUpload={canReview} canDelete={canDelete} onDeleted={onDeleted} />
+      </div>
+      {tracking && verification && (
+        <ContractVerificationDetails contract={contract} onClose={() => setTracking(false)} onOpenReport={open} />
+      )}
     </article>
   );
 }

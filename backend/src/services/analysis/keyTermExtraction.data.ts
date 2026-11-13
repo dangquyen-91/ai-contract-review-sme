@@ -4,6 +4,7 @@ export interface KeyTermDefinition {
   key: string;
   type: KeyTermType;
   label: string;
+  unit?: string;
   description: string;
   min?: number;
   max?: number;
@@ -15,7 +16,8 @@ const percent = { min: 0, max: 1000 };
 export const KEY_TERMS = {
   penalty_percent: {
     type: 'number',
-    label: 'Mức phạt vi phạm (%)',
+    label: 'Mức phạt vi phạm',
+    unit: '% giá trị nghĩa vụ vi phạm',
     description: 'Contractual penalty for breach ("phạt vi phạm") as a percentage of the value of the breached obligation, e.g. 12 for 12%. If several rates are stated, return the highest. Only when the contract states a percentage; ignore late-payment interest.',
     ...percent,
   },
@@ -32,7 +34,8 @@ export const KEY_TERMS = {
   },
   late_payment_interest_percent_per_year: {
     type: 'number',
-    label: 'Lãi chậm thanh toán (%/năm)',
+    label: 'Lãi chậm thanh toán',
+    unit: '%/năm',
     description: 'Interest charged on late payment, converted to percent per year (a monthly rate x 12, a daily rate x 365), e.g. 0.1%/day -> 36.5.',
     ...percent,
   },
@@ -43,7 +46,8 @@ export const KEY_TERMS = {
   },
   deposit_percent: {
     type: 'number',
-    label: 'Tiền đặt cọc (% giá bán)',
+    label: 'Tiền đặt cọc',
+    unit: '% giá bán',
     description: 'Deposit ("đặt cọc") as a percentage of the total price. Compute it from the amounts when only amounts are given, rounded to 2 decimals.',
     ...percent,
   },
@@ -59,19 +63,22 @@ export const KEY_TERMS = {
   },
   first_payment_percent: {
     type: 'number',
-    label: 'Lần thanh toán đầu (% giá trị, gồm cọc)',
+    label: 'Lần thanh toán đầu (gồm cọc)',
+    unit: '% giá trị hợp đồng',
     description: 'First payment including the deposit, as a percentage of the contract value.',
     ...percent,
   },
   paid_before_handover_percent: {
     type: 'number',
-    label: 'Tổng thanh toán trước bàn giao (%)',
+    label: 'Tổng thanh toán trước bàn giao',
+    unit: '% giá trị hợp đồng',
     description: 'Total share of the contract value the buyer must pay before the home is handed over.',
     ...percent,
   },
   paid_before_certificate_percent: {
     type: 'number',
-    label: 'Tổng thanh toán trước khi cấp sổ (%)',
+    label: 'Tổng thanh toán trước khi cấp sổ',
+    unit: '% giá trị hợp đồng',
     description: 'Total share of the contract value the buyer must pay before the ownership certificate ("Giấy chứng nhận", "sổ hồng") is issued.',
     ...percent,
   },
@@ -88,7 +95,8 @@ export const KEY_TERMS = {
   },
   seller_deposit_refund_multiple: {
     type: 'number',
-    label: 'Bên bán trả lại bao nhiêu lần tiền cọc nếu từ chối',
+    label: 'Bên bán trả lại tiền cọc nếu từ chối',
+    unit: 'lần tiền cọc',
     description: 'If the seller refuses to sign or perform, how many times the deposit the seller must pay back to the buyer: 1 = only returns the deposit, 2 = returns the deposit plus an equal amount.',
     min: 0,
     max: 100,
@@ -100,27 +108,31 @@ export const KEY_TERMS = {
   },
   term_months: {
     type: 'number',
-    label: 'Thời hạn hợp đồng (tháng)',
+    label: 'Thời hạn hợp đồng',
+    unit: 'tháng',
     description: 'Length of a fixed-term contract in months (a year = 12, a day = 1/30).',
     min: 0,
     max: 1200,
   },
   probation_days: {
     type: 'number',
-    label: 'Thời gian thử việc (ngày)',
+    label: 'Thời gian thử việc',
+    unit: 'ngày',
     description: 'Probation length in days (a month = 30 days). 0 when the contract states there is no probation.',
     min: 0,
     max: 3650,
   },
   probation_wage_percent: {
     type: 'number',
-    label: 'Lương thử việc (% lương chính thức)',
+    label: 'Lương thử việc',
+    unit: '% lương chính thức',
     description: 'Probation wage as a percentage of the official wage for the job. Compute it from the amounts when both are given.',
     ...percent,
   },
   working_hours_per_day: {
     type: 'number',
     label: 'Giờ làm việc bình thường mỗi ngày',
+    unit: 'giờ/ngày',
     description: 'Normal working hours per day, excluding overtime.',
     min: 0,
     max: 24,
@@ -128,6 +140,7 @@ export const KEY_TERMS = {
   working_hours_per_week: {
     type: 'number',
     label: 'Giờ làm việc bình thường mỗi tuần',
+    unit: 'giờ/tuần',
     description: 'Normal working hours per week, excluding overtime. Compute it from hours per day x working days when both are given.',
     min: 0,
     max: 168,
@@ -135,6 +148,7 @@ export const KEY_TERMS = {
   overtime_hours_per_month: {
     type: 'number',
     label: 'Giờ làm thêm tối đa mỗi tháng',
+    unit: 'giờ/tháng',
     description: 'Maximum overtime hours per month the employee may be required or agrees to work.',
     min: 0,
     max: 744,
@@ -142,6 +156,7 @@ export const KEY_TERMS = {
   overtime_hours_per_year: {
     type: 'number',
     label: 'Giờ làm thêm tối đa mỗi năm',
+    unit: 'giờ/năm',
     description: 'Maximum overtime hours per year.',
     min: 0,
     max: 8784,
@@ -149,20 +164,23 @@ export const KEY_TERMS = {
   annual_leave_days: {
     type: 'number',
     label: 'Số ngày nghỉ hằng năm',
+    unit: 'ngày/năm',
     description: 'Paid annual leave days per full year of work.',
     min: 0,
     max: 365,
   },
   employee_notice_days: {
     type: 'number',
-    label: 'Thời hạn báo trước khi người lao động nghỉ (ngày)',
+    label: 'Thời hạn báo trước khi người lao động nghỉ việc',
+    unit: 'ngày',
     description: 'Days of notice the employee must give to unilaterally terminate the contract.',
     min: 0,
     max: 3650,
   },
   wage_deduction_percent: {
     type: 'number',
-    label: 'Mức khấu trừ lương tối đa mỗi tháng (%)',
+    label: 'Mức khấu trừ lương tối đa mỗi tháng',
+    unit: '% tiền lương tháng',
     description: 'Maximum share of the monthly wage the employer may deduct (e.g. to compensate damage), as a percentage.',
     ...percent,
   },

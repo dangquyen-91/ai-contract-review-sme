@@ -3224,7 +3224,12 @@ paths:
                           example: penalty_percent
                         label:
                           type: string
-                          example: Mức phạt vi phạm (%)
+                          example: Mức phạt vi phạm
+                        unit:
+                          type: string
+                          nullable: true
+                          description: Unit to display after a numeric value (e.g. tháng, ngày, giờ/tuần, % lương chính thức). Null for yes/no terms.
+                          example: "% giá trị nghĩa vụ vi phạm"
                         value:
                           oneOf:
                             - type: number
