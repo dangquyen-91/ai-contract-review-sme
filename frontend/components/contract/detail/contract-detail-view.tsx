@@ -8,7 +8,7 @@ import { ContractChat } from "@/components/review/results/contract-chat";
 import { KeyTerms } from "@/components/review/results/key-terms";
 import { ReviewWorkbench } from "@/components/review/results/review-results";
 import { ShareSummaryDialog } from "@/components/review/sharing/share-summary-dialog";
-import { ReviewTimeline } from "@/components/review/timeline/review-timeline";
+import { ReviewProgressStrip } from "@/components/review/timeline/review-progress-strip";
 import { useContract, useContractKeyTerms, useContractVersions } from "@/hooks/contracts/use-contracts";
 import { useContractDetailTab } from "@/hooks/contracts/use-contract-detail-tab";
 import { activeRiskFindings } from "@/lib/review/verification-findings";
@@ -90,7 +90,7 @@ function ResultTabs({ result, contractId, role, canAsk, canUpload, versionCount 
 }
 
 export function ContractDetailView({ contractId, context }: { contractId: string; context: DashboardWorkspaceContext }) {
-  const { data, access, roleLabel } = context;
+  const { data, access } = context;
   const {
     reviewResult, selectedContractId, stage, loadingResult, reconnecting, reviewing, isReviewing,
     reviewError, reviewBlocked, reviewProgress, retryKind, cancelling,
@@ -109,6 +109,7 @@ export function ContractDetailView({ contractId, context }: { contractId: string
   const versions = versionsQuery.data ?? [];
   const tracking = selectedContractId === contractId;
   const running = tracking && (stage === "reviewing" || loadingResult || reconnecting);
+  const loadingSaved = running && loadingResult && !reviewProgress;
   const failed = tracking && !result && Boolean(reviewError || reviewBlocked);
   const version = result?.contract.currentVersion;
   const shareEnabled = Boolean(result && version?.riskDetectionStatus === "completed" && version.summaryStatus === "completed");
@@ -124,29 +125,25 @@ export function ContractDetailView({ contractId, context }: { contractId: string
         <ResultTabs result={result} contractId={contractId} role={data.role} canAsk={access.review} canUpload={access.upload} versionCount={versions.length || undefined} />
       </div>
     );
-  } else if (running || failed) {
+  } else if ((running && !loadingSaved) || failed) {
     body = (
       <div ref={reviewTimelineRef} className="scroll-mt-6">
-        <ReviewTimeline
+        <ReviewProgressStrip
           role={data.role}
           blocked={reviewBlocked}
           review={reviewProgress}
-          result={null}
-          uploading={false}
           reviewing={reviewing}
           loadingResult={loadingResult}
           reconnecting={reconnecting}
           error={reviewError}
           failureKind={retryKind}
-          roleLabel={roleLabel}
-          access={access}
           onRetry={retryReview}
           onCancel={cancelReview}
           cancelling={cancelling}
         />
       </div>
     );
-  } else if (contract && contract.status !== "reviewed" && contract.status !== "processing") {
+  } else if (!loadingSaved && contract && contract.status !== "reviewed" && contract.status !== "processing") {
     body = <NotReviewed contract={contract} canReview={access.review} busy={isReviewing} onStart={() => review(false)} />;
   } else if (contractQuery.isError) {
     body = (
