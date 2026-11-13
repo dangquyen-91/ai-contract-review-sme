@@ -177,6 +177,7 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
       if (changed) await confirm.mutateAsync({ contractId, type: selected.type!, ourParty: selectedParty });
     }} /> : undefined}
     billing={contract.reviewBilling}
+    contractType={selected.type}
     isReviewing={busy}
     title={waiting ? "Đang chuẩn bị hợp đồng" : "Xác nhận hợp đồng"}
     description={`Đã tải lên “${contractTitle}”. Kiểm tra loại hợp đồng và vai trò của bạn trước khi rà soát.`}
