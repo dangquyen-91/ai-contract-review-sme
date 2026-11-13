@@ -5,8 +5,6 @@ import { CircleAlert, LoaderCircle } from "lucide-react";
 import { toast } from "sonner";
 import { AnalysisFocusDialog } from "@/components/review/upload/analysis-focus-dialog";
 import { Button } from "@/components/ui/button";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Toggle } from "@/components/ui/toggle";
 import { reviewableTypeLabels } from "@/config/contract-display";
 import { useAttachVersionMutation, useConfirmProfileMutation, useContractClassification, useContractProfiles, useDeleteContract, useRetryClassificationMutation, useVersionMatch } from "@/hooks/contracts/use-contracts";
 import { confirmationView, detectedNamesFor, extractionFailureCopy, LOW_CONFIDENCE, otherPartyNames, suggestedProfile } from "@/lib/contracts/contract-classification";
@@ -38,40 +36,22 @@ function errorMessage(error: unknown) {
 }
 
 function Chip({ selected, disabled, onClick, children }: { selected: boolean; disabled?: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <Toggle
-      variant="outline"
-      size="sm"
-      pressed={selected}
-      disabled={disabled}
-      onPressedChange={onClick}
-      className="h-auto min-h-9 whitespace-normal rounded-full px-3 py-1.5 text-left text-ui data-[state=on]:border-primary data-[state=on]:font-semibold data-[state=on]:text-primary"
-    >
-      {children}
-    </Toggle>
-  );
+  return <button type="button" aria-pressed={selected} disabled={disabled} onClick={onClick}
+    className={`min-h-9 rounded-full border px-3 py-1.5 text-left text-ui leading-5 transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${selected ? "border-primary bg-accent font-semibold text-primary" : "border-border bg-card text-card-foreground hover:border-primary"}`}>{children}</button>;
 }
 
 function StatusLine({ children }: { children: ReactNode }) {
-  return (
-    <Alert role="status" className="mb-4 bg-muted/40">
-      <LoaderCircle className="animate-spin motion-reduce:animate-none" aria-hidden="true" />
-      <AlertDescription className="text-ui leading-6 text-card-foreground">{children}</AlertDescription>
-    </Alert>
-  );
+  return <div role="status" className="mb-4 flex items-center gap-2.5 rounded-lg border border-border bg-muted/40 p-3 text-ui leading-6 text-card-foreground">
+    <LoaderCircle className="size-4 shrink-0 animate-spin motion-reduce:animate-none" aria-hidden="true" />{children}
+  </div>;
 }
 
 function Notice({ title, children, actions }: { title: string; children: ReactNode; actions?: ReactNode }) {
-  return (
-    <Alert variant="warning" className="mb-4">
-      <CircleAlert aria-hidden="true" />
-      <AlertTitle className="line-clamp-none text-ui font-semibold">{title}</AlertTitle>
-      <AlertDescription className="text-ui leading-6">
-        {children}
-        {actions && <div className="mt-2 flex flex-wrap gap-2">{actions}</div>}
-      </AlertDescription>
-    </Alert>
-  );
+  return <div role="alert" className="mb-4 rounded-lg border border-[#f0d5c0] bg-[#fff9f1] p-3.5 text-ui leading-6 text-[#80572a]">
+    <p className="m-0 flex items-center gap-2 font-semibold"><CircleAlert className="size-4 shrink-0" aria-hidden="true" />{title}</p>
+    <div className="mt-1">{children}</div>
+    {actions && <div className="mt-3 flex flex-wrap gap-2">{actions}</div>}
+  </div>;
 }
 
 export function ContractConfirmationDialog({ contractId, contractTitle, isReviewing, onDismiss, onDeleted, onReview, onAttached, orgId, role }: ContractConfirmationDialogProps) {

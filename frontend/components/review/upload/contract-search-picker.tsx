@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check } from "lucide-react";
-import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Badge } from "@/components/ui/badge";
+import { Search } from "lucide-react";
 import { contractTypeLabels, formatContractDate } from "@/config/contract-display";
 import { useContractsList } from "@/hooks/contracts/use-contracts";
 import type { DashboardContract } from "@/types/contracts";
@@ -36,50 +34,51 @@ export function ContractSearchPicker({ value, excludeId, disabled, onSelect }: {
 
   return (
     <div className="grid gap-2">
-      <Command shouldFilter={false} className="rounded-lg border border-border bg-card">
-        <CommandInput
+      <label className="relative block">
+        <span className="sr-only">Tìm hợp đồng theo tên</span>
+        <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <input
+          type="search"
           value={input}
-          onValueChange={setInput}
           disabled={disabled}
+          onChange={(event) => setInput(event.target.value)}
           placeholder="Tìm hợp đồng theo tên…"
-          aria-label="Tìm hợp đồng theo tên"
-          className="text-ui"
+          className="h-10 w-full rounded-lg border border-[color:var(--line,#e4e8ef)] bg-white pl-9 pr-3 text-ui"
         />
-        <CommandList aria-label="Hợp đồng để thêm phiên bản" className="max-h-56">
-          {query.isPending && <p className="m-0 px-3 py-3 text-ui-meta text-muted-foreground">Đang tìm hợp đồng…</p>}
-          {!query.isPending && (
-            <CommandEmpty className="px-3 py-3 text-ui-meta text-muted-foreground">
-              {term ? `Không tìm thấy hợp đồng nào có tên chứa “${term}”.` : "Chưa có hợp đồng nào để thêm phiên bản."}
-            </CommandEmpty>
-          )}
-          {items.map((contract) => {
-            const picked = toPicked(contract);
-            if (!picked) return null;
-            const selected = value?.id === picked.id;
-            return (
-              <CommandItem
-                key={picked.id}
-                value={picked.id}
-                disabled={disabled}
-                onSelect={() => onSelect(picked)}
-                className="items-start gap-2.5 rounded-none border-b border-border px-3 py-2.5 last:border-b-0"
-              >
-                <Check aria-hidden="true" className={`mt-0.5 text-primary! ${selected ? "opacity-100" : "opacity-0"}`} />
-                <span className="min-w-0">
-                  <span className={`block truncate text-ui font-semibold ${selected ? "text-primary" : "text-foreground"}`}>
-                    {picked.title}
-                    <span className="ml-2 text-ui-caption text-primary">v{picked.versionNumber}</span>
-                  </span>
-                  <span className="mt-0.5 block text-ui-meta text-muted-foreground">
-                    {contractTypeLabels[contract.type ?? ""] ?? "Chưa xác định loại"} · Cập nhật {formatContractDate(contract.updatedAt)}
-                  </span>
-                </span>
-              </CommandItem>
-            );
-          })}
-        </CommandList>
-      </Command>
-      {query.data && query.data.total > 10 && !term && (
+      </label>
+      <div role="listbox" aria-label="Hợp đồng để thêm phiên bản" className="max-h-56 overflow-y-auto rounded-lg border border-[color:var(--line,#e4e8ef)] bg-white">
+        {query.isPending && <p className="m-0 px-3 py-3 text-ui-meta text-muted-foreground">Đang tìm hợp đồng…</p>}
+        {!query.isPending && items.length === 0 && (
+          <p className="m-0 px-3 py-3 text-ui-meta text-muted-foreground">
+            {term ? `Không tìm thấy hợp đồng nào có tên chứa “${term}”.` : "Chưa có hợp đồng nào để thêm phiên bản."}
+          </p>
+        )}
+        {items.map((contract) => {
+          const picked = toPicked(contract);
+          if (!picked) return null;
+          const selected = value?.id === picked.id;
+          return (
+            <button
+              key={picked.id}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              disabled={disabled}
+              onClick={() => onSelect(picked)}
+              className={`block w-full border-b border-[#edf0f4] px-3 py-2.5 text-left last:border-b-0 ${selected ? "bg-[#f2f7ff]" : "hover:bg-slate-50"}`}
+            >
+              <span className={`block truncate text-ui font-semibold ${selected ? "text-primary" : "text-[#1f2d44]"}`}>
+                {picked.title}
+                <span className="ml-2 text-ui-caption text-blue-700">v{picked.versionNumber}</span>
+              </span>
+              <span className="mt-0.5 block text-ui-meta text-muted-foreground">
+                {contractTypeLabels[contract.type ?? ""] ?? "Chưa xác định loại"} · Cập nhật {formatContractDate(contract.updatedAt)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {query.data && query.data.total > items.length && !term && (
         <p className="m-0 text-ui-meta text-muted-foreground">Đang hiện 10 hợp đồng gần nhất. Gõ tên để tìm hợp đồng cũ hơn.</p>
       )}
     </div>
@@ -93,14 +92,14 @@ export function VersionPath({ current, next }: { current: number; next: number }
       {shown.map((number, index) => (
         <li key={number} className="flex items-center gap-1.5">
           {index > 0 && <span aria-hidden="true" className="text-slate-400">{current > 4 && index === 1 ? "… ──" : "──"}</span>}
-          <Badge variant={number === current ? "info" : "outline"} className="rounded-md">
+          <span className={`rounded-md border px-1.5 py-0.5 font-semibold ${number === current ? "border-blue-200 bg-blue-50 text-blue-800" : "border-slate-200 bg-white text-slate-600"}`}>
             v{number}{number === current ? " · hiện tại" : ""}
-          </Badge>
+          </span>
         </li>
       ))}
       <li className="flex items-center gap-1.5">
         <span aria-hidden="true" className="text-slate-400">──</span>
-        <Badge variant="success" className="rounded-md border-dashed border-emerald-400">v{next} · sắp tạo</Badge>
+        <span className="rounded-md border border-dashed border-emerald-400 bg-emerald-50 px-1.5 py-0.5 font-semibold text-emerald-800">v{next} · sắp tạo</span>
       </li>
     </ol>
   );

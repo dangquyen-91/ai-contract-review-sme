@@ -2,9 +2,6 @@
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
 const focusSuggestions: Record<string, string[]> = {
   labor: ["Thử việc", "Tiền lương và phụ cấp", "Thời giờ làm việc", "Chấm dứt hợp đồng", "Bảo mật và cạnh tranh"],
@@ -20,9 +17,10 @@ function parts(value: string) {
   return value.split(",").map((part) => part.trim()).filter(Boolean);
 }
 
-function withSuggestions(value: string, suggestions: string[], selected: string[]) {
-  const custom = parts(value).filter((part) => !suggestions.includes(part));
-  return [...suggestions.filter((label) => selected.includes(label)), ...custom].join(", ");
+function toggle(value: string, label: string) {
+  const current = parts(value);
+  const next = current.includes(label) ? current.filter((part) => part !== label) : [...current, label];
+  return next.join(", ");
 }
 
 type ReviewFocusFieldsProps = {
@@ -37,57 +35,59 @@ export function ReviewFocusFields({ id, value, disabled, contractType, onChange 
   const [open, setOpen] = useState(false);
   const expanded = open || Boolean(value);
   const suggestions = (contractType && focusSuggestions[contractType]) || defaultSuggestions;
-  const selected = parts(value).filter((part) => suggestions.includes(part));
+  const selected = parts(value);
   return (
-    <Collapsible open={expanded} onOpenChange={(next) => setOpen(next || Boolean(value))} className="rounded-lg border border-border">
-      <CollapsibleTrigger
-        disabled={disabled}
-        className="flex w-full items-center justify-between gap-3 rounded-lg px-3.5 py-3 text-left text-ui font-semibold text-card-foreground hover:bg-muted/40 disabled:cursor-default"
+    <div className="rounded-lg border border-border">
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-controls={`${id}-focus-panel`}
+        onClick={() => setOpen(!expanded)}
+        disabled={disabled || Boolean(value)}
+        className="flex w-full items-center justify-between gap-3 rounded-lg px-3.5 py-3 text-left text-ui font-semibold text-card-foreground hover:bg-muted/40 disabled:cursor-default disabled:hover:bg-transparent"
       >
         <span>
           Muốn AI chú ý điều gì?{" "}
           <span className="font-normal text-muted-foreground">(không bắt buộc)</span>
         </span>
         <ChevronDown aria-hidden="true" className={`size-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none ${expanded ? "rotate-180" : ""}`} />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="border-t border-border px-3.5 pb-3.5 pt-3">
-        <ToggleGroup
-          type="multiple"
-          variant="outline"
-          size="sm"
-          spacing={2}
-          value={selected}
-          disabled={disabled}
-          aria-label="Gợi ý trọng tâm"
-          onValueChange={(next) => onChange(withSuggestions(value, suggestions, next))}
-          className="w-full flex-wrap"
-        >
-          {suggestions.map((label) => (
-            <ToggleGroupItem
-              key={label}
-              value={label}
-              className="rounded-full px-3 text-ui-meta data-[state=on]:border-primary data-[state=on]:font-semibold data-[state=on]:text-primary"
-            >
-              {label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        <label htmlFor={`${id}-focus`} className="sr-only">Trọng tâm rà soát</label>
-        <Textarea
-          id={`${id}-focus`}
-          aria-describedby={`${id}-hint`}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder="Hoặc tự mô tả, ví dụ: kiểm tra kỹ điều khoản phạt khi nghỉ việc trước hạn"
-          maxLength={1000}
-          disabled={disabled}
-          rows={3}
-          className="mt-3 text-ui"
-        />
-        <p id={`${id}-hint`} className="mb-0 mt-1.5 text-ui-meta leading-5 text-muted-foreground">
-          AI vẫn rà soát toàn bộ hợp đồng, và chú ý hơn tới các phần bạn chọn khi tóm tắt và đánh giá rủi ro.
-        </p>
-      </CollapsibleContent>
-    </Collapsible>
+      </button>
+      {expanded && (
+        <div id={`${id}-focus-panel`} className="border-t border-border px-3.5 pb-3.5 pt-3">
+          <div role="group" aria-label="Gợi ý trọng tâm" className="flex flex-wrap gap-2">
+            {suggestions.map((label) => {
+              const active = selected.includes(label);
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={active}
+                  disabled={disabled}
+                  onClick={() => onChange(toggle(value, label))}
+                  className={`min-h-8 rounded-full border px-3 py-1 text-ui-meta transition-colors disabled:opacity-60 ${active ? "border-primary bg-accent font-semibold text-primary" : "border-border bg-card text-card-foreground hover:border-primary"}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <label htmlFor={`${id}-focus`} className="sr-only">Trọng tâm rà soát</label>
+          <textarea
+            id={`${id}-focus`}
+            aria-describedby={`${id}-hint`}
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder="Hoặc tự mô tả, ví dụ: kiểm tra kỹ điều khoản phạt khi nghỉ việc trước hạn"
+            maxLength={1000}
+            disabled={disabled}
+            rows={3}
+            className="mt-3 w-full resize-y rounded-[9px] border border-input bg-card p-3 text-ui leading-[1.6] text-card-foreground placeholder:text-muted-foreground placeholder:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:opacity-60"
+          />
+          <p id={`${id}-hint`} className="mb-0 mt-1.5 text-ui-meta leading-5 text-muted-foreground">
+            AI vẫn rà soát toàn bộ hợp đồng, và chú ý hơn tới các phần bạn chọn khi tóm tắt và đánh giá rủi ro.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }

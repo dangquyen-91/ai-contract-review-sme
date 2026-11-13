@@ -1,40 +1,15 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { ContractSearchPicker, VersionPath, type PickedContract } from "./contract-search-picker";
-
 export type VersionCandidate = { id: string; title: string; versionNumber?: number };
 
 export type UploadTargetState = {
   mode: "new" | "version";
   contractId: string;
   note: string;
-  contract?: PickedContract;
 };
 
-function ModeOption({ value, checked, disabled, title, detail }: {
-  value: UploadTargetState["mode"];
-  checked: boolean;
-  disabled?: boolean;
-  title: string;
-  detail: string;
-}) {
-  return (
-    <label
-      className={`flex flex-1 items-start gap-2.5 rounded-lg border px-3 py-2.5 text-ui leading-5 transition-colors ${
-        disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"
-      } ${checked ? "border-primary bg-accent/60" : "border-border bg-card hover:bg-muted/40"}`}
-    >
-      <RadioGroupItem value={value} disabled={disabled} className="mt-0.5" />
-      <span>
-        <strong className="block font-semibold">{title}</strong>
-        <small className="text-ui-meta text-muted-foreground">{detail}</small>
-      </span>
-    </label>
-  );
-}
+const optionClass =
+  "flex flex-1 cursor-pointer items-start gap-2.5 rounded-lg border px-3 py-2.5 text-ui leading-5 transition-colors";
 
 export function UploadTargetPicker({
   value,
@@ -48,52 +23,69 @@ export function UploadTargetPicker({
   onChange: (next: UploadTargetState) => void;
 }) {
   const versionMode = value.mode === "version";
-  const listed = candidates.find((candidate) => candidate.id === value.contractId);
-  const selected: PickedContract | null = value.contract
-    ?? (listed ? { id: listed.id, title: listed.title, versionNumber: listed.versionNumber ?? 1 } : null);
-
   return (
     <fieldset className="m-0 mb-4 border-0 p-0" disabled={disabled}>
-      <legend className="mb-2 p-0 text-ui font-semibold text-foreground">Bạn đang tải lên</legend>
-      <RadioGroup
-        value={value.mode}
-        onValueChange={(mode) => onChange({ ...value, mode: mode as UploadTargetState["mode"] })}
-        disabled={disabled}
-        className="flex gap-2.5 max-[580px]:flex-col"
-      >
-        <ModeOption value="new" checked={!versionMode} title="Hợp đồng mới" detail="Một hợp đồng chưa có trong danh sách" />
-        <ModeOption
-          value="version"
-          checked={versionMode}
-          disabled={candidates.length === 0}
-          title="Phiên bản mới của hợp đồng đã có"
-          detail="Bản đối tác gửi lại hoặc bản sau đàm phán"
-        />
-      </RadioGroup>
+      <legend className="mb-2 p-0 text-ui font-semibold text-[#1f3150]">Bạn đang tải lên</legend>
+      <div className="flex gap-2.5 [@media_(max-width:_580px)]:flex-col">
+        <label
+          className={`${optionClass} ${
+            versionMode ? "border-[color:var(--line)] bg-white" : "border-[color:var(--accent)] bg-[#f2f7ff]"
+          }`}
+        >
+          <input
+            type="radio"
+            name="upload-target"
+            className="mt-1"
+            checked={!versionMode}
+            onChange={() => onChange({ ...value, mode: "new" })}
+          />
+          <span>
+            <strong className="block font-semibold">Hợp đồng mới</strong>
+            <small className="text-ui-meta text-[color:var(--muted)]">Một hợp đồng chưa có trong danh sách</small>
+          </span>
+        </label>
+        <label
+          className={`${optionClass} ${
+            versionMode ? "border-[color:var(--accent)] bg-[#f2f7ff]" : "border-[color:var(--line)] bg-white"
+          } ${candidates.length === 0 ? "cursor-not-allowed opacity-60" : ""}`}
+        >
+          <input
+            type="radio"
+            name="upload-target"
+            className="mt-1"
+            checked={versionMode}
+            disabled={candidates.length === 0}
+            onChange={() => onChange({ ...value, mode: "version", contractId: value.contractId || candidates[0]?.id || "" })}
+          />
+          <span>
+            <strong className="block font-semibold">Phiên bản mới của hợp đồng đã có</strong>
+            <small className="text-ui-meta text-[color:var(--muted)]">Bản đối tác gửi lại hoặc bản sau đàm phán</small>
+          </span>
+        </label>
+      </div>
       {versionMode && (
-        <div className="mt-3 grid gap-3">
-          {selected ? (
-            <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border bg-muted/40 px-3.5 py-3">
-              <div className="min-w-0 space-y-2">
-                <p className="m-0 text-ui font-semibold [overflow-wrap:anywhere]">{selected.title}</p>
-                <VersionPath current={selected.versionNumber} next={selected.versionNumber + 1} />
-              </div>
-              <Button type="button" variant="link" size="sm" className="h-auto px-0" onClick={() => onChange({ ...value, contractId: "", contract: undefined })}>
-                Đổi hợp đồng
-              </Button>
-            </div>
-          ) : (
-            <ContractSearchPicker
-              value={null}
-              disabled={disabled}
-              onSelect={(contract) => onChange({ ...value, contractId: contract.id, contract })}
-            />
-          )}
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="grid gap-1.5 text-ui">
-            <span className="font-medium text-foreground">
-              Ghi chú phiên bản <span className="font-normal text-muted-foreground">(không bắt buộc)</span>
+            <span className="font-medium text-[#1f3150]">Hợp đồng</span>
+            <select
+              className="h-10 rounded-lg border border-[color:var(--line)] bg-white px-3 text-ui"
+              value={value.contractId}
+              onChange={(event) => onChange({ ...value, contractId: event.target.value })}
+            >
+              {candidates.map((candidate) => (
+                <option key={candidate.id} value={candidate.id}>
+                  {candidate.title}
+                  {candidate.versionNumber ? ` · hiện là v${candidate.versionNumber}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-ui">
+            <span className="font-medium text-[#1f3150]">
+              Ghi chú phiên bản <span className="font-normal text-[color:var(--muted)]">(không bắt buộc)</span>
             </span>
-            <Input
+            <input
+              className="h-10 rounded-lg border border-[color:var(--line)] bg-white px-3 text-ui"
               maxLength={300}
               placeholder="Ví dụ: Bản sau đàm phán lần 2"
               value={value.note}

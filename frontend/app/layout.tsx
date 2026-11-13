@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Lora } from "next/font/google";
 import { AppToaster } from "@/components/ui/toaster";
 import { QueryProvider } from "@/providers/query-provider";
-import { TooltipProvider } from "@/components/ui/tooltip";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 import "@/styles/globals.css";
 
@@ -38,9 +37,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body suppressHydrationWarning className="min-h-full flex flex-col bg-background text-foreground [font-family:Arial,Helvetica,sans-serif]">
         <NuqsAdapter>
-          <QueryProvider>
-            <TooltipProvider delayDuration={200}>{children}</TooltipProvider>
-          </QueryProvider>
+          <QueryProvider>{children}</QueryProvider>
         </NuqsAdapter>
         <AppToaster />
       </body>
