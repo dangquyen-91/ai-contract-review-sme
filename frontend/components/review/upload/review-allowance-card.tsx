@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { useReviewAllowance } from "@/hooks/review/use-review-allowance";
 
 export function ReviewAllowanceCard({ orgId, role }: { orgId?: string; role?: string }) {
@@ -13,29 +16,28 @@ export function ReviewAllowanceCard({ orgId, role }: { orgId?: string; role?: st
   const canManagePlan = role === "owner" || role === "user";
   const usedShare = quota && quota.limit > 0 ? Math.min(100, ((quota.used + quota.reserved) / quota.limit) * 100) : 0;
   return (
-    <section aria-label="Hạn mức rà soát AI" className={`rounded-[14px] border p-4 ${blocked ? "border-amber-200 bg-amber-50" : "border-[#e4e8ef] bg-white"}`}>
+    <Card role="region" aria-label="Hạn mức rà soát AI" className={`gap-0 p-4 ${blocked ? "border-amber-200 bg-amber-50" : ""}`}>
       <div className="flex items-center justify-between gap-2">
         <h2 className="m-0 text-ui-meta font-semibold uppercase tracking-wide text-muted-foreground">Hạn mức rà soát AI</h2>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-xs"
           aria-label="Cập nhật hạn mức"
           title="Cập nhật hạn mức"
           disabled={query.isFetching}
           onClick={() => { void query.refetch(); }}
-          className="grid size-7 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+          className="text-muted-foreground"
         >
-          <RefreshCw aria-hidden="true" className={`size-3.5 ${query.isFetching ? "animate-spin motion-reduce:animate-none" : ""}`} />
-        </button>
+          <RefreshCw aria-hidden="true" className={query.isFetching ? "animate-spin motion-reduce:animate-none" : ""} />
+        </Button>
       </div>
       {quota ? (
         <>
-          <p className="mb-0 mt-2 text-ui text-[#46566e]">
-            Còn <strong className="text-2xl font-bold tabular-nums text-[#1f2d44]">{quota.available}</strong>
+          <p className="mb-0 mt-2 text-ui text-muted-foreground">
+            Còn <strong className="text-2xl font-bold tabular-nums text-foreground">{quota.available}</strong>
             <span className="tabular-nums"> / {quota.limit} lượt</span>
           </p>
-          <div aria-hidden="true" className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-200/70">
-            <div className={`h-full rounded-full ${blocked ? "bg-amber-500" : "bg-primary"}`} style={{ width: `${usedShare}%` }} />
-          </div>
+          <Progress aria-label="Tỷ lệ lượt đã dùng" value={usedShare} className={`mt-2 h-1.5 ${blocked ? "bg-amber-100 *:data-[slot=progress-indicator]:bg-amber-500" : ""}`} />
           <p className="mb-0 mt-2 text-ui-meta text-muted-foreground">
             Đã dùng {quota.used}{quota.reserved ? ` · ${quota.reserved} đang xử lý` : ""} · 1 lượt cho mỗi 5 trang
           </p>
@@ -53,6 +55,6 @@ export function ReviewAllowanceCard({ orgId, role }: { orgId?: string; role?: st
           {query.isPending ? "Đang tải hạn mức…" : "Chưa tải được hạn mức. Hệ thống sẽ kiểm tra khi bạn bắt đầu rà soát."}
         </p>
       )}
-    </section>
+    </Card>
   );
 }

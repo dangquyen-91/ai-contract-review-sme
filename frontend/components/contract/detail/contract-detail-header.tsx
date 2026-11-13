@@ -3,10 +3,27 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { DropdownMenu } from "radix-ui";
-import { ChevronRight, FileText, MoreHorizontal, RotateCw, Share2, Sparkles, Trash2, Upload } from "lucide-react";
+import { FileText, MoreHorizontal, RotateCw, Share2, Sparkles, Trash2, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { contractTypeLabels, formatContractDate } from "@/config/contract-display";
 import { routes } from "@/config/routes";
 import { useBackToContractList } from "@/hooks/contracts/use-back-to-contract-list";
@@ -25,8 +42,6 @@ const expertLabels: Record<NonNullable<Review["verificationStatus"]>, { label: s
   approved: { label: "Chuyên gia đã xác nhận", tone: "success" },
   returned: { label: "Chuyên gia đã trả lại", tone: "warning" },
 };
-
-const itemClass = "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5 text-ui-meta text-slate-700 outline-none focus:bg-blue-50 data-[disabled]:pointer-events-none data-[disabled]:opacity-40";
 
 function AiStatus({ contract, review }: { contract?: DashboardContract; review?: Review | null }) {
   if (contract?.status === "processing") return <Badge variant="info">AI đang rà soát</Badge>;
@@ -56,42 +71,36 @@ function ContractMenu({ contract, canUpload, canDelete, shareEnabled, onShare }:
   if (!id) return null;
   return (
     <>
-      <DropdownMenu.Root>
-        <DropdownMenu.Trigger asChild>
-          <button
-            type="button"
-            aria-label="Thao tác khác"
-            className="grid size-9 shrink-0 place-items-center rounded-[10px] border border-border bg-white text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[state=open]:bg-slate-100"
-          >
-            <MoreHorizontal aria-hidden="true" className="size-4" />
-          </button>
-        </DropdownMenu.Trigger>
-        <DropdownMenu.Portal>
-          <DropdownMenu.Content align="end" sideOffset={6} className="z-[80] min-w-56 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
-            {canUpload && canAddContractVersion(contract) && (
-              <DropdownMenu.Item asChild className={itemClass}>
-                <Link href={routes.uploadVersion(id)}>
-                  <Upload aria-hidden="true" className="size-4" />
-                  Tải phiên bản mới
-                </Link>
-              </DropdownMenu.Item>
-            )}
-            <DropdownMenu.Item disabled={!shareEnabled} className={itemClass} onSelect={onShare}>
-              <Share2 aria-hidden="true" className="size-4" />
-              Tóm tắt để chia sẻ
-            </DropdownMenu.Item>
-            {canDelete && (
-              <>
-                <DropdownMenu.Separator className="my-1 h-px bg-slate-100" />
-                <DropdownMenu.Item className={`${itemClass} text-destructive focus:bg-destructive/10`} onSelect={() => setDeleting(true)}>
-                  <Trash2 aria-hidden="true" className="size-4" />
-                  Xóa hợp đồng
-                </DropdownMenu.Item>
-              </>
-            )}
-          </DropdownMenu.Content>
-        </DropdownMenu.Portal>
-      </DropdownMenu.Root>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="outline" size="icon-sm" className="size-9 border-border text-muted-foreground" aria-label="Thao tác khác">
+            <MoreHorizontal aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-56">
+          {canUpload && canAddContractVersion(contract) && (
+            <DropdownMenuItem asChild>
+              <Link href={routes.uploadVersion(id)}>
+                <Upload aria-hidden="true" />
+                Tải phiên bản mới
+              </Link>
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuItem disabled={!shareEnabled} onSelect={onShare}>
+            <Share2 aria-hidden="true" />
+            Tóm tắt để chia sẻ
+          </DropdownMenuItem>
+          {canDelete && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={() => setDeleting(true)}>
+                <Trash2 aria-hidden="true" />
+                Xóa hợp đồng
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
       {deleting && (
         <ContractDeleteDialog contract={contract} onClose={() => setDeleting(false)} onDeleted={() => router.replace(routes.contracts)} />
       )}
@@ -125,19 +134,27 @@ export function ContractDetailHeader({ data, contractId, contract, versions, bus
   ].join(" · ") : null;
   return (
     <header className="space-y-4">
-      <nav aria-label="Đường dẫn" className="flex min-w-0 items-center gap-1.5 text-ui-meta text-muted-foreground">
-        <button type="button" onClick={back} className="p-0 font-medium text-primary hover:underline">Hợp đồng</button>
-        <ChevronRight aria-hidden="true" className="size-3.5 shrink-0" />
-        <span aria-current="page" className="min-w-0 truncate">{contract?.title ?? "Chi tiết hợp đồng"}</span>
-      </nav>
+      <Breadcrumb aria-label="Đường dẫn">
+        <BreadcrumbList className="text-ui-meta">
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild className="font-medium text-primary">
+              <button type="button" onClick={back}>Hợp đồng</button>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem className="min-w-0">
+            <BreadcrumbPage className="truncate">{contract?.title ?? "Chi tiết hợp đồng"}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 flex-1 basis-80 items-start gap-3.5">
-          <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-blue-50 text-blue-600">
+          <span className="grid size-12 shrink-0 place-items-center rounded-xl bg-accent text-primary">
             <FileText aria-hidden="true" className="size-6" />
           </span>
           <div className="min-w-0 space-y-1.5">
             <h1 className="m-0 text-[clamp(22px,2.4vw,28px)] font-bold leading-tight tracking-[-0.02em] [overflow-wrap:anywhere]">
-              {contract?.title ?? <span className="inline-block h-7 w-72 max-w-full animate-pulse rounded bg-muted align-middle motion-reduce:animate-none" />}
+              {contract?.title ?? <Skeleton className="inline-block h-7 w-72 max-w-full align-middle" />}
             </h1>
             {meta && <p className="m-0 text-ui-meta text-muted-foreground">{meta}</p>}
           </div>
@@ -160,11 +177,11 @@ export function ContractDetailHeader({ data, contractId, contract, versions, bus
           </div>
         )}
       </div>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-white px-4 py-3">
+      <Card className="flex-row flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
         {current && (
           <>
             <ContractVersionSwitcher contractId={contractId} versions={versions} onShowAll={onShowVersions} />
-            <span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />
+            <Separator orientation="vertical" className="hidden h-5! sm:block" />
           </>
         )}
         <span className="flex items-center gap-2 text-ui-meta text-muted-foreground">
@@ -173,7 +190,7 @@ export function ContractDetailHeader({ data, contractId, contract, versions, bus
         <span className="flex items-center gap-2 text-ui-meta text-muted-foreground">
           Chuyên gia <ExpertStatus review={review} />
         </span>
-      </div>
+      </Card>
     </header>
   );
 }

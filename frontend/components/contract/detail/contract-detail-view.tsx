@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { FileWarning, Sparkles } from "lucide-react";
+import { CircleAlert, FileWarning, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { ContractVersionsPanel } from "@/components/contract/contract-versions-panel";
 import { ContractChat } from "@/components/review/results/contract-chat";
 import { KeyTerms } from "@/components/review/results/key-terms";
@@ -46,8 +49,8 @@ function NotReviewed({ contract, contractId, versions, canReview, busy, onStart 
   const current = versions.find((version) => version.isCurrent);
   const previous = versions.find((version) => !version.isCurrent && version.latestReview?.status === "completed");
   return (
-    <section className="grid justify-items-center gap-3 rounded-[14px] border border-dashed border-[#cfd9e8] bg-white px-6 py-14 text-center">
-      <span className={`grid size-12 place-items-center rounded-xl ${unsupported ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-600"}`}>
+    <Card className="items-center gap-3 border-dashed px-6 py-14 text-center shadow-none">
+      <span className={`grid size-12 place-items-center rounded-xl ${unsupported ? "bg-amber-50 text-amber-700" : "bg-accent text-primary"}`}>
         {unsupported ? <FileWarning aria-hidden="true" className="size-6" /> : <Sparkles aria-hidden="true" className="size-6" />}
       </span>
       <h2 className="m-0 text-ui-card font-semibold">{unsupported ? "Chưa hỗ trợ rà soát tài liệu này" : previous && current ? `Phiên bản ${current.versionNumber} chưa được rà soát` : "Hợp đồng chưa được rà soát"}</h2>
@@ -69,7 +72,7 @@ function NotReviewed({ contract, contractId, versions, canReview, busy, onStart 
           Xem kết quả phiên bản {previous.versionNumber}
         </Link>
       )}
-    </section>
+    </Card>
   );
 }
 
@@ -160,14 +163,21 @@ export function ContractDetailView({ contractId, context }: { contractId: string
     body = <NotReviewed contract={contract} contractId={contractId} versions={versions} canReview={access.review} busy={isReviewing} onStart={() => review(false)} />;
   } else if (contractQuery.isError) {
     body = (
-      <div role="alert" className="flex flex-wrap items-center gap-3 rounded-[14px] border border-red-200 bg-red-50 p-5 text-ui text-red-900">
-        Không mở được hợp đồng này. Hợp đồng có thể đã bị xóa hoặc bạn không còn quyền truy cập.
-        <Button size="sm" variant="outline" onClick={() => void contractQuery.refetch()}>Thử lại</Button>
-      </div>
+      <Alert variant="destructive">
+        <CircleAlert aria-hidden="true" />
+        <AlertTitle>Không mở được hợp đồng này</AlertTitle>
+        <AlertDescription>
+          <p>Hợp đồng có thể đã bị xóa hoặc bạn không còn quyền truy cập.</p>
+          <Button size="sm" variant="outline" onClick={() => void contractQuery.refetch()}>Thử lại</Button>
+        </AlertDescription>
+      </Alert>
     );
   } else {
     body = (
-      <div role="status" aria-label="Đang tải kết quả" className="h-[420px] animate-pulse rounded-[14px] border border-[#e4e8ef] bg-white motion-reduce:animate-none" />
+      <div role="status" aria-label="Đang tải kết quả" className="grid gap-3">
+        <Skeleton className="h-12 w-full rounded-xl" />
+        <Skeleton className="h-[380px] w-full rounded-xl" />
+      </div>
     );
   }
 

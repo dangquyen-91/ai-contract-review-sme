@@ -46,7 +46,7 @@ export function ContractUploadForm({ file, title, supportedTypes = [], isUploadi
     return [{ id: extraId, title: extra.title, versionNumber: extra.currentVersion?.versionNumber }, ...list];
   }, [versionCandidates, requestedContract.data]);
   const versionMode = target.mode === "version";
-  const selectedContract = candidates.find((candidate) => candidate.id === target.contractId);
+  const selectedContract = target.contract ?? candidates.find((candidate) => candidate.id === target.contractId);
   const awaitingContract = versionMode && !selectedContract;
   const locked = isUploading || isReviewing || isLoadingResult;
   const dropDisabled = locked || awaitingContract;
@@ -76,7 +76,7 @@ export function ContractUploadForm({ file, title, supportedTypes = [], isUploadi
   const idleHint = awaitingContract
     ? "Chọn hợp đồng cần thêm phiên bản trước."
     : versionMode
-      ? `Tệp sẽ được lưu thành phiên bản mới của “${selectedContract?.title}”.`
+      ? `Tệp sẽ được lưu thành phiên bản ${(selectedContract?.versionNumber ?? 0) + 1} của “${selectedContract?.title}”.`
       : "Kéo và thả tệp vào đây hoặc nhấn để chọn từ máy tính. Tệp sẽ được tải lên ngay.";
 
   return (
