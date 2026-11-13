@@ -5,7 +5,7 @@ import { useState } from "react";
 import { DropdownMenu } from "radix-ui";
 import { MoreHorizontal, Trash2, Upload } from "lucide-react";
 import { routes } from "@/config/routes";
-import { ContractDeleteDialog } from "./contract-delete-button";
+import { ContractDeleteDialog } from "./contract-delete-dialog";
 import { canAddContractVersion } from "./contract-version-info";
 import type { DashboardContract } from "@/types/contracts";
 

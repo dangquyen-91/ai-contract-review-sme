@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { contractTypeLabels, formatContractDate } from "@/config/contract-display";
 import { routes } from "@/config/routes";
 import { useBackToContractList } from "@/hooks/contracts/use-back-to-contract-list";
-import { ContractDeleteDialog } from "@/components/contract/contract-delete-button";
+import { ContractDeleteDialog } from "@/components/contract/contract-delete-dialog";
 import { canAddContractVersion } from "@/components/contract/contract-version-info";
 import { ContractVersionSwitcher } from "./contract-version-switcher";
 import { RiskBadge } from "@/components/contract/risk-badge";

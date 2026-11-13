@@ -1,10 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { useRef } from "react";
 import { toast } from "sonner";
 import { useDeleteContract } from "@/hooks/contracts/use-contracts";
-import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/shared/confirm-action-dialog";
 import type { DashboardContract } from "@/types/contracts";
 
@@ -20,12 +18,4 @@ export function ContractDeleteDialog({ contract, onClose, onDeleted }: { contrac
     catch { /* Keep the confirmation and error visible. */ }
     finally { lock.current = false; }
   }} />;
-}
-
-export function ContractDeleteButton({ contract, onDeleted }: { contract: DashboardContract; onDeleted?: () => void }) {
-  const [open, setOpen] = useState(false);
-  if (!(contract.id ?? contract._id)) return null;
-  return <><Button variant="ghost" size="icon-sm" className="size-9 text-destructive hover:bg-destructive/10 hover:text-destructive" aria-label={`Xóa hợp đồng ${contract.title}`} title={`Xóa hợp đồng ${contract.title}`} onClick={() => setOpen(true)}><Trash2 aria-hidden="true" /></Button>
-    {open && <ContractDeleteDialog contract={contract} onClose={() => setOpen(false)} onDeleted={onDeleted} />}
-  </>;
 }
