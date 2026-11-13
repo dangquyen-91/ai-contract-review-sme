@@ -19,7 +19,7 @@ export default async function ReviewDetailPage({ params }: { params: Promise<{ c
     ? await getWorkspaceResource<RiskFinding[]>("/contracts/" + contractId + "/risks?reviewId=" + run._id)
     : [];
   return (
-    <WorkspaceContent>
+    <WorkspaceContent view="contract">
       <ReviewVersionResult
         contractId={contractId}
         title={contract.title}

@@ -15,6 +15,7 @@ export function ReviewWorkflowProvider({ children }: { children: ReactNode; init
   const { access, data } = useDashboardWorkspace();
   const router = useRouter();
   const [openContractPage, setOpenContractPage] = useState<string | null>(null);
+  const [seenResult, setSeenResult] = useState<string | null>(null);
   const workflow = useReviewWorkflow({ access, workspaceReady: Boolean(data?.contractScopeId || data?.organization?.id), personal: data?.role === "user" });
   useReviewTimelineScroll(workflow.timelineScrollRequest, workflow.reviewTimelineRef);
   const contract = workflow.reviewResult?.contract;
@@ -22,9 +23,11 @@ export function ReviewWorkflowProvider({ children }: { children: ReactNode; init
   const openResult = useCallback(() => {
     if (contractId) router.push(`/contract/${encodeURIComponent(contractId)}#review-result`);
   }, [contractId, router]);
+  const resultKey = contractId ? `${contractId}:${contract?.updatedAt}` : undefined;
   const onContractPage = Boolean(contractId && openContractPage === contractId);
+  if (onContractPage && resultKey && seenResult !== resultKey) setSeenResult(resultKey);
   useReviewResultNavigation({
-    resultKey: contractId && !onContractPage ? `${contractId}:${contract?.updatedAt}` : undefined,
+    resultKey: resultKey && !onContractPage && resultKey !== seenResult ? resultKey : undefined,
     title: contract?.title,
     timelineRef: workflow.reviewTimelineRef,
     resultRef: workflow.reviewResultRef,

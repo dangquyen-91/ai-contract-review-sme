@@ -161,8 +161,12 @@ export function ContractDetailHeader({ data, contractId, contract, versions, bus
         )}
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border bg-white px-4 py-3">
-        <ContractVersionSwitcher contractId={contractId} versions={versions} onShowAll={onShowVersions} />
-        <span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />
+        {current && (
+          <>
+            <ContractVersionSwitcher contractId={contractId} versions={versions} onShowAll={onShowVersions} />
+            <span aria-hidden="true" className="hidden h-5 w-px bg-border sm:block" />
+          </>
+        )}
         <span className="flex items-center gap-2 text-ui-meta text-muted-foreground">
           Kết quả AI <AiStatus contract={contract} review={review} />
         </span>
