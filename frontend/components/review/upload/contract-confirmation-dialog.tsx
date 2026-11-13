@@ -166,7 +166,9 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
   const partyName = (code?: string) => profile?.parties.find((party) => party.code === code)?.name;
   const withNames = (code: string) => {
     const names = detectedNamesFor(contract, code);
-    return names.length ? `${partyName(code)} — ${names.join(", ")}` : partyName(code);
+    const label = partyName(code);
+    if (!names.length) return label;
+    return label ? `${label} — ${names.join(", ")}` : names.join(", ");
   };
 
   let status: ReactNode = null;
@@ -219,10 +221,12 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
     billing={contract.reviewBilling}
     contractType={asVersion ? undefined : selected.type}
     isReviewing={busy}
-    title={waiting ? "Đang chuẩn bị hợp đồng" : "Xác nhận hợp đồng"}
+    title={contract.status === "reviewed" ? "Rà soát lại hợp đồng" : waiting ? "Đang chuẩn bị hợp đồng" : "Xác nhận hợp đồng"}
     description={asVersion
       ? `Đã tải lên “${contractTitle}”. Kiểm tra lại trước khi lưu thành phiên bản mới.`
-      : `Đã tải lên “${contractTitle}”. Kiểm tra loại hợp đồng và vai trò của bạn trước khi rà soát.`}
+      : contract.status === "reviewed"
+        ? `AI sẽ rà soát lại “${contractTitle}” trên phiên bản hiện tại. Kết quả cũ vẫn được giữ trong lịch sử phiên bản.`
+        : `Đã tải lên “${contractTitle}”. Kiểm tra loại hợp đồng và vai trò của bạn trước khi rà soát.`}
     confirmation={<>{shownStatus}{identityBlock}{!asVersion && summary}{!asVersion && editor}</>}
     hideFocus={waiting || view === "extraction_failed" || (!asVersion && view === "blocked" && !showEdit)}
     submitDisabled={asVersion ? false : !canStart}

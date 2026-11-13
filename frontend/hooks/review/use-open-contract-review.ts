@@ -31,11 +31,16 @@ export function useOpenContractReview() {
     if (contractId) goTo(contractId);
   }
 
+  function requestReview(contract: DashboardContract) {
+    const contractId = contract.id ?? contract._id;
+    if (contractId) setUploadedContract({ id: contractId, title: contract.title });
+  }
+
   function finishAttach(target: ReviewTarget, versionNumber: number) {
     setUploadedContract(null);
     toast.success(`Đã lưu thành phiên bản ${versionNumber}`, { description: target.title });
     goTo(target.id);
   }
 
-  return { openContract, startUploadedReview, finishAttach };
+  return { openContract, startUploadedReview, finishAttach, requestReview };
 }

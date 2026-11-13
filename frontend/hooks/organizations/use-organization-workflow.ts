@@ -12,6 +12,7 @@ import { organizationDashboardPath, organizationDashboardView, type Organization
 import { useLoadContract } from "@/hooks/contracts/use-contracts";
 import { isReviewCancelled } from "@/lib/review/review-session";
 import { shouldAutoOpenReview } from "@/lib/review/auto-open-review";
+import { contractPageHref } from "@/lib/contracts/contract-href";
 
 export type DashboardTab = OrganizationDashboardView;
 
@@ -123,8 +124,8 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
     if (staffMode) {
       if (activeTab !== "upload") returnLocation.current = { url: `${pathname}${searchParams.size ? `?${searchParams}` : ""}`, scroll: window.scrollY };
     }
-    const contractId = (contract.id ?? contract._id)!;
-    router.push(`/contract/${encodeURIComponent(contractId)}${rerun ? "?rerun=1" : ""}`);
+    const href = contractPageHref(contract, rerun);
+    if (href) router.push(href);
   }
   return { selectedContractId, duplicateUpload, dismissDuplicateUpload, uploadDuplicateAnyway, activeTab, searchParams, contractFilter, data, error, isLoading, isFetching, dataUpdatedAt, refetch, access, roleLabel, selectTab, backToWork, skipUploadedReview, clearUploadedContract, reviewExisting, cancelReview, cancelling, file, title, setTitle, uploadedContract, reviewResult, reviewProgress, reviewResultRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, reviewUploadedContract, retryReview, workflowComplete, reviewing, loadingResult, reconnecting };
 }

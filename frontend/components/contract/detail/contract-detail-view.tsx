@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FileWarning, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ContractVersionsPanel } from "@/components/contract/contract-versions-panel";
@@ -15,6 +16,7 @@ import { useContract, useContractKeyTerms, useContractVersions } from "@/hooks/c
 import { useContractDetailTab } from "@/hooks/contracts/use-contract-detail-tab";
 import { activeRiskFindings } from "@/lib/review/verification-findings";
 import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider";
+import { useOpenContractReview } from "@/hooks/review/use-open-contract-review";
 import { ContractDetailHeader } from "./contract-detail-header";
 import { ContractDetailTabs } from "./contract-detail-tabs";
 import { ContractOverviewTab } from "./contract-overview-tab";
@@ -108,7 +110,7 @@ export function ContractDetailView({ contractId, context }: { contractId: string
   const {
     reviewResult, selectedContractId, stage, loadingResult, reconnecting, reviewing, isReviewing,
     reviewError, reviewBlocked, reviewProgress, retryKind, cancelling,
-    reviewExisting, retryReview, cancelReview, reviewResultRef, reviewTimelineRef, setOpenContractPage,
+    retryReview, cancelReview, reviewResultRef, reviewTimelineRef, setOpenContractPage,
   } = useDashboardReviewWorkflow();
   useEffect(() => {
     setOpenContractPage(contractId);
@@ -128,8 +130,21 @@ export function ContractDetailView({ contractId, context }: { contractId: string
   const version = result?.contract.currentVersion;
   const shareEnabled = Boolean(result && version?.riskDetectionStatus === "completed" && version.summaryStatus === "completed");
 
-  function review(rerun: boolean) {
-    if (contract) void reviewExisting(contract, rerun);
+  const { requestReview } = useOpenContractReview();
+  const router = useRouter();
+  const pathname = usePathname();
+  const wantsReview = useSearchParams().get("action") === "review";
+  const actionHandled = useRef(false);
+  useEffect(() => {
+    if (!wantsReview || actionHandled.current || !contract || isReviewing) return;
+    if (contract.status !== "uploaded" && contract.status !== "reviewed") return;
+    actionHandled.current = true;
+    requestReview(contract);
+    router.replace(pathname, { scroll: false });
+  }, [wantsReview, contract, isReviewing, requestReview, router, pathname]);
+
+  function review() {
+    if (contract) requestReview(contract);
   }
 
   let body;
@@ -158,7 +173,7 @@ export function ContractDetailView({ contractId, context }: { contractId: string
       </div>
     );
   } else if (!loadingSaved && contract && contract.status !== "reviewed" && contract.status !== "processing") {
-    body = <NotReviewed contract={contract} contractId={contractId} versions={versions} canReview={access.review} busy={isReviewing} onStart={() => review(false)} />;
+    body = <NotReviewed contract={contract} contractId={contractId} versions={versions} canReview={access.review} busy={isReviewing} onStart={review} />;
   } else if (contractQuery.isError) {
     body = (
       <div role="alert" className="flex flex-wrap items-center gap-3 rounded-[14px] border border-red-200 bg-red-50 p-5 text-ui text-red-900">
