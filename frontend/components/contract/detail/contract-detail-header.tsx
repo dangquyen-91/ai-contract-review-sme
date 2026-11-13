@@ -7,23 +7,17 @@ import { DropdownMenu } from "radix-ui";
 import { ChevronRight, FileText, MoreHorizontal, RotateCw, Share2, Sparkles, Trash2, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { contractRiskTones, contractTypeLabels, formatContractDate } from "@/config/contract-display";
+import { contractTypeLabels, formatContractDate } from "@/config/contract-display";
 import { routes } from "@/config/routes";
 import { useBackToContractList } from "@/hooks/contracts/use-back-to-contract-list";
 import { ContractDeleteDialog } from "@/components/contract/contract-delete-button";
 import { canAddContractVersion } from "@/components/contract/contract-version-info";
 import { ContractVersionSwitcher } from "./contract-version-switcher";
-import type { ContractRiskLevel, ContractVersionSummary, DashboardContract } from "@/types/contracts";
+import { RiskBadge } from "@/components/contract/risk-badge";
+import type { ContractVersionSummary, DashboardContract } from "@/types/contracts";
 import type { DashboardData } from "@/types/dashboard";
 
 type Review = NonNullable<ContractVersionSummary["latestReview"]>;
-
-const riskLabels: Record<ContractRiskLevel, string> = {
-  high: "Rủi ro cao",
-  medium: "Rủi ro trung bình",
-  low: "Rủi ro thấp",
-  none: "Không phát hiện rủi ro",
-};
 
 const expertLabels: Record<NonNullable<Review["verificationStatus"]>, { label: string; tone: "info" | "success" | "warning" }> = {
   requested: { label: "Chờ chuyên gia tiếp nhận", tone: "info" },
@@ -37,8 +31,7 @@ const itemClass = "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5
 function AiStatus({ contract, review }: { contract?: DashboardContract; review?: Review | null }) {
   if (contract?.status === "processing") return <Badge variant="info">AI đang rà soát</Badge>;
   if (review?.status === "completed" && review.overallRiskLevel) {
-    const risk = review.overallRiskLevel;
-    return <Badge variant={risk === "none" ? "success" : contractRiskTones[risk]}>{riskLabels[risk]}</Badge>;
+    return <RiskBadge risk={review.overallRiskLevel} />;
   }
   if (contract?.status === "unsupported") return <Badge variant="warning">Chưa hỗ trợ rà soát</Badge>;
   return <Badge variant="neutral">Chưa rà soát</Badge>;

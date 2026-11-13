@@ -1,23 +1,17 @@
 import Link from "next/link";
 import { ArrowRight, ChevronRight, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { contractRiskTones, contractTypeLabels, formatContractDate } from "@/config/contract-display";
+import { contractTypeLabels, formatContractDate } from "@/config/contract-display";
 import { routes } from "@/config/routes";
-import type { ContractRiskLevel, DashboardContract } from "@/types/contracts";
-
-const riskLabels: Record<ContractRiskLevel, string> = {
-  high: "Rủi ro cao",
-  medium: "Rủi ro trung bình",
-  low: "Rủi ro thấp",
-  none: "Không phát hiện rủi ro",
-};
+import { RiskBadge } from "./risk-badge";
+import type { DashboardContract } from "@/types/contracts";
 
 function StatusBadge({ contract }: { contract: DashboardContract }) {
   if (contract.status === "processing") return <Badge variant="info">AI đang rà soát</Badge>;
   if (contract.status === "unsupported") return <Badge variant="warning">Chưa hỗ trợ</Badge>;
   if (contract.status !== "reviewed") return <Badge variant="neutral">Chưa rà soát</Badge>;
   const risk = contract.currentVersion?.overallRiskLevel ?? contract.overallRiskLevel ?? "none";
-  return <Badge variant={risk === "none" ? "success" : contractRiskTones[risk]}>{riskLabels[risk]}</Badge>;
+  return <RiskBadge risk={risk} />;
 }
 
 function RecentRow({ contract }: { contract: DashboardContract }) {

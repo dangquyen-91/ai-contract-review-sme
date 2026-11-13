@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, Download, TriangleAlert } from "lucide-react";
+import { ChevronRight, Download, Info, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { contractRiskLabels, contractRiskTones } from "@/config/contract-display";
 import { routes } from "@/config/routes";
@@ -27,19 +27,27 @@ function formatDateTime(value?: string) {
   }).format(new Date(value));
 }
 
-function OldVersionBanner({ contractId, version, current }: {
+function HistoryBanner({ contractId, run, version, current }: {
   contractId: string;
-  version: ContractVersionSummary;
+  run: ContractReviewRun;
+  version?: ContractVersionSummary;
   current?: ContractVersionSummary;
 }) {
+  const oldVersion = Boolean(version && !version.isCurrent);
+  const olderRun = Boolean(version?.isCurrent && version.latestReview && version.latestReview.id !== run._id);
+  if (!oldVersion && !olderRun) return null;
   return (
-    <div role="note" className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-ui leading-6 text-amber-950">
-      <TriangleAlert aria-hidden="true" className="mt-1 size-4 shrink-0" />
+    <div role="note" className={`flex items-start gap-3 rounded-xl border p-4 text-ui leading-6 ${oldVersion ? "border-amber-200 bg-amber-50 text-amber-950" : "border-blue-200 bg-blue-50 text-blue-950"}`}>
+      {oldVersion ? <TriangleAlert aria-hidden="true" className="mt-1 size-4 shrink-0" /> : <Info aria-hidden="true" className="mt-1 size-4 shrink-0" />}
       <div>
-        <p className="m-0 font-semibold">Bạn đang xem kết quả của phiên bản cũ (phiên bản {version.versionNumber}).</p>
+        <p className="m-0 font-semibold">
+          {oldVersion ? `Bạn đang xem kết quả của phiên bản cũ (phiên bản ${version?.versionNumber}).` : "Bạn đang xem một lượt rà soát trước của phiên bản hiện tại."}
+        </p>
         <p className="m-0">
-          Hợp đồng đã có phiên bản {current?.versionNumber ?? "mới hơn"}. Rà soát, hỏi đáp và chỉnh sửa đề xuất chỉ áp dụng cho phiên bản hiện tại.{" "}
-          <Link className="font-medium underline" href={routes.contract(contractId)}>Mở phiên bản hiện tại</Link>
+          {oldVersion
+            ? `Hợp đồng đã có phiên bản ${current?.versionNumber ?? "mới hơn"}. Rà soát, hỏi đáp và chỉnh sửa đề xuất chỉ áp dụng cho phiên bản hiện tại. `
+            : "Kết quả mới nhất có thể khác lượt này. "}
+          <Link className="font-medium underline" href={routes.contract(contractId)}>Về kết quả hiện tại</Link>
         </p>
       </div>
     </div>
@@ -77,8 +85,9 @@ function FindingItem({ finding }: { finding: RiskFinding }) {
   );
 }
 
-export function ReviewVersionResult({ contractId, run, version, current, findings }: {
+export function ReviewVersionResult({ contractId, title, run, version, current, findings }: {
   contractId: string;
+  title: string;
   run: ContractReviewRun;
   version?: ContractVersionSummary;
   current?: ContractVersionSummary;
@@ -92,25 +101,26 @@ export function ReviewVersionResult({ contractId, run, version, current, finding
   const finished = formatDateTime(run.finishedAt);
   return (
     <section className="mx-auto max-w-5xl space-y-5 p-6">
-      <Link className="inline-flex items-center gap-1.5 text-ui font-medium text-blue-700 hover:underline" href={routes.contract(contractId)}>
-        <ArrowLeft aria-hidden="true" className="size-4" />
-        Về hợp đồng
-      </Link>
+      <nav aria-label="Đường dẫn" className="flex min-w-0 flex-wrap items-center gap-1.5 text-ui-meta text-muted-foreground">
+        <Link className="font-medium text-primary hover:underline" href={routes.contracts}>Hợp đồng</Link>
+        <ChevronRight aria-hidden="true" className="size-3.5 shrink-0" />
+        <Link className="min-w-0 truncate font-medium text-primary hover:underline" href={routes.contract(contractId)}>{title}</Link>
+        <ChevronRight aria-hidden="true" className="size-3.5 shrink-0" />
+        <span aria-current="page">Lượt rà soát{finished ? ` ${finished}` : ""}</span>
+      </nav>
       <header className="space-y-2">
-        <p className="m-0 text-[10px] font-bold uppercase tracking-[1.1px] text-[color:var(--accent)]">Lượt rà soát</p>
+        <h1 className="m-0 text-[clamp(22px,2.4vw,28px)] font-bold leading-tight tracking-[-0.02em] [overflow-wrap:anywhere]">{title}</h1>
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="m-0 text-2xl font-semibold">
-            {version ? `Phiên bản ${version.versionNumber}` : "Kết quả rà soát"}
-          </h1>
-          {version?.isCurrent && <Badge variant="info">Phiên bản hiện tại</Badge>}
-          {version && !version.isCurrent && <Badge variant="warning">Phiên bản cũ</Badge>}
+          <Badge variant={version?.isCurrent ? "info" : "warning"}>
+            {version ? `Phiên bản ${version.versionNumber}${version.isCurrent ? " · hiện tại" : " · bản cũ"}` : "Lượt rà soát"}
+          </Badge>
         </div>
         {version?.note && <p className="m-0 text-ui text-slate-700">{version.note}</p>}
         <p className="m-0 text-ui-meta text-muted-foreground">
           {[statusLabels[run.status], started && `Bắt đầu ${started}`, finished && `Kết thúc ${finished}`].filter(Boolean).join(" · ")}
         </p>
       </header>
-      {version && !version.isCurrent && <OldVersionBanner contractId={contractId} version={version} current={current} />}
+      <HistoryBanner contractId={contractId} run={run} version={version} current={current} />
       {run.error && <p role="alert" className="m-0 rounded-lg border border-red-200 bg-red-50 p-3 text-ui text-red-800">{run.error}</p>}
       {run.result?.summaryPoints && run.result.summaryPoints.length > 0 && (
         <div className="rounded-xl border border-border bg-white p-4">

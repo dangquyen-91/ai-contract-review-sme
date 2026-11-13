@@ -4,10 +4,10 @@ import Link from "next/link";
 import { Layers, Upload } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { contractRiskLabels, contractRiskTones } from "@/config/contract-display";
 import { routes } from "@/config/routes";
 import { useContractVersions } from "@/hooks/contracts/use-contracts";
 import { trackingPresentation } from "@/components/contract/contract-tracking-status";
+import { RiskBadge } from "@/components/contract/risk-badge";
 import type { ContractVersionSummary } from "@/types/contracts";
 
 const reviewStatusLabels: Record<NonNullable<ContractVersionSummary["latestReview"]>["status"], string> = {
@@ -44,7 +44,7 @@ function ReviewSummary({ contractId, version }: { contractId: string; version: C
   return (
     <div className="flex flex-wrap items-center gap-2 text-ui-meta">
       {review.status === "completed" && review.overallRiskLevel ? (
-        <Badge variant={contractRiskTones[review.overallRiskLevel]}>{contractRiskLabels[review.overallRiskLevel]}</Badge>
+        <RiskBadge risk={review.overallRiskLevel} />
       ) : (
         <span className="text-muted-foreground">{reviewStatusLabels[review.status]}</span>
       )}
@@ -58,7 +58,7 @@ function ReviewSummary({ contractId, version }: { contractId: string; version: C
           {verification.label}
         </span>
       )}
-      <Link className="ml-auto font-medium text-blue-700 hover:underline" href={routes.review(contractId, review.id)}>
+      <Link className="ml-auto font-medium text-blue-700 hover:underline" href={version.isCurrent && review.status === "completed" ? routes.contract(contractId) : routes.review(contractId, review.id)}>
         {review.status === "completed" ? "Xem kết quả phiên bản này" : "Xem lượt rà soát"}
       </Link>
     </div>

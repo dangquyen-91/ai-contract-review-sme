@@ -1,17 +1,10 @@
 import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
-import { contractRiskTones } from "@/config/contract-display";
 import { contractTrackingUpdate } from "@/lib/contracts/contract-tracking-update";
-import type { ContractRiskLevel, DashboardContract } from "@/types/contracts";
+import { RiskBadge } from "./risk-badge";
+import type { DashboardContract } from "@/types/contracts";
 
 type Verification = NonNullable<DashboardContract["expertVerification"]>;
-
-const reviewedRiskLabels: Record<ContractRiskLevel, string> = {
-  high: "Rủi ro cao",
-  medium: "Rủi ro trung bình",
-  low: "Rủi ro thấp",
-  none: "Không phát hiện rủi ro",
-};
 
 const expertStatus: Record<Verification["status"], { label: string; tone: "info" | "success" | "warning"; pulse: boolean }> = {
   requested: { label: "Chờ tiếp nhận", tone: "info", pulse: true },
@@ -61,7 +54,7 @@ export function AiResultFact({ contract }: { contract: DashboardContract }) {
   return (
     <Fact label="Kết quả AI">
       {contract.status === "reviewed" && <>
-        <Badge variant={risk === "none" ? "success" : contractRiskTones[risk]}>{reviewedRiskLabels[risk]}</Badge>
+        <RiskBadge risk={risk} />
         <Caption>Đã rà soát xong</Caption>
       </>}
       {contract.status === "processing" && <>
