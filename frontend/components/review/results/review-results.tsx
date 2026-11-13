@@ -24,12 +24,31 @@ export function ReviewResults(props: ReviewResultsProps) {
 }
 
 function ReviewResultsContent({ result, canAsk = false, showAiContext = false, role }: ReviewResultsProps) {
+  const [shareSummaryOpen, setShareSummaryOpen] = useState(false);
+  const contractId = result.contract.id ?? result.contract._id;
+  return (
+    <section className={`overflow-hidden border [background:#fff] shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)] rounded-[14px] border-solid border-[#e4e8ef] ${showAiContext ? workspaceStyles.workspace : ""}`}>
+      {showAiContext && <p className="m-0 border-b border-[#dce7f6] bg-[#f4f8ff] px-5 py-3 text-ui leading-6 text-[#536881]">Kết quả phân tích từ AI. Trạng thái xác minh của chuyên gia được hiển thị riêng bên dưới.</p>}
+      <ReviewResultHeader result={result} role={role} onShareSummary={() => setShareSummaryOpen(true)} />
+      <ReviewWorkbench result={result} showNavigation={showAiContext} />
+      {shareSummaryOpen && contractId && <ShareSummaryDialog key={`${contractId}:${result.contract.updatedAt}`} contractId={contractId} version={result.contract.updatedAt} onClose={() => setShareSummaryOpen(false)} />}
+      {contractId && <KeyTerms contractId={contractId} />}
+      {contractId && <ContractChat key={contractId} contractId={contractId} canAsk={canAsk} />}
+      <ReviewDisclaimer />
+    </section>
+  );
+}
+
+function ReviewDisclaimer() {
+  return <p className="text-[#8a94a3] [border-top:1px_solid_#edf0f4] [background:#fafbfc] text-ui-meta text-right m-0 px-[22px] py-[9px]">Kết quả do AI hỗ trợ, không thay thế ý kiến tư vấn pháp lý chuyên môn.</p>;
+}
+
+export function ReviewWorkbench({ result, showSummary = true, showNavigation = false }: { result: ContractReviewResult; showSummary?: boolean; showNavigation?: boolean }) {
   const [activeClause, setActiveClause] = useState<number | null>(null);
   const [originalTarget, setOriginalTarget] = useState<{ index: number; requestId: number } | null>(null);
   const [viewMode, setViewMode] = useState<"original" | "text" | "redacted">("redacted");
   const [disclosure, setDisclosure] = useState<{ mode: "text" | "original"; clauseIndex?: number } | null>(null);
   const [docxTextFallback, setDocxTextFallback] = useState(false);
-  const [shareSummaryOpen, setShareSummaryOpen] = useState(false);
   const sectionId = useId();
   const contractBodyRef = useRef<HTMLDivElement>(null);
   const savedScroll = useRef(0);
@@ -106,12 +125,10 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false, r
   }
 
   return (
-    <section className={`overflow-hidden border [background:#fff] shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)] rounded-[14px] border-solid border-[#e4e8ef] ${showAiContext ? workspaceStyles.workspace : ""}`}>
-      {showAiContext && <p className="m-0 border-b border-[#dce7f6] bg-[#f4f8ff] px-5 py-3 text-ui leading-6 text-[#536881]">Kết quả phân tích từ AI. Trạng thái xác minh của chuyên gia được hiển thị riêng bên dưới.</p>}
-      <ReviewResultHeader result={result} role={role} onShareSummary={() => setShareSummaryOpen(true)} />
-      {showAiContext && <nav className={workspaceStyles.navigation} aria-label="Điều hướng kết quả"><a href={`#${sectionId}-analysis`}>Tóm tắt & rủi ro</a><a href={`#${sectionId}-document`}>Nội dung hợp đồng</a></nav>}
+    <>
+      {showNavigation && <nav className={workspaceStyles.navigation} aria-label="Điều hướng kết quả"><a href={`#${sectionId}-analysis`}>Tóm tắt & rủi ro</a><a href={`#${sectionId}-document`}>Nội dung hợp đồng</a></nav>}
       <div className={`${workspaceStyles.resultColumns} grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-stretch [@media_(max-width:_1080px)]:grid-cols-[1fr] ${workspaceStyles.splitPane}`}>
-        <ReviewAnalysisPane result={result} sectionId={sectionId} isDocx={isDocx} onJumpToClause={jumpToClause} />
+        <ReviewAnalysisPane result={result} sectionId={sectionId} isDocx={isDocx} showSummary={showSummary} onJumpToClause={jumpToClause} />
         <section className={`${workspaceStyles.documentPane} min-w-0 min-h-0 grid grid-rows-[auto_auto_minmax(0,1fr)] [@media_(max-width:_1080px)]:block`} id={`${sectionId}-document`} aria-label="Nội dung hợp đồng">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e4e8ef] bg-[#fbfcfe] px-4 py-2.5">
             <div className="min-w-0"><h3 className="m-0 text-ui-section font-semibold">Nội dung hợp đồng</h3><p className="mb-0 mt-1 max-w-[360px] truncate text-ui-meta text-[#778398]">{result.contract.currentVersion?.fileName ?? result.contract.title}</p></div>
@@ -140,10 +157,6 @@ function ReviewResultsContent({ result, canAsk = false, showAiContext = false, r
         </section>
       </div>
       {disclosure && <DocumentDisclosureDialog mode={disclosure.mode} onCancel={() => setDisclosure(null)} onConfirm={() => { applyDocumentMode(disclosure.mode, disclosure.clauseIndex); setDisclosure(null); }} />}
-      {shareSummaryOpen && contractId && <ShareSummaryDialog key={`${contractId}:${result.contract.updatedAt}`} contractId={contractId} version={result.contract.updatedAt} onClose={() => setShareSummaryOpen(false)} />}
-      {contractId && <KeyTerms contractId={contractId} />}
-      {contractId && <ContractChat key={contractId} contractId={contractId} canAsk={canAsk} />}
-      <p className="text-[#8a94a3] [border-top:1px_solid_#edf0f4] [background:#fafbfc] text-ui-meta text-right m-0 px-[22px] py-[9px]">Kết quả do AI hỗ trợ, không thay thế ý kiến tư vấn pháp lý chuyên môn.</p>
-    </section>
+    </>
   );
 }

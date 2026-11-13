@@ -96,13 +96,13 @@ function VersionItem({ contractId, version }: { contractId: string; version: Con
   );
 }
 
-export function ContractVersionsPanel({ contractId }: { contractId: string }) {
+export function ContractVersionsPanel({ contractId, embedded = false, canUpload = true }: { contractId: string; embedded?: boolean; canUpload?: boolean }) {
   const versions = useContractVersions(contractId);
   const items = versions.data ?? [];
   return (
     <section
       aria-label="Phiên bản hợp đồng"
-      className="mt-7 overflow-hidden rounded-[14px] border border-[color:var(--line)] bg-white shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)]"
+      className={embedded ? "bg-white" : "mt-7 overflow-hidden rounded-[14px] border border-[color:var(--line)] bg-white shadow-[0_22px_50px_-48px_rgb(23_45_78_/_0.7)]"}
     >
       <header className="flex flex-wrap items-center justify-between gap-3 border-b border-[color:var(--line)] px-5 py-4">
         <div className="flex items-center gap-3">
@@ -118,12 +118,14 @@ export function ContractVersionsPanel({ contractId }: { contractId: string }) {
             </p>
           </div>
         </div>
-        <Button asChild size="sm" variant="outline">
-          <Link href={routes.uploadVersion(contractId)}>
-            <Upload aria-hidden="true" className="size-4" />
-            Tải phiên bản mới
-          </Link>
-        </Button>
+        {canUpload && (
+          <Button asChild size="sm" variant="outline">
+            <Link href={routes.uploadVersion(contractId)}>
+              <Upload aria-hidden="true" className="size-4" />
+              Tải phiên bản mới
+            </Link>
+          </Button>
+        )}
       </header>
       <div className="p-5">
         {versions.isPending && <p className="m-0 text-ui text-muted-foreground">Đang tải danh sách phiên bản…</p>}
