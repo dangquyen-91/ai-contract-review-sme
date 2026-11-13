@@ -5,6 +5,8 @@ import { startClassificationWorker } from './contract/classificationWorker.servi
 import { startUnsupportedCleanupWorker } from './contract/unsupportedCleanup.service';
 import { startReviewWorker } from './review/reviewWorker.service';
 import { startLegalIngestionWorker } from './legal/legalIngestionWorker.service';
+import { backfillTextSignatures } from './contract/versionMatch.service';
+import { logger } from '../config/logger';
 
 export function startBackgroundWorkers() {
   startExtractionWorker();
@@ -12,6 +14,9 @@ export function startBackgroundWorkers() {
   startUnsupportedCleanupWorker();
   startReviewWorker();
   startLegalIngestionWorker();
+  backfillTextSignatures().catch((err) =>
+    logger.warn('Failed to backfill contract text signatures', { error: err instanceof Error ? err.message : String(err) }),
+  );
 }
 
 export async function stopBackgroundWork() {

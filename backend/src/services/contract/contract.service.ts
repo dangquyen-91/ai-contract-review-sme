@@ -35,6 +35,7 @@ import { ContractReviewPurchaseModel } from '../../models/contractReviewPurchase
 import { PaymentModel } from '../../models/payment.model';
 import { lockSubscriptionOrganization } from '../billing/subscription.service';
 import { contractDisplayNames } from './contractDisplayNames';
+import { similarityToPrevious } from './versionMatch.service';
 
 interface CreateContractParams {
   orgId: string;
@@ -248,7 +249,7 @@ export async function listContractVersions(orgId: string, contractId: string) {
   const [versions, reviews] = await Promise.all([
     ContractVersionModel.find({ contractId })
       .sort({ versionNumber: -1 })
-      .select('versionNumber fileName mimeType note createdBy createdAt extractionStatus extractionQuality')
+      .select('+textSignature +textSignatureVersion versionNumber fileName mimeType note createdBy createdAt extractionStatus extractionQuality')
       .populate<{ createdBy: { _id: Types.ObjectId; name: string } | null }>('createdBy', 'name')
       .lean(),
     ReviewModel.find({ contractId, orgId })
@@ -288,6 +289,7 @@ export async function listContractVersions(orgId: string, contractId: string) {
       uploadedAt: version.createdAt,
       extractionStatus: version.extractionStatus,
       pageCount: version.extractionQuality?.pageCount ?? null,
+      similarityToPrevious: similarityToPrevious(versions, index),
       latestReview: review
         ? {
             id: String(review._id),

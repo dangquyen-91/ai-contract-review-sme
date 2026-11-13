@@ -20,6 +20,7 @@ import {
   getContractTextHandler,
   listContractsHandler,
   listContractVersionsHandler,
+  getVersionMatchHandler,
   retryClassificationHandler,
 } from '../controllers/contract.controller';
 import { listClausesHandler } from '../controllers/clause.controller';
@@ -72,6 +73,7 @@ router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandl
 router.get('/:id/review-payment', validate({ params: contractIdParamSchema }), contractReviewQuoteHandler);
 
 router.get('/:id/versions', validate({ params: contractIdParamSchema }), listContractVersionsHandler);
+router.get('/:id/version-match', validate({ params: contractIdParamSchema }), getVersionMatchHandler);
 router.post(
   '/:id/versions',
   requireRole(...CONTRACT_UPLOAD_ROLES),

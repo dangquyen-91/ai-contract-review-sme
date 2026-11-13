@@ -76,6 +76,8 @@ const contractVersionSchema = new Schema(
     fileHash: { type: String, index: true },
     note: { type: String, trim: true, maxlength: 300 },
     extractedText: { type: String, select: false, ...encryptedString },
+    textSignature: { type: [Number], default: undefined, select: false },
+    textSignatureVersion: { type: Number, select: false },
     extractionStatus: { type: String, enum: EXTRACTION_STATUSES, default: 'pending', index: true },
     extractionError: { type: String },
     extractionErrorCode: { type: String },

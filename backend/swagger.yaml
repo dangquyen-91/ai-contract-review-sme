@@ -2990,6 +2990,53 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /contracts/{id}/version-match:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: Suggest an existing contract this upload is probably a new version of
+      description: |
+        Compares the text fingerprint of a newly uploaded contract with every version of the account's other contracts (up to 300 most recently updated, excluding unsupported and archived ones). Only a contract with a single version and no reviews is eligible.
+        A match is returned when the best similarity is at least 0.35. Among near-equal scores, candidates with the same detected parties, then the same contract type, are preferred. The text itself is never sent to an AI model for this comparison.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      ready: { type: boolean, description: False while text extraction is still pending or running }
+                      eligible: { type: boolean, description: False when the contract already has several versions or a review }
+                      match:
+                        type: object
+                        nullable: true
+                        properties:
+                          contractId: { type: string }
+                          title: { type: string }
+                          similarity: { type: number, minimum: 0, maximum: 1 }
+                          matchedVersionNumber: { type: integer, description: Version of the matched contract that is most similar }
+                          currentVersionNumber: { type: integer }
+                          nextVersionNumber: { type: integer, description: Version number the upload would get if attached }
+                          sameType: { type: boolean, nullable: true, description: Null when either contract type is unknown }
+                          sameParties: { type: boolean, nullable: true, description: Whether the AI-detected party names overlap; null when either side has none }
+        '404':
+          description: Contract not found in this account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /contracts/{id}/versions:
     parameters:
       - in: path
@@ -3030,6 +3077,12 @@ paths:
                         uploadedAt: { type: string, format: date-time }
                         extractionStatus: { type: string, enum: [pending, processing, completed, failed, unsupported] }
                         pageCount: { type: integer, nullable: true }
+                        similarityToPrevious:
+                          type: number
+                          nullable: true
+                          minimum: 0
+                          maximum: 1
+                          description: Estimated text similarity (0-1) to the previous version; null for version 1 or when either text is unavailable
                         latestReview:
                           type: object
                           nullable: true

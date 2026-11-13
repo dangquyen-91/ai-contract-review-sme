@@ -10,6 +10,7 @@ import { confirmContractProfile } from '../services/contract/contractClassificat
 import { retryClassification } from '../services/contract/classificationWorker.service';
 import { ListContractsQuery } from '../validations/contract.validation';
 import { contractReviewQuote } from '../services/billing/contractReviewPurchase.service';
+import { findVersionMatch } from '../services/contract/versionMatch.service';
 
 export const contractReviewQuoteHandler = asyncHandler(async (req, res) => {
   const user = getContractUser(req);
@@ -54,6 +55,11 @@ export const createContractVersionHandler = asyncHandler(async (req: Request, re
 export const listContractVersionsHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);
   ok(res, await contractService.listContractVersions(user.orgId, req.params.id));
+});
+
+export const getVersionMatchHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getContractUser(req);
+  ok(res, await findVersionMatch(user.orgId, req.params.id));
 });
 
 export const listContractsHandler = asyncHandler(async (req: Request, res: Response) => {
