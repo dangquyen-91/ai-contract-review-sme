@@ -47,6 +47,7 @@ import {
   createContractSchema,
   createContractVersionSchema,
   versionQuerySchema,
+  resultQuerySchema,
   findingParamSchema,
   listContractsQuerySchema,
   updateProposedRevisionBodySchema,
@@ -116,13 +117,13 @@ router.get('/:id/reviews', validate({ params: contractIdParamSchema }), listRevi
 
 router.get(
   '/:id/clauses',
-  validate({ params: contractIdParamSchema, query: versionQuerySchema }),
+  validate({ params: contractIdParamSchema, query: resultQuerySchema }),
   listClausesHandler,
 );
 
 router.get(
   '/:id/risks',
-  validate({ params: contractIdParamSchema, query: versionQuerySchema }),
+  validate({ params: contractIdParamSchema, query: resultQuerySchema }),
   listRiskFindingsHandler,
 );
 

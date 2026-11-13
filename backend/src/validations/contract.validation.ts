@@ -59,6 +59,13 @@ export const versionQuerySchema = z.object({
     .optional(),
 });
 
+export const resultQuerySchema = versionQuerySchema.extend({
+  reviewId: z
+    .string()
+    .regex(/^[a-f\d]{24}$/i, 'Invalid review id')
+    .optional(),
+});
+
 export const contractTextQuerySchema = versionQuerySchema.extend({
   redacted: z.enum(['true', 'false']).optional(),
   redactionMode: z.enum(['token', 'partial']).optional(),

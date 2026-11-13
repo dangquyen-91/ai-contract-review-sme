@@ -11,6 +11,7 @@ export const listRiskFindingsHandler = asyncHandler(async (req: Request, res: Re
     user.orgId,
     req.params.id,
     req.query.versionId as string | undefined,
+    req.query.reviewId as string | undefined,
   );
   ok(res, findings);
 });

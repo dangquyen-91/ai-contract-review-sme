@@ -3,6 +3,7 @@ import { Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { ContractModel, CONTRACT_STATUSES } from '../../models/contract.model';
 import { ContractVersionModel } from '../../models/contractVersion.model';
+import { ReviewModel } from '../../models/review.model';
 
 export const fileHashOf = (buffer: Buffer) => createHash('sha256').update(buffer).digest('hex');
 
@@ -51,6 +52,24 @@ export async function resolveVersion(contractId: string, versionId?: string, wit
     );
   }
   return version;
+}
+
+export async function findResultReviewId(versionId: unknown): Promise<Types.ObjectId | null> {
+  const review = await ReviewModel.findOne({ versionId, status: 'completed' })
+    .sort({ finishedAt: -1 })
+    .select('_id')
+    .lean();
+  return review?._id ?? null;
+}
+
+export async function resolveResultReview(contractId: string, versionId?: string, reviewId?: string) {
+  if (reviewId) {
+    const review = await ReviewModel.findOne({ _id: reviewId, contractId }).select('versionId').lean();
+    if (!review) throw AppError.notFound('Không tìm thấy lượt rà soát.');
+    return { versionId: review.versionId, reviewId: review._id as Types.ObjectId | null };
+  }
+  const version = await resolveVersion(contractId, versionId);
+  return { versionId: version._id, reviewId: await findResultReviewId(version._id) };
 }
 
 export async function getCurrentVersionWithText(contractId: string) {

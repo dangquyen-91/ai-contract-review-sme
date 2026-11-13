@@ -21,7 +21,7 @@ import {
   getCurrentVersionWithText,
   setContractStatus,
   settledStatus,
-  resolveVersion,
+  resolveResultReview,
 } from '../contract/contractVersion.service';
 import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from '../contract/contractProfile.service';
@@ -610,20 +610,23 @@ export async function detectRisks(
   return attachCitations(sortFindings(savedFindings));
 }
 
-export async function listRiskFindings(orgId: string, contractId: string, versionId?: string) {
+export async function listRiskFindings(
+  orgId: string,
+  contractId: string,
+  versionId?: string,
+  reviewId?: string,
+) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await resolveVersion(contractId, versionId);
-  const findings = await RiskFindingModel.find({ contractVersionId: version._id }).populate(
-    'expectedClauseTypeId',
-  );
-  return attachCitations(sortFindings(findings));
+  const scope = await resolveResultReview(contractId, versionId, reviewId);
+  if (!scope.reviewId) return [];
+  return listReviewFindings(scope.reviewId.toString());
 }
 
-export async function listVersionFindings(contractVersionId: string) {
-  const findings = await RiskFindingModel.find({ contractVersionId }).populate('expectedClauseTypeId');
+export async function listReviewFindings(reviewId: string) {
+  const findings = await RiskFindingModel.find({ reviewId }).populate('expectedClauseTypeId');
   return attachCitations(sortFindings(findings));
 }
 

@@ -10,6 +10,7 @@ export const listClausesHandler = asyncHandler(async (req: Request, res: Respons
     user.orgId,
     req.params.id,
     req.query.versionId as string | undefined,
+    req.query.reviewId as string | undefined,
   );
   ok(res, clauses);
 });

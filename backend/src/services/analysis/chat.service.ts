@@ -3,7 +3,11 @@ import { ChatMessageModel } from '../../models/chatMessage.model';
 import { ClauseModel } from '../../models/clause.model';
 import { ContractModel } from '../../models/contract.model';
 import { RiskFindingModel } from '../../models/riskFinding.model';
-import { getCurrentVersionWithText, resolveVersion } from '../contract/contractVersion.service';
+import {
+  findResultReviewId,
+  getCurrentVersionWithText,
+  resolveVersion,
+} from '../contract/contractVersion.service';
 import { generateText, generateTextStream } from '../ai/llm.service';
 import { buildReviewContext, describeReviewContext, ReviewContext } from '../contract/contractProfile.service';
 import { createRedactor, placeholderInstruction } from '../ai/redaction.service';
@@ -52,9 +56,11 @@ async function buildContractContext(
     analysisFocus?: string | null;
   },
 ): Promise<string> {
-  const clauses = await ClauseModel.find({ contractVersionId: version._id }).sort({ index: 1 });
+  const reviewId = await findResultReviewId(version._id);
+  const clauses = await ClauseModel.find({ contractVersionId: version._id, reviewId }).sort({ index: 1 });
   const findings = await RiskFindingModel.find({
     contractVersionId: version._id,
+    reviewId,
     'verification.verdict': { $ne: 'rejected' },
   }).populate<{
     expectedClauseTypeId: { name: string } | null;

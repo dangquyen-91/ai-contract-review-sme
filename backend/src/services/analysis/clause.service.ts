@@ -10,7 +10,7 @@ import {
   getCurrentVersionWithText,
   setContractStatus,
   settledStatus,
-  resolveVersion,
+  resolveResultReview,
 } from '../contract/contractVersion.service';
 import { getTaxonomyByCodes, getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from '../contract/contractProfile.service';
@@ -122,13 +122,19 @@ export async function segmentClauses(
     .populate('clauseTypeId');
 }
 
-export async function listClauses(orgId: string, contractId: string, versionId?: string) {
+export async function listClauses(
+  orgId: string,
+  contractId: string,
+  versionId?: string,
+  reviewId?: string,
+) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await resolveVersion(contractId, versionId);
-  return ClauseModel.find({ contractVersionId: version._id })
+  const scope = await resolveResultReview(contractId, versionId, reviewId);
+  if (!scope.reviewId) return [];
+  return ClauseModel.find({ contractVersionId: scope.versionId, reviewId: scope.reviewId })
     .sort({ index: 1 })
     .populate('clauseTypeId');
 }

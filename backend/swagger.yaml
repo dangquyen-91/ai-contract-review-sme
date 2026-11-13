@@ -45,6 +45,12 @@ components:
       required: false
       schema: { type: string, pattern: '^[a-f\d]{24}$' }
       description: Read a specific version (see GET /contracts/{id}/versions). Defaults to the current (latest) version. A version of another contract returns 404.
+    ReviewIdQuery:
+      in: query
+      name: reviewId
+      required: false
+      schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      description: Read the clauses or findings stored for one review of this contract. Without it, the latest completed review of the selected version is used; an empty list means that version has no completed review.
   securitySchemes:
     bearerAuth:
       type: http
@@ -3132,6 +3138,7 @@ paths:
       summary: List clauses segmented/classified for a contract version
       parameters:
         - $ref: '#/components/parameters/VersionIdQuery'
+        - $ref: '#/components/parameters/ReviewIdQuery'
       responses:
         '200':
           description: OK
@@ -3161,6 +3168,7 @@ paths:
       summary: List risk findings detected for a contract version
       parameters:
         - $ref: '#/components/parameters/VersionIdQuery'
+        - $ref: '#/components/parameters/ReviewIdQuery'
       responses:
         '200':
           description: OK

@@ -3,7 +3,7 @@ import { RiskFindingModel } from '../../models/riskFinding.model';
 import { SENSITIVE_DATA_TYPES } from '../../models/contractProfile.model';
 import { AppError } from '../../errors/AppError';
 import { createRedactor } from '../ai/redaction.service';
-import { getCurrentVersionWithText } from './contractVersion.service';
+import { findResultReviewId, getCurrentVersionWithText } from './contractVersion.service';
 import { resolveContractProfile } from './contractProfile.service';
 
 type Finding = { severity: 'high' | 'medium' | 'low'; title: string; recommendations?: string[] };
@@ -96,7 +96,11 @@ export async function getShareSummary(
     throw AppError.conflict('Complete the analysis before creating a share summary.');
   }
   const findings = (
-    await RiskFindingModel.find({ contractVersionId: version._id, orgId }).select(
+    await RiskFindingModel.find({
+      contractVersionId: version._id,
+      reviewId: await findResultReviewId(version._id),
+      orgId,
+    }).select(
       'severity title recommendations verification',
     )
   ).filter((finding) => finding.verification?.verdict !== 'rejected');
