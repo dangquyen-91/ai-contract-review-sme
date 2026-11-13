@@ -1,6 +1,6 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
-import type { ContractShareSummary, ContractVersionSummary, ReviewBillingConfirmation } from "@/types/contracts";
+import type { ContractShareSummary, ContractVersionSummary, ReviewBillingConfirmation, VersionMatchResult } from "@/types/contracts";
 import { readContractStream } from "@/lib/api/contract-stream";
 import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyTerms, ContractListResult, ContractProfile, ContractReviewResult, ContractReviewRun, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
@@ -77,6 +77,22 @@ export const contractsApi = {
 
   listVersions(contractId: string, signal?: AbortSignal) {
     return apiRequest<ContractVersionSummary[]>({ url: `/contracts/${contractId}/versions`, signal });
+  },
+
+  versionMatch(contractId: string, signal?: AbortSignal) {
+    return apiRequest<VersionMatchResult>({ url: `/contracts/${contractId}/version-match`, signal });
+  },
+
+  attachVersion(targetContractId: string, sourceContractId: string, note?: string) {
+    return apiRequest<DashboardContract>({
+      url: `/contracts/${targetContractId}/versions/attach`,
+      method: "POST",
+      data: { sourceContractId, ...(note ? { note } : {}) },
+    });
+  },
+
+  detachVersion(contractId: string, versionId: string) {
+    return apiRequest<DashboardContract>({ url: `/contracts/${contractId}/versions/${versionId}/detach`, method: "POST", data: {} });
   },
 
   uploadVersion(contractId: string, formData: FormData) {

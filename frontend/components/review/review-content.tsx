@@ -22,7 +22,7 @@ type ReviewContentProps = DashboardWorkspaceContext & {
 
 export function ReviewContent({ data, access, workflow, onDismissUpload, onDeletedUpload }: ReviewContentProps) {
   const { file, title, uploadedContract, selectedContractId, stage, reviewing, loadingResult, selectFile, duplicateUpload, dismissDuplicateUpload, uploadDuplicateAnyway } = workflow;
-  const { startUploadedReview } = useOpenContractReview();
+  const { startUploadedReview, finishAttach } = useOpenContractReview();
   const scopeId = data.contractScopeId ?? data.organization.id;
   const busy = reviewing || stage === "reviewing";
   return (
@@ -57,6 +57,7 @@ export function ReviewContent({ data, access, workflow, onDismissUpload, onDelet
           onDismiss={onDismissUpload}
           onDeleted={onDeletedUpload ?? onDismissUpload}
           onReview={startUploadedReview}
+          onAttached={finishAttach}
         />
       )}
     </>

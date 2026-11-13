@@ -170,10 +170,11 @@ export function useReviewWorkflow({ access, workspaceReady = true, personal = fa
     setWorkflowComplete(true);
   }
 
-  async function reviewUploadedContract(focus: string, billing?: ReviewBillingConfirmation) {
-    if (!uploadedContract) return;
-    const contractId = uploadedContract.id;
-    setTitle(uploadedContract.title);
+  async function reviewUploadedContract(focus: string, billing?: ReviewBillingConfirmation, target?: { id: string; title: string }) {
+    const contract = target ?? uploadedContract;
+    if (!contract) return;
+    const contractId = contract.id;
+    setTitle(contract.title);
     setUploadedContract(null);
     setTimelineScrollRequest((request) => request + 1);
     try { await runReview(contractId, focus, false, billing); }

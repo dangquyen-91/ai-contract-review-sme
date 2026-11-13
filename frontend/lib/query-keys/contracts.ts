@@ -18,6 +18,7 @@ export const contractKeys = {
   findings: (id: string) => ["contracts", id, "findings"] as const,
   chat: (id: string) => ["contracts", id, "chat"] as const,
   versions: (id: string) => ["contracts", id, "versions"] as const,
+  versionMatch: (id: string) => ["contracts", id, "version-match"] as const,
 };
 
 export const contractMutationKeys = {

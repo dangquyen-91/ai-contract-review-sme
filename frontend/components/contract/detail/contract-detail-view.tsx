@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { FileWarning, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { KeyTerms } from "@/components/review/results/key-terms";
 import { ReviewWorkbench } from "@/components/review/results/review-results";
 import { ShareSummaryDialog } from "@/components/review/sharing/share-summary-dialog";
 import { ReviewProgressStrip } from "@/components/review/timeline/review-progress-strip";
+import { routes } from "@/config/routes";
 import { useContract, useContractKeyTerms, useContractVersions } from "@/hooks/contracts/use-contracts";
 import { useContractDetailTab } from "@/hooks/contracts/use-contract-detail-tab";
 import { activeRiskFindings } from "@/lib/review/verification-findings";
@@ -17,7 +19,7 @@ import { ContractDetailHeader } from "./contract-detail-header";
 import { ContractDetailTabs } from "./contract-detail-tabs";
 import { ContractOverviewTab } from "./contract-overview-tab";
 import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
-import type { ContractReviewResult, DashboardContract } from "@/types/contracts";
+import type { ContractReviewResult, ContractVersionSummary, DashboardContract } from "@/types/contracts";
 
 const deletableRoles = ["administrator", "owner", "manager", "staff", "user"];
 
@@ -32,29 +34,40 @@ function TermsPanel({ contractId }: { contractId: string }) {
   return <KeyTerms contractId={contractId} />;
 }
 
-function NotReviewed({ contract, canReview, busy, onStart }: {
+function NotReviewed({ contract, contractId, versions, canReview, busy, onStart }: {
   contract: DashboardContract;
+  contractId: string;
+  versions: ContractVersionSummary[];
   canReview: boolean;
   busy: boolean;
   onStart: () => void;
 }) {
   const unsupported = contract.status === "unsupported";
+  const current = versions.find((version) => version.isCurrent);
+  const previous = versions.find((version) => !version.isCurrent && version.latestReview?.status === "completed");
   return (
     <section className="grid justify-items-center gap-3 rounded-[14px] border border-dashed border-[#cfd9e8] bg-white px-6 py-14 text-center">
       <span className={`grid size-12 place-items-center rounded-xl ${unsupported ? "bg-amber-50 text-amber-700" : "bg-blue-50 text-blue-600"}`}>
         {unsupported ? <FileWarning aria-hidden="true" className="size-6" /> : <Sparkles aria-hidden="true" className="size-6" />}
       </span>
-      <h2 className="m-0 text-ui-card font-semibold">{unsupported ? "Chưa hỗ trợ rà soát tài liệu này" : "Hợp đồng chưa được rà soát"}</h2>
+      <h2 className="m-0 text-ui-card font-semibold">{unsupported ? "Chưa hỗ trợ rà soát tài liệu này" : previous && current ? `Phiên bản ${current.versionNumber} chưa được rà soát` : "Hợp đồng chưa được rà soát"}</h2>
       <p className="m-0 max-w-[480px] text-ui text-muted-foreground">
         {unsupported
           ? "Loại tài liệu này nằm ngoài các loại hợp đồng LawScan đang hỗ trợ. Tài liệu vẫn được lưu trong danh sách."
-          : "Cho AI tóm tắt, tìm điều khoản rủi ro và trích các thông tin chính của hợp đồng này."}
+          : previous
+            ? "Rà soát phiên bản mới để xem rủi ro và thay đổi so với bản trước. Kết quả của các phiên bản cũ vẫn được giữ."
+            : "Cho AI tóm tắt, tìm điều khoản rủi ro và trích các thông tin chính của hợp đồng này."}
       </p>
       {!unsupported && canReview && (
         <Button size="sm" disabled={busy} onClick={onStart}>
           <Sparkles aria-hidden="true" />
           Bắt đầu rà soát
         </Button>
+      )}
+      {!unsupported && previous?.latestReview && (
+        <Link href={routes.review(contractId, previous.latestReview.id)} className="text-ui-meta font-semibold text-primary hover:underline">
+          Xem kết quả phiên bản {previous.versionNumber}
+        </Link>
       )}
     </section>
   );
@@ -144,7 +157,7 @@ export function ContractDetailView({ contractId, context }: { contractId: string
       </div>
     );
   } else if (!loadingSaved && contract && contract.status !== "reviewed" && contract.status !== "processing") {
-    body = <NotReviewed contract={contract} canReview={access.review} busy={isReviewing} onStart={() => review(false)} />;
+    body = <NotReviewed contract={contract} contractId={contractId} versions={versions} canReview={access.review} busy={isReviewing} onStart={() => review(false)} />;
   } else if (contractQuery.isError) {
     body = (
       <div role="alert" className="flex flex-wrap items-center gap-3 rounded-[14px] border border-red-200 bg-red-50 p-5 text-ui text-red-900">

@@ -31,6 +31,7 @@ type AnalysisFocusDialogProps = {
   billing?: DashboardContract["reviewBilling"];
   paymentOption?: ReactNode;
   contractType?: string;
+  secondaryAction?: { label: string; onClick: () => void };
 };
 
 export function AnalysisFocusDialog({
@@ -48,6 +49,7 @@ export function AnalysisFocusDialog({
   billing,
   paymentOption,
   contractType,
+  secondaryAction,
 }: AnalysisFocusDialogProps) {
   const id = useId();
   const [focus, setFocus] = useState("");
@@ -109,10 +111,10 @@ export function AnalysisFocusDialog({
             <Button
               variant="outline"
               type="button"
-              onClick={onDismiss}
+              onClick={secondaryAction?.onClick ?? onDismiss}
               disabled={isReviewing}
             >
-              Để sau
+              {secondaryAction?.label ?? "Để sau"}
             </Button>
             {!hideFocus && (
               <Button

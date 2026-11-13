@@ -6,7 +6,7 @@ import { useOpenContractReview } from "@/hooks/review/use-open-contract-review";
 
 export function UploadedReviewDialog({ workspace }: { workspace: OrganizationWorkflow }) {
   const { uploadedContract, stage, skipUploadedReview, clearUploadedContract } = workspace;
-  const { startUploadedReview } = useOpenContractReview();
-  return (uploadedContract && <ContractConfirmationDialog orgId={workspace.data?.organization.id} role={workspace.data?.role} key={uploadedContract.id} contractId={uploadedContract.id} contractTitle={uploadedContract.title} isReviewing={stage === "reviewing"} onDismiss={skipUploadedReview} onDeleted={clearUploadedContract} onReview={startUploadedReview}/>);
+  const { startUploadedReview, finishAttach } = useOpenContractReview();
+  return (uploadedContract && <ContractConfirmationDialog orgId={workspace.data?.organization.id} role={workspace.data?.role} key={uploadedContract.id} contractId={uploadedContract.id} contractTitle={uploadedContract.title} isReviewing={stage === "reviewing"} onDismiss={skipUploadedReview} onDeleted={clearUploadedContract} onReview={startUploadedReview} onAttached={finishAttach}/>);
 }
 

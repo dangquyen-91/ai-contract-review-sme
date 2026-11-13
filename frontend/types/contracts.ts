@@ -109,6 +109,7 @@ export type ContractVersionSummary = {
   uploadedAt: string;
   extractionStatus: "pending" | "processing" | "completed" | "failed" | "unsupported";
   pageCount: number | null;
+  similarityToPrevious?: number | null;
   latestReview: {
     id: string;
     status: ContractReviewRun["status"];
@@ -118,6 +119,19 @@ export type ContractVersionSummary = {
     verificationStatus: "requested" | "in_progress" | "approved" | "returned" | null;
   } | null;
 };
+
+export type VersionMatch = {
+  contractId: string;
+  title: string;
+  similarity: number;
+  matchedVersionNumber: number;
+  currentVersionNumber: number;
+  nextVersionNumber: number;
+  sameType: boolean | null;
+  sameParties: boolean | null;
+};
+
+export type VersionMatchResult = { ready: boolean; eligible: boolean; match: VersionMatch | null };
 
 export type DuplicateFileMatch = {
   contractId: string;

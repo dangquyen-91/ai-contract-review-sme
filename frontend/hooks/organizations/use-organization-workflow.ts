@@ -11,6 +11,7 @@ import type { DashboardContractFilter } from "@/types/dashboard";
 import { organizationDashboardPath, organizationDashboardView, type OrganizationDashboardRole, type OrganizationDashboardView } from "@/lib/routing/organization-dashboard-route";
 import { useLoadContract } from "@/hooks/contracts/use-contracts";
 import { isReviewCancelled } from "@/lib/review/review-session";
+import { shouldAutoOpenReview } from "@/lib/review/auto-open-review";
 
 export type DashboardTab = OrganizationDashboardView;
 
@@ -58,7 +59,9 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
           ?? await loadContract(contractId);
         if (!cancelled) {
           initiated = true;
-          await openReview(contract, searchParams.get("rerun") === "1", searchParams.get("reviewMode") === "resume");
+          const rerun = searchParams.get("rerun") === "1";
+          const resume = searchParams.get("reviewMode") === "resume";
+          if (shouldAutoOpenReview(contract, rerun, resume)) await openReview(contract, rerun, resume);
         }
       } catch (requestError) {
         if (cancelled || isReviewCancelled(requestError)) return;

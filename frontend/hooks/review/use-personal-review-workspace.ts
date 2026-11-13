@@ -8,6 +8,7 @@ import { reviewErrorMessage } from "@/hooks/review/use-review-workflow";
 import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider";
 import { useLoadContract } from "@/hooks/contracts/use-contracts";
 import { isReviewCancelled } from "@/lib/review/review-session";
+import { shouldAutoOpenReview } from "@/lib/review/auto-open-review";
 
 export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) {
   const searchParams = useSearchParams();
@@ -37,7 +38,9 @@ export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) 
           ?? await loadContract(contractId);
         if (!cancelled) {
           initiated = true;
-          await openReview(contract, searchParams.get("rerun") === "1", searchParams.get("reviewMode") === "resume");
+          const rerun = searchParams.get("rerun") === "1";
+          const resume = searchParams.get("reviewMode") === "resume";
+          if (shouldAutoOpenReview(contract, rerun, resume)) await openReview(contract, rerun, resume);
         }
       } catch (requestError) {
         if (cancelled || isReviewCancelled(requestError)) return;

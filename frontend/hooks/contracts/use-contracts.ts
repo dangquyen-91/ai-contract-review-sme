@@ -255,6 +255,48 @@ export function useUploadContractVersionMutation() {
   });
 }
 
+export function useVersionMatch(contractId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: contractKeys.versionMatch(contractId),
+    queryFn: ({ signal }) => contractsApi.versionMatch(contractId, signal),
+    enabled: Boolean(contractId) && enabled,
+    refetchInterval: (query) => (query.state.data && !query.state.data.ready ? 2000 : false),
+  });
+}
+
+export function useAttachVersionMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<
+    DashboardContract,
+    ApiClientError,
+    { targetContractId: string; sourceContractId: string; note?: string }
+  >({
+    mutationFn: ({ targetContractId, sourceContractId, note }) =>
+      contractsApi.attachVersion(targetContractId, sourceContractId, note),
+    onSuccess: (_contract, { targetContractId, sourceContractId }) => {
+      queryClient.removeQueries({ queryKey: ["contracts", sourceContractId] });
+      return Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["contracts", targetContractId] }),
+        queryClient.invalidateQueries({ queryKey: contractKeys.lists }),
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+      ]);
+    },
+  });
+}
+
+export function useDetachVersionMutation() {
+  const queryClient = useQueryClient();
+  return useMutation<DashboardContract, ApiClientError, { contractId: string; versionId: string }>({
+    mutationFn: ({ contractId, versionId }) => contractsApi.detachVersion(contractId, versionId),
+    onSuccess: (_contract, { contractId }) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["contracts", contractId] }),
+        queryClient.invalidateQueries({ queryKey: contractKeys.lists }),
+        queryClient.invalidateQueries({ queryKey: dashboardKeys.all }),
+      ]),
+  });
+}
+
 export function useContractFile(
   contractId: string,
   version?: string,
