@@ -15,6 +15,7 @@ import {
   getPreviousReferenceFileHandler,
   getReferenceFileHandler,
   listLegalSourceCatalogHandler,
+  listLegalSourceHistoryHandler,
   listLegalSourcesHandler,
   previewContentReplacementHandler,
   previewLegalSourceHandler,
@@ -26,6 +27,7 @@ import {
 import {
   appendLegalSourcePartSchema,
   createLegalSourceSchema,
+  legalSourceHistoryQuerySchema,
   legalSourceIdParamSchema,
   legalSourcePartParamSchema,
   previewLegalSourceSchema,
@@ -58,6 +60,12 @@ router.post(
 );
 
 router.get('/:id', validate({ params: legalSourceIdParamSchema }), getLegalSourceHandler);
+
+router.get(
+  '/:id/history',
+  validate({ params: legalSourceIdParamSchema, query: legalSourceHistoryQuerySchema }),
+  listLegalSourceHistoryHandler,
+);
 
 router.patch(
   '/:id',

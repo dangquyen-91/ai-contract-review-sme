@@ -7,6 +7,7 @@ import {
   LEGAL_SOURCE_TYPES,
   LEGAL_TEXT_KINDS,
 } from '../models/legalSource.model';
+import { LEGAL_SOURCE_EVENT_ACTIONS } from '../models/legalSourceEvent.model';
 
 const expectedArticleCount = z.coerce.number().int().min(1).max(5000).optional();
 
@@ -187,6 +188,12 @@ export const legalSourceIdParamSchema = z.object({
   id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid legal source id'),
 });
 
+export const legalSourceHistoryQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  action: z.enum(LEGAL_SOURCE_EVENT_ACTIONS).optional(),
+});
+
 export const legalSourcePartParamSchema = legalSourceIdParamSchema.extend({
   partIndex: z.coerce.number().int().min(0).max(999),
 });
@@ -197,3 +204,4 @@ export type PreviewLegalSourceInput = z.infer<typeof previewLegalSourceSchema>;
 export type ReplaceLegalSourceContentInput = z.infer<typeof replaceLegalSourceContentSchema>;
 export type PreviewNewLegalSourceInput = z.infer<typeof previewNewLegalSourceSchema>;
 export type AppendLegalSourcePartInput = z.infer<typeof appendLegalSourcePartSchema>;
+export type LegalSourceHistoryQueryInput = z.infer<typeof legalSourceHistoryQuerySchema>;

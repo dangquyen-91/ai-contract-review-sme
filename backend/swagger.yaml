@@ -1631,6 +1631,16 @@ components:
           type: string
           description: Embedding model and dimensions the server uses now (GEMINI_EMBEDDING_MODEL@dimensions). Only chunks embedded with this model are used by vector search.
           example: gemini-embedding-001@768
+        createdBy:
+          description: In GET /kb/legal-sources/{id} an object with id, name and email (name/email null if the account was deleted); in the list only the user id. Absent on sources created before it was recorded.
+          oneOf:
+            - $ref: '#/components/schemas/LegalSourceActor'
+            - type: string
+        updatedBy:
+          description: Last user who changed the source's metadata or content; same shape as createdBy
+          oneOf:
+            - $ref: '#/components/schemas/LegalSourceActor'
+            - type: string
         outdatedEmbeddingCount:
           type: integer
           description: Chunks embedded with another model or dimension count. They are left out of vector search (text search still finds them) until POST /kb/legal-sources/{id}/resume re-embeds them.
@@ -1794,6 +1804,52 @@ components:
                   reference:
                     type: string
                     description: Words of the reference file at the same place
+
+    LegalSourceActor:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+
+    LegalSourceEvent:
+      type: object
+      description: One change to a legal source. Events are kept after the source is deleted.
+      properties:
+        _id:
+          type: string
+        action:
+          type: string
+          enum: [created, part_appended, updated, status_changed, ingestion_resumed, reparsed, content_replaced, deleted]
+          description: status_changed is an update whose changes include status (it may change other fields too)
+        code:
+          type: string
+        title:
+          type: string
+          description: Title of the source at the time of the event
+        actor:
+          $ref: '#/components/schemas/LegalSourceActor'
+        actorRole:
+          type: string
+        details:
+          type: object
+          description: |
+            created: fileName, fileHash, origin, textKind, documentNumber, chunkCount, crossCheck, warnings.
+            part_appended: partIndex, fileName, fileHash, chunkCount, skippedArticles, crossCheck.
+            updated / status_changed: changes = { field: { from, to } } with only the fields that really changed (dates as ISO strings; expectedArticleCount included).
+            ingestion_resumed: pendingChunks, previousStatus.
+            reparsed: parts, changes (unchanged, changed, added, removed, removedCitations), warnings.
+            content_replaced: fileName, fileHash, origin, crossCheck, previousFiles, changes, warnings.
+            deleted: chunkCount, documentNumber, files (fileName, fileHash of every stored file).
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
 
     LegalPartCrossCheck:
       type: object
@@ -5449,6 +5505,77 @@ paths:
                 $ref: '#/components/schemas/Error'
         '503':
           description: The background queue (Redis) is unavailable; the part was saved and ingestion is marked failed, so call resume later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/history:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [LegalKB]
+      summary: List who changed a legal source, when and what (newest first)
+      description: |
+        Manager only. Every create, append, metadata or status change, ingestion resume, reparse, content replacement and delete is recorded with the user and their role. A metadata update that changes nothing is not recorded. Reparse and content replacement events are written in the same transaction as the change. The history of a deleted source can still be read with its id.
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: action
+          schema:
+            type: string
+            enum: [created, part_appended, updated, status_changed, ingestion_resumed, reparsed, content_replaced, deleted]
+          description: e.g. status_changed to see only the legal status history
+      responses:
+        '200':
+          description: Events with page, limit, total and totalPages in meta
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LegalSourceEvent'
+                  meta:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No legal source and no history with this id
           content:
             application/json:
               schema:

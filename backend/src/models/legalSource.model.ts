@@ -153,6 +153,8 @@ const legalSourceSchema = new Schema(
     ingestion: { type: legalIngestionSchema },
     parts: { type: [legalSourcePartSchema], default: [] },
     previousParts: { type: [previousLegalSourcePartSchema], default: [] },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    updatedBy: { type: Schema.Types.ObjectId, ref: 'User' },
   },
   { timestamps: true },
 );

@@ -27,6 +27,7 @@ import {
   StoredReference,
   storeReferenceFile,
 } from './legalSource.service';
+import { LegalActor, recordLegalSourceEvent } from './legalSourceHistory.service';
 import {
   AnchorCheck,
   anchorWarnings,
@@ -301,9 +302,10 @@ interface ContentCommit {
   set: Record<string, unknown>;
   unset?: Record<string, ''>;
   push?: Record<string, unknown>;
+  history: { actor: LegalActor; action: 'reparsed' | 'content_replaced'; details: Record<string, unknown> };
 }
 
-async function commitContent({ source, content, set, unset = {}, push }: ContentCommit) {
+async function commitContent({ source, content, set, unset = {}, push, history }: ContentCommit) {
   const plan = await reconcileWithStored(source._id, content.drafts);
   const changes = await changesOf(plan);
   const totalChunks = content.drafts.length;
@@ -314,6 +316,7 @@ async function commitContent({ source, content, set, unset = {}, push }: Content
       {
         $set: {
           ...set,
+          updatedBy: history.actor.id,
           coverage: content.coverage,
           ...(source.documentNumber || !content.documentNumber ? {} : { documentNumber: content.documentNumber }),
           ...(source.ingestion
@@ -361,6 +364,25 @@ async function commitContent({ source, content, set, unset = {}, push }: Content
         { session },
       );
     }
+    await recordLegalSourceEvent(
+      {
+        source,
+        action: history.action,
+        actor: history.actor,
+        details: {
+          ...history.details,
+          changes: {
+            unchanged: changes.unchanged,
+            changed: changes.changed,
+            added: changes.added,
+            removed: changes.removed,
+            removedCitations: changes.removedCitations,
+          },
+          warnings: content.coverage.warnings.length,
+        },
+      },
+      session,
+    );
   });
 
   return changes;
@@ -382,7 +404,7 @@ async function finishContent(legalSourceId: Types.ObjectId, changes: Awaited<Ret
   return { ...(await getLegalSource(legalSourceId.toString())), changes };
 }
 
-export async function applyReparse(id: string, expectedArticleCount?: number) {
+export async function applyReparse(id: string, actor: LegalActor, expectedArticleCount?: number) {
   assertLlmConfigured();
   const source = await loadSource(id);
   const { content } = await analyzeStoredContent(source, expectedArticleCount);
@@ -393,7 +415,12 @@ export async function applyReparse(id: string, expectedArticleCount?: number) {
       ...partReadingOf(read.chunks, { ...read.analyzed, notes: read.notes }, read.skippedArticles),
     };
   });
-  const changes = await commitContent({ source, content, set: { parts } });
+  const changes = await commitContent({
+    source,
+    content,
+    set: { parts },
+    history: { actor, action: 'reparsed', details: { parts: parts.length } },
+  });
   return finishContent(source._id, changes);
 }
 
@@ -412,6 +439,7 @@ function provenanceUpdate(source: HydratedDocument<LegalSource>, input: ReplaceL
 
 export async function applyContentReplacement(
   id: string,
+  actor: LegalActor,
   file: LegalFile,
   input: ReplaceLegalSourceContentInput = {},
   referenceFile?: LegalFile,
@@ -459,6 +487,17 @@ export async function applyContentReplacement(
       push: source.parts.length
         ? { previousParts: { $each: source.parts.map((part) => ({ ...part.toObject(), replacedAt })) } }
         : undefined,
+      history: {
+        actor,
+        action: 'content_replaced',
+        details: {
+          fileName: file.name,
+          fileHash,
+          origin: input.origin ?? source.origin,
+          crossCheck: checks.crossCheck.result,
+          previousFiles: source.parts.map((part) => ({ fileName: part.fileName, fileHash: part.fileHash })),
+        },
+      },
     });
   } catch (err) {
     await discardLegalFiles([upload.stored, reference?.stored]);

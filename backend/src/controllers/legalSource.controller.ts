@@ -1,17 +1,21 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
-import { ok } from '../utils/ApiResponse';
+import { ok, paginated } from '../utils/ApiResponse';
+import { listLegalSourceHistory } from '../services/legal/legalSourceHistory.service';
 import { AppError } from '../errors/AppError';
 import * as legalSourceService from '../services/legal/legalSource.service';
 import * as legalSourceContentService from '../services/legal/legalSourceContent.service';
 import {
   AppendLegalSourcePartInput,
   CreateLegalSourceInput,
+  LegalSourceHistoryQueryInput,
   PreviewLegalSourceInput,
   PreviewNewLegalSourceInput,
   ReplaceLegalSourceContentInput,
   UpdateLegalSourceInput,
 } from '../validations/legalSource.validation';
+
+const actorOf = (req: Request) => ({ id: req.user!.sub, role: req.user!.role });
 
 const toLegalFile = (file: Express.Multer.File) => ({
   buffer: file.buffer,
@@ -43,6 +47,7 @@ export const createLegalSourceHandler = asyncHandler(async (req: Request, res: R
     input: req.body as CreateLegalSourceInput,
     file,
     referenceFile,
+    actor: actorOf(req),
   });
   accepted(res, source);
 });
@@ -51,6 +56,7 @@ export const appendLegalSourcePartHandler = asyncHandler(async (req: Request, re
   const { file, referenceFile } = uploadedFiles(req);
   const source = await legalSourceService.appendLegalSourcePart(
     req.params.id,
+    actorOf(req),
     file,
     req.body as AppendLegalSourcePartInput,
     referenceFile,
@@ -59,7 +65,7 @@ export const appendLegalSourcePartHandler = asyncHandler(async (req: Request, re
 });
 
 export const resumeLegalIngestionHandler = asyncHandler(async (req: Request, res: Response) => {
-  accepted(res, await legalSourceService.resumeLegalIngestion(req.params.id));
+  accepted(res, await legalSourceService.resumeLegalIngestion(req.params.id, actorOf(req)));
 });
 
 export const listLegalSourcesHandler = asyncHandler(async (_req: Request, res: Response) => {
@@ -95,7 +101,7 @@ export const previewContentReplacementHandler = asyncHandler(async (req: Request
 
 export const applyReparseHandler = asyncHandler(async (req: Request, res: Response) => {
   const { expectedArticleCount } = req.body as PreviewLegalSourceInput;
-  accepted(res, await legalSourceContentService.applyReparse(req.params.id, expectedArticleCount));
+  accepted(res, await legalSourceContentService.applyReparse(req.params.id, actorOf(req), expectedArticleCount));
 });
 
 export const replaceContentHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -104,6 +110,7 @@ export const replaceContentHandler = asyncHandler(async (req: Request, res: Resp
     res,
     await legalSourceContentService.applyContentReplacement(
       req.params.id,
+      actorOf(req),
       file,
       req.body as ReplaceLegalSourceContentInput,
       referenceFile,
@@ -127,11 +134,17 @@ export const getPreviousReferenceFileHandler = asyncHandler(async (req: Request,
   ok(res, await legalSourceService.getLegalSourcePartFile(req.params.id, Number(req.params.partIndex), true, true));
 });
 
+export const listLegalSourceHistoryHandler = asyncHandler(async (req: Request, res: Response) => {
+  const query = req.query as unknown as LegalSourceHistoryQueryInput;
+  const { items, total } = await listLegalSourceHistory(req.params.id, query);
+  paginated(res, items, { page: query.page, limit: query.limit, total });
+});
+
 export const updateLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
-  ok(res, await legalSourceService.updateLegalSource(req.params.id, req.body as UpdateLegalSourceInput));
+  ok(res, await legalSourceService.updateLegalSource(req.params.id, actorOf(req), req.body as UpdateLegalSourceInput));
 });
 
 export const deleteLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
-  await legalSourceService.deleteLegalSource(req.params.id);
+  await legalSourceService.deleteLegalSource(req.params.id, actorOf(req));
   res.status(204).send();
 });

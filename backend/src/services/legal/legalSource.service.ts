@@ -25,6 +25,7 @@ import {
 } from './legalSourceChecks';
 import type { LegalArticleText } from './legalDocumentParser.service';
 import type { ArticleDifference } from './legalCrossCheck';
+import { actorsById, fieldChanges, LegalActor, recordLegalSourceEvent } from './legalSourceHistory.service';
 import {
   AnalyzedLegalText,
   analyzeLegalText,
@@ -384,11 +385,12 @@ interface CreateLegalSourceParams {
   input: CreateLegalSourceInput;
   file: LegalFile;
   referenceFile?: LegalFile;
+  actor: LegalActor;
 }
 
 const duplicateCode = (code: string) => AppError.conflict(`A legal source with code "${code}" already exists`);
 
-export async function createLegalSource({ input, file, referenceFile }: CreateLegalSourceParams) {
+export async function createLegalSource({ input, file, referenceFile, actor }: CreateLegalSourceParams) {
   const { expectedArticleCount, documentNumber, referenceOrigin, acknowledgeDifferences, ...metadata } = input;
   assertLlmConfigured();
   assertOrigin(checkOrigin(metadata.origin, metadata.gazette));
@@ -420,6 +422,8 @@ export async function createLegalSource({ input, file, referenceFile }: CreateLe
     source = await LegalSourceModel.create({
       _id: legalSourceId,
       ...metadata,
+      createdBy: actor.id,
+      updatedBy: actor.id,
       documentNumber: documentNumber ?? analyzed.documentNumber,
       coverage: analyzed.coverage,
       ingestion: { status: 'queued', totalChunks: analyzed.chunks.length, embeddedChunks: 0 },
@@ -440,6 +444,21 @@ export async function createLegalSource({ input, file, referenceFile }: CreateLe
     await discardLegalFiles(storedFiles);
     throw err;
   }
+  await recordLegalSourceEvent({
+    source,
+    action: 'created',
+    actor,
+    details: {
+      fileName: file.name,
+      fileHash,
+      origin: metadata.origin,
+      textKind: metadata.textKind,
+      documentNumber: source.documentNumber,
+      chunkCount: analyzed.chunks.length,
+      crossCheck: crossCheck.result,
+      warnings: analyzed.coverage.warnings.length,
+    },
+  });
   return getLegalSource(source.id);
 }
 
@@ -467,6 +486,7 @@ async function coverageOfStoredChunks(
 
 export async function appendLegalSourcePart(
   id: string,
+  actor: LegalActor,
   file: LegalFile,
   { expectedArticleCount, referenceOrigin, acknowledgeDifferences }: AppendLegalSourcePartInput = {},
   referenceFile?: LegalFile,
@@ -539,6 +559,7 @@ export async function appendLegalSourcePart(
       {
         $set: {
           coverage,
+          updatedBy: actor.id,
           'ingestion.totalChunks': totalChunks,
           ...(source.documentNumber || !analyzed.documentNumber ? {} : { documentNumber: analyzed.documentNumber }),
           ...(source.ingestion ? {} : { 'ingestion.embeddedChunks': totalChunks - fresh.length }),
@@ -551,11 +572,24 @@ export async function appendLegalSourcePart(
     await discardLegalFiles(storedFiles);
     throw err;
   }
+  await recordLegalSourceEvent({
+    source,
+    action: 'part_appended',
+    actor,
+    details: {
+      partIndex: source.parts.length,
+      fileName: file.name,
+      fileHash,
+      chunkCount: fresh.length,
+      skippedArticles: skippedArticles.length,
+      crossCheck: crossCheck.result,
+    },
+  });
   await startIngestion(source.id);
   return getLegalSource(source.id);
 }
 
-export async function resumeLegalIngestion(id: string) {
+export async function resumeLegalIngestion(id: string, actor: LegalActor) {
   assertLlmConfigured();
   const source = await LegalSourceModel.findById(id);
   if (!source) throw AppError.notFound('Legal source not found');
@@ -588,6 +622,12 @@ export async function resumeLegalIngestion(id: string) {
   }
   logger.info('Resuming legal source ingestion', { legalSourceId: id, pendingChunks: pending, previousStatus: status });
   await startIngestion(source.id);
+  await recordLegalSourceEvent({
+    source,
+    action: 'ingestion_resumed',
+    actor,
+    details: { pendingChunks: pending, previousStatus: status ?? null },
+  });
   return getLegalSource(source.id);
 }
 
@@ -628,11 +668,18 @@ export async function getLegalSource(id: string) {
   if (!source) {
     throw AppError.notFound('Legal source not found');
   }
-  const [chunkCount, outdatedEmbeddingCount] = await Promise.all([
+  const [chunkCount, outdatedEmbeddingCount, actors] = await Promise.all([
     LegalKnowledgeChunkModel.countDocuments({ legalSourceId: source._id }),
     LegalKnowledgeChunkModel.countDocuments({ legalSourceId: source._id, ...OUTDATED_EMBEDDING }),
+    actorsById([source.createdBy, source.updatedBy]),
   ]);
-  return presentLegalSource(source, { chunkCount, outdatedEmbeddingCount });
+  const actorOf = (userId: unknown) =>
+    userId ? (actors.get(String(userId)) ?? { id: String(userId), name: null, email: null }) : null;
+  return {
+    ...presentLegalSource(source, { chunkCount, outdatedEmbeddingCount }),
+    createdBy: actorOf(source.createdBy),
+    updatedBy: actorOf(source.updatedBy),
+  };
 }
 
 export async function getLegalSourcePartFile(id: string, partIndex: number, previous = false, reference = false) {
@@ -690,7 +737,7 @@ export async function listLegalSourceCatalog() {
   });
 }
 
-export async function updateLegalSource(id: string, input: UpdateLegalSourceInput) {
+export async function updateLegalSource(id: string, actor: LegalActor, input: UpdateLegalSourceInput) {
   const source = await LegalSourceModel.findById(id);
   if (!source) throw AppError.notFound('Legal source not found');
   const { expectedArticleCount, ...fields } = input;
@@ -713,6 +760,15 @@ export async function updateLegalSource(id: string, input: UpdateLegalSourceInpu
     if (value === null) unset[key] = '';
     else if (value !== undefined) set[key] = value;
   }
+  const changes = fieldChanges(
+    { ...source.toObject(), expectedArticleCount: source.coverage?.expectedArticleCount },
+    {
+      ...set,
+      ...Object.fromEntries(Object.keys(unset).map((key) => [key, null])),
+      ...(expectedArticleCount !== undefined ? { expectedArticleCount } : {}),
+    },
+  );
+  if (Object.keys(changes).length > 0) set.updatedBy = actor.id;
   if (expectedArticleCount !== undefined) {
     set.coverage = await coverageOfStoredChunks(
       source._id,
@@ -730,20 +786,36 @@ export async function updateLegalSource(id: string, input: UpdateLegalSourceInpu
     },
     { runValidators: true },
   );
-  if (fields.status && fields.status !== source.status) {
-    logger.info('Legal source status changed', { legalSourceId: id, from: source.status, to: fields.status });
+  if (Object.keys(changes).length > 0) {
+    await recordLegalSourceEvent({
+      source: { _id: source._id, code: source.code, title: (fields.title as string | undefined) ?? source.title },
+      action: changes.status ? 'status_changed' : 'updated',
+      actor,
+      details: { changes },
+    });
   }
   return getLegalSource(source.id);
 }
 
-export async function deleteLegalSource(id: string) {
+export async function deleteLegalSource(id: string, actor: LegalActor) {
   const source = await LegalSourceModel.findById(id);
   if (!source) {
     throw AppError.notFound('Legal source not found');
   }
+  const chunkCount = await LegalKnowledgeChunkModel.countDocuments({ legalSourceId: source._id });
   await LegalSourceModel.deleteOne({ _id: id });
   await LegalKnowledgeChunkModel.deleteMany({ legalSourceId: id });
   await discardLegalFiles(
     [...source.parts, ...source.previousParts].flatMap((part) => [storedFileOf(part), storedReferenceOf(part.crossCheck)]),
   );
+  await recordLegalSourceEvent({
+    source,
+    action: 'deleted',
+    actor,
+    details: {
+      chunkCount,
+      documentNumber: source.documentNumber,
+      files: [...source.parts, ...source.previousParts].map((part) => ({ fileName: part.fileName, fileHash: part.fileHash })),
+    },
+  });
 }
