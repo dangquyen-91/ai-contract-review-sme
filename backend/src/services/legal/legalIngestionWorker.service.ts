@@ -168,7 +168,7 @@ async function runIngestion(job: Job<LegalIngestionJobData>): Promise<void> {
     await LegalKnowledgeChunkModel.bulkWrite(
       pending.map((chunk, i) => ({
         updateOne: {
-          filter: { _id: chunk._id, ...NEEDS_EMBEDDING },
+          filter: { _id: chunk._id, chunkText: chunk.chunkText, ...NEEDS_EMBEDDING },
           update: { $set: { embedding: vectors[i], ...CURRENT_EMBEDDING } },
         },
       })),

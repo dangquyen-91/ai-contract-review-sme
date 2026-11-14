@@ -7,6 +7,7 @@ import * as legalSourceContentService from '../services/legal/legalSourceContent
 import {
   CreateLegalSourceInput,
   PreviewLegalSourceInput,
+  ReplaceLegalSourceContentInput,
   UpdateLegalSourceInput,
 } from '../validations/legalSource.validation';
 
@@ -70,8 +71,28 @@ export const previewContentReplacementHandler = asyncHandler(async (req: Request
   );
 });
 
+export const applyReparseHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { expectedArticleCount } = req.body as PreviewLegalSourceInput;
+  accepted(res, await legalSourceContentService.applyReparse(req.params.id, expectedArticleCount));
+});
+
+export const replaceContentHandler = asyncHandler(async (req: Request, res: Response) => {
+  accepted(
+    res,
+    await legalSourceContentService.applyContentReplacement(
+      req.params.id,
+      uploadedFile(req),
+      req.body as ReplaceLegalSourceContentInput,
+    ),
+  );
+});
+
 export const getLegalSourcePartFileHandler = asyncHandler(async (req: Request, res: Response) => {
   ok(res, await legalSourceService.getLegalSourcePartFile(req.params.id, Number(req.params.partIndex)));
+});
+
+export const getPreviousPartFileHandler = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, await legalSourceService.getLegalSourcePartFile(req.params.id, Number(req.params.partIndex), true));
 });
 
 export const updateLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {

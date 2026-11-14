@@ -124,20 +124,33 @@ export async function discardLegalFiles(files: (StoredFile | undefined)[]) {
   );
 }
 
-export function partOf(
-  file: LegalFile,
-  chunks: LegalChunkDraft[],
-  { stored, fileHash }: StoredLegalFile,
-  { cleanup, extraction }: { cleanup: LegalTextCleanup; extraction: LegalExtractionQuality },
-  skippedArticles: string[] = [],
-) {
+export interface PartReading {
+  cleanup: LegalTextCleanup;
+  extraction: LegalExtractionQuality;
+}
+
+export function partReadingOf(chunks: LegalChunkDraft[], { cleanup, extraction }: PartReading, skippedArticles: string[]) {
   const numbers = chunks.flatMap((c) => (c.articleNumber === undefined ? [] : [c.articleNumber]));
   return {
-    fileName: file.name,
     articleFrom: numbers.length ? Math.min(...numbers) : undefined,
     articleTo: numbers.length ? Math.max(...numbers) : undefined,
     chunkCount: chunks.length,
     skippedArticles,
+    cleanup,
+    extraction,
+  };
+}
+
+export function partOf(
+  file: LegalFile,
+  chunks: LegalChunkDraft[],
+  { stored, fileHash }: StoredLegalFile,
+  reading: PartReading,
+  skippedArticles: string[] = [],
+) {
+  return {
+    fileName: file.name,
+    ...partReadingOf(chunks, reading, skippedArticles),
     uploadedAt: new Date(),
     fileKey: stored.key,
     fileResourceType: stored.resourceType,
@@ -146,8 +159,6 @@ export function partOf(
     fileHash,
     mimeType: file.mimeType,
     fileSize: file.buffer.length,
-    cleanup,
-    extraction,
   };
 }
 
@@ -155,8 +166,8 @@ export const partNotes = (
   parts: { cleanup?: StoredLegalTextCleanup | null; extraction?: StoredLegalExtractionQuality | null }[],
 ) => parts.flatMap((part) => [...extractionWarnings(part.extraction), ...cleanupWarnings(part.cleanup)]);
 
-function presentParts(parts: LegalSourcePart[]) {
-  return parts.map((part) => ({
+function presentPart(part: LegalSourcePart) {
+  return {
     fileName: part.fileName,
     articleFrom: part.articleFrom,
     articleTo: part.articleTo,
@@ -169,7 +180,7 @@ function presentParts(parts: LegalSourcePart[]) {
     fileHash: part.fileHash,
     mimeType: part.mimeType,
     fileSize: part.fileSize,
-  }));
+  };
 }
 
 interface ChunkCounts {
@@ -180,7 +191,11 @@ interface ChunkCounts {
 function presentLegalSource(source: HydratedDocument<LegalSource>, { chunkCount, outdatedEmbeddingCount }: ChunkCounts) {
   return {
     ...source.toObject(),
-    parts: presentParts(source.parts),
+    parts: source.parts.map(presentPart),
+    previousParts: source.previousParts.map((part) => ({
+      ...presentPart(part),
+      replacedAt: part.get('replacedAt') as Date | undefined,
+    })),
     chunkCount,
     embeddingModel: LEGAL_EMBEDDING_MODEL,
     outdatedEmbeddingCount,
@@ -414,10 +429,10 @@ export async function getLegalSource(id: string) {
   return presentLegalSource(source, { chunkCount, outdatedEmbeddingCount });
 }
 
-export async function getLegalSourcePartFile(id: string, partIndex: number) {
-  const source = await LegalSourceModel.findById(id).select('parts');
+export async function getLegalSourcePartFile(id: string, partIndex: number, previous = false) {
+  const source = await LegalSourceModel.findById(id).select('parts previousParts');
   if (!source) throw AppError.notFound('Legal source not found');
-  const part = source.parts[partIndex];
+  const part = previous ? source.previousParts[partIndex] : source.parts[partIndex];
   if (!part) throw AppError.notFound('Legal source part not found');
   const stored = storedFileOf(part);
   if (!stored) {
@@ -510,5 +525,5 @@ export async function deleteLegalSource(id: string) {
   }
   await LegalSourceModel.deleteOne({ _id: id });
   await LegalKnowledgeChunkModel.deleteMany({ legalSourceId: id });
-  await discardLegalFiles(source.parts.map((part) => storedFileOf(part)));
+  await discardLegalFiles([...source.parts, ...source.previousParts].map((part) => storedFileOf(part)));
 }

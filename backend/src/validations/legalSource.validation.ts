@@ -151,6 +151,13 @@ export const updateLegalSourceSchema = z
 
 export const previewLegalSourceSchema = z.object({ expectedArticleCount });
 
+export const replaceLegalSourceContentSchema = z.object({
+  expectedArticleCount,
+  origin: z.preprocess(parseFormJson, originSchema.optional()),
+  textKind: legalSourceFields.textKind.optional(),
+  consolidatedThrough: z.preprocess(parseFormList, consolidatedThroughSchema.optional()),
+});
+
 export const legalSourceIdParamSchema = z.object({
   id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid legal source id'),
 });
@@ -162,3 +169,4 @@ export const legalSourcePartParamSchema = legalSourceIdParamSchema.extend({
 export type CreateLegalSourceInput = z.infer<typeof createLegalSourceSchema>;
 export type UpdateLegalSourceInput = z.infer<typeof updateLegalSourceSchema>;
 export type PreviewLegalSourceInput = z.infer<typeof previewLegalSourceSchema>;
+export type ReplaceLegalSourceContentInput = z.infer<typeof replaceLegalSourceContentSchema>;

@@ -1,13 +1,29 @@
-import { HydratedDocument, Types } from 'mongoose';
+import mongoose, { HydratedDocument, Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { LegalSource, LegalSourceModel } from '../../models/legalSource.model';
 import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model';
 import { RiskCitationModel } from '../../models/riskCitation.model';
+import {
+  CONSOLIDATED_ONLY_MESSAGE,
+  ReplaceLegalSourceContentInput,
+} from '../../validations/legalSource.validation';
 import { fileHashOf } from '../contract/contractVersion.service';
 import { downloadContractFile, storedFileOf } from '../contract/storage.service';
 import { buildLegalCoverage, LegalChunkDraft } from './legalDocumentParser.service';
-import { AnalyzedLegalText } from './legalKnowledgeIngest.service';
-import { analyzeLegalFile, assertFileNotStored, LegalFile, partNotes } from './legalSource.service';
+import { AnalyzedLegalText, NEEDS_EMBEDDING } from './legalKnowledgeIngest.service';
+import {
+  analyzeLegalFile,
+  assertFileNotStored,
+  assertLlmConfigured,
+  discardLegalFiles,
+  getLegalSource,
+  LegalFile,
+  partNotes,
+  partOf,
+  partReadingOf,
+  startIngestion,
+  storeLegalFile,
+} from './legalSource.service';
 import {
   ChunkReconciliation,
   ExistingLegalChunk,
@@ -169,4 +185,172 @@ export async function previewContentReplacement(id: string, file: LegalFile, exp
   const source = await loadSource(id);
   await assertReplacementFile(source, fileHashOf(file.buffer));
   return previewOf(source, await analyzeContent([file], expectedCountOf(source, expectedArticleCount)));
+}
+
+const ORDER_OFFSET = 1_000_000;
+const CHUNK_FIELDS = [
+  'chunkText',
+  'articleRef',
+  'articleNumber',
+  'articleKey',
+  'articleTitle',
+  'clauseFrom',
+  'clauseTo',
+  'hierarchy',
+] as const;
+
+function chunkUpdate(draft: LegalChunkDraft, reembed: boolean) {
+  const set: Record<string, unknown> = { order: draft.order };
+  const unset: Record<string, ''> = {};
+  for (const field of CHUNK_FIELDS) {
+    const value = draft[field];
+    if (value === undefined) unset[field] = '';
+    else set[field] = value;
+  }
+  if (reembed) {
+    unset.embedding = '';
+    unset.embeddingModel = '';
+  }
+  return { $set: set, ...(Object.keys(unset).length ? { $unset: unset } : {}) };
+}
+
+interface ContentCommit {
+  source: HydratedDocument<LegalSource>;
+  content: AnalyzedContent;
+  set: Record<string, unknown>;
+  unset?: Record<string, ''>;
+  push?: Record<string, unknown>;
+}
+
+async function commitContent({ source, content, set, unset = {}, push }: ContentCommit) {
+  const plan = await reconcileWithStored(source._id, content.drafts);
+  const changes = await changesOf(plan);
+  const totalChunks = content.drafts.length;
+
+  await mongoose.connection.transaction(async (session) => {
+    const updated = await LegalSourceModel.updateOne(
+      { _id: source._id, updatedAt: source.updatedAt },
+      {
+        $set: {
+          ...set,
+          coverage: content.coverage,
+          ...(source.documentNumber || !content.documentNumber ? {} : { documentNumber: content.documentNumber }),
+          ...(source.ingestion
+            ? { 'ingestion.totalChunks': totalChunks }
+            : { ingestion: { status: 'queued', totalChunks, embeddedChunks: 0 } }),
+        },
+        ...(Object.keys(unset).length ? { $unset: unset } : {}),
+        ...(push ? { $push: push } : {}),
+      },
+      { session },
+    );
+    if (!updated.matchedCount) {
+      throw AppError.conflict(
+        'The legal source changed while it was being read again; preview it again and retry',
+        'LEGAL_SOURCE_CHANGED',
+      );
+    }
+
+    await LegalKnowledgeChunkModel.updateMany(
+      { legalSourceId: source._id },
+      [{ $set: { order: { $add: ['$order', ORDER_OFFSET] } } }],
+      { session },
+    );
+    if (plan.removed.length > 0) {
+      await LegalKnowledgeChunkModel.deleteMany(
+        { _id: { $in: plan.removed.map((chunk) => new Types.ObjectId(chunk.id)) } },
+        { session },
+      );
+    }
+    const updates = [
+      ...plan.unchanged.map((pair) => ({ pair, reembed: false })),
+      ...plan.changed.map((pair) => ({ pair, reembed: true })),
+    ];
+    if (updates.length > 0) {
+      await LegalKnowledgeChunkModel.bulkWrite(
+        updates.map(({ pair, reembed }) => ({
+          updateOne: { filter: { _id: pair.id }, update: chunkUpdate(pair.draft, reembed) },
+        })),
+        { session },
+      );
+    }
+    if (plan.added.length > 0) {
+      await LegalKnowledgeChunkModel.insertMany(
+        plan.added.map((draft) => ({ ...draft, legalSourceId: source._id })),
+        { session },
+      );
+    }
+  });
+
+  return changes;
+}
+
+async function finishContent(legalSourceId: Types.ObjectId, changes: Awaited<ReturnType<typeof changesOf>>) {
+  const [pending, total] = await Promise.all([
+    LegalKnowledgeChunkModel.countDocuments({ legalSourceId, ...NEEDS_EMBEDDING }),
+    LegalKnowledgeChunkModel.countDocuments({ legalSourceId }),
+  ]);
+  if (pending > 0) {
+    await startIngestion(legalSourceId.toString());
+  } else {
+    await LegalSourceModel.updateOne(
+      { _id: legalSourceId },
+      { $set: { 'ingestion.totalChunks': total, 'ingestion.embeddedChunks': total } },
+    );
+  }
+  return { ...(await getLegalSource(legalSourceId.toString())), changes };
+}
+
+export async function applyReparse(id: string, expectedArticleCount?: number) {
+  assertLlmConfigured();
+  const source = await loadSource(id);
+  const files = await loadStoredPartFiles(source);
+  const content = await analyzeContent(files, expectedCountOf(source, expectedArticleCount));
+  const parts = source.parts.map((part, index) => {
+    const read = content.parts[index];
+    return { ...part.toObject(), ...partReadingOf(read.chunks, read.analyzed, read.skippedArticles) };
+  });
+  const changes = await commitContent({ source, content, set: { parts } });
+  return finishContent(source._id, changes);
+}
+
+function provenanceUpdate(source: HydratedDocument<LegalSource>, input: ReplaceLegalSourceContentInput) {
+  const textKind = input.textKind ?? source.textKind;
+  const consolidatedThrough = input.consolidatedThrough ?? source.consolidatedThrough;
+  if (consolidatedThrough?.length && textKind !== 'consolidated') {
+    throw AppError.badRequest(CONSOLIDATED_ONLY_MESSAGE);
+  }
+  return {
+    ...(input.origin ? { origin: input.origin } : {}),
+    ...(input.textKind ? { textKind: input.textKind } : {}),
+    ...(input.consolidatedThrough ? { consolidatedThrough: input.consolidatedThrough } : {}),
+  };
+}
+
+export async function applyContentReplacement(id: string, file: LegalFile, input: ReplaceLegalSourceContentInput) {
+  assertLlmConfigured();
+  const source = await loadSource(id);
+  const provenance = provenanceUpdate(source, input);
+  const fileHash = fileHashOf(file.buffer);
+  await assertReplacementFile(source, fileHash);
+  const content = await analyzeContent([file], expectedCountOf(source, input.expectedArticleCount));
+  const [read] = content.parts;
+
+  const upload = await storeLegalFile(source._id, file, fileHash);
+  const replacedAt = new Date();
+  let changes: Awaited<ReturnType<typeof changesOf>>;
+  try {
+    changes = await commitContent({
+      source,
+      content,
+      set: { ...provenance, parts: [partOf(file, read.chunks, upload, read.analyzed)] },
+      push: source.parts.length
+        ? { previousParts: { $each: source.parts.map((part) => ({ ...part.toObject(), replacedAt })) } }
+        : undefined,
+    });
+  } catch (err) {
+    await discardLegalFiles([upload.stored]);
+    throw err;
+  }
+  return finishContent(source._id, changes);
 }

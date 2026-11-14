@@ -1599,6 +1599,24 @@ components:
               fileSize:
                 type: integer
                 description: Bytes
+        previousParts:
+          type: array
+          description: Parts replaced by PUT /kb/legal-sources/{id}/content, oldest first, with the same fields as parts plus replacedAt. Their files are kept so earlier reviews can be traced back to the text they cited; download one with GET /kb/legal-sources/{id}/previous-parts/{partIndex}/file. They are deleted only with the source.
+          items:
+            type: object
+            properties:
+              fileName:
+                type: string
+              fileHash:
+                type: string
+              hasFile:
+                type: boolean
+              uploadedAt:
+                type: string
+                format: date-time
+              replacedAt:
+                type: string
+                format: date-time
         chunkCount:
           type: integer
           description: Number of LegalKnowledgeChunk documents produced from this source, embedded or not
@@ -1661,6 +1679,16 @@ components:
         finishedAt:
           type: string
           format: date-time
+
+    LegalContentApplied:
+      allOf:
+        - $ref: '#/components/schemas/LegalSource'
+        - type: object
+          properties:
+            changes:
+              description: What was applied, in the same shape as the preview
+              allOf:
+                - $ref: '#/components/schemas/LegalContentPreview/properties/changes'
 
     LegalContentPreview:
       type: object
@@ -5327,6 +5355,192 @@ paths:
                 $ref: '#/components/schemas/Error'
         '409':
           description: Code SAME_LEGAL_FILE when the file is the stored file of this single-part source (use reparse), or DUPLICATE_LEGAL_FILE when another legal source already stores it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/reparse:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [LegalKB]
+      summary: Read the stored original files again with the current parser and apply the result
+      description: |
+        Manager only. Rate-limited. Same reading and matching as POST /kb/legal-sources/{id}/reparse/preview, then applied in one transaction: unchanged chunks keep their ID and embedding, changed chunks keep their ID and lose their embedding, new chunks are added and removed chunks are deleted. Parts keep their files; their chunk counts, cleanup and extraction are refreshed.
+        Chunks that need an embedding are queued for the background worker (ingestion.status queued). Citations of earlier reviews keep the excerpt they stored, so their wording does not change.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+      responses:
+        '202':
+          description: Applied; changed and new chunks are embedded in the background
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalContentApplied'
+        '400':
+          description: LLM not configured, a stored file can no longer be read, no usable text, or LEGAL_OCR_LIMIT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: LEGAL_FILE_NOT_STORED, LEGAL_FILE_CHANGED, or LEGAL_SOURCE_CHANGED when the source was changed by another request meanwhile (nothing was applied)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background queue (Redis) is unavailable; the change was applied and ingestion is marked failed, so call resume later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/content:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    put:
+      tags: [LegalKB]
+      summary: Replace the whole text of a legal source with one new file and apply the result
+      description: |
+        Manager only. Rate-limited. Same reading and matching as POST /kb/legal-sources/{id}/content/preview, then applied in one transaction like a reparse. The new file becomes the only part; the old parts move to previousParts with replacedAt and keep their files.
+        Send origin (and textKind / consolidatedThrough) when the new file comes from a different place; fields that are not sent keep their stored value. consolidatedThrough is only allowed while textKind (sent or stored) is consolidated.
+        If the transaction fails, the uploaded file is removed again.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: pdf, docx, doc, or txt
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                origin:
+                  description: Nested form fields (origin[publisher], origin[url], origin[retrievedAt]) or one field holding a JSON object
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                textKind:
+                  type: string
+                  enum: [original, consolidated]
+                consolidatedThrough:
+                  type: array
+                  maxItems: 30
+                  items:
+                    type: string
+                    maxLength: 60
+      responses:
+        '202':
+          description: Applied; changed and new chunks are embedded in the background
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalContentApplied'
+        '400':
+          description: Validation error, LLM not configured, unreadable file, no usable text, or LEGAL_OCR_LIMIT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: SAME_LEGAL_FILE, DUPLICATE_LEGAL_FILE, or LEGAL_SOURCE_CHANGED (nothing was applied)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: File storage (Cloudinary) is not configured; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background queue (Redis) is unavailable; the change was applied and ingestion is marked failed, so call resume later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/previous-parts/{partIndex}/file:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: partIndex
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 999
+        description: Position in previousParts[]
+    get:
+      tags: [LegalKB]
+      summary: Get a short-lived download link to the file of a replaced part
+      description: Manager only. Same response as GET /kb/legal-sources/{id}/parts/{partIndex}/file. The link expires after 5 minutes.
+      responses:
+        '200':
+          description: Signed link (url, expiresAt, fileName, mimeType, fileHash)
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Source or part not found, or LEGAL_FILE_NOT_STORED when the replaced part had no stored file
           content:
             application/json:
               schema:

@@ -101,6 +101,9 @@ const legalSourcePartSchema = new Schema(
   { _id: false },
 );
 
+const previousLegalSourcePartSchema = legalSourcePartSchema.clone();
+previousLegalSourcePartSchema.add({ replacedAt: { type: Date, required: true } });
+
 const legalSourceSchema = new Schema(
   {
     code: { type: String, required: true, unique: true, trim: true, lowercase: true },
@@ -123,6 +126,7 @@ const legalSourceSchema = new Schema(
     coverage: { type: legalCoverageSchema },
     ingestion: { type: legalIngestionSchema },
     parts: { type: [legalSourcePartSchema], default: [] },
+    previousParts: { type: [previousLegalSourcePartSchema], default: [] },
   },
   { timestamps: true },
 );

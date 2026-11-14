@@ -6,15 +6,18 @@ import { validate } from '../middlewares/validate.middleware';
 import { legalDocUpload } from '../middlewares/upload.middleware';
 import {
   appendLegalSourcePartHandler,
+  applyReparseHandler,
   createLegalSourceHandler,
   deleteLegalSourceHandler,
   getLegalSourceHandler,
   getLegalSourcePartFileHandler,
+  getPreviousPartFileHandler,
   listLegalSourceCatalogHandler,
   listLegalSourcesHandler,
   previewContentReplacementHandler,
   previewLegalSourceHandler,
   previewReparseHandler,
+  replaceContentHandler,
   resumeLegalIngestionHandler,
   updateLegalSourceHandler,
 } from '../controllers/legalSource.controller';
@@ -23,6 +26,7 @@ import {
   legalSourceIdParamSchema,
   legalSourcePartParamSchema,
   previewLegalSourceSchema,
+  replaceLegalSourceContentSchema,
   updateLegalSourceSchema,
 } from '../validations/legalSource.validation';
 
@@ -78,10 +82,31 @@ router.post(
   previewContentReplacementHandler,
 );
 
+router.post(
+  '/:id/reparse',
+  aiLimiter,
+  validate({ params: legalSourceIdParamSchema, body: previewLegalSourceSchema }),
+  applyReparseHandler,
+);
+
+router.put(
+  '/:id/content',
+  aiLimiter,
+  legalDocUpload.single('file'),
+  validate({ params: legalSourceIdParamSchema, body: replaceLegalSourceContentSchema }),
+  replaceContentHandler,
+);
+
 router.get(
   '/:id/parts/:partIndex/file',
   validate({ params: legalSourcePartParamSchema }),
   getLegalSourcePartFileHandler,
+);
+
+router.get(
+  '/:id/previous-parts/:partIndex/file',
+  validate({ params: legalSourcePartParamSchema }),
+  getPreviousPartFileHandler,
 );
 
 router.post(
