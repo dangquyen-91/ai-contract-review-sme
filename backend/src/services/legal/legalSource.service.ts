@@ -42,13 +42,13 @@ import {
 
 const PREVIEW_TEXT_CHARS = 120;
 
-interface LegalFile {
+export interface LegalFile {
   buffer: Buffer;
   mimeType: string;
   name?: string;
 }
 
-async function analyzeLegalFile(file: LegalFile, expectedArticleCount?: number): Promise<AnalyzedLegalText> {
+export async function analyzeLegalFile(file: LegalFile, expectedArticleCount?: number): Promise<AnalyzedLegalText> {
   const extracted = await extractLegalText(file.buffer, file.mimeType);
   if (!extracted.text.trim()) {
     throw AppError.badRequest('No text could be extracted from the uploaded file');
@@ -60,7 +60,7 @@ async function analyzeLegalFile(file: LegalFile, expectedArticleCount?: number):
   return analyzed;
 }
 
-function assertLlmConfigured() {
+export function assertLlmConfigured() {
   if (!isLlmConfigured) throw AppError.badRequest('LLM is not configured. Set GEMINI_API_KEY.');
 }
 
@@ -82,15 +82,18 @@ export async function previewLegalSource(file: LegalFile, expectedArticleCount?:
   };
 }
 
-interface StoredLegalFile {
+export interface StoredLegalFile {
   stored: StoredFile;
   fileHash: string;
 }
 
 const legalSourceFolder = (legalSourceId: Types.ObjectId) => `legal-sources/${legalSourceId.toString()}`;
 
-async function assertFileNotStored(fileHash: string) {
-  const existing = await LegalSourceModel.findOne({ 'parts.fileHash': fileHash }).select('code title');
+export async function assertFileNotStored(fileHash: string, exceptLegalSourceId?: Types.ObjectId) {
+  const existing = await LegalSourceModel.findOne({
+    'parts.fileHash': fileHash,
+    ...(exceptLegalSourceId ? { _id: { $ne: exceptLegalSourceId } } : {}),
+  }).select('code title');
   if (!existing) return;
   throw AppError.conflict(
     `This file was already uploaded to the legal source "${existing.title}"`,
@@ -99,12 +102,12 @@ async function assertFileNotStored(fileHash: string) {
   );
 }
 
-async function storeLegalFile(legalSourceId: Types.ObjectId, file: LegalFile, fileHash: string): Promise<StoredLegalFile> {
+export async function storeLegalFile(legalSourceId: Types.ObjectId, file: LegalFile, fileHash: string): Promise<StoredLegalFile> {
   const stored = await uploadPrivateFile(file.buffer, legalSourceFolder(legalSourceId), file.name || 'legal-source');
   return { stored, fileHash };
 }
 
-async function discardLegalFiles(files: (StoredFile | undefined)[]) {
+export async function discardLegalFiles(files: (StoredFile | undefined)[]) {
   await Promise.all(
     files.flatMap((file) =>
       file
@@ -121,7 +124,7 @@ async function discardLegalFiles(files: (StoredFile | undefined)[]) {
   );
 }
 
-function partOf(
+export function partOf(
   file: LegalFile,
   chunks: LegalChunkDraft[],
   { stored, fileHash }: StoredLegalFile,
@@ -148,7 +151,7 @@ function partOf(
   };
 }
 
-const partNotes = (
+export const partNotes = (
   parts: { cleanup?: StoredLegalTextCleanup | null; extraction?: StoredLegalExtractionQuality | null }[],
 ) => parts.flatMap((part) => [...extractionWarnings(part.extraction), ...cleanupWarnings(part.cleanup)]);
 
@@ -185,10 +188,10 @@ function presentLegalSource(source: HydratedDocument<LegalSource>, { chunkCount,
   };
 }
 
-const chunkDocs = (legalSourceId: Types.ObjectId, chunks: LegalChunkDraft[], firstOrder = 0) =>
+export const chunkDocs = (legalSourceId: Types.ObjectId, chunks: LegalChunkDraft[], firstOrder = 0) =>
   chunks.map((chunk, i) => ({ ...chunk, order: firstOrder + i, legalSourceId }));
 
-async function startIngestion(legalSourceId: string) {
+export async function startIngestion(legalSourceId: string) {
   try {
     await queueLegalIngestion(legalSourceId);
   } catch (err) {

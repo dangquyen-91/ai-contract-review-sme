@@ -1662,6 +1662,63 @@ components:
           type: string
           format: date-time
 
+    LegalContentPreview:
+      type: object
+      description: What reading the files again would change. Nothing is saved.
+      properties:
+        documentNumber:
+          type: string
+        coverage:
+          $ref: '#/components/schemas/LegalCoverage'
+        parts:
+          type: array
+          items:
+            type: object
+            properties:
+              fileName:
+                type: string
+              chunkCount:
+                type: integer
+              skippedArticles:
+                type: array
+                items:
+                  type: string
+                description: Articles an earlier part already had
+              cleanup:
+                $ref: '#/components/schemas/LegalTextCleanup'
+              extraction:
+                $ref: '#/components/schemas/LegalExtractionQuality'
+        changes:
+          type: object
+          description: |
+            Stored chunks are matched to the new ones by article, khoản and điểm (articleRef, in order), then the remaining chunks of the same article are matched in order. A matched chunk keeps its ID, so citations of earlier reviews keep pointing at it.
+            unchanged = same text and headings, keeps its embedding. changed = keeps its ID, gets the new text and is embedded again. added = new chunk. removed = deleted; earlier reviews still show the excerpt they cited (stored with the citation).
+          properties:
+            unchanged:
+              type: integer
+            changed:
+              type: integer
+            added:
+              type: integer
+            removed:
+              type: integer
+            changedRefs:
+              type: array
+              items:
+                type: string
+              description: Up to 50 articleRefs, then "... N more"
+            addedRefs:
+              type: array
+              items:
+                type: string
+            removedRefs:
+              type: array
+              items:
+                type: string
+            removedCitations:
+              type: integer
+              description: Risk citations of earlier reviews that point at removed chunks; they keep their stored excerpt and show inKnowledgeBase=false
+
     LegalExtractionQuality:
       type: object
       description: How the text was read. Absent on parts uploaded before it was recorded.
@@ -5150,6 +5207,126 @@ paths:
                 $ref: '#/components/schemas/Error'
         '503':
           description: The background queue (Redis) is unavailable; the part was saved and ingestion is marked failed, so call resume later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/reparse/preview:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [LegalKB]
+      summary: Preview what reading the stored original files again would change
+      description: |
+        Manager only. Downloads every stored part file, checks it against its recorded SHA-256, and parses the parts in order with the current parser (later parts skip articles an earlier part already has, like an upload of more parts). Saves nothing and calls no AI model.
+        Use it after a parser improvement, e.g. to drop PDF headers or footnotes that older uploads kept.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  description: Optional; defaults to the stored expected article count
+      responses:
+        '200':
+          description: Preview; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalContentPreview'
+        '400':
+          description: A stored file can no longer be read, no usable text, or LEGAL_OCR_LIMIT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Code LEGAL_FILE_NOT_STORED when a part was uploaded before original files were kept (error.meta.partIndexes; replace the content instead), or LEGAL_FILE_CHANGED when a stored file no longer matches its SHA-256
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/content/preview:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [LegalKB]
+      summary: Preview replacing the whole text of a legal source with one new file
+      description: |
+        Manager only. Parses the file like an upload and compares it with the stored chunks. Saves nothing and calls no AI model.
+        Use it to swap a text taken from an unofficial site for the official one, to give a source uploaded before original files were kept its file, or to load a new consolidated text. After the replacement the source has this one file as its only part; more parts can still be added.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  description: Optional; defaults to the stored expected article count
+                file:
+                  type: string
+                  format: binary
+                  description: pdf, docx, doc, or txt
+      responses:
+        '200':
+          description: Preview; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalContentPreview'
+        '400':
+          description: Missing, unsupported or unreadable file, no usable text, or LEGAL_OCR_LIMIT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Code SAME_LEGAL_FILE when the file is the stored file of this single-part source (use reparse), or DUPLICATE_LEGAL_FILE when another legal source already stores it
           content:
             application/json:
               schema:

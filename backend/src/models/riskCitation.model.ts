@@ -7,6 +7,7 @@ const riskCitationSchema = new Schema(
       type: Types.ObjectId,
       ref: 'LegalKnowledgeChunk',
       required: true,
+      index: true,
     },
     relevanceScore: { type: Number, required: true },
     citationLabel: { type: String },

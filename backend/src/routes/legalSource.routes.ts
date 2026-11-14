@@ -12,7 +12,9 @@ import {
   getLegalSourcePartFileHandler,
   listLegalSourceCatalogHandler,
   listLegalSourcesHandler,
+  previewContentReplacementHandler,
   previewLegalSourceHandler,
+  previewReparseHandler,
   resumeLegalIngestionHandler,
   updateLegalSourceHandler,
 } from '../controllers/legalSource.controller';
@@ -61,6 +63,19 @@ router.post(
   legalDocUpload.single('file'),
   validate({ params: legalSourceIdParamSchema, body: previewLegalSourceSchema }),
   appendLegalSourcePartHandler,
+);
+
+router.post(
+  '/:id/reparse/preview',
+  validate({ params: legalSourceIdParamSchema, body: previewLegalSourceSchema }),
+  previewReparseHandler,
+);
+
+router.post(
+  '/:id/content/preview',
+  legalDocUpload.single('file'),
+  validate({ params: legalSourceIdParamSchema, body: previewLegalSourceSchema }),
+  previewContentReplacementHandler,
 );
 
 router.get(

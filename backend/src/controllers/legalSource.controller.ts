@@ -3,6 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import { AppError } from '../errors/AppError';
 import * as legalSourceService from '../services/legal/legalSource.service';
+import * as legalSourceContentService from '../services/legal/legalSourceContent.service';
 import {
   CreateLegalSourceInput,
   PreviewLegalSourceInput,
@@ -54,6 +55,19 @@ export const listLegalSourceCatalogHandler = asyncHandler(async (_req: Request, 
 
 export const getLegalSourceHandler =asyncHandler(async (req: Request, res: Response) => {
   ok(res, await legalSourceService.getLegalSource(req.params.id));
+});
+
+export const previewReparseHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { expectedArticleCount } = req.body as PreviewLegalSourceInput;
+  ok(res, await legalSourceContentService.previewReparse(req.params.id, expectedArticleCount));
+});
+
+export const previewContentReplacementHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { expectedArticleCount } = req.body as PreviewLegalSourceInput;
+  ok(
+    res,
+    await legalSourceContentService.previewContentReplacement(req.params.id, uploadedFile(req), expectedArticleCount),
+  );
 });
 
 export const getLegalSourcePartFileHandler = asyncHandler(async (req: Request, res: Response) => {
