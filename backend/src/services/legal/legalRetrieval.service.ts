@@ -2,7 +2,7 @@ import { Types } from 'mongoose';
 import { LegalKnowledgeChunkModel, EMBEDDING_DIMENSIONS } from '../../models/legalKnowledgeChunk.model';
 import { LegalSourceModel } from '../../models/legalSource.model';
 import { LEGAL_BASIS_VERIFICATIONS } from '../../models/riskFinding.model';
-import { LEGAL_RETRIEVAL_STATUSES } from '../../models/contractVersion.model';
+import { LEGAL_RETRIEVAL_STATUSES, LEGAL_SEARCH_SCOPES } from '../../models/contractVersion.model';
 import { logger } from '../../config/logger';
 import { embedTexts } from '../ai/llm.service';
 import {
@@ -11,10 +11,11 @@ import {
   LEGAL_CHUNK_VECTOR_INDEX_NAME,
 } from './legalKnowledgeIngest.service';
 import { LEGAL_SOURCE_CATALOG } from './legalSourceCatalog.data';
+import { inForceSourceFilter, LegalSourceReference, sourceReferenceOf } from './legalSourceAvailability';
 
 export type LegalRetriever = 'vector' | 'text';
 
-export interface LegalChunkMatch {
+export interface LegalChunkMatch extends Omit<LegalSourceReference, 'legalSourceId'> {
   chunkId: string;
   chunkText: string;
   articleRef?: string;
@@ -41,30 +42,49 @@ export interface LegalSearchOptions {
 
 export type LegalRetrievalStatus = (typeof LEGAL_RETRIEVAL_STATUSES)[number];
 
+export type LegalSearchScope = (typeof LEGAL_SEARCH_SCOPES)[number];
+
+export interface LegalSearchScopeResult {
+  ids: Types.ObjectId[];
+  scope: LegalSearchScope;
+  missingSources: string[];
+}
+
 export interface LegalSearchResult {
   matches: LegalChunkMatch[][];
   status: LegalRetrievalStatus;
+  scope?: LegalSearchScope;
+  missingSources?: string[];
 }
 
-const SEARCHABLE_SOURCE = { status: { $ne: 'repealed' } };
 const RRF_K = 60;
 const MAX_TEXT_QUERY_CHARS = 1500;
 const HIT_PROJECTION = { chunkText: 1, articleRef: 1, articleNumber: 1, legalSourceId: 1 };
 
-export async function resolveLegalSearchScope(legalSourceCodes: string[] = []): Promise<Types.ObjectId[]> {
+export async function resolveLegalSearchScope(legalSourceCodes: string[] = []): Promise<LegalSearchScopeResult> {
+  let missingSources: string[] = [];
   if (legalSourceCodes.length > 0) {
-    const preferred = await LegalSourceModel.find({ ...SEARCHABLE_SOURCE, code: { $in: legalSourceCodes } }).select('code');
+    const preferred = await LegalSourceModel.find({
+      $and: [inForceSourceFilter(), { code: { $in: legalSourceCodes } }],
+    }).select('code');
+    const found = new Set(preferred.map((s) => s.code));
+    missingSources = legalSourceCodes.filter((code) => !found.has(code));
     if (preferred.length > 0) {
-      const found = new Set(preferred.map((s) => s.code));
-      const missing = legalSourceCodes.filter((code) => !found.has(code));
-      if (missing.length) logger.info('Some governing laws are not in the legal knowledge base yet', { missing });
-      return preferred.map((s) => s._id);
+      if (missingSources.length) {
+        logger.info('Some governing laws are not in force in the legal knowledge base', { missing: missingSources });
+      }
+      return {
+        ids: preferred.map((s) => s._id),
+        scope: missingSources.length ? 'partial' : 'profile',
+        missingSources,
+      };
     }
-    logger.warn('None of the governing laws are in the legal knowledge base; searching every legal source', {
+    logger.warn('None of the governing laws is in force in the legal knowledge base; searching every legal source', {
       legalSourceCodes,
     });
   }
-  return (await LegalSourceModel.find(SEARCHABLE_SOURCE).select('_id')).map((s) => s._id);
+  const ids = (await LegalSourceModel.find(inForceSourceFilter()).select('_id')).map((s) => s._id);
+  return { ids, scope: ids.length ? 'all_sources' : 'none', missingSources };
 }
 
 function vectorSearch(queryVector: number[], limit: number, legalSourceIds: Types.ObjectId[]) {
@@ -124,9 +144,13 @@ export async function searchLegalChunks(
 ): Promise<LegalSearchResult> {
   if (queryTexts.length === 0) return { matches: [], status: 'ok' };
 
+  let resolved: LegalSearchScopeResult | undefined;
   try {
-    const legalSourceIds = await resolveLegalSearchScope(legalSourceCodes);
-    if (legalSourceIds.length === 0) return { matches: queryTexts.map(() => []), status: 'no_sources' };
+    resolved = await resolveLegalSearchScope(legalSourceCodes);
+    const { ids: legalSourceIds, scope, missingSources } = resolved;
+    if (legalSourceIds.length === 0) {
+      return { matches: queryTexts.map(() => []), status: 'no_sources', scope, missingSources };
+    }
 
     const candidates = Math.max(topKPerQuery * 4, 10);
     const [vectors, textResults] = await Promise.allSettled([
@@ -172,19 +196,24 @@ export async function searchLegalChunks(
           legalSourceId: String(hit.legalSourceId),
           citationLabel: source?.citationLabel ?? 'Unknown',
           sourceTitle: source?.title ?? 'Unknown',
+          ...sourceReferenceOf(source),
           score,
           retrievers,
         };
       }),
     );
-    return { matches, status };
+    return { matches, status, scope, missingSources };
   } catch (err) {
     if (signal?.aborted) throw err;
     logger.warn('Legal chunk search failed, continuing without citations', {
       error: err instanceof Error ? err.message : String(err),
       queryCount: queryTexts.length,
     });
-    return { matches: queryTexts.map(() => []), status: 'unavailable' };
+    return {
+      matches: queryTexts.map(() => []),
+      status: 'unavailable',
+      ...(resolved ? { scope: resolved.scope, missingSources: resolved.missingSources } : {}),
+    };
   }
 }
 
@@ -271,7 +300,7 @@ function findLawMentions(text: string, laws: LawName[]) {
 }
 
 async function loadLawNames(): Promise<LawName[]> {
-  const sources = await LegalSourceModel.find(SEARCHABLE_SOURCE).select('code title citationLabel');
+  const sources = await LegalSourceModel.find(inForceSourceFilter()).select('code title citationLabel');
   const sourceIdByCode = new Map(sources.map((s) => [s.code, String(s._id)]));
   const names: LawName[] = [];
   const add = (label: string, code: string | undefined, sourceId: string | undefined) => {

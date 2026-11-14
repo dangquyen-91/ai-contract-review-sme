@@ -613,6 +613,8 @@ components:
           type: string
           enum: [ok, skipped, not_applicable]
           description: Whether the fixed legal rule checks (detectedBy rule) ran during the last risk detection. ok = key terms were extracted and every rule for this contract type was evaluated. skipped = key term extraction failed, so no rule ran and the findings come from the LLM and the missing-clause check only. not_applicable = this contract type has no fixed legal rules yet. Absent until risk detection completes, and cleared when clauses are re-segmented.
+        legalCoverage:
+          $ref: '#/components/schemas/LegalCoverageSnapshot'
         overallAssessment:
           type: array
           items:
@@ -744,6 +746,8 @@ components:
               type: string
               enum: [ok, skipped, not_applicable]
               description: Copied from the contract version (see ContractVersion.ruleCheckStatus). Absent when risk detection did not finish.
+            legalCoverage:
+              $ref: '#/components/schemas/LegalCoverageSnapshot'
             findings:
               type: array
               items:
@@ -859,7 +863,7 @@ components:
           example: [Bộ luật Dân sự 2015, Luật Kinh doanh bất động sản 2023]
         legalSources:
           type: array
-          description: The governing laws as legal source codes. Risk detection only searches these sources for citations; when none of them is in the knowledge base yet it searches every source that is not repealed.
+          description: The governing laws as legal source codes. Risk detection only searches these sources for citations, among those in force; when none of them is in force in the knowledge base it searches every source in force (see LegalCoverageSnapshot.searchScope).
           items:
             type: object
             properties:
@@ -872,9 +876,12 @@ components:
               inKnowledgeBase:
                 type: boolean
                 description: A legal source with this code has been uploaded
+              inForce:
+                type: boolean
+                description: Uploaded with status in_force or amended, effectiveDate not in the future and expiryDate not passed
               searchable:
                 type: boolean
-                description: Uploaded, not repealed, and at least one chunk is embedded
+                description: In force and at least one chunk is embedded
               ingestionStatus:
                 type: string
                 enum: [queued, running, paused, completed, failed]
@@ -1002,6 +1009,19 @@ components:
         articleRef:
           type: string
           example: Điều 301
+        legalSourceId:
+          type: string
+        documentNumber:
+          type: string
+          example: 36/2005/QH11
+        origin:
+          description: Where the legal text was taken from, so the reader can open the official page
+          allOf:
+            - $ref: '#/components/schemas/LegalSourceOrigin'
+        provenance:
+          type: string
+          enum: [official, declared, unverified]
+          description: official = taken from Công báo, the national legal database (vbpl.vn) or the issuing body; declared = origin given but another site (checked against a reference file when it was loaded); unverified = the legal source has no recorded origin yet
 
     ChatReply:
       type: object
@@ -1017,6 +1037,17 @@ components:
           type: string
           enum: [ok, degraded, no_sources, unavailable]
           description: Same meaning as ContractVersion.legalRetrievalStatus, for this question's legal search
+        legalScope:
+          type: object
+          description: Which laws this question's legal search covered (same meaning as LegalCoverageSnapshot.searchScope / missingSources). May be absent on an idempotent replay of an answer saved before it was added.
+          properties:
+            searchScope:
+              type: string
+              enum: [profile, partial, all_sources, none]
+            missingSources:
+              type: array
+              items:
+                type: string
         runId:
           type: string
         replayed:
@@ -1358,6 +1389,22 @@ components:
         chunkText:
           type: string
           description: citationLabel, sourceTitle, articleRef and chunkText are the text as it was when the review ran, so they survive later edits or deletion of the legal source. Citations saved before this snapshot existed are read from the knowledge base instead and disappear if their chunk was deleted.
+        legalSourceId:
+          type: string
+        documentNumber:
+          type: string
+          example: 36/2005/QH11
+        origin:
+          description: Where the legal text was taken from, so the reader can open the official page
+          allOf:
+            - $ref: '#/components/schemas/LegalSourceOrigin'
+        provenance:
+          type: string
+          enum: [official, declared, unverified]
+          description: official = taken from Công báo, the national legal database (vbpl.vn) or the issuing body; declared = origin given but another site (checked against a reference file when it was loaded); unverified = the legal source has no recorded origin yet
+        originRecordedAtReview:
+          type: boolean
+          description: True when origin and documentNumber were stored with the citation when the review ran. False for citations saved before provenance was recorded; their origin is then read from the legal source as it is today.
         inKnowledgeBase:
           type: boolean
           description: False when the cited chunk has since been deleted from the knowledge base (the legal source was deleted)
@@ -1804,6 +1851,40 @@ components:
                   reference:
                     type: string
                     description: Words of the reference file at the same place
+
+    LegalCoverageSnapshot:
+      type: object
+      description: |
+        Which laws the last risk detection could rely on. Only legal sources in force are used: status in_force or amended, effectiveDate not in the future, expiryDate not passed.
+        Absent until risk detection completes and on results saved before it was recorded; cleared when clauses are re-segmented.
+      properties:
+        searchScope:
+          type: string
+          enum: [profile, partial, all_sources, none]
+          description: profile = every governing law of the contract type is in force and was searched. partial = only some of them are (see missingSources). all_sources = none of them is in force, so every law in force was searched and excerpts may come from unrelated laws. none = no legal source in force at all.
+        missingSources:
+          type: array
+          items:
+            type: string
+          description: Governing law codes of the contract type that are missing from the knowledge base or not in force
+        skippedRules:
+          type: array
+          description: Fixed legal rules of this contract type that did not run because a law they rely on is not in force or not in the knowledge base. A rule only runs when every law it cites is in force.
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                example: BLLD_PROBATION_MAX
+              reason:
+                type: string
+                enum: [source_not_in_force, source_missing]
+                description: source_not_in_force when at least one cited law is in the knowledge base but not in force; otherwise source_missing
+              sources:
+                type: array
+                items:
+                  type: string
+                description: The cited law codes that are not in force or missing
 
     LegalSourceActor:
       type: object
@@ -4302,7 +4383,7 @@ paths:
       description: |
         Use `fetch` (not `EventSource`). Events:
         - `token` `{ "text": string }` - next chunk of the answer
-        - `done` `{ reply, legalSources, legalRetrievalStatus, runId, replayed }` (see ChatReply) - the exchange is saved and chat quota finalized
+        - `done` `{ reply, legalSources, legalRetrievalStatus, legalScope, runId, replayed }` (see ChatReply) - the exchange is saved and chat quota finalized
         - `error` `{ "status": number, "message": string }`
         A `: ping` comment line is sent every 15s to keep proxies from closing an idle connection - SSE clients must ignore lines starting with `:`. Closing the connection cancels the LLM call; if the answer had already finished generating, it is still saved.
         Rate-limited (AI cost control).

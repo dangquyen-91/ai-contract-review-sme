@@ -1,4 +1,5 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
+import { legalSourceOriginSchema } from './legalSource.model';
 
 const riskCitationSchema = new Schema(
   {
@@ -14,6 +15,9 @@ const riskCitationSchema = new Schema(
     sourceTitle: { type: String },
     articleRef: { type: String },
     chunkText: { type: String },
+    legalSourceId: { type: Types.ObjectId, ref: 'LegalSource' },
+    documentNumber: { type: String },
+    origin: { type: legalSourceOriginSchema },
   },
   { timestamps: true },
 );

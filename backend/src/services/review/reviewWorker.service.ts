@@ -167,6 +167,7 @@ async function buildReviewResult(versionId: string, reviewId: string) {
     findingCounts: counts,
     legalRetrievalStatus: version?.legalRetrievalStatus ?? undefined,
     ruleCheckStatus: version?.ruleCheckStatus ?? undefined,
+    legalCoverage: version?.legalCoverage ?? undefined,
     keyTerms: version?.keyTerms ?? undefined,
     findings: findings
       .map((f) => {
@@ -205,6 +206,7 @@ async function buildPartialResult(versionId: string, reviewId: string, stages: R
           findings: [],
           legalRetrievalStatus: undefined,
           ruleCheckStatus: undefined,
+          legalCoverage: undefined,
           keyTerms: undefined,
         }),
     partial: true,
@@ -230,8 +232,14 @@ async function restoreCompletedResult(reviewId: string, versionId: string, contr
         keyTerms: result.keyTerms ?? [],
         ...(result.legalRetrievalStatus ? { legalRetrievalStatus: result.legalRetrievalStatus } : {}),
         ...(result.ruleCheckStatus ? { ruleCheckStatus: result.ruleCheckStatus } : {}),
+        ...(result.legalCoverage ? { legalCoverage: result.legalCoverage } : {}),
       },
-      $unset: { segmentationError: '', summaryError: '', riskDetectionError: '' },
+      $unset: {
+        segmentationError: '',
+        summaryError: '',
+        riskDetectionError: '',
+        ...(result.legalCoverage ? {} : { legalCoverage: '' }),
+      },
     },
   );
   await ContractModel.updateOne({ _id: contractId, orgId }, { $set: { status: 'reviewed' } });

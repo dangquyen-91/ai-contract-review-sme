@@ -14,7 +14,7 @@ import {
   LlmFinding,
   LlmProposedRevision,
 } from './riskDetection.service';
-import { searchLegalChunks, LegalRetrievalStatus, verifyLegalBasis } from '../legal/legalRetrieval.service';
+import { searchLegalChunks, LegalRetrievalStatus, LegalSearchScope, verifyLegalBasis } from '../legal/legalRetrieval.service';
 import {
   claimStage,
   getCurrentVersion,
@@ -26,8 +26,16 @@ import {
 import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from '../contract/contractProfile.service';
 import { createRedactor, Redactor } from '../ai/redaction.service';
+import { LegalSourceReference, provenanceOf, sourceReferenceOf } from '../legal/legalSourceAvailability';
 import { ExtractedKeyTerm, extractKeyTerms } from './keyTermExtraction.service';
-import { evaluateLegalRules, hasLegalRules, resolveRuleCitations, RuleFinding } from '../legal/legalRules.service';
+import {
+  evaluateLegalRules,
+  hasLegalRules,
+  resolveRuleCitations,
+  ruleAvailabilityFor,
+  RuleFinding,
+  skippedLegalRules,
+} from '../legal/legalRules.service';
 import { ReviewContext } from '../contract/contractProfile.service';
 import { logger } from '../../config/logger';
 
@@ -69,8 +77,15 @@ async function buildClauseExcerpts(
   excerptsByClause: LegalExcerptInput[][];
   metaByNumber: Map<number, LegalExcerptMeta>;
   retrievalStatus: LegalRetrievalStatus;
+  searchScope?: LegalSearchScope;
+  missingSources?: string[];
 }> {
-  const { matches: perClauseMatches, status: retrievalStatus } = await searchLegalChunks(
+  const {
+    matches: perClauseMatches,
+    status: retrievalStatus,
+    scope: searchScope,
+    missingSources,
+  } = await searchLegalChunks(
     clauses.map((c) => redactor.mask(c.text)),
     LEGAL_EXCERPTS_PER_CLAUSE,
     { legalSourceCodes, signal },
@@ -90,7 +105,7 @@ async function buildClauseExcerpts(
     }),
   );
 
-  return { excerptsByClause, metaByNumber, retrievalStatus };
+  return { excerptsByClause, metaByNumber, retrievalStatus, searchScope, missingSources };
 }
 
 function toBatches<T extends { text: string }>(items: T[]): T[][] {
@@ -149,6 +164,9 @@ interface ChunkSnapshot {
   sourceTitle: string;
   articleRef?: string;
   chunkText: string;
+  legalSourceId?: string;
+  documentNumber?: string;
+  origin?: LegalSourceReference['origin'];
 }
 
 async function loadChunkSnapshots(chunkIds: string[]): Promise<Map<string, ChunkSnapshot>> {
@@ -158,12 +176,14 @@ async function loadChunkSnapshots(chunkIds: string[]): Promise<Map<string, Chunk
     'legalSourceId articleRef chunkText',
   );
   const sourceIds = [...new Set(chunks.map((c) => c.legalSourceId.toString()))];
-  const sources = await LegalSourceModel.find({ _id: { $in: sourceIds } }).select('title citationLabel');
+  const sources = await LegalSourceModel.find({ _id: { $in: sourceIds } }).select('title citationLabel documentNumber origin');
   const sourceById = new Map(sources.map((s) => [s._id.toString(), s]));
 
   return new Map(
     chunks.map((chunk) => {
       const source = sourceById.get(chunk.legalSourceId.toString());
+      const { provenance: _provenance, ...reference } = sourceReferenceOf(source);
+      void _provenance;
       return [
         chunk._id.toString(),
         {
@@ -171,6 +191,8 @@ async function loadChunkSnapshots(chunkIds: string[]): Promise<Map<string, Chunk
           sourceTitle: source?.title ?? 'Unknown',
           articleRef: chunk.articleRef ?? undefined,
           chunkText: chunk.chunkText,
+          ...reference,
+          legalSourceId: chunk.legalSourceId.toString(),
         },
       ];
     }),
@@ -211,12 +233,22 @@ async function attachCitations<T extends { _id: unknown; toObject: () => Record<
   for (const citation of citations) {
     const chunkId = citation.legalKnowledgeChunkId.toString();
     const live = current.get(chunkId);
+    const stored = citation.origin?.publisher
+      ? sourceReferenceOf({
+          _id: citation.legalSourceId,
+          documentNumber: citation.documentNumber,
+          origin: citation.origin,
+        })
+      : undefined;
     const snapshot: ChunkSnapshot | undefined = citation.chunkText
       ? {
           citationLabel: citation.citationLabel ?? 'Unknown',
           sourceTitle: citation.sourceTitle ?? 'Unknown',
           articleRef: citation.articleRef ?? undefined,
           chunkText: citation.chunkText,
+          legalSourceId: stored?.legalSourceId ?? live?.legalSourceId,
+          documentNumber: stored?.documentNumber ?? citation.documentNumber ?? live?.documentNumber,
+          origin: stored?.origin ?? live?.origin,
         }
       : live;
     if (!snapshot) continue;
@@ -226,6 +258,8 @@ async function attachCitations<T extends { _id: unknown; toObject: () => Record<
     list.push({
       legalKnowledgeChunkId: chunkId,
       ...snapshot,
+      provenance: provenanceOf(snapshot.origin),
+      originRecordedAtReview: Boolean(stored),
       relevanceScore: citation.relevanceScore,
       inKnowledgeBase: Boolean(live),
     });
@@ -318,7 +352,8 @@ export async function detectRisks(
     );
 
     onProgress?.('retrieving_legal_sources');
-    const [{ excerptsByClause, metaByNumber, retrievalStatus }, keyTerms] = await Promise.all([
+    const [{ excerptsByClause, metaByNumber, retrievalStatus, searchScope, missingSources }, keyTerms, ruleAvailability] =
+      await Promise.all([
       buildClauseExcerpts(clauses, redactor, reviewContext.legalSourceCodes, signal),
       extractKeyTermsSafely(
         reviewContext,
@@ -326,13 +361,20 @@ export async function detectRisks(
         redactor,
         signal,
       ),
+      ruleAvailabilityFor(reviewContext.profileCode),
     ]);
+    const skippedRules = skippedLegalRules(reviewContext.profileCode, ruleAvailability);
+    const legalCoverage = {
+      searchScope,
+      missingSources: missingSources?.length ? missingSources : undefined,
+      skippedRules: skippedRules.length ? skippedRules : undefined,
+    };
     const ruleCheckStatus: (typeof RULE_CHECK_STATUSES)[number] = !hasLegalRules(reviewContext.profileCode)
       ? 'not_applicable'
       : keyTerms
         ? 'ok'
         : 'skipped';
-    const ruleFindings = evaluateLegalRules(reviewContext, keyTerms ?? []);
+    const ruleFindings = evaluateLegalRules(reviewContext, keyTerms ?? [], ruleAvailability);
     const ruleChunkIds = await resolveRuleCitations(ruleFindings);
 
     const analysisFocus = version.analysisFocus ?? undefined;
@@ -577,6 +619,7 @@ export async function detectRisks(
           riskDetectionStatus: 'completed',
           legalRetrievalStatus: retrievalStatus,
           ruleCheckStatus,
+          legalCoverage,
           keyTerms: (keyTerms ?? []).map((t) => ({
             key: t.key,
             numberValue: t.numberValue,

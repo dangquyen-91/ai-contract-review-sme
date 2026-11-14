@@ -99,6 +99,7 @@ export async function segmentClauses(
           riskDetectionError: '',
           legalRetrievalStatus: '',
           ruleCheckStatus: '',
+          legalCoverage: '',
         },
       },
     );

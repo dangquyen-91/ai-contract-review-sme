@@ -10,7 +10,9 @@ export const LEGAL_SOURCE_PUBLISHERS = ['official_gazette', 'national_database',
 
 export const LEGAL_TEXT_KINDS = ['original', 'consolidated'] as const;
 
-const legalSourceOriginSchema = new Schema(
+export const LEGAL_PROVENANCES = ['official', 'declared', 'unverified'] as const;
+
+export const legalSourceOriginSchema = new Schema(
   {
     publisher: { type: String, enum: LEGAL_SOURCE_PUBLISHERS, required: true },
     url: { type: String, trim: true },
