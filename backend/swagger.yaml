@@ -1742,6 +1742,53 @@ components:
                     example: [LTM_PENALTY_CAP v1]
                   message:
                     type: string
+        crossCheck:
+          type: object
+          description: |
+            Compares every article of the uploaded file with the same article in referenceFile, word by word (punctuation, spacing, line breaks and case ignored).
+            Required when origin.publisher is other: without referenceFile the upload is refused (400 LEGAL_REFERENCE_REQUIRED). When any article differs or is missing from the reference, the upload is refused (409 LEGAL_REFERENCE_DIFFERS, error.meta.differences) until it is sent again with acknowledgeDifferences=true. referenceFile must be a different file (400 LEGAL_REFERENCE_SAME_FILE) and needs a complete referenceOrigin (400 LEGAL_ORIGIN_REQUIRED). A reference may also be sent for an official source; the same rules then apply.
+          properties:
+            result:
+              type: string
+              enum: [same, different, not_required, missing_reference]
+            required:
+              type: boolean
+            referenceOrigin:
+              type: object
+              properties:
+                ok:
+                  type: boolean
+                message:
+                  type: string
+            sameFile:
+              type: boolean
+            compared:
+              type: integer
+              description: Articles of the uploaded file that were compared
+            onlyInReference:
+              type: integer
+              description: Articles the reference has but the uploaded file does not (not an error; e.g. a reference with the whole law)
+            differences:
+              type: array
+              description: Up to 50
+              items:
+                type: object
+                properties:
+                  article:
+                    type: string
+                    example: Điều 301
+                  kind:
+                    type: string
+                    enum: [different, missing_in_reference]
+                  similarity:
+                    type: integer
+                    description: 0-100, share of 3-word sequences both texts have
+                  main:
+                    type: string
+                    description: Words of the uploaded file around the first difference
+                  reference:
+                    type: string
+                    description: Words of the reference file at the same place
 
     LegalContentApplied:
       allOf:
@@ -1975,6 +2022,17 @@ components:
           minimum: 1
           maximum: 5000
           description: Optional. Total number of articles in the official text, so a missing tail is reported in coverage
+        referenceFile:
+          type: string
+          format: binary
+          description: The same text taken from another source (pdf, docx, doc, or txt). Required when origin.publisher is other. Every article of file is compared with it word by word (punctuation, spacing and case ignored).
+        referenceOrigin:
+          description: Where referenceFile was taken from; required with referenceFile (publisher + url). Nested form fields or one JSON field.
+          allOf:
+            - $ref: '#/components/schemas/LegalSourceOrigin'
+        acknowledgeDifferences:
+          type: boolean
+          description: Send true after reviewing the differences reported by a 409 LEGAL_REFERENCE_DIFFERS (or by the preview) to keep this text anyway; the differing articles are then listed in coverage.warnings.
         file:
           type: string
           format: binary
@@ -4937,13 +4995,13 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Validation error, unsupported or unreadable file, no usable text, LLM not configured, LEGAL_ORIGIN_REQUIRED, LEGAL_DOCUMENT_NUMBER_MISMATCH (error.meta has entered and detected), or LEGAL_ANCHOR_MISMATCH (error.meta.failures)
+          description: Validation error, unsupported or unreadable file, no usable text, LLM not configured, LEGAL_ORIGIN_REQUIRED, LEGAL_DOCUMENT_NUMBER_MISMATCH (error.meta has entered and detected), LEGAL_ANCHOR_MISMATCH (error.meta.failures), LEGAL_REFERENCE_REQUIRED, or LEGAL_REFERENCE_SAME_FILE
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: A legal source with this code already exists (checked before any embedding), or code DUPLICATE_LEGAL_FILE when the same file is already stored; error.meta has legalSourceId, code and title of that source
+          description: A legal source with this code already exists (checked before any embedding), DUPLICATE_LEGAL_FILE when the same file is already stored (error.meta has legalSourceId, code and title of that source), or LEGAL_REFERENCE_DIFFERS when articles differ from referenceFile and acknowledgeDifferences was not sent (error.meta.differences)
           content:
             application/json:
               schema:
@@ -5063,6 +5121,17 @@ paths:
                   description: Optional; when sent, checks.origin says whether it is complete enough to create the source
                   allOf:
                     - $ref: '#/components/schemas/LegalSourceOrigin'
+                referenceFile:
+                  type: string
+                  format: binary
+                  description: The same text taken from another source (pdf, docx, doc, or txt). Required when origin.publisher is other. Every article of file is compared with it word by word (punctuation, spacing and case ignored).
+                referenceOrigin:
+                  description: Where referenceFile was taken from; required with referenceFile (publisher + url). Nested form fields or one JSON field.
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                acknowledgeDifferences:
+                  type: boolean
+                  description: Send true after reviewing the differences reported by a 409 LEGAL_REFERENCE_DIFFERS (or by the preview) to keep this text anyway; the differing articles are then listed in coverage.warnings.
                 file:
                   type: string
                   format: binary
@@ -5281,6 +5350,17 @@ paths:
                   minimum: 1
                   maximum: 5000
                   description: Optional; replaces the stored expected article count
+                referenceFile:
+                  type: string
+                  format: binary
+                  description: The same text taken from another source (pdf, docx, doc, or txt). Required when origin.publisher is other. Every article of file is compared with it word by word (punctuation, spacing and case ignored).
+                referenceOrigin:
+                  description: Where referenceFile was taken from; required with referenceFile (publisher + url). Nested form fields or one JSON field.
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                acknowledgeDifferences:
+                  type: boolean
+                  description: Send true after reviewing the differences reported by a 409 LEGAL_REFERENCE_DIFFERS (or by the preview) to keep this text anyway; the differing articles are then listed in coverage.warnings.
                 file:
                   type: string
                   format: binary
@@ -5293,7 +5373,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Missing, unsupported or unreadable file, no usable text, LLM not configured, LEGAL_DOCUMENT_NUMBER_MISMATCH when the file is numbered differently from the source (original text), or LEGAL_ANCHOR_MISMATCH when a new article lacks the wording a legal rule cites
+          description: Missing, unsupported or unreadable file, no usable text, LLM not configured, LEGAL_DOCUMENT_NUMBER_MISMATCH when the file is numbered differently from the source (original text), LEGAL_ANCHOR_MISMATCH when a new article lacks the wording a legal rule cites, or LEGAL_REFERENCE_REQUIRED / LEGAL_REFERENCE_SAME_FILE (a source taken from an unofficial site needs a reference for each new part)
           content:
             application/json:
               schema:
@@ -5311,7 +5391,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: Every article in the file is already in the source, another part is being uploaded at the same time, or code DUPLICATE_LEGAL_FILE when the same file is already stored in a legal source (error.meta names it)
+          description: Every article in the file is already in the source, another part is being uploaded at the same time, DUPLICATE_LEGAL_FILE when the same file is already stored in a legal source (error.meta names it), or LEGAL_REFERENCE_DIFFERS
           content:
             application/json:
               schema:
@@ -5426,6 +5506,17 @@ paths:
                   items:
                     type: string
                     maxLength: 60
+                referenceFile:
+                  type: string
+                  format: binary
+                  description: The same text taken from another source (pdf, docx, doc, or txt). Required when origin.publisher is other. Every article of file is compared with it word by word (punctuation, spacing and case ignored).
+                referenceOrigin:
+                  description: Where referenceFile was taken from; required with referenceFile (publisher + url). Nested form fields or one JSON field.
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                acknowledgeDifferences:
+                  type: boolean
+                  description: Send true after reviewing the differences reported by a 409 LEGAL_REFERENCE_DIFFERS (or by the preview) to keep this text anyway; the differing articles are then listed in coverage.warnings.
                 file:
                   type: string
                   format: binary
@@ -5547,6 +5638,17 @@ paths:
               type: object
               required: [file]
               properties:
+                referenceFile:
+                  type: string
+                  format: binary
+                  description: The same text taken from another source (pdf, docx, doc, or txt). Required when origin.publisher is other. Every article of file is compared with it word by word (punctuation, spacing and case ignored).
+                referenceOrigin:
+                  description: Where referenceFile was taken from; required with referenceFile (publisher + url). Nested form fields or one JSON field.
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                acknowledgeDifferences:
+                  type: boolean
+                  description: Send true after reviewing the differences reported by a 409 LEGAL_REFERENCE_DIFFERS (or by the preview) to keep this text anyway; the differing articles are then listed in coverage.warnings.
                 file:
                   type: string
                   format: binary
@@ -5576,7 +5678,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalContentApplied'
         '400':
-          description: Validation error, LLM not configured, unreadable file, no usable text, LEGAL_OCR_LIMIT, LEGAL_ORIGIN_REQUIRED (no origin sent and none stored), LEGAL_DOCUMENT_NUMBER_MISMATCH, or LEGAL_ANCHOR_MISMATCH
+          description: Validation error, LLM not configured, unreadable file, no usable text, LEGAL_OCR_LIMIT, LEGAL_ORIGIN_REQUIRED (no origin sent and none stored), LEGAL_DOCUMENT_NUMBER_MISMATCH, LEGAL_ANCHOR_MISMATCH, LEGAL_REFERENCE_REQUIRED, or LEGAL_REFERENCE_SAME_FILE
           content:
             application/json:
               schema:
@@ -5594,7 +5696,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: SAME_LEGAL_FILE, DUPLICATE_LEGAL_FILE, or LEGAL_SOURCE_CHANGED (nothing was applied)
+          description: SAME_LEGAL_FILE, DUPLICATE_LEGAL_FILE, LEGAL_REFERENCE_DIFFERS (acknowledgeDifferences not sent), or LEGAL_SOURCE_CHANGED (nothing was applied)
           content:
             application/json:
               schema:

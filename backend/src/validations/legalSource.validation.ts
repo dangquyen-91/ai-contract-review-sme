@@ -60,6 +60,17 @@ function parseFormList(value: unknown) {
   return items.length ? items : undefined;
 }
 
+function parseFormBoolean(value: unknown) {
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+  return value;
+}
+
+const referenceFields = {
+  referenceOrigin: z.preprocess(parseFormJson, originSchema.optional()),
+  acknowledgeDifferences: z.preprocess(parseFormBoolean, z.boolean().optional()),
+};
+
 const legalSourceFields = {
   title: z.string().trim().min(2).max(300),
   documentNumber: z.string().trim().max(60),
@@ -115,6 +126,7 @@ export const createLegalSourceSchema = z
     effectiveDate: legalSourceFields.effectiveDate.optional(),
     expiryDate: legalSourceFields.expiryDate.optional(),
     expectedArticleCount,
+    ...referenceFields,
   })
   .refine(expiryAfterEffective, expiryAfterEffectiveError)
   .refine((v) => !v.consolidatedThrough || v.textKind === 'consolidated', {
@@ -151,6 +163,8 @@ export const updateLegalSourceSchema = z
 
 export const previewLegalSourceSchema = z.object({ expectedArticleCount });
 
+export const appendLegalSourcePartSchema = z.object({ expectedArticleCount, ...referenceFields });
+
 export const previewNewLegalSourceSchema = z.object({
   expectedArticleCount,
   code: z.string().trim().toLowerCase().max(60).optional(),
@@ -158,6 +172,7 @@ export const previewNewLegalSourceSchema = z.object({
   textKind: legalSourceFields.textKind.optional(),
   gazette: legalSourceFields.gazette.optional(),
   origin: z.preprocess(parseFormJson, originSchema.optional()),
+  ...referenceFields,
 });
 
 export const replaceLegalSourceContentSchema = z.object({
@@ -165,6 +180,7 @@ export const replaceLegalSourceContentSchema = z.object({
   origin: z.preprocess(parseFormJson, originSchema.optional()),
   textKind: legalSourceFields.textKind.optional(),
   consolidatedThrough: z.preprocess(parseFormList, consolidatedThroughSchema.optional()),
+  ...referenceFields,
 });
 
 export const legalSourceIdParamSchema = z.object({
@@ -180,3 +196,4 @@ export type UpdateLegalSourceInput = z.infer<typeof updateLegalSourceSchema>;
 export type PreviewLegalSourceInput = z.infer<typeof previewLegalSourceSchema>;
 export type ReplaceLegalSourceContentInput = z.infer<typeof replaceLegalSourceContentSchema>;
 export type PreviewNewLegalSourceInput = z.infer<typeof previewNewLegalSourceSchema>;
+export type AppendLegalSourcePartInput = z.infer<typeof appendLegalSourcePartSchema>;

@@ -1,5 +1,7 @@
 import { AppError } from '../../errors/AppError';
 import { LEGAL_RULES } from './legalRules.data';
+import { ArticleDifference, compareArticles } from './legalCrossCheck';
+import type { LegalArticleText } from './legalDocumentParser.service';
 
 export interface OriginLike {
   publisher?: string | null;
@@ -142,3 +144,81 @@ export function assertAnchors(check: AnchorCheck) {
 }
 
 export const anchorWarnings = (check: AnchorCheck) => check.failures.map((failure) => failure.message);
+
+export type CrossCheckResult = 'same' | 'different' | 'not_required' | 'missing_reference';
+
+export interface CrossCheck {
+  result: CrossCheckResult;
+  required: boolean;
+  referenceOrigin?: OriginCheck;
+  sameFile?: boolean;
+  compared: number;
+  differences: ArticleDifference[];
+  onlyInReference: number;
+}
+
+export interface CrossCheckInput {
+  mainOrigin?: OriginLike | null;
+  mainArticles: LegalArticleText[];
+  reference?: { articles: LegalArticleText[]; origin?: OriginLike | null; sameFile: boolean };
+}
+
+const MAX_REPORTED_DIFFERENCES = 50;
+const MAX_NAMED_DIFFERENCES = 10;
+
+export const referenceRequired = (origin: OriginLike | null | undefined) => origin?.publisher === 'other';
+
+export function checkCrossReference({ mainOrigin, mainArticles, reference }: CrossCheckInput): CrossCheck {
+  const required = referenceRequired(mainOrigin);
+  if (!reference) {
+    return {
+      result: required ? 'missing_reference' : 'not_required',
+      required,
+      compared: 0,
+      differences: [],
+      onlyInReference: 0,
+    };
+  }
+  const comparison = compareArticles(mainArticles, reference.articles);
+  return {
+    result: comparison.differences.length ? 'different' : 'same',
+    required,
+    referenceOrigin: checkOrigin(reference.origin),
+    sameFile: reference.sameFile,
+    ...comparison,
+    differences: comparison.differences.slice(0, MAX_REPORTED_DIFFERENCES),
+  };
+}
+
+export function assertCrossReference(check: CrossCheck, acknowledged?: boolean) {
+  if (check.result === 'missing_reference') {
+    throw new AppError(
+      'The text comes from an unofficial site (origin.publisher other); send referenceFile, the same text taken from another source, with referenceOrigin',
+      400,
+      true,
+      'LEGAL_REFERENCE_REQUIRED',
+    );
+  }
+  if (check.sameFile) {
+    throw new AppError('referenceFile is the same file as file; send the text from another source', 400, true, 'LEGAL_REFERENCE_SAME_FILE');
+  }
+  if (check.referenceOrigin && !check.referenceOrigin.ok) {
+    throw new AppError(`referenceOrigin: ${check.referenceOrigin.message}`, 400, true, 'LEGAL_ORIGIN_REQUIRED');
+  }
+  if (check.result === 'different' && !acknowledged) {
+    throw new AppError(
+      `${check.differences.length} article(s) differ from the reference file; review them and send acknowledgeDifferences=true to keep this text`,
+      409,
+      true,
+      'LEGAL_REFERENCE_DIFFERS',
+      { differences: check.differences, compared: check.compared },
+    );
+  }
+}
+
+export function crossCheckWarnings(check: CrossCheck): string[] {
+  if (check.result !== 'different') return [];
+  const named = check.differences.slice(0, MAX_NAMED_DIFFERENCES).map((d) => d.article).join(', ');
+  const more = check.differences.length > MAX_NAMED_DIFFERENCES ? ', ...' : '';
+  return [`${check.differences.length} article(s) differ from the reference file and were kept on purpose: ${named}${more}`];
+}

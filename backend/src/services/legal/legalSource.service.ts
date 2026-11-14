@@ -4,19 +4,26 @@ import { LegalSource, LegalSourceModel, LegalSourcePart } from '../../models/leg
 import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model';
 import {
   CONSOLIDATED_ONLY_MESSAGE,
+  AppendLegalSourcePartInput,
   CreateLegalSourceInput,
   PreviewNewLegalSourceInput,
   UpdateLegalSourceInput,
 } from '../../validations/legalSource.validation';
 import {
   assertAnchors,
+  assertCrossReference,
   assertDocumentNumber,
   assertOrigin,
   checkAnchors,
+  checkCrossReference,
   checkDocumentNumber,
   checkOrigin,
+  CrossCheck,
+  crossCheckWarnings,
   documentNumberWarnings,
+  OriginLike,
 } from './legalSourceChecks';
+import type { LegalArticleText } from './legalDocumentParser.service';
 import {
   AnalyzedLegalText,
   analyzeLegalText,
@@ -70,15 +77,36 @@ export async function analyzeLegalFile(file: LegalFile, expectedArticleCount?: n
   return analyzed;
 }
 
+export async function crossCheckOf(
+  mainOrigin: OriginLike | null | undefined,
+  mainArticles: LegalArticleText[],
+  mainFile: LegalFile,
+  referenceFile?: LegalFile,
+  referenceOrigin?: OriginLike | null,
+): Promise<CrossCheck> {
+  if (!referenceFile) return checkCrossReference({ mainOrigin, mainArticles });
+  const reference = await analyzeLegalFile(referenceFile);
+  return checkCrossReference({
+    mainOrigin,
+    mainArticles,
+    reference: {
+      articles: reference.articleTexts,
+      origin: referenceOrigin,
+      sameFile: fileHashOf(referenceFile.buffer) === fileHashOf(mainFile.buffer),
+    },
+  });
+}
+
 export function assertLlmConfigured() {
   if (!isLlmConfigured) throw AppError.badRequest('LLM is not configured. Set GEMINI_API_KEY.');
 }
 
-export async function previewLegalSource(file: LegalFile, input: PreviewNewLegalSourceInput) {
-  const { documentNumber, coverage, cleanup, extraction, chunks } = await analyzeLegalFile(
+export async function previewLegalSource(file: LegalFile, input: PreviewNewLegalSourceInput, referenceFile?: LegalFile) {
+  const { documentNumber, coverage, cleanup, extraction, chunks, articleTexts } = await analyzeLegalFile(
     file,
     input.expectedArticleCount,
   );
+  const crossCheck = await crossCheckOf(input.origin, articleTexts, file, referenceFile, input.referenceOrigin);
   const numberCheck = checkDocumentNumber(input.documentNumber, documentNumber, input.textKind);
   coverage.warnings.push(...documentNumberWarnings(numberCheck));
   return {
@@ -90,6 +118,7 @@ export async function previewLegalSource(file: LegalFile, input: PreviewNewLegal
       origin: checkOrigin(input.origin, input.gazette),
       documentNumber: numberCheck,
       anchors: checkAnchors(input.code, chunks),
+      crossCheck,
     },
     chunks: chunks.map((c) => ({
       order: c.order,
@@ -257,12 +286,13 @@ export async function startIngestion(legalSourceId: string) {
 interface CreateLegalSourceParams {
   input: CreateLegalSourceInput;
   file: LegalFile;
+  referenceFile?: LegalFile;
 }
 
 const duplicateCode = (code: string) => AppError.conflict(`A legal source with code "${code}" already exists`);
 
-export async function createLegalSource({ input, file }: CreateLegalSourceParams) {
-  const { expectedArticleCount, documentNumber, ...metadata } = input;
+export async function createLegalSource({ input, file, referenceFile }: CreateLegalSourceParams) {
+  const { expectedArticleCount, documentNumber, referenceOrigin, acknowledgeDifferences, ...metadata } = input;
   assertLlmConfigured();
   assertOrigin(checkOrigin(metadata.origin, metadata.gazette));
   if (await LegalSourceModel.exists({ code: metadata.code })) throw duplicateCode(metadata.code);
@@ -270,7 +300,9 @@ export async function createLegalSource({ input, file }: CreateLegalSourceParams
   const numberCheck = checkDocumentNumber(documentNumber, analyzed.documentNumber, metadata.textKind);
   assertDocumentNumber(numberCheck);
   assertAnchors(checkAnchors(metadata.code, analyzed.chunks));
-  const notes = documentNumberWarnings(numberCheck);
+  const crossCheck = await crossCheckOf(metadata.origin, analyzed.articleTexts, file, referenceFile, referenceOrigin);
+  assertCrossReference(crossCheck, acknowledgeDifferences);
+  const notes = [...documentNumberWarnings(numberCheck), ...crossCheckWarnings(crossCheck)];
   analyzed.coverage.warnings.push(...notes);
   const fileHash = fileHashOf(file.buffer);
   await assertFileNotStored(fileHash);
@@ -328,7 +360,12 @@ async function coverageOfStoredChunks(
   });
 }
 
-export async function appendLegalSourcePart(id: string, file: LegalFile, expectedArticleCount?: number) {
+export async function appendLegalSourcePart(
+  id: string,
+  file: LegalFile,
+  { expectedArticleCount, referenceOrigin, acknowledgeDifferences }: AppendLegalSourcePartInput = {},
+  referenceFile?: LegalFile,
+) {
   assertLlmConfigured();
   const source = await LegalSourceModel.findById(id);
   if (!source) throw AppError.notFound('Legal source not found');
@@ -350,6 +387,16 @@ export async function appendLegalSourcePart(id: string, file: LegalFile, expecte
     throw AppError.conflict('Every article in this file is already part of the legal source');
   }
   assertAnchors(checkAnchors(source.code, fresh));
+  const freshKeys = new Set(fresh.map((chunk) => chunk.articleKey ?? ''));
+  const crossCheck = await crossCheckOf(
+    source.origin,
+    analyzed.articleTexts.filter((article) => freshKeys.has(article.key)),
+    file,
+    referenceFile,
+    referenceOrigin,
+  );
+  assertCrossReference(crossCheck, acknowledgeDifferences);
+  reading.notes.push(...crossCheckWarnings(crossCheck));
 
   const upload = await storeLegalFile(source._id, file, fileHash);
   const last = await LegalKnowledgeChunkModel.findOne({ legalSourceId: source._id }).sort({ order: -1 }).select('order');

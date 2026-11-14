@@ -26,6 +26,7 @@ import {
   cleanupWarnings,
   extractionWarnings,
   LegalArticleKey,
+  LegalArticleText,
   LegalChunkDraft,
   LegalCoverageReport,
   LegalExtractionQuality,
@@ -266,6 +267,7 @@ export async function extractLegalText(buffer: Buffer, mimeType: string): Promis
 export interface AnalyzedLegalText {
   documentNumber?: string;
   articles: LegalArticleKey[];
+  articleTexts: LegalArticleText[];
   headingCount: number;
   chunks: LegalChunkDraft[];
   coverage: LegalCoverageReport;
@@ -284,6 +286,7 @@ export function analyzeLegalText(extracted: ExtractedLegalText, expectedArticleC
   return {
     documentNumber: parsed.documentNumber,
     articles: parsed.articles,
+    articleTexts: parsed.articleTexts,
     headingCount: parsed.headingCount,
     chunks: parsed.chunks,
     cleanup,

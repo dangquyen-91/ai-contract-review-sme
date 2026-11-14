@@ -5,6 +5,7 @@ import { AppError } from '../errors/AppError';
 import * as legalSourceService from '../services/legal/legalSource.service';
 import * as legalSourceContentService from '../services/legal/legalSourceContent.service';
 import {
+  AppendLegalSourcePartInput,
   CreateLegalSourceInput,
   PreviewLegalSourceInput,
   PreviewNewLegalSourceInput,
@@ -12,9 +13,18 @@ import {
   UpdateLegalSourceInput,
 } from '../validations/legalSource.validation';
 
-function uploadedFile(req: Request) {
-  if (!req.file) throw AppError.badRequest('A file is required');
-  return { buffer: req.file.buffer, mimeType: req.file.mimetype, name: req.file.originalname };
+const toLegalFile = (file: Express.Multer.File) => ({
+  buffer: file.buffer,
+  mimeType: file.mimetype,
+  name: file.originalname,
+});
+
+function uploadedFiles(req: Request) {
+  const files = (req.files ?? {}) as Record<string, Express.Multer.File[] | undefined>;
+  const main = files.file?.[0];
+  if (!main) throw AppError.badRequest('A file is required');
+  const reference = files.referenceFile?.[0];
+  return { file: toLegalFile(main), referenceFile: reference ? toLegalFile(reference) : undefined };
 }
 
 function accepted(res: Response, source: { _id: unknown }) {
@@ -23,21 +33,28 @@ function accepted(res: Response, source: { _id: unknown }) {
 }
 
 export const previewLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
-  const preview = await legalSourceService.previewLegalSource(uploadedFile(req), req.body as PreviewNewLegalSourceInput);
-  ok(res, preview);
+  const { file, referenceFile } = uploadedFiles(req);
+  ok(res, await legalSourceService.previewLegalSource(file, req.body as PreviewNewLegalSourceInput, referenceFile));
 });
 
 export const createLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { file, referenceFile } = uploadedFiles(req);
   const source = await legalSourceService.createLegalSource({
     input: req.body as CreateLegalSourceInput,
-    file: uploadedFile(req),
+    file,
+    referenceFile,
   });
   accepted(res, source);
 });
 
 export const appendLegalSourcePartHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { expectedArticleCount } = req.body as PreviewLegalSourceInput;
-  const source = await legalSourceService.appendLegalSourcePart(req.params.id, uploadedFile(req), expectedArticleCount);
+  const { file, referenceFile } = uploadedFiles(req);
+  const source = await legalSourceService.appendLegalSourcePart(
+    req.params.id,
+    file,
+    req.body as AppendLegalSourcePartInput,
+    referenceFile,
+  );
   accepted(res, source);
 });
 
@@ -54,7 +71,7 @@ export const listLegalSourceCatalogHandler = asyncHandler(async (_req: Request, 
   ok(res, await legalSourceService.listLegalSourceCatalog());
 });
 
-export const getLegalSourceHandler =asyncHandler(async (req: Request, res: Response) => {
+export const getLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
   ok(res, await legalSourceService.getLegalSource(req.params.id));
 });
 
@@ -64,12 +81,14 @@ export const previewReparseHandler = asyncHandler(async (req: Request, res: Resp
 });
 
 export const previewContentReplacementHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { file, referenceFile } = uploadedFiles(req);
   ok(
     res,
     await legalSourceContentService.previewContentReplacement(
       req.params.id,
-      uploadedFile(req),
+      file,
       req.body as ReplaceLegalSourceContentInput,
+      referenceFile,
     ),
   );
 });
@@ -80,12 +99,14 @@ export const applyReparseHandler = asyncHandler(async (req: Request, res: Respon
 });
 
 export const replaceContentHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { file, referenceFile } = uploadedFiles(req);
   accepted(
     res,
     await legalSourceContentService.applyContentReplacement(
       req.params.id,
-      uploadedFile(req),
+      file,
       req.body as ReplaceLegalSourceContentInput,
+      referenceFile,
     ),
   );
 });
@@ -102,7 +123,7 @@ export const updateLegalSourceHandler = asyncHandler(async (req: Request, res: R
   ok(res, await legalSourceService.updateLegalSource(req.params.id, req.body as UpdateLegalSourceInput));
 });
 
-export const deleteLegalSourceHandler =asyncHandler(async (req: Request, res: Response) => {
+export const deleteLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
   await legalSourceService.deleteLegalSource(req.params.id);
   res.status(204).send();
 });

@@ -3,7 +3,7 @@ import { requireAuth } from '../middlewares/auth.middleware';
 import { requireRole } from '../middlewares/rbac.middleware';
 import { aiLimiter } from '../middlewares/rateLimit.middleware';
 import { validate } from '../middlewares/validate.middleware';
-import { legalDocUpload } from '../middlewares/upload.middleware';
+import { LEGAL_DOC_UPLOAD_FIELDS, legalDocUpload } from '../middlewares/upload.middleware';
 import {
   appendLegalSourcePartHandler,
   applyReparseHandler,
@@ -22,6 +22,7 @@ import {
   updateLegalSourceHandler,
 } from '../controllers/legalSource.controller';
 import {
+  appendLegalSourcePartSchema,
   createLegalSourceSchema,
   legalSourceIdParamSchema,
   legalSourcePartParamSchema,
@@ -41,7 +42,7 @@ router.get('/catalog', listLegalSourceCatalogHandler);
 
 router.post(
   '/preview',
-  legalDocUpload.single('file'),
+  legalDocUpload.fields(LEGAL_DOC_UPLOAD_FIELDS),
   validate({ body: previewNewLegalSourceSchema }),
   previewLegalSourceHandler,
 );
@@ -49,7 +50,7 @@ router.post(
 router.post(
   '/',
   aiLimiter,
-  legalDocUpload.single('file'),
+  legalDocUpload.fields(LEGAL_DOC_UPLOAD_FIELDS),
   validate({ body: createLegalSourceSchema }),
   createLegalSourceHandler,
 );
@@ -65,8 +66,8 @@ router.patch(
 router.post(
   '/:id/parts',
   aiLimiter,
-  legalDocUpload.single('file'),
-  validate({ params: legalSourceIdParamSchema, body: previewLegalSourceSchema }),
+  legalDocUpload.fields(LEGAL_DOC_UPLOAD_FIELDS),
+  validate({ params: legalSourceIdParamSchema, body: appendLegalSourcePartSchema }),
   appendLegalSourcePartHandler,
 );
 
@@ -78,7 +79,7 @@ router.post(
 
 router.post(
   '/:id/content/preview',
-  legalDocUpload.single('file'),
+  legalDocUpload.fields(LEGAL_DOC_UPLOAD_FIELDS),
   validate({ params: legalSourceIdParamSchema, body: replaceLegalSourceContentSchema }),
   previewContentReplacementHandler,
 );
@@ -93,7 +94,7 @@ router.post(
 router.put(
   '/:id/content',
   aiLimiter,
-  legalDocUpload.single('file'),
+  legalDocUpload.fields(LEGAL_DOC_UPLOAD_FIELDS),
   validate({ params: legalSourceIdParamSchema, body: replaceLegalSourceContentSchema }),
   replaceContentHandler,
 );

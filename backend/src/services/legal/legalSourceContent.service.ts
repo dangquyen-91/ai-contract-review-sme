@@ -15,6 +15,7 @@ import {
   analyzeLegalFile,
   assertFileNotStored,
   assertLlmConfigured,
+  crossCheckOf,
   discardLegalFiles,
   getLegalSource,
   LegalFile,
@@ -28,6 +29,8 @@ import {
   AnchorCheck,
   anchorWarnings,
   assertAnchors,
+  assertCrossReference,
+  crossCheckWarnings,
   assertDocumentNumber,
   assertOrigin,
   checkAnchors,
@@ -228,19 +231,37 @@ export async function assertReplacementFile(source: HydratedDocument<LegalSource
   await assertFileNotStored(fileHash, source._id);
 }
 
-function replacementChecks(source: HydratedDocument<LegalSource>, content: AnalyzedContent, input: ReplaceLegalSourceContentInput) {
+async function replacementChecks(
+  source: HydratedDocument<LegalSource>,
+  content: AnalyzedContent,
+  input: ReplaceLegalSourceContentInput,
+  file: LegalFile,
+  referenceFile?: LegalFile,
+) {
   return {
+    crossCheck: await crossCheckOf(
+      input.origin ?? source.origin,
+      content.parts[0].analyzed.articleTexts,
+      file,
+      referenceFile,
+      input.referenceOrigin,
+    ),
     origin: checkOrigin(input.origin ?? source.origin, source.gazette),
     documentNumber: checkDocumentNumber(source.documentNumber, content.documentNumber, input.textKind ?? source.textKind),
     anchors: checkAnchors(source.code, content.drafts),
   };
 }
 
-export async function previewContentReplacement(id: string, file: LegalFile, input: ReplaceLegalSourceContentInput = {}) {
+export async function previewContentReplacement(
+  id: string,
+  file: LegalFile,
+  input: ReplaceLegalSourceContentInput = {},
+  referenceFile?: LegalFile,
+) {
   const source = await loadSource(id);
   await assertReplacementFile(source, fileHashOf(file.buffer));
   const content = await analyzeContent([file], expectedCountOf(source, input.expectedArticleCount));
-  const checks = replacementChecks(source, content, input);
+  const checks = await replacementChecks(source, content, input, file, referenceFile);
   noteDocumentNumber(content, checks.documentNumber, false);
   return previewOf(source, content, checks);
 }
@@ -387,17 +408,26 @@ function provenanceUpdate(source: HydratedDocument<LegalSource>, input: ReplaceL
   };
 }
 
-export async function applyContentReplacement(id: string, file: LegalFile, input: ReplaceLegalSourceContentInput = {}) {
+export async function applyContentReplacement(
+  id: string,
+  file: LegalFile,
+  input: ReplaceLegalSourceContentInput = {},
+  referenceFile?: LegalFile,
+) {
   assertLlmConfigured();
   const source = await loadSource(id);
   const provenance = provenanceUpdate(source, input);
   const fileHash = fileHashOf(file.buffer);
   await assertReplacementFile(source, fileHash);
   const content = await analyzeContent([file], expectedCountOf(source, input.expectedArticleCount));
-  const checks = replacementChecks(source, content, input);
+  const checks = await replacementChecks(source, content, input, file, referenceFile);
   assertOrigin(checks.origin);
   noteDocumentNumber(content, checks.documentNumber, true);
   noteAnchors(content, checks.anchors, true);
+  assertCrossReference(checks.crossCheck, input.acknowledgeDifferences);
+  const crossNotes = crossCheckWarnings(checks.crossCheck);
+  content.parts[0].notes.push(...crossNotes);
+  content.coverage.warnings.push(...crossNotes);
   const [read] = content.parts;
 
   const upload = await storeLegalFile(source._id, file, fileHash);

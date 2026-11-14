@@ -34,9 +34,16 @@ export interface LegalEndOfText {
   droppedLines: number;
 }
 
+export interface LegalArticleText {
+  key: string;
+  number: number;
+  text: string;
+}
+
 export interface ParsedLegalDocument {
   documentNumber?: string;
   articles: LegalArticleKey[];
+  articleTexts: LegalArticleText[];
   headingCount: number;
   chunks: LegalChunkDraft[];
   footnoteLines: number;
@@ -310,7 +317,14 @@ export function parseLegalDocument(fullText: string): ParsedLegalDocument {
 
   if (articles.length === 0) {
     const chunks = splitByLength(lines.join('\n')).map((text, order) => ({ order, chunkText: text }));
-    return { documentNumber, articles: [], headingCount, chunks, footnoteLines };
+    return {
+      documentNumber,
+      articles: [],
+      articleTexts: [{ key: '', number: 0, text: lines.join('\n') }],
+      headingCount,
+      chunks,
+      footnoteLines,
+    };
   }
 
   const chunks: LegalChunkDraft[] = [];
@@ -330,7 +344,19 @@ export function parseLegalDocument(fullText: string): ParsedLegalDocument {
     }
   }
 
-  return { documentNumber, articles: articles.map((a) => a.key), headingCount, chunks, footnoteLines, endOfText };
+  return {
+    documentNumber,
+    articles: articles.map((a) => a.key),
+    articleTexts: articles.map((a) => ({
+      key: articleKeyLabel(a.key),
+      number: a.key.number,
+      text: [a.heading, ...a.lines].join('\n'),
+    })),
+    headingCount,
+    chunks,
+    footnoteLines,
+    endOfText,
+  };
 }
 
 export interface StoredLegalTextCleanup {
