@@ -62,6 +62,13 @@ const legalSourcePartSchema = new Schema(
     chunkCount: { type: Number, required: true },
     skippedArticles: { type: [String], default: [] },
     uploadedAt: { type: Date, required: true },
+    fileKey: { type: String },
+    fileResourceType: { type: String },
+    fileDeliveryType: { type: String },
+    fileFormat: { type: String },
+    fileHash: { type: String },
+    mimeType: { type: String },
+    fileSize: { type: Number },
   },
   { _id: false },
 );
@@ -92,7 +99,10 @@ const legalSourceSchema = new Schema(
   { timestamps: true },
 );
 
+legalSourceSchema.index({ 'parts.fileHash': 1 });
+
 export type LegalSource = InferSchemaType<typeof legalSourceSchema>;
+export type LegalSourcePart = InferSchemaType<typeof legalSourcePartSchema>;
 export type LegalCoverage = InferSchemaType<typeof legalCoverageSchema>;
 export type LegalSourceOrigin = InferSchemaType<typeof legalSourceOriginSchema>;
 export const LegalSourceModel = model('LegalSource', legalSourceSchema);

@@ -56,6 +56,10 @@ export const getLegalSourceHandler =asyncHandler(async (req: Request, res: Respo
   ok(res, await legalSourceService.getLegalSource(req.params.id));
 });
 
+export const getLegalSourcePartFileHandler = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, await legalSourceService.getLegalSourcePartFile(req.params.id, Number(req.params.partIndex)));
+});
+
 export const updateLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
   ok(res, await legalSourceService.updateLegalSource(req.params.id, req.body as UpdateLegalSourceInput));
 });

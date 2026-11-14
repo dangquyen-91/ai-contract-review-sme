@@ -9,6 +9,7 @@ import {
   createLegalSourceHandler,
   deleteLegalSourceHandler,
   getLegalSourceHandler,
+  getLegalSourcePartFileHandler,
   listLegalSourceCatalogHandler,
   listLegalSourcesHandler,
   previewLegalSourceHandler,
@@ -18,6 +19,7 @@ import {
 import {
   createLegalSourceSchema,
   legalSourceIdParamSchema,
+  legalSourcePartParamSchema,
   previewLegalSourceSchema,
   updateLegalSourceSchema,
 } from '../validations/legalSource.validation';
@@ -59,6 +61,12 @@ router.post(
   legalDocUpload.single('file'),
   validate({ params: legalSourceIdParamSchema, body: previewLegalSourceSchema }),
   appendLegalSourcePartHandler,
+);
+
+router.get(
+  '/:id/parts/:partIndex/file',
+  validate({ params: legalSourcePartParamSchema }),
+  getLegalSourcePartFileHandler,
 );
 
 router.post(

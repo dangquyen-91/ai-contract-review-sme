@@ -155,6 +155,10 @@ export const legalSourceIdParamSchema = z.object({
   id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid legal source id'),
 });
 
+export const legalSourcePartParamSchema = legalSourceIdParamSchema.extend({
+  partIndex: z.coerce.number().int().min(0).max(999),
+});
+
 export type CreateLegalSourceInput = z.infer<typeof createLegalSourceSchema>;
 export type UpdateLegalSourceInput = z.infer<typeof updateLegalSourceSchema>;
 export type PreviewLegalSourceInput = z.infer<typeof previewLegalSourceSchema>;

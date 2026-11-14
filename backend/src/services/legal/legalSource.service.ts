@@ -1,6 +1,6 @@
-import { Types } from 'mongoose';
+import { HydratedDocument, Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
-import { LegalSourceModel } from '../../models/legalSource.model';
+import { LegalSource, LegalSourceModel, LegalSourcePart } from '../../models/legalSource.model';
 import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model';
 import {
   CONSOLIDATED_ONLY_MESSAGE,
@@ -15,6 +15,14 @@ import { logger } from '../../config/logger';
 import { ContractProfileModel } from '../../models/contractProfile.model';
 import { isCatalogLegalSourceCode, LEGAL_SOURCE_CATALOG, LegalSourceCode } from './legalSourceCatalog.data';
 import { LEGAL_RULES } from './legalRules.data';
+import { fileHashOf } from '../contract/contractVersion.service';
+import {
+  createFileDownloadLink,
+  deleteContractFile,
+  StoredFile,
+  storedFileOf,
+  uploadPrivateFile,
+} from '../contract/storage.service';
 
 const PREVIEW_TEXT_CHARS = 120;
 
@@ -56,7 +64,46 @@ export async function previewLegalSource(file: LegalFile, expectedArticleCount?:
   };
 }
 
-function partOf(file: LegalFile, chunks: LegalChunkDraft[], skippedArticles: string[] = []) {
+interface StoredLegalFile {
+  stored: StoredFile;
+  fileHash: string;
+}
+
+const legalSourceFolder = (legalSourceId: Types.ObjectId) => `legal-sources/${legalSourceId.toString()}`;
+
+async function assertFileNotStored(fileHash: string) {
+  const existing = await LegalSourceModel.findOne({ 'parts.fileHash': fileHash }).select('code title');
+  if (!existing) return;
+  throw AppError.conflict(
+    `This file was already uploaded to the legal source "${existing.title}"`,
+    'DUPLICATE_LEGAL_FILE',
+    { legalSourceId: existing.id, code: existing.code, title: existing.title },
+  );
+}
+
+async function storeLegalFile(legalSourceId: Types.ObjectId, file: LegalFile, fileHash: string): Promise<StoredLegalFile> {
+  const stored = await uploadPrivateFile(file.buffer, legalSourceFolder(legalSourceId), file.name || 'legal-source');
+  return { stored, fileHash };
+}
+
+async function discardLegalFiles(files: (StoredFile | undefined)[]) {
+  await Promise.all(
+    files.flatMap((file) =>
+      file
+        ? [
+            deleteContractFile(file).catch((err) =>
+              logger.warn('Failed to remove a stored legal source file', {
+                fileKey: file.key,
+                error: err instanceof Error ? err.message : String(err),
+              }),
+            ),
+          ]
+        : [],
+    ),
+  );
+}
+
+function partOf(file: LegalFile, chunks: LegalChunkDraft[], { stored, fileHash }: StoredLegalFile, skippedArticles: string[] = []) {
   const numbers = chunks.flatMap((c) => (c.articleNumber === undefined ? [] : [c.articleNumber]));
   return {
     fileName: file.name,
@@ -65,6 +112,37 @@ function partOf(file: LegalFile, chunks: LegalChunkDraft[], skippedArticles: str
     chunkCount: chunks.length,
     skippedArticles,
     uploadedAt: new Date(),
+    fileKey: stored.key,
+    fileResourceType: stored.resourceType,
+    fileDeliveryType: stored.deliveryType,
+    fileFormat: stored.format,
+    fileHash,
+    mimeType: file.mimeType,
+    fileSize: file.buffer.length,
+  };
+}
+
+function presentParts(parts: LegalSourcePart[]) {
+  return parts.map((part) => ({
+    fileName: part.fileName,
+    articleFrom: part.articleFrom,
+    articleTo: part.articleTo,
+    chunkCount: part.chunkCount,
+    skippedArticles: part.skippedArticles,
+    uploadedAt: part.uploadedAt,
+    hasFile: Boolean(part.fileKey),
+    fileHash: part.fileHash,
+    mimeType: part.mimeType,
+    fileSize: part.fileSize,
+  }));
+}
+
+function presentLegalSource(source: HydratedDocument<LegalSource>, chunkCount: number) {
+  return {
+    ...source.toObject(),
+    parts: presentParts(source.parts),
+    chunkCount,
+    inCatalog: isCatalogLegalSourceCode(source.code),
   };
 }
 
@@ -95,17 +173,24 @@ export async function createLegalSource({ input, file }: CreateLegalSourceParams
   assertLlmConfigured();
   if (await LegalSourceModel.exists({ code: metadata.code })) throw duplicateCode(metadata.code);
   const analyzed = await analyzeLegalFile(file, expectedArticleCount);
+  const fileHash = fileHashOf(file.buffer);
+  await assertFileNotStored(fileHash);
+
+  const legalSourceId = new Types.ObjectId();
+  const upload = await storeLegalFile(legalSourceId, file, fileHash);
 
   let source;
   try {
     source = await LegalSourceModel.create({
+      _id: legalSourceId,
       ...metadata,
       documentNumber: documentNumber ?? analyzed.documentNumber,
       coverage: analyzed.coverage,
       ingestion: { status: 'queued', totalChunks: analyzed.chunks.length, embeddedChunks: 0 },
-      parts: [partOf(file, analyzed.chunks)],
+      parts: [partOf(file, analyzed.chunks, upload)],
     });
   } catch (err) {
+    await discardLegalFiles([upload.stored]);
     if ((err as { code?: number }).code === 11000) throw duplicateCode(metadata.code);
     throw err;
   }
@@ -116,6 +201,7 @@ export async function createLegalSource({ input, file }: CreateLegalSourceParams
   } catch (err) {
     await LegalKnowledgeChunkModel.deleteMany({ legalSourceId: source._id });
     await LegalSourceModel.deleteOne({ _id: source._id });
+    await discardLegalFiles([upload.stored]);
     throw err;
   }
   return getLegalSource(source.id);
@@ -142,6 +228,8 @@ export async function appendLegalSourcePart(id: string, file: LegalFile, expecte
   const source = await LegalSourceModel.findById(id);
   if (!source) throw AppError.notFound('Legal source not found');
   const analyzed = await analyzeLegalFile(file);
+  const fileHash = fileHashOf(file.buffer);
+  await assertFileNotStored(fileHash);
 
   const existingKeys = new Set(
     (await LegalKnowledgeChunkModel.distinct('articleKey', { legalSourceId: source._id })).map(String),
@@ -154,35 +242,45 @@ export async function appendLegalSourcePart(id: string, file: LegalFile, expecte
     throw AppError.conflict('Every article in this file is already part of the legal source');
   }
 
+  const upload = await storeLegalFile(source._id, file, fileHash);
   const last = await LegalKnowledgeChunkModel.findOne({ legalSourceId: source._id }).sort({ order: -1 }).select('order');
+  let insertedIds: Types.ObjectId[];
   try {
-    await LegalKnowledgeChunkModel.insertMany(chunkDocs(source._id, fresh, (last?.order ?? -1) + 1));
+    const inserted = await LegalKnowledgeChunkModel.insertMany(chunkDocs(source._id, fresh, (last?.order ?? -1) + 1));
+    insertedIds = inserted.map((chunk) => chunk._id);
   } catch (err) {
+    await discardLegalFiles([upload.stored]);
     if ((err as { code?: number }).code === 11000) {
       throw AppError.conflict('Another part of this legal source is being uploaded; try again');
     }
     throw err;
   }
 
-  const expected = expectedArticleCount ?? source.coverage?.expectedArticleCount ?? undefined;
-  const coverage = await coverageOfStoredChunks(
-    source._id,
-    (source.coverage?.headingCount ?? 0) + analyzed.headingCount,
-    expected,
-  );
-  const totalChunks = coverage.chunkCount;
-  await LegalSourceModel.updateOne(
-    { _id: source._id },
-    {
-      $set: {
-        coverage,
-        'ingestion.totalChunks': totalChunks,
-        ...(source.documentNumber || !analyzed.documentNumber ? {} : { documentNumber: analyzed.documentNumber }),
-        ...(source.ingestion ? {} : { 'ingestion.embeddedChunks': totalChunks - fresh.length }),
+  try {
+    const expected = expectedArticleCount ?? source.coverage?.expectedArticleCount ?? undefined;
+    const coverage = await coverageOfStoredChunks(
+      source._id,
+      (source.coverage?.headingCount ?? 0) + analyzed.headingCount,
+      expected,
+    );
+    const totalChunks = coverage.chunkCount;
+    await LegalSourceModel.updateOne(
+      { _id: source._id },
+      {
+        $set: {
+          coverage,
+          'ingestion.totalChunks': totalChunks,
+          ...(source.documentNumber || !analyzed.documentNumber ? {} : { documentNumber: analyzed.documentNumber }),
+          ...(source.ingestion ? {} : { 'ingestion.embeddedChunks': totalChunks - fresh.length }),
+        },
+        $push: { parts: partOf(file, fresh, upload, skippedArticles) },
       },
-      $push: { parts: partOf(file, fresh, skippedArticles) },
-    },
-  );
+    );
+  } catch (err) {
+    await LegalKnowledgeChunkModel.deleteMany({ _id: { $in: insertedIds } });
+    await discardLegalFiles([upload.stored]);
+    throw err;
+  }
   await startIngestion(source.id);
   return getLegalSource(source.id);
 }
@@ -233,11 +331,7 @@ export async function listLegalSources() {
   ]);
   const countBySourceId = new Map(chunkCounts.map((c) => [c._id.toString(), c.count]));
 
-  return sources.map((source) => ({
-    ...source.toObject(),
-    chunkCount: countBySourceId.get(source._id.toString()) ?? 0,
-    inCatalog: isCatalogLegalSourceCode(source.code),
-  }));
+  return sources.map((source) => presentLegalSource(source, countBySourceId.get(source._id.toString()) ?? 0));
 }
 
 export async function getLegalSource(id: string) {
@@ -246,7 +340,27 @@ export async function getLegalSource(id: string) {
     throw AppError.notFound('Legal source not found');
   }
   const chunkCount = await LegalKnowledgeChunkModel.countDocuments({ legalSourceId: source._id });
-  return { ...source.toObject(), chunkCount, inCatalog: isCatalogLegalSourceCode(source.code) };
+  return presentLegalSource(source, chunkCount);
+}
+
+export async function getLegalSourcePartFile(id: string, partIndex: number) {
+  const source = await LegalSourceModel.findById(id).select('parts');
+  if (!source) throw AppError.notFound('Legal source not found');
+  const part = source.parts[partIndex];
+  if (!part) throw AppError.notFound('Legal source part not found');
+  const stored = storedFileOf(part);
+  if (!stored) {
+    throw AppError.notFound(
+      'This part was uploaded before original files were kept; upload it again to store the file',
+      'LEGAL_FILE_NOT_STORED',
+    );
+  }
+  return {
+    ...createFileDownloadLink(stored),
+    fileName: part.fileName ?? undefined,
+    mimeType: part.mimeType ?? undefined,
+    fileHash: part.fileHash ?? undefined,
+  };
 }
 
 export async function listLegalSourceCatalog() {
@@ -324,4 +438,5 @@ export async function deleteLegalSource(id: string) {
   }
   await LegalSourceModel.deleteOne({ _id: id });
   await LegalKnowledgeChunkModel.deleteMany({ legalSourceId: id });
+  await discardLegalFiles(source.parts.map((part) => storedFileOf(part)));
 }
