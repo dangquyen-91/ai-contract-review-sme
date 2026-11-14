@@ -153,6 +153,7 @@ export const previewLegalSourceSchema = z.object({ expectedArticleCount });
 
 export const previewNewLegalSourceSchema = z.object({
   expectedArticleCount,
+  code: z.string().trim().toLowerCase().max(60).optional(),
   documentNumber: legalSourceFields.documentNumber.optional(),
   textKind: legalSourceFields.textKind.optional(),
   gazette: legalSourceFields.gazette.optional(),

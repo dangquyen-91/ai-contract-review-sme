@@ -9,8 +9,10 @@ import {
   UpdateLegalSourceInput,
 } from '../../validations/legalSource.validation';
 import {
+  assertAnchors,
   assertDocumentNumber,
   assertOrigin,
+  checkAnchors,
   checkDocumentNumber,
   checkOrigin,
   documentNumberWarnings,
@@ -84,7 +86,11 @@ export async function previewLegalSource(file: LegalFile, input: PreviewNewLegal
     coverage,
     cleanup,
     extraction,
-    checks: { origin: checkOrigin(input.origin, input.gazette), documentNumber: numberCheck },
+    checks: {
+      origin: checkOrigin(input.origin, input.gazette),
+      documentNumber: numberCheck,
+      anchors: checkAnchors(input.code, chunks),
+    },
     chunks: chunks.map((c) => ({
       order: c.order,
       articleRef: c.articleRef,
@@ -263,6 +269,7 @@ export async function createLegalSource({ input, file }: CreateLegalSourceParams
   const analyzed = await analyzeLegalFile(file, expectedArticleCount);
   const numberCheck = checkDocumentNumber(documentNumber, analyzed.documentNumber, metadata.textKind);
   assertDocumentNumber(numberCheck);
+  assertAnchors(checkAnchors(metadata.code, analyzed.chunks));
   const notes = documentNumberWarnings(numberCheck);
   analyzed.coverage.warnings.push(...notes);
   const fileHash = fileHashOf(file.buffer);
@@ -342,6 +349,7 @@ export async function appendLegalSourcePart(id: string, file: LegalFile, expecte
   if (fresh.length === 0) {
     throw AppError.conflict('Every article in this file is already part of the legal source');
   }
+  assertAnchors(checkAnchors(source.code, fresh));
 
   const upload = await storeLegalFile(source._id, file, fileHash);
   const last = await LegalKnowledgeChunkModel.findOne({ legalSourceId: source._id }).sort({ order: -1 }).select('order');

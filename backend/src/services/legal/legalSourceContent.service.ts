@@ -25,8 +25,12 @@ import {
   storeLegalFile,
 } from './legalSource.service';
 import {
+  AnchorCheck,
+  anchorWarnings,
+  assertAnchors,
   assertDocumentNumber,
   assertOrigin,
+  checkAnchors,
   checkDocumentNumber,
   checkOrigin,
   DocumentNumberCheck,
@@ -174,6 +178,16 @@ function noteDocumentNumber(content: AnalyzedContent, check: DocumentNumberCheck
   content.coverage.warnings.push(...notes);
 }
 
+function noteAnchors(content: AnalyzedContent, check: AnchorCheck, blocking: boolean) {
+  if (blocking) {
+    assertAnchors(check);
+    return;
+  }
+  const notes = anchorWarnings(check);
+  content.parts[0].notes.push(...notes);
+  content.coverage.warnings.push(...notes);
+}
+
 async function previewOf(source: HydratedDocument<LegalSource>, content: AnalyzedContent, checks: Record<string, unknown>) {
   const plan = await reconcileWithStored(source._id, content.drafts);
   return {
@@ -193,7 +207,9 @@ async function analyzeStoredContent(source: HydratedDocument<LegalSource>, expec
   const content = await analyzeContent(files, expectedCountOf(source, expectedArticleCount));
   const documentNumber = checkDocumentNumber(source.documentNumber, content.documentNumber, source.textKind);
   noteDocumentNumber(content, documentNumber, false);
-  return { content, checks: { documentNumber } };
+  const anchors = checkAnchors(source.code, content.drafts);
+  noteAnchors(content, anchors, false);
+  return { content, checks: { documentNumber, anchors } };
 }
 
 export async function previewReparse(id: string, expectedArticleCount?: number) {
@@ -216,6 +232,7 @@ function replacementChecks(source: HydratedDocument<LegalSource>, content: Analy
   return {
     origin: checkOrigin(input.origin ?? source.origin, source.gazette),
     documentNumber: checkDocumentNumber(source.documentNumber, content.documentNumber, input.textKind ?? source.textKind),
+    anchors: checkAnchors(source.code, content.drafts),
   };
 }
 
@@ -380,6 +397,7 @@ export async function applyContentReplacement(id: string, file: LegalFile, input
   const checks = replacementChecks(source, content, input);
   assertOrigin(checks.origin);
   noteDocumentNumber(content, checks.documentNumber, true);
+  noteAnchors(content, checks.anchors, true);
   const [read] = content.parts;
 
   const upload = await storeLegalFile(source._id, file, fileHash);

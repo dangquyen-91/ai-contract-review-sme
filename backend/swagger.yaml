@@ -1712,6 +1712,36 @@ components:
               type: string
             message:
               type: string
+        anchors:
+          type: object
+          description: |
+            The hard-coded legal rules cite fixed wording in specific articles (e.g. "8%" in Điều 301 of commercial_law_2005). For the articles of this source that the file contains, each cited wording must appear in the article (case and spacing ignored), exactly as the rules look it up during a review.
+            failed blocks create, append and content replacement (400 LEGAL_ANCHOR_MISMATCH, error.meta.failures); it usually means an outdated text, a wrong law, or an OCR misreading. If the law really changed, the rule must be updated in code first. A reparse only adds warnings. not_applicable = no rule cites this source, or the file has none of the cited articles.
+          properties:
+            result:
+              type: string
+              enum: [ok, failed, not_applicable]
+            checked:
+              type: integer
+              description: Cited wordings whose article is in the file
+            failures:
+              type: array
+              items:
+                type: object
+                properties:
+                  article:
+                    type: integer
+                  clause:
+                    type: integer
+                  verifyText:
+                    type: string
+                  rules:
+                    type: array
+                    items:
+                      type: string
+                    example: [LTM_PENALTY_CAP v1]
+                  message:
+                    type: string
 
     LegalContentApplied:
       allOf:
@@ -4907,7 +4937,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Validation error, unsupported or unreadable file, no usable text, LLM not configured, LEGAL_ORIGIN_REQUIRED, or LEGAL_DOCUMENT_NUMBER_MISMATCH (error.meta has entered and detected)
+          description: Validation error, unsupported or unreadable file, no usable text, LLM not configured, LEGAL_ORIGIN_REQUIRED, LEGAL_DOCUMENT_NUMBER_MISMATCH (error.meta has entered and detected), or LEGAL_ANCHOR_MISMATCH (error.meta.failures)
           content:
             application/json:
               schema:
@@ -5015,6 +5045,10 @@ paths:
                   minimum: 1
                   maximum: 5000
                   example: 324
+                code:
+                  type: string
+                  maxLength: 60
+                  description: Optional; the code the source would get, so checks.anchors can check the wording the legal rules cite
                 documentNumber:
                   type: string
                   maxLength: 60
@@ -5259,7 +5293,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Missing, unsupported or unreadable file, no usable text, LLM not configured, or LEGAL_DOCUMENT_NUMBER_MISMATCH when the file is numbered differently from the source (original text)
+          description: Missing, unsupported or unreadable file, no usable text, LLM not configured, LEGAL_DOCUMENT_NUMBER_MISMATCH when the file is numbered differently from the source (original text), or LEGAL_ANCHOR_MISMATCH when a new article lacks the wording a legal rule cites
           content:
             application/json:
               schema:
@@ -5542,7 +5576,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalContentApplied'
         '400':
-          description: Validation error, LLM not configured, unreadable file, no usable text, LEGAL_OCR_LIMIT, LEGAL_ORIGIN_REQUIRED (no origin sent and none stored), or LEGAL_DOCUMENT_NUMBER_MISMATCH
+          description: Validation error, LLM not configured, unreadable file, no usable text, LEGAL_OCR_LIMIT, LEGAL_ORIGIN_REQUIRED (no origin sent and none stored), LEGAL_DOCUMENT_NUMBER_MISMATCH, or LEGAL_ANCHOR_MISMATCH
           content:
             application/json:
               schema:
