@@ -1535,6 +1535,28 @@ components:
         expiryDate:
           type: string
           format: date-time
+        signer:
+          type: string
+        legalField:
+          type: string
+        issuingPlace:
+          type: string
+        gazette:
+          type: string
+          description: Official Gazette issue the text was published in
+          example: Công báo số 1263+1264, ngày 30/10/2005
+        origin:
+          $ref: '#/components/schemas/LegalSourceOrigin'
+        textKind:
+          type: string
+          enum: [original, consolidated]
+          description: Absent when the uploader did not say which kind of text it is
+        consolidatedThrough:
+          type: array
+          items:
+            type: string
+          description: Amending documents already merged into a consolidated text
+          example: [44/2019/QH14]
         coverage:
           $ref: '#/components/schemas/LegalCoverage'
         ingestion:
@@ -1571,6 +1593,25 @@ components:
         updatedAt:
           type: string
           format: date-time
+
+    LegalSourceOrigin:
+      type: object
+      required: [publisher]
+      description: Where the uploaded text was taken from. Absent on sources uploaded before provenance was recorded, which count as unverified.
+      properties:
+        publisher:
+          type: string
+          enum: [official_gazette, national_database, issuing_authority, other]
+          description: official_gazette = Công báo; national_database = Cơ sở dữ liệu quốc gia về văn bản pháp luật (vbpl.vn); issuing_authority = portal of the issuing body; other = any other site, reference only
+        url:
+          type: string
+          format: uri
+          maxLength: 500
+          description: http or https link to the page the text was taken from
+        retrievedAt:
+          type: string
+          format: date-time
+          description: When the text was taken from the publisher; cannot be in the future
 
     LegalIngestion:
       type: object
@@ -1664,6 +1705,36 @@ components:
         issuingBody:
           type: string
           maxLength: 200
+        signer:
+          type: string
+          minLength: 1
+          maxLength: 100
+        legalField:
+          type: string
+          minLength: 1
+          maxLength: 100
+        issuingPlace:
+          type: string
+          minLength: 1
+          maxLength: 100
+        gazette:
+          type: string
+          minLength: 1
+          maxLength: 200
+        origin:
+          description: Optional. Send nested form fields (origin[publisher], origin[url], origin[retrievedAt]) or one field holding a JSON object.
+          allOf:
+            - $ref: '#/components/schemas/LegalSourceOrigin'
+        textKind:
+          type: string
+          enum: [original, consolidated]
+        consolidatedThrough:
+          type: array
+          maxItems: 30
+          items:
+            type: string
+            maxLength: 60
+          description: Only with textKind consolidated. Repeat the field, or send one value as a JSON array or a comma-separated list.
         issuedDate:
           type: string
           format: date
@@ -4796,7 +4867,8 @@ paths:
       tags: [LegalKB]
       summary: Update a legal source's metadata or legal status without re-uploading it
       description: |
-        Manager only. JSON body; send at least one field. null clears an optional field (documentNumber, issuingBody, issuedDate, effectiveDate, expiryDate, expectedArticleCount). code cannot be changed because contract profiles and legal rules reference it.
+        Manager only. JSON body; send at least one field. null clears an optional field (documentNumber, issuingBody, signer, legalField, issuingPlace, gazette, origin, textKind, consolidatedThrough, issuedDate, effectiveDate, expiryDate, expectedArticleCount). origin is replaced as a whole. code cannot be changed because contract profiles and legal rules reference it.
+        consolidatedThrough is only allowed while textKind (sent or stored) is consolidated.
         Setting status to repealed removes the source from legal search and from citation checks of new reviews right away; earlier reviews keep the excerpts they cited. A new citationLabel is used for new citations, but the stored embeddings keep the old label until the source is uploaded again.
         expectedArticleCount recomputes the coverage report.
       requestBody:
@@ -4830,6 +4902,37 @@ paths:
                   type: string
                   nullable: true
                   maxLength: 200
+                signer:
+                  type: string
+                  nullable: true
+                  maxLength: 100
+                legalField:
+                  type: string
+                  nullable: true
+                  maxLength: 100
+                issuingPlace:
+                  type: string
+                  nullable: true
+                  maxLength: 100
+                gazette:
+                  type: string
+                  nullable: true
+                  maxLength: 200
+                origin:
+                  nullable: true
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                textKind:
+                  type: string
+                  nullable: true
+                  enum: [original, consolidated]
+                consolidatedThrough:
+                  type: array
+                  nullable: true
+                  maxItems: 30
+                  items:
+                    type: string
+                    maxLength: 60
                 issuedDate:
                   type: string
                   format: date
@@ -4859,7 +4962,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Validation failed (unknown field, empty body, or expiryDate not after effectiveDate)
+          description: Validation failed (unknown field, empty body, expiryDate not after effectiveDate, or consolidatedThrough without textKind consolidated)
           content:
             application/json:
               schema:

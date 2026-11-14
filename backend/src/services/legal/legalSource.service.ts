@@ -2,7 +2,11 @@ import { Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { LegalSourceModel } from '../../models/legalSource.model';
 import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model';
-import { CreateLegalSourceInput, UpdateLegalSourceInput } from '../../validations/legalSource.validation';
+import {
+  CONSOLIDATED_ONLY_MESSAGE,
+  CreateLegalSourceInput,
+  UpdateLegalSourceInput,
+} from '../../validations/legalSource.validation';
 import { AnalyzedLegalText, analyzeLegalText, extractLegalText } from './legalKnowledgeIngest.service';
 import { buildLegalCoverage, LegalChunkDraft } from './legalDocumentParser.service';
 import { isLegalIngestionJobAlive, queueLegalIngestion } from './legalIngestionWorker.service';
@@ -277,6 +281,12 @@ export async function updateLegalSource(id: string, input: UpdateLegalSourceInpu
   const expiryDate = fields.expiryDate === undefined ? source.expiryDate : fields.expiryDate;
   if (effectiveDate && expiryDate && expiryDate <= effectiveDate) {
     throw AppError.badRequest('expiryDate must be after effectiveDate');
+  }
+  const textKind = fields.textKind === undefined ? source.textKind : fields.textKind;
+  const consolidatedThrough =
+    fields.consolidatedThrough === undefined ? source.consolidatedThrough : fields.consolidatedThrough;
+  if (consolidatedThrough?.length && textKind !== 'consolidated') {
+    throw AppError.badRequest(CONSOLIDATED_ONLY_MESSAGE);
   }
 
   const set: Record<string, unknown> = {};

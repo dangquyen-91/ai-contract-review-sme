@@ -6,6 +6,19 @@ export const LEGAL_SOURCE_STATUSES = ['in_force', 'amended', 'repealed', 'not_ye
 
 export const LEGAL_SOURCE_CODE_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
 
+export const LEGAL_SOURCE_PUBLISHERS = ['official_gazette', 'national_database', 'issuing_authority', 'other'] as const;
+
+export const LEGAL_TEXT_KINDS = ['original', 'consolidated'] as const;
+
+const legalSourceOriginSchema = new Schema(
+  {
+    publisher: { type: String, enum: LEGAL_SOURCE_PUBLISHERS, required: true },
+    url: { type: String, trim: true },
+    retrievedAt: { type: Date },
+  },
+  { _id: false },
+);
+
 const legalCoverageSchema = new Schema(
   {
     structured: { type: Boolean, required: true },
@@ -69,6 +82,9 @@ const legalSourceSchema = new Schema(
     issuedDate: { type: Date },
     effectiveDate: { type: Date },
     expiryDate: { type: Date },
+    origin: { type: legalSourceOriginSchema },
+    textKind: { type: String, enum: LEGAL_TEXT_KINDS },
+    consolidatedThrough: { type: [String], default: undefined },
     coverage: { type: legalCoverageSchema },
     ingestion: { type: legalIngestionSchema },
     parts: { type: [legalSourcePartSchema], default: [] },
@@ -78,4 +94,5 @@ const legalSourceSchema = new Schema(
 
 export type LegalSource = InferSchemaType<typeof legalSourceSchema>;
 export type LegalCoverage = InferSchemaType<typeof legalCoverageSchema>;
+export type LegalSourceOrigin = InferSchemaType<typeof legalSourceOriginSchema>;
 export const LegalSourceModel = model('LegalSource', legalSourceSchema);
