@@ -1,4 +1,5 @@
 import { LEGAL_HEADING_LEVELS } from '../../models/legalKnowledgeChunk.model';
+import { LEGAL_EXTRACTION_METHODS } from '../../models/legalSource.model';
 
 type HeadingLevel = (typeof LEGAL_HEADING_LEVELS)[number];
 
@@ -54,6 +55,27 @@ export interface CleanedPdfText {
   text: string;
   pageFurnitureLines: number;
   footnoteLines: number;
+}
+
+export interface LegalExtractionQuality {
+  method: (typeof LEGAL_EXTRACTION_METHODS)[number];
+  pageCount?: number;
+  ocrPageCount: number;
+  ocrConfidence?: number;
+  lowConfidence: boolean;
+}
+
+export interface StoredLegalExtractionQuality {
+  ocrPageCount?: number | null;
+  ocrConfidence?: number | null;
+  lowConfidence?: boolean | null;
+}
+
+export function extractionWarnings(extraction: StoredLegalExtractionQuality | null | undefined): string[] {
+  if (!extraction?.ocrPageCount) return [];
+  const confidence = extraction.ocrConfidence == null ? '' : ` (confidence ${extraction.ocrConfidence}%)`;
+  const message = `${extraction.ocrPageCount} page(s) were read with OCR${confidence}; compare article numbers, amounts and percentages with the official text`;
+  return [extraction.lowConfidence ? `Low OCR quality: ${message}` : message];
 }
 
 export interface LegalCoverageReport {

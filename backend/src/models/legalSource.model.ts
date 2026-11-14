@@ -67,6 +67,19 @@ const legalTextCleanupSchema = new Schema(
   { _id: false },
 );
 
+export const LEGAL_EXTRACTION_METHODS = ['text_layer', 'ocr', 'mixed', 'docx', 'doc', 'txt'] as const;
+
+const legalExtractionSchema = new Schema(
+  {
+    method: { type: String, enum: LEGAL_EXTRACTION_METHODS, required: true },
+    pageCount: { type: Number },
+    ocrPageCount: { type: Number, required: true },
+    ocrConfidence: { type: Number },
+    lowConfidence: { type: Boolean, required: true },
+  },
+  { _id: false },
+);
+
 const legalSourcePartSchema = new Schema(
   {
     fileName: { type: String },
@@ -83,6 +96,7 @@ const legalSourcePartSchema = new Schema(
     mimeType: { type: String },
     fileSize: { type: Number },
     cleanup: { type: legalTextCleanupSchema },
+    extraction: { type: legalExtractionSchema },
   },
   { _id: false },
 );

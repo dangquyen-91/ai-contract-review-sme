@@ -1589,6 +1589,8 @@ components:
                 description: False for parts uploaded before original files were kept. Download it with GET /kb/legal-sources/{id}/parts/{partIndex}/file.
               cleanup:
                 $ref: '#/components/schemas/LegalTextCleanup'
+              extraction:
+                $ref: '#/components/schemas/LegalExtractionQuality'
               fileHash:
                 type: string
                 description: SHA-256 of the uploaded file
@@ -1660,6 +1662,27 @@ components:
           type: string
           format: date-time
 
+    LegalExtractionQuality:
+      type: object
+      description: How the text was read. Absent on parts uploaded before it was recorded.
+      properties:
+        method:
+          type: string
+          enum: [text_layer, ocr, mixed, docx, doc, txt]
+          description: For a PDF, text_layer = every page had a text layer, ocr = every page was read with OCR, mixed = some pages were
+        pageCount:
+          type: integer
+          description: PDF pages
+        ocrPageCount:
+          type: integer
+          description: Pages read with OCR (Vietnamese + English) because they had less than 30 characters of text layer. Any OCR page adds a coverage warning, because OCR can misread numbers.
+        ocrConfidence:
+          type: integer
+          description: Average OCR confidence (0-100), weighted by text length
+        lowConfidence:
+          type: boolean
+          description: True when the OCR confidence is below 70; the coverage warning then starts with "Low OCR quality"
+
     LegalTextCleanup:
       type: object
       description: What was left out while reading the file. Absent on parts uploaded before it was recorded.
@@ -1692,6 +1715,8 @@ components:
           $ref: '#/components/schemas/LegalCoverage'
         cleanup:
           $ref: '#/components/schemas/LegalTextCleanup'
+        extraction:
+          $ref: '#/components/schemas/LegalExtractionQuality'
         chunks:
           type: array
           items:
@@ -4728,6 +4753,8 @@ paths:
 
         A PDF is read page by page: page numbers and header/footer lines repeated across pages are removed, and the footnote block at the bottom of a page of a consolidated text is left out. Footnote lines and inline "[n]" markers are removed from any file type. parts[].cleanup (and cleanup in the preview) counts what was left out.
 
+        Scanned PDF pages (less than 30 characters of text layer) are read with OCR during the request, at most 40 pages per file; a file with more scanned pages is rejected with 400 LEGAL_OCR_LIMIT. parts[].extraction (and extraction in the preview) says how the text was read.
+
         Each article becomes one chunk of up to 2200 characters. A longer article is split into groups of whole khoản, and each group repeats the article heading (and the short lead-in sentence) so it can be read alone, e.g. "Điều 3, khoản 1-9". A khoản that is still too long is split into groups of điểm. A document with no "Điều N" headings (e.g. a standard template) is split into plain passages.
 
         The source and its chunks are saved right away and the request returns 202. A background worker then embeds the chunks in batches of 20 (task type RETRIEVAL_DOCUMENT), paced under LEGAL_EMBED_TOKENS_PER_MINUTE and LEGAL_EMBED_REQUESTS_PER_MINUTE (each text counts as one request). The text sent to the embedding model is the citation label, the chapter/section titles and the chunk text.
@@ -4874,7 +4901,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSourcePreview'
         '400':
-          description: Missing, unsupported or unreadable file, or no usable text
+          description: Missing, unsupported or unreadable file, no usable text, or code LEGAL_OCR_LIMIT when more than 40 PDF pages would need OCR
           content:
             application/json:
               schema:

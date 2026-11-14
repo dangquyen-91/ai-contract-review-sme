@@ -18,8 +18,11 @@ import {
 import {
   buildLegalCoverage,
   cleanupWarnings,
+  extractionWarnings,
   LegalChunkDraft,
+  LegalExtractionQuality,
   LegalTextCleanup,
+  StoredLegalExtractionQuality,
   StoredLegalTextCleanup,
 } from './legalDocumentParser.service';
 import { isLegalIngestionJobAlive, queueLegalIngestion } from './legalIngestionWorker.service';
@@ -62,11 +65,12 @@ function assertLlmConfigured() {
 }
 
 export async function previewLegalSource(file: LegalFile, expectedArticleCount?: number) {
-  const { documentNumber, coverage, cleanup, chunks } = await analyzeLegalFile(file, expectedArticleCount);
+  const { documentNumber, coverage, cleanup, extraction, chunks } = await analyzeLegalFile(file, expectedArticleCount);
   return {
     documentNumber,
     coverage,
     cleanup,
+    extraction,
     chunks: chunks.map((c) => ({
       order: c.order,
       articleRef: c.articleRef,
@@ -121,7 +125,7 @@ function partOf(
   file: LegalFile,
   chunks: LegalChunkDraft[],
   { stored, fileHash }: StoredLegalFile,
-  cleanup: LegalTextCleanup,
+  { cleanup, extraction }: { cleanup: LegalTextCleanup; extraction: LegalExtractionQuality },
   skippedArticles: string[] = [],
 ) {
   const numbers = chunks.flatMap((c) => (c.articleNumber === undefined ? [] : [c.articleNumber]));
@@ -140,11 +144,13 @@ function partOf(
     mimeType: file.mimeType,
     fileSize: file.buffer.length,
     cleanup,
+    extraction,
   };
 }
 
-const partNotes = (parts: { cleanup?: StoredLegalTextCleanup | null }[]) =>
-  parts.flatMap((part) => cleanupWarnings(part.cleanup));
+const partNotes = (
+  parts: { cleanup?: StoredLegalTextCleanup | null; extraction?: StoredLegalExtractionQuality | null }[],
+) => parts.flatMap((part) => [...extractionWarnings(part.extraction), ...cleanupWarnings(part.cleanup)]);
 
 function presentParts(parts: LegalSourcePart[]) {
   return parts.map((part) => ({
@@ -155,6 +161,7 @@ function presentParts(parts: LegalSourcePart[]) {
     skippedArticles: part.skippedArticles,
     uploadedAt: part.uploadedAt,
     cleanup: part.cleanup ?? undefined,
+    extraction: part.extraction ?? undefined,
     hasFile: Boolean(part.fileKey),
     fileHash: part.fileHash,
     mimeType: part.mimeType,
@@ -219,7 +226,7 @@ export async function createLegalSource({ input, file }: CreateLegalSourceParams
       documentNumber: documentNumber ?? analyzed.documentNumber,
       coverage: analyzed.coverage,
       ingestion: { status: 'queued', totalChunks: analyzed.chunks.length, embeddedChunks: 0 },
-      parts: [partOf(file, analyzed.chunks, upload, analyzed.cleanup)],
+      parts: [partOf(file, analyzed.chunks, upload, analyzed)],
     });
   } catch (err) {
     await discardLegalFiles([upload.stored]);
@@ -300,7 +307,7 @@ export async function appendLegalSourcePart(id: string, file: LegalFile, expecte
       source._id,
       (source.coverage?.headingCount ?? 0) + analyzed.headingCount,
       expected,
-      [...partNotes(source.parts), ...cleanupWarnings(analyzed.cleanup)],
+      [...partNotes(source.parts), ...partNotes([analyzed])],
     );
     const totalChunks = coverage.chunkCount;
     await LegalSourceModel.updateOne(
@@ -312,7 +319,7 @@ export async function appendLegalSourcePart(id: string, file: LegalFile, expecte
           ...(source.documentNumber || !analyzed.documentNumber ? {} : { documentNumber: analyzed.documentNumber }),
           ...(source.ingestion ? {} : { 'ingestion.embeddedChunks': totalChunks - fresh.length }),
         },
-        $push: { parts: partOf(file, fresh, upload, analyzed.cleanup, skippedArticles) },
+        $push: { parts: partOf(file, fresh, upload, analyzed, skippedArticles) },
       },
     );
   } catch (err) {
