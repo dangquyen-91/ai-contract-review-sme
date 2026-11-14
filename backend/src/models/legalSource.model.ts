@@ -80,6 +80,30 @@ const legalExtractionSchema = new Schema(
   { _id: false },
 );
 
+export const LEGAL_CROSS_CHECK_RESULTS = ['same', 'different'] as const;
+
+const legalCrossCheckSchema = new Schema(
+  {
+    result: { type: String, enum: LEGAL_CROSS_CHECK_RESULTS, required: true },
+    referenceFileName: { type: String },
+    referenceFileKey: { type: String },
+    referenceFileResourceType: { type: String },
+    referenceFileDeliveryType: { type: String },
+    referenceFileFormat: { type: String },
+    referenceFileHash: { type: String },
+    referenceMimeType: { type: String },
+    referenceFileSize: { type: Number },
+    referenceOrigin: { type: legalSourceOriginSchema },
+    compared: { type: Number, required: true },
+    differing: { type: Number, required: true },
+    onlyInReference: { type: Number, required: true },
+    differences: { type: [String], default: undefined },
+    acknowledged: { type: Boolean, required: true },
+    checkedAt: { type: Date, required: true },
+  },
+  { _id: false },
+);
+
 const legalSourcePartSchema = new Schema(
   {
     fileName: { type: String },
@@ -98,6 +122,7 @@ const legalSourcePartSchema = new Schema(
     cleanup: { type: legalTextCleanupSchema },
     extraction: { type: legalExtractionSchema },
     notes: { type: [String], default: undefined },
+    crossCheck: { type: legalCrossCheckSchema },
   },
   { _id: false },
 );

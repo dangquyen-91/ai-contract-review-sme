@@ -24,6 +24,8 @@ import {
   partReadingOf,
   startIngestion,
   storeLegalFile,
+  StoredReference,
+  storeReferenceFile,
 } from './legalSource.service';
 import {
   AnchorCheck,
@@ -431,19 +433,35 @@ export async function applyContentReplacement(
   const [read] = content.parts;
 
   const upload = await storeLegalFile(source._id, file, fileHash);
+  let reference: StoredReference | undefined;
+  try {
+    reference = await storeReferenceFile(
+      source._id,
+      referenceFile,
+      checks.crossCheck,
+      input.referenceOrigin,
+      input.acknowledgeDifferences,
+    );
+  } catch (err) {
+    await discardLegalFiles([upload.stored]);
+    throw err;
+  }
   const replacedAt = new Date();
   let changes: Awaited<ReturnType<typeof changesOf>>;
   try {
     changes = await commitContent({
       source,
       content,
-      set: { ...provenance, parts: [partOf(file, read.chunks, upload, { ...read.analyzed, notes: read.notes })] },
+      set: {
+        ...provenance,
+        parts: [partOf(file, read.chunks, upload, { ...read.analyzed, notes: read.notes }, [], reference?.record)],
+      },
       push: source.parts.length
         ? { previousParts: { $each: source.parts.map((part) => ({ ...part.toObject(), replacedAt })) } }
         : undefined,
     });
   } catch (err) {
-    await discardLegalFiles([upload.stored]);
+    await discardLegalFiles([upload.stored, reference?.stored]);
     throw err;
   }
   return finishContent(source._id, changes);

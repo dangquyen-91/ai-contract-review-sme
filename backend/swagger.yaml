@@ -1596,6 +1596,8 @@ components:
                 items:
                   type: string
                 description: Warnings from the checks run when this part was read (e.g. a consolidated text numbered differently); they are kept in coverage.warnings
+              crossCheck:
+                $ref: '#/components/schemas/LegalPartCrossCheck'
               fileHash:
                 type: string
                 description: SHA-256 of the uploaded file
@@ -1765,6 +1767,9 @@ components:
             compared:
               type: integer
               description: Articles of the uploaded file that were compared
+            differing:
+              type: integer
+              description: All differing or missing articles; differences lists at most 50
             onlyInReference:
               type: integer
               description: Articles the reference has but the uploaded file does not (not an error; e.g. a reference with the whole law)
@@ -1789,6 +1794,46 @@ components:
                   reference:
                     type: string
                     description: Words of the reference file at the same place
+
+    LegalPartCrossCheck:
+      type: object
+      description: Present when the part was uploaded with a referenceFile. The reference file is kept in private storage so the comparison can be checked later; download it with GET /kb/legal-sources/{id}/parts/{partIndex}/reference-file.
+      properties:
+        result:
+          type: string
+          enum: [same, different]
+        acknowledged:
+          type: boolean
+          description: True when differences were kept on purpose with acknowledgeDifferences=true
+        compared:
+          type: integer
+        differing:
+          type: integer
+          description: Articles that differ from or are missing in the reference (all of them, not only the listed ones)
+        onlyInReference:
+          type: integer
+        differences:
+          type: array
+          description: Up to 50 labels
+          items:
+            type: string
+          example: [Điều 1 (67% similar), Điều 5 (missing in the reference)]
+        referenceFileName:
+          type: string
+        referenceFileHash:
+          type: string
+          description: SHA-256 of the reference file
+        referenceMimeType:
+          type: string
+        referenceFileSize:
+          type: integer
+        referenceOrigin:
+          $ref: '#/components/schemas/LegalSourceOrigin'
+        hasReferenceFile:
+          type: boolean
+        checkedAt:
+          type: string
+          format: date-time
 
     LegalContentApplied:
       allOf:
@@ -5305,7 +5350,7 @@ paths:
                 $ref: '#/components/schemas/Error'
     delete:
       tags: [LegalKB]
-      summary: Delete a legal source, all of its chunks and its stored original files (also stops a running ingestion)
+      summary: Delete a legal source, all of its chunks and its stored original and reference files (also stops a running ingestion)
       description: Manager only. Risk findings of earlier reviews keep the excerpts they cited (stored with the citation) and show them with inKnowledgeBase=false. Removing the stored files is best effort; a storage error is logged and does not fail the request.
       responses:
         '204':
@@ -5745,6 +5790,70 @@ paths:
                 $ref: '#/components/schemas/Error'
         '404':
           description: Source or part not found, or LEGAL_FILE_NOT_STORED when the replaced part had no stored file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/parts/{partIndex}/reference-file:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: partIndex
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 999
+    get:
+      tags: [LegalKB]
+      summary: Get a short-lived download link to the reference file a part was compared with
+      description: Manager only. Same response as GET /kb/legal-sources/{id}/parts/{partIndex}/file. The link expires after 5 minutes. GET /kb/legal-sources/{id}/previous-parts/{partIndex}/reference-file does the same for a replaced part.
+      responses:
+        '200':
+          description: Signed link (url, expiresAt, fileName, mimeType, fileHash)
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Source or part not found, or LEGAL_REFERENCE_FILE_NOT_STORED when the part was not uploaded with a reference file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/previous-parts/{partIndex}/reference-file:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: partIndex
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 999
+    get:
+      tags: [LegalKB]
+      summary: Get a short-lived download link to the reference file of a replaced part
+      description: Manager only. Same as GET /kb/legal-sources/{id}/parts/{partIndex}/reference-file for previousParts.
+      responses:
+        '200':
+          description: Signed link (url, expiresAt, fileName, mimeType, fileHash)
+        '404':
+          description: Source or part not found, or LEGAL_REFERENCE_FILE_NOT_STORED
           content:
             application/json:
               schema:

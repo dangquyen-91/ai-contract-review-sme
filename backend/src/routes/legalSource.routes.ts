@@ -12,6 +12,8 @@ import {
   getLegalSourceHandler,
   getLegalSourcePartFileHandler,
   getPreviousPartFileHandler,
+  getPreviousReferenceFileHandler,
+  getReferenceFileHandler,
   listLegalSourceCatalogHandler,
   listLegalSourcesHandler,
   previewContentReplacementHandler,
@@ -109,6 +111,18 @@ router.get(
   '/:id/previous-parts/:partIndex/file',
   validate({ params: legalSourcePartParamSchema }),
   getPreviousPartFileHandler,
+);
+
+router.get(
+  '/:id/parts/:partIndex/reference-file',
+  validate({ params: legalSourcePartParamSchema }),
+  getReferenceFileHandler,
+);
+
+router.get(
+  '/:id/previous-parts/:partIndex/reference-file',
+  validate({ params: legalSourcePartParamSchema }),
+  getPreviousReferenceFileHandler,
 );
 
 router.post(

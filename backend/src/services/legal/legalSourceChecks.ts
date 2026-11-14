@@ -153,6 +153,7 @@ export interface CrossCheck {
   referenceOrigin?: OriginCheck;
   sameFile?: boolean;
   compared: number;
+  differing: number;
   differences: ArticleDifference[];
   onlyInReference: number;
 }
@@ -175,6 +176,7 @@ export function checkCrossReference({ mainOrigin, mainArticles, reference }: Cro
       result: required ? 'missing_reference' : 'not_required',
       required,
       compared: 0,
+      differing: 0,
       differences: [],
       onlyInReference: 0,
     };
@@ -186,6 +188,7 @@ export function checkCrossReference({ mainOrigin, mainArticles, reference }: Cro
     referenceOrigin: checkOrigin(reference.origin),
     sameFile: reference.sameFile,
     ...comparison,
+    differing: comparison.differences.length,
     differences: comparison.differences.slice(0, MAX_REPORTED_DIFFERENCES),
   };
 }
@@ -207,11 +210,11 @@ export function assertCrossReference(check: CrossCheck, acknowledged?: boolean) 
   }
   if (check.result === 'different' && !acknowledged) {
     throw new AppError(
-      `${check.differences.length} article(s) differ from the reference file; review them and send acknowledgeDifferences=true to keep this text`,
+      `${check.differing} article(s) differ from the reference file; review them and send acknowledgeDifferences=true to keep this text`,
       409,
       true,
       'LEGAL_REFERENCE_DIFFERS',
-      { differences: check.differences, compared: check.compared },
+      { differences: check.differences, differing: check.differing, compared: check.compared },
     );
   }
 }
@@ -219,6 +222,6 @@ export function assertCrossReference(check: CrossCheck, acknowledged?: boolean) 
 export function crossCheckWarnings(check: CrossCheck): string[] {
   if (check.result !== 'different') return [];
   const named = check.differences.slice(0, MAX_NAMED_DIFFERENCES).map((d) => d.article).join(', ');
-  const more = check.differences.length > MAX_NAMED_DIFFERENCES ? ', ...' : '';
-  return [`${check.differences.length} article(s) differ from the reference file and were kept on purpose: ${named}${more}`];
+  const more = check.differing > MAX_NAMED_DIFFERENCES ? ', ...' : '';
+  return [`${check.differing} article(s) differ from the reference file and were kept on purpose: ${named}${more}`];
 }

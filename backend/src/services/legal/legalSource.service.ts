@@ -24,6 +24,7 @@ import {
   OriginLike,
 } from './legalSourceChecks';
 import type { LegalArticleText } from './legalDocumentParser.service';
+import type { ArticleDifference } from './legalCrossCheck';
 import {
   AnalyzedLegalText,
   analyzeLegalText,
@@ -196,14 +197,109 @@ export function partReadingOf(
   };
 }
 
+interface StoredCrossCheckFields {
+  result: string;
+  referenceFileName?: string | null;
+  referenceFileKey?: string | null;
+  referenceFileResourceType?: string | null;
+  referenceFileDeliveryType?: string | null;
+  referenceFileFormat?: string | null;
+  referenceFileHash?: string | null;
+  referenceMimeType?: string | null;
+  referenceFileSize?: number | null;
+  referenceOrigin?: unknown;
+  compared: number;
+  differing: number;
+  onlyInReference: number;
+  differences?: string[] | null;
+  acknowledged: boolean;
+  checkedAt: Date;
+}
+
+export interface StoredReference {
+  stored: StoredFile;
+  record: StoredCrossCheckFields;
+}
+
+const differenceLabel = (difference: ArticleDifference) =>
+  difference.kind === 'missing_in_reference'
+    ? `${difference.article} (missing in the reference)`
+    : `${difference.article} (${difference.similarity}% similar)`;
+
+export async function storeReferenceFile(
+  legalSourceId: Types.ObjectId,
+  referenceFile: LegalFile | undefined,
+  crossCheck: CrossCheck,
+  referenceOrigin: OriginLike | null | undefined,
+  acknowledged: boolean | undefined,
+): Promise<StoredReference | undefined> {
+  if (!referenceFile || (crossCheck.result !== 'same' && crossCheck.result !== 'different')) return undefined;
+  const stored = await uploadPrivateFile(
+    referenceFile.buffer,
+    `${legalSourceFolder(legalSourceId)}/reference`,
+    referenceFile.name || 'reference',
+  );
+  return {
+    stored,
+    record: {
+      result: crossCheck.result,
+      referenceFileName: referenceFile.name,
+      referenceFileKey: stored.key,
+      referenceFileResourceType: stored.resourceType,
+      referenceFileDeliveryType: stored.deliveryType,
+      referenceFileFormat: stored.format,
+      referenceFileHash: fileHashOf(referenceFile.buffer),
+      referenceMimeType: referenceFile.mimeType,
+      referenceFileSize: referenceFile.buffer.length,
+      referenceOrigin: referenceOrigin ?? undefined,
+      compared: crossCheck.compared,
+      differing: crossCheck.differing,
+      onlyInReference: crossCheck.onlyInReference,
+      differences: crossCheck.differences.map(differenceLabel),
+      acknowledged: crossCheck.result === 'different' && Boolean(acknowledged),
+      checkedAt: new Date(),
+    },
+  };
+}
+
+export const storedReferenceOf = (crossCheck: StoredCrossCheckFields | null | undefined) =>
+  crossCheck
+    ? storedFileOf({
+        fileKey: crossCheck.referenceFileKey,
+        fileResourceType: crossCheck.referenceFileResourceType,
+        fileDeliveryType: crossCheck.referenceFileDeliveryType,
+        fileFormat: crossCheck.referenceFileFormat,
+      })
+    : undefined;
+
+function presentCrossCheck(crossCheck: StoredCrossCheckFields) {
+  return {
+    result: crossCheck.result,
+    referenceFileName: crossCheck.referenceFileName ?? undefined,
+    referenceFileHash: crossCheck.referenceFileHash ?? undefined,
+    referenceMimeType: crossCheck.referenceMimeType ?? undefined,
+    referenceFileSize: crossCheck.referenceFileSize ?? undefined,
+    referenceOrigin: crossCheck.referenceOrigin ?? undefined,
+    hasReferenceFile: Boolean(crossCheck.referenceFileKey),
+    compared: crossCheck.compared,
+    differing: crossCheck.differing,
+    onlyInReference: crossCheck.onlyInReference,
+    differences: crossCheck.differences ?? [],
+    acknowledged: crossCheck.acknowledged,
+    checkedAt: crossCheck.checkedAt,
+  };
+}
+
 export function partOf(
   file: LegalFile,
   chunks: LegalChunkDraft[],
   { stored, fileHash }: StoredLegalFile,
   reading: PartReading,
   skippedArticles: string[] = [],
+  crossCheck?: StoredCrossCheckFields,
 ) {
   return {
+    ...(crossCheck ? { crossCheck } : {}),
     fileName: file.name,
     ...partReadingOf(chunks, reading, skippedArticles),
     uploadedAt: new Date(),
@@ -241,6 +337,7 @@ function presentPart(part: LegalSourcePart) {
     cleanup: part.cleanup ?? undefined,
     extraction: part.extraction ?? undefined,
     notes: part.notes?.length ? part.notes : undefined,
+    crossCheck: part.crossCheck ? presentCrossCheck(part.crossCheck) : undefined,
     hasFile: Boolean(part.fileKey),
     fileHash: part.fileHash,
     mimeType: part.mimeType,
@@ -309,6 +406,14 @@ export async function createLegalSource({ input, file, referenceFile }: CreateLe
 
   const legalSourceId = new Types.ObjectId();
   const upload = await storeLegalFile(legalSourceId, file, fileHash);
+  let reference: StoredReference | undefined;
+  try {
+    reference = await storeReferenceFile(legalSourceId, referenceFile, crossCheck, referenceOrigin, acknowledgeDifferences);
+  } catch (err) {
+    await discardLegalFiles([upload.stored]);
+    throw err;
+  }
+  const storedFiles = [upload.stored, reference?.stored];
 
   let source;
   try {
@@ -318,10 +423,10 @@ export async function createLegalSource({ input, file, referenceFile }: CreateLe
       documentNumber: documentNumber ?? analyzed.documentNumber,
       coverage: analyzed.coverage,
       ingestion: { status: 'queued', totalChunks: analyzed.chunks.length, embeddedChunks: 0 },
-      parts: [partOf(file, analyzed.chunks, upload, { ...analyzed, notes })],
+      parts: [partOf(file, analyzed.chunks, upload, { ...analyzed, notes }, [], reference?.record)],
     });
   } catch (err) {
-    await discardLegalFiles([upload.stored]);
+    await discardLegalFiles(storedFiles);
     if ((err as { code?: number }).code === 11000) throw duplicateCode(metadata.code);
     throw err;
   }
@@ -332,7 +437,7 @@ export async function createLegalSource({ input, file, referenceFile }: CreateLe
   } catch (err) {
     await LegalKnowledgeChunkModel.deleteMany({ legalSourceId: source._id });
     await LegalSourceModel.deleteOne({ _id: source._id });
-    await discardLegalFiles([upload.stored]);
+    await discardLegalFiles(storedFiles);
     throw err;
   }
   return getLegalSource(source.id);
@@ -399,13 +504,21 @@ export async function appendLegalSourcePart(
   reading.notes.push(...crossCheckWarnings(crossCheck));
 
   const upload = await storeLegalFile(source._id, file, fileHash);
+  let reference: StoredReference | undefined;
+  try {
+    reference = await storeReferenceFile(source._id, referenceFile, crossCheck, referenceOrigin, acknowledgeDifferences);
+  } catch (err) {
+    await discardLegalFiles([upload.stored]);
+    throw err;
+  }
+  const storedFiles = [upload.stored, reference?.stored];
   const last = await LegalKnowledgeChunkModel.findOne({ legalSourceId: source._id }).sort({ order: -1 }).select('order');
   let insertedIds: Types.ObjectId[];
   try {
     const inserted = await LegalKnowledgeChunkModel.insertMany(chunkDocs(source._id, fresh, (last?.order ?? -1) + 1));
     insertedIds = inserted.map((chunk) => chunk._id);
   } catch (err) {
-    await discardLegalFiles([upload.stored]);
+    await discardLegalFiles(storedFiles);
     if ((err as { code?: number }).code === 11000) {
       throw AppError.conflict('Another part of this legal source is being uploaded; try again');
     }
@@ -430,12 +543,12 @@ export async function appendLegalSourcePart(
           ...(source.documentNumber || !analyzed.documentNumber ? {} : { documentNumber: analyzed.documentNumber }),
           ...(source.ingestion ? {} : { 'ingestion.embeddedChunks': totalChunks - fresh.length }),
         },
-        $push: { parts: partOf(file, fresh, upload, reading, skippedArticles) },
+        $push: { parts: partOf(file, fresh, upload, reading, skippedArticles, reference?.record) },
       },
     );
   } catch (err) {
     await LegalKnowledgeChunkModel.deleteMany({ _id: { $in: insertedIds } });
-    await discardLegalFiles([upload.stored]);
+    await discardLegalFiles(storedFiles);
     throw err;
   }
   await startIngestion(source.id);
@@ -522,11 +635,23 @@ export async function getLegalSource(id: string) {
   return presentLegalSource(source, { chunkCount, outdatedEmbeddingCount });
 }
 
-export async function getLegalSourcePartFile(id: string, partIndex: number, previous = false) {
+export async function getLegalSourcePartFile(id: string, partIndex: number, previous = false, reference = false) {
   const source = await LegalSourceModel.findById(id).select('parts previousParts');
   if (!source) throw AppError.notFound('Legal source not found');
   const part = previous ? source.previousParts[partIndex] : source.parts[partIndex];
   if (!part) throw AppError.notFound('Legal source part not found');
+  if (reference) {
+    const storedReference = storedReferenceOf(part.crossCheck);
+    if (!storedReference) {
+      throw AppError.notFound('This part was not compared with a reference file', 'LEGAL_REFERENCE_FILE_NOT_STORED');
+    }
+    return {
+      ...createFileDownloadLink(storedReference),
+      fileName: part.crossCheck?.referenceFileName ?? undefined,
+      mimeType: part.crossCheck?.referenceMimeType ?? undefined,
+      fileHash: part.crossCheck?.referenceFileHash ?? undefined,
+    };
+  }
   const stored = storedFileOf(part);
   if (!stored) {
     throw AppError.notFound(
@@ -618,5 +743,7 @@ export async function deleteLegalSource(id: string) {
   }
   await LegalSourceModel.deleteOne({ _id: id });
   await LegalKnowledgeChunkModel.deleteMany({ legalSourceId: id });
-  await discardLegalFiles([...source.parts, ...source.previousParts].map((part) => storedFileOf(part)));
+  await discardLegalFiles(
+    [...source.parts, ...source.previousParts].flatMap((part) => [storedFileOf(part), storedReferenceOf(part.crossCheck)]),
+  );
 }

@@ -119,6 +119,14 @@ export const getPreviousPartFileHandler = asyncHandler(async (req: Request, res:
   ok(res, await legalSourceService.getLegalSourcePartFile(req.params.id, Number(req.params.partIndex), true));
 });
 
+export const getReferenceFileHandler = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, await legalSourceService.getLegalSourcePartFile(req.params.id, Number(req.params.partIndex), false, true));
+});
+
+export const getPreviousReferenceFileHandler = asyncHandler(async (req: Request, res: Response) => {
+  ok(res, await legalSourceService.getLegalSourcePartFile(req.params.id, Number(req.params.partIndex), true, true));
+});
+
 export const updateLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
   ok(res, await legalSourceService.updateLegalSource(req.params.id, req.body as UpdateLegalSourceInput));
 });
