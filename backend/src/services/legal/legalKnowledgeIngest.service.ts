@@ -9,6 +9,7 @@ import {
 } from '../../models/legalKnowledgeChunk.model';
 import { AppError } from '../../errors/AppError';
 import { logger } from '../../config/logger';
+import { env } from '../../config/env';
 import { normalizeExtractedText } from '../contract/textExtraction.service';
 import {
   buildLegalCoverage,
@@ -52,6 +53,18 @@ export async function ensureLegalTextIndex(): Promise<void> {
   }
 }
 
+export const LEGAL_EMBEDDING_MODEL = `${env.GEMINI_EMBEDDING_MODEL}@${EMBEDDING_DIMENSIONS}`;
+
+export const CURRENT_EMBEDDING = { embeddingModel: LEGAL_EMBEDDING_MODEL };
+
+export const NEEDS_EMBEDDING = {
+  $or: [{ embedding: { $exists: false } }, { embeddingModel: { $ne: LEGAL_EMBEDDING_MODEL } }],
+};
+
+export const OUTDATED_EMBEDDING = { embedding: { $exists: true }, embeddingModel: { $ne: LEGAL_EMBEDDING_MODEL } };
+
+const LEGAL_VECTOR_FILTER_PATHS = ['legalSourceId', 'embeddingModel'];
+
 const LEGAL_VECTOR_INDEX_DEFINITION = {
   fields: [
     {
@@ -60,20 +73,33 @@ const LEGAL_VECTOR_INDEX_DEFINITION = {
       numDimensions: EMBEDDING_DIMENSIONS,
       similarity: 'cosine',
     },
-    { type: 'filter', path: 'legalSourceId' },
+    ...LEGAL_VECTOR_FILTER_PATHS.map((path) => ({ type: 'filter', path })),
   ],
 };
+
+interface VectorIndexField {
+  type?: string;
+  path?: string;
+  numDimensions?: number;
+}
+
+function isCurrentVectorIndex(fields: VectorIndexField[]): boolean {
+  const vector = fields.find((f) => f.type === 'vector' && f.path === 'embedding');
+  return (
+    vector?.numDimensions === EMBEDDING_DIMENSIONS &&
+    LEGAL_VECTOR_FILTER_PATHS.every((path) => fields.some((f) => f.type === 'filter' && f.path === path))
+  );
+}
 
 export async function ensureLegalVectorIndex(): Promise<void> {
   try {
     const collection = mongoose.connection.collection(LegalKnowledgeChunkModel.collection.name);
     const [existing] = await collection.listSearchIndexes(LEGAL_CHUNK_VECTOR_INDEX_NAME).toArray();
     if (existing) {
-      const { latestDefinition } = existing as { latestDefinition?: { fields?: { type?: string; path?: string }[] } };
-      const fields = latestDefinition?.fields ?? [];
-      if (fields.some((f) => f.type === 'filter' && f.path === 'legalSourceId')) return;
+      const { latestDefinition } = existing as { latestDefinition?: { fields?: VectorIndexField[] } };
+      if (isCurrentVectorIndex(latestDefinition?.fields ?? [])) return;
       await collection.updateSearchIndex(LEGAL_CHUNK_VECTOR_INDEX_NAME, LEGAL_VECTOR_INDEX_DEFINITION);
-      logger.info(`Updated Atlas Vector Search index "${LEGAL_CHUNK_VECTOR_INDEX_NAME}" to filter by legal source`);
+      logger.info(`Updated Atlas Vector Search index "${LEGAL_CHUNK_VECTOR_INDEX_NAME}" to the current dimensions and filters`);
       return;
     }
 
@@ -88,6 +114,31 @@ export async function ensureLegalVectorIndex(): Promise<void> {
       'Could not ensure legal chunk vector index (requires a MongoDB Atlas cluster with Search enabled)',
       err,
     );
+  }
+}
+
+export async function reconcileLegalEmbeddingModel(): Promise<void> {
+  const labelled = await LegalKnowledgeChunkModel.updateMany(
+    { embedding: { $exists: true }, embeddingModel: { $exists: false } },
+    { $set: CURRENT_EMBEDDING },
+  );
+  if (labelled.modifiedCount > 0) {
+    logger.info('Labelled legal chunk embeddings stored before the model was recorded', {
+      chunks: labelled.modifiedCount,
+      embeddingModel: LEGAL_EMBEDDING_MODEL,
+    });
+  }
+
+  const outdated = await LegalKnowledgeChunkModel.aggregate<{ _id: unknown; chunks: number; models: string[] }>([
+    { $match: OUTDATED_EMBEDDING },
+    { $group: { _id: '$legalSourceId', chunks: { $sum: 1 }, models: { $addToSet: '$embeddingModel' } } },
+  ]);
+  if (outdated.length > 0) {
+    logger.warn('Some legal chunks were embedded with another model and are left out of vector search until re-embedded', {
+      embeddingModel: LEGAL_EMBEDDING_MODEL,
+      sources: outdated.map((s) => ({ legalSourceId: String(s._id), chunks: s.chunks, models: s.models })),
+      fix: 'POST /api/v1/kb/legal-sources/{id}/resume',
+    });
   }
 }
 

@@ -1598,6 +1598,13 @@ components:
         chunkCount:
           type: integer
           description: Number of LegalKnowledgeChunk documents produced from this source, embedded or not
+        embeddingModel:
+          type: string
+          description: Embedding model and dimensions the server uses now (GEMINI_EMBEDDING_MODEL@dimensions). Only chunks embedded with this model are used by vector search.
+          example: gemini-embedding-001@768
+        outdatedEmbeddingCount:
+          type: integer
+          description: Chunks embedded with another model or dimension count. They are left out of vector search (text search still finds them) until POST /kb/legal-sources/{id}/resume re-embeds them.
         createdAt:
           type: string
           format: date-time
@@ -5160,8 +5167,10 @@ paths:
           pattern: '^[a-f\d]{24}$'
     post:
       tags: [LegalKB]
-      summary: Resume embedding the chunks that are still missing
-      description: Manager only. Use it after ingestion.status became failed, or to resume a paused source before its resumeAt. Only chunks without an embedding are sent to Gemini.
+      summary: Resume embedding the chunks that are still missing or were embedded with another model
+      description: |
+        Manager only. Use it after ingestion.status became failed, to resume a paused source before its resumeAt, or after GEMINI_EMBEDDING_MODEL changed (outdatedEmbeddingCount > 0). Only chunks without an embedding of the current model are sent to Gemini.
+        Every chunk records the model it was embedded with. On startup, embeddings stored before the model was recorded are labelled with the current model, and sources with outdated embeddings are logged.
       responses:
         '202':
           description: Queued

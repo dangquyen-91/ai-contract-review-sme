@@ -5,7 +5,11 @@ import { LEGAL_BASIS_VERIFICATIONS } from '../../models/riskFinding.model';
 import { LEGAL_RETRIEVAL_STATUSES } from '../../models/contractVersion.model';
 import { logger } from '../../config/logger';
 import { embedTexts } from '../ai/llm.service';
-import { LEGAL_CHUNK_TEXT_INDEX_NAME, LEGAL_CHUNK_VECTOR_INDEX_NAME } from './legalKnowledgeIngest.service';
+import {
+  CURRENT_EMBEDDING,
+  LEGAL_CHUNK_TEXT_INDEX_NAME,
+  LEGAL_CHUNK_VECTOR_INDEX_NAME,
+} from './legalKnowledgeIngest.service';
 import { LEGAL_SOURCE_CATALOG } from './legalSourceCatalog.data';
 
 export type LegalRetriever = 'vector' | 'text';
@@ -72,7 +76,7 @@ function vectorSearch(queryVector: number[], limit: number, legalSourceIds: Type
         queryVector,
         numCandidates: Math.max(limit * 20, 100),
         limit,
-        filter: { legalSourceId: { $in: legalSourceIds } },
+        filter: { legalSourceId: { $in: legalSourceIds }, ...CURRENT_EMBEDDING },
       },
     },
     { $project: HIT_PROJECTION },

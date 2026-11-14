@@ -7,7 +7,14 @@ import {
   CreateLegalSourceInput,
   UpdateLegalSourceInput,
 } from '../../validations/legalSource.validation';
-import { AnalyzedLegalText, analyzeLegalText, extractLegalText } from './legalKnowledgeIngest.service';
+import {
+  AnalyzedLegalText,
+  analyzeLegalText,
+  extractLegalText,
+  LEGAL_EMBEDDING_MODEL,
+  NEEDS_EMBEDDING,
+  OUTDATED_EMBEDDING,
+} from './legalKnowledgeIngest.service';
 import { buildLegalCoverage, LegalChunkDraft } from './legalDocumentParser.service';
 import { isLegalIngestionJobAlive, queueLegalIngestion } from './legalIngestionWorker.service';
 import { isLlmConfigured } from '../ai/llm.service';
@@ -137,11 +144,18 @@ function presentParts(parts: LegalSourcePart[]) {
   }));
 }
 
-function presentLegalSource(source: HydratedDocument<LegalSource>, chunkCount: number) {
+interface ChunkCounts {
+  chunkCount: number;
+  outdatedEmbeddingCount: number;
+}
+
+function presentLegalSource(source: HydratedDocument<LegalSource>, { chunkCount, outdatedEmbeddingCount }: ChunkCounts) {
   return {
     ...source.toObject(),
     parts: presentParts(source.parts),
     chunkCount,
+    embeddingModel: LEGAL_EMBEDDING_MODEL,
+    outdatedEmbeddingCount,
     inCatalog: isCatalogLegalSourceCode(source.code),
   };
 }
@@ -290,10 +304,7 @@ export async function resumeLegalIngestion(id: string) {
   const source = await LegalSourceModel.findById(id);
   if (!source) throw AppError.notFound('Legal source not found');
 
-  const pending = await LegalKnowledgeChunkModel.countDocuments({
-    legalSourceId: source._id,
-    embedding: { $exists: false },
-  });
+  const pending = await LegalKnowledgeChunkModel.countDocuments({ legalSourceId: source._id, ...NEEDS_EMBEDDING });
   if (pending === 0) {
     if (source.ingestion?.status !== 'completed') {
       const total = await LegalKnowledgeChunkModel.countDocuments({ legalSourceId: source._id });
@@ -326,12 +337,34 @@ export async function resumeLegalIngestion(id: string) {
 
 export async function listLegalSources() {
   const sources = await LegalSourceModel.find().sort({ createdAt: -1 });
-  const chunkCounts = await LegalKnowledgeChunkModel.aggregate([
-    { $group: { _id: '$legalSourceId', count: { $sum: 1 } } },
+  const chunkCounts = await LegalKnowledgeChunkModel.aggregate<{ _id: Types.ObjectId; count: number; outdated: number }>([
+    {
+      $group: {
+        _id: '$legalSourceId',
+        count: { $sum: 1 },
+        outdated: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $ne: [{ $type: '$embedding' }, 'missing'] },
+                  { $ne: ['$embeddingModel', LEGAL_EMBEDDING_MODEL] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
   ]);
-  const countBySourceId = new Map(chunkCounts.map((c) => [c._id.toString(), c.count]));
+  const countsBySourceId = new Map(chunkCounts.map((c) => [c._id.toString(), c]));
 
-  return sources.map((source) => presentLegalSource(source, countBySourceId.get(source._id.toString()) ?? 0));
+  return sources.map((source) => {
+    const counts = countsBySourceId.get(source._id.toString());
+    return presentLegalSource(source, { chunkCount: counts?.count ?? 0, outdatedEmbeddingCount: counts?.outdated ?? 0 });
+  });
 }
 
 export async function getLegalSource(id: string) {
@@ -339,8 +372,11 @@ export async function getLegalSource(id: string) {
   if (!source) {
     throw AppError.notFound('Legal source not found');
   }
-  const chunkCount = await LegalKnowledgeChunkModel.countDocuments({ legalSourceId: source._id });
-  return presentLegalSource(source, chunkCount);
+  const [chunkCount, outdatedEmbeddingCount] = await Promise.all([
+    LegalKnowledgeChunkModel.countDocuments({ legalSourceId: source._id }),
+    LegalKnowledgeChunkModel.countDocuments({ legalSourceId: source._id, ...OUTDATED_EMBEDDING }),
+  ]);
+  return presentLegalSource(source, { chunkCount, outdatedEmbeddingCount });
 }
 
 export async function getLegalSourcePartFile(id: string, partIndex: number) {
