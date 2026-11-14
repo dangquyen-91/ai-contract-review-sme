@@ -7,6 +7,7 @@ import * as legalSourceContentService from '../services/legal/legalSourceContent
 import {
   CreateLegalSourceInput,
   PreviewLegalSourceInput,
+  PreviewNewLegalSourceInput,
   ReplaceLegalSourceContentInput,
   UpdateLegalSourceInput,
 } from '../validations/legalSource.validation';
@@ -22,8 +23,7 @@ function accepted(res: Response, source: { _id: unknown }) {
 }
 
 export const previewLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { expectedArticleCount } = req.body as PreviewLegalSourceInput;
-  const preview = await legalSourceService.previewLegalSource(uploadedFile(req), expectedArticleCount);
+  const preview = await legalSourceService.previewLegalSource(uploadedFile(req), req.body as PreviewNewLegalSourceInput);
   ok(res, preview);
 });
 
@@ -64,10 +64,13 @@ export const previewReparseHandler = asyncHandler(async (req: Request, res: Resp
 });
 
 export const previewContentReplacementHandler = asyncHandler(async (req: Request, res: Response) => {
-  const { expectedArticleCount } = req.body as PreviewLegalSourceInput;
   ok(
     res,
-    await legalSourceContentService.previewContentReplacement(req.params.id, uploadedFile(req), expectedArticleCount),
+    await legalSourceContentService.previewContentReplacement(
+      req.params.id,
+      uploadedFile(req),
+      req.body as ReplaceLegalSourceContentInput,
+    ),
   );
 });
 

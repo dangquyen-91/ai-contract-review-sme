@@ -5,8 +5,16 @@ import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model
 import {
   CONSOLIDATED_ONLY_MESSAGE,
   CreateLegalSourceInput,
+  PreviewNewLegalSourceInput,
   UpdateLegalSourceInput,
 } from '../../validations/legalSource.validation';
+import {
+  assertDocumentNumber,
+  assertOrigin,
+  checkDocumentNumber,
+  checkOrigin,
+  documentNumberWarnings,
+} from './legalSourceChecks';
 import {
   AnalyzedLegalText,
   analyzeLegalText,
@@ -64,13 +72,19 @@ export function assertLlmConfigured() {
   if (!isLlmConfigured) throw AppError.badRequest('LLM is not configured. Set GEMINI_API_KEY.');
 }
 
-export async function previewLegalSource(file: LegalFile, expectedArticleCount?: number) {
-  const { documentNumber, coverage, cleanup, extraction, chunks } = await analyzeLegalFile(file, expectedArticleCount);
+export async function previewLegalSource(file: LegalFile, input: PreviewNewLegalSourceInput) {
+  const { documentNumber, coverage, cleanup, extraction, chunks } = await analyzeLegalFile(
+    file,
+    input.expectedArticleCount,
+  );
+  const numberCheck = checkDocumentNumber(input.documentNumber, documentNumber, input.textKind);
+  coverage.warnings.push(...documentNumberWarnings(numberCheck));
   return {
     documentNumber,
     coverage,
     cleanup,
     extraction,
+    checks: { origin: checkOrigin(input.origin, input.gazette), documentNumber: numberCheck },
     chunks: chunks.map((c) => ({
       order: c.order,
       articleRef: c.articleRef,
@@ -127,9 +141,14 @@ export async function discardLegalFiles(files: (StoredFile | undefined)[]) {
 export interface PartReading {
   cleanup: LegalTextCleanup;
   extraction: LegalExtractionQuality;
+  notes?: string[];
 }
 
-export function partReadingOf(chunks: LegalChunkDraft[], { cleanup, extraction }: PartReading, skippedArticles: string[]) {
+export function partReadingOf(
+  chunks: LegalChunkDraft[],
+  { cleanup, extraction, notes }: PartReading,
+  skippedArticles: string[],
+) {
   const numbers = chunks.flatMap((c) => (c.articleNumber === undefined ? [] : [c.articleNumber]));
   return {
     articleFrom: numbers.length ? Math.min(...numbers) : undefined,
@@ -138,6 +157,7 @@ export function partReadingOf(chunks: LegalChunkDraft[], { cleanup, extraction }
     skippedArticles,
     cleanup,
     extraction,
+    notes: notes?.length ? notes : undefined,
   };
 }
 
@@ -163,8 +183,17 @@ export function partOf(
 }
 
 export const partNotes = (
-  parts: { cleanup?: StoredLegalTextCleanup | null; extraction?: StoredLegalExtractionQuality | null }[],
-) => parts.flatMap((part) => [...extractionWarnings(part.extraction), ...cleanupWarnings(part.cleanup)]);
+  parts: {
+    cleanup?: StoredLegalTextCleanup | null;
+    extraction?: StoredLegalExtractionQuality | null;
+    notes?: string[] | null;
+  }[],
+) =>
+  parts.flatMap((part) => [
+    ...extractionWarnings(part.extraction),
+    ...cleanupWarnings(part.cleanup),
+    ...(part.notes ?? []),
+  ]);
 
 function presentPart(part: LegalSourcePart) {
   return {
@@ -176,6 +205,7 @@ function presentPart(part: LegalSourcePart) {
     uploadedAt: part.uploadedAt,
     cleanup: part.cleanup ?? undefined,
     extraction: part.extraction ?? undefined,
+    notes: part.notes?.length ? part.notes : undefined,
     hasFile: Boolean(part.fileKey),
     fileHash: part.fileHash,
     mimeType: part.mimeType,
@@ -228,8 +258,13 @@ const duplicateCode = (code: string) => AppError.conflict(`A legal source with c
 export async function createLegalSource({ input, file }: CreateLegalSourceParams) {
   const { expectedArticleCount, documentNumber, ...metadata } = input;
   assertLlmConfigured();
+  assertOrigin(checkOrigin(metadata.origin, metadata.gazette));
   if (await LegalSourceModel.exists({ code: metadata.code })) throw duplicateCode(metadata.code);
   const analyzed = await analyzeLegalFile(file, expectedArticleCount);
+  const numberCheck = checkDocumentNumber(documentNumber, analyzed.documentNumber, metadata.textKind);
+  assertDocumentNumber(numberCheck);
+  const notes = documentNumberWarnings(numberCheck);
+  analyzed.coverage.warnings.push(...notes);
   const fileHash = fileHashOf(file.buffer);
   await assertFileNotStored(fileHash);
 
@@ -244,7 +279,7 @@ export async function createLegalSource({ input, file }: CreateLegalSourceParams
       documentNumber: documentNumber ?? analyzed.documentNumber,
       coverage: analyzed.coverage,
       ingestion: { status: 'queued', totalChunks: analyzed.chunks.length, embeddedChunks: 0 },
-      parts: [partOf(file, analyzed.chunks, upload, analyzed)],
+      parts: [partOf(file, analyzed.chunks, upload, { ...analyzed, notes })],
     });
   } catch (err) {
     await discardLegalFiles([upload.stored]);
@@ -291,6 +326,9 @@ export async function appendLegalSourcePart(id: string, file: LegalFile, expecte
   const source = await LegalSourceModel.findById(id);
   if (!source) throw AppError.notFound('Legal source not found');
   const analyzed = await analyzeLegalFile(file);
+  const numberCheck = checkDocumentNumber(source.documentNumber, analyzed.documentNumber, source.textKind);
+  assertDocumentNumber(numberCheck);
+  const reading = { ...analyzed, notes: documentNumberWarnings(numberCheck) };
   const fileHash = fileHashOf(file.buffer);
   await assertFileNotStored(fileHash);
 
@@ -325,7 +363,7 @@ export async function appendLegalSourcePart(id: string, file: LegalFile, expecte
       source._id,
       (source.coverage?.headingCount ?? 0) + analyzed.headingCount,
       expected,
-      [...partNotes(source.parts), ...partNotes([analyzed])],
+      [...partNotes(source.parts), ...partNotes([reading])],
     );
     const totalChunks = coverage.chunkCount;
     await LegalSourceModel.updateOne(
@@ -337,7 +375,7 @@ export async function appendLegalSourcePart(id: string, file: LegalFile, expecte
           ...(source.documentNumber || !analyzed.documentNumber ? {} : { documentNumber: analyzed.documentNumber }),
           ...(source.ingestion ? {} : { 'ingestion.embeddedChunks': totalChunks - fresh.length }),
         },
-        $push: { parts: partOf(file, fresh, upload, analyzed, skippedArticles) },
+        $push: { parts: partOf(file, fresh, upload, reading, skippedArticles) },
       },
     );
   } catch (err) {

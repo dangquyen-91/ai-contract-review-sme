@@ -25,6 +25,14 @@ import {
   storeLegalFile,
 } from './legalSource.service';
 import {
+  assertDocumentNumber,
+  assertOrigin,
+  checkDocumentNumber,
+  checkOrigin,
+  DocumentNumberCheck,
+  documentNumberWarnings,
+} from './legalSourceChecks';
+import {
   ChunkReconciliation,
   ExistingLegalChunk,
   reconcileLegalChunks,
@@ -36,6 +44,7 @@ export interface AnalyzedPart {
   analyzed: AnalyzedLegalText;
   chunks: LegalChunkDraft[];
   skippedArticles: string[];
+  notes: string[];
 }
 
 export interface AnalyzedContent {
@@ -56,7 +65,7 @@ export async function analyzeContent(files: LegalFile[], expectedArticleCount?: 
       ...new Set(analyzed.chunks.filter((c) => c.articleKey && seen.has(c.articleKey)).map((c) => c.articleKey!)),
     ];
     for (const chunk of chunks) if (chunk.articleKey) seen.add(chunk.articleKey);
-    parts.push({ file, analyzed, chunks, skippedArticles });
+    parts.push({ file, analyzed, chunks, skippedArticles, notes: [] });
   }
 
   const drafts = parts.flatMap((part) => part.chunks).map((chunk, order) => ({ ...chunk, order }));
@@ -149,15 +158,29 @@ function presentAnalyzedParts(content: AnalyzedContent) {
     skippedArticles: part.skippedArticles,
     cleanup: part.analyzed.cleanup,
     extraction: part.analyzed.extraction,
+    notes: part.notes,
   }));
 }
 
-async function previewOf(source: HydratedDocument<LegalSource>, content: AnalyzedContent) {
+function noteDocumentNumber(content: AnalyzedContent, check: DocumentNumberCheck, blocking: boolean) {
+  if (blocking) assertDocumentNumber(check);
+  const notes = blocking
+    ? documentNumberWarnings(check)
+    : check.result === 'mismatch' || check.result === 'consolidated_number'
+      ? [check.message!]
+      : [];
+  const target = content.parts.find((part) => part.analyzed.documentNumber) ?? content.parts[0];
+  target.notes.push(...notes);
+  content.coverage.warnings.push(...notes);
+}
+
+async function previewOf(source: HydratedDocument<LegalSource>, content: AnalyzedContent, checks: Record<string, unknown>) {
   const plan = await reconcileWithStored(source._id, content.drafts);
   return {
     documentNumber: content.documentNumber,
     coverage: content.coverage,
     parts: presentAnalyzedParts(content),
+    checks,
     changes: await changesOf(plan),
   };
 }
@@ -165,10 +188,18 @@ async function previewOf(source: HydratedDocument<LegalSource>, content: Analyze
 const expectedCountOf = (source: HydratedDocument<LegalSource>, expectedArticleCount?: number) =>
   expectedArticleCount ?? source.coverage?.expectedArticleCount ?? undefined;
 
+async function analyzeStoredContent(source: HydratedDocument<LegalSource>, expectedArticleCount?: number) {
+  const files = await loadStoredPartFiles(source);
+  const content = await analyzeContent(files, expectedCountOf(source, expectedArticleCount));
+  const documentNumber = checkDocumentNumber(source.documentNumber, content.documentNumber, source.textKind);
+  noteDocumentNumber(content, documentNumber, false);
+  return { content, checks: { documentNumber } };
+}
+
 export async function previewReparse(id: string, expectedArticleCount?: number) {
   const source = await loadSource(id);
-  const files = await loadStoredPartFiles(source);
-  return previewOf(source, await analyzeContent(files, expectedCountOf(source, expectedArticleCount)));
+  const { content, checks } = await analyzeStoredContent(source, expectedArticleCount);
+  return previewOf(source, content, checks);
 }
 
 export async function assertReplacementFile(source: HydratedDocument<LegalSource>, fileHash: string) {
@@ -181,10 +212,20 @@ export async function assertReplacementFile(source: HydratedDocument<LegalSource
   await assertFileNotStored(fileHash, source._id);
 }
 
-export async function previewContentReplacement(id: string, file: LegalFile, expectedArticleCount?: number) {
+function replacementChecks(source: HydratedDocument<LegalSource>, content: AnalyzedContent, input: ReplaceLegalSourceContentInput) {
+  return {
+    origin: checkOrigin(input.origin ?? source.origin, source.gazette),
+    documentNumber: checkDocumentNumber(source.documentNumber, content.documentNumber, input.textKind ?? source.textKind),
+  };
+}
+
+export async function previewContentReplacement(id: string, file: LegalFile, input: ReplaceLegalSourceContentInput = {}) {
   const source = await loadSource(id);
   await assertReplacementFile(source, fileHashOf(file.buffer));
-  return previewOf(source, await analyzeContent([file], expectedCountOf(source, expectedArticleCount)));
+  const content = await analyzeContent([file], expectedCountOf(source, input.expectedArticleCount));
+  const checks = replacementChecks(source, content, input);
+  noteDocumentNumber(content, checks.documentNumber, false);
+  return previewOf(source, content, checks);
 }
 
 const ORDER_OFFSET = 1_000_000;
@@ -304,11 +345,13 @@ async function finishContent(legalSourceId: Types.ObjectId, changes: Awaited<Ret
 export async function applyReparse(id: string, expectedArticleCount?: number) {
   assertLlmConfigured();
   const source = await loadSource(id);
-  const files = await loadStoredPartFiles(source);
-  const content = await analyzeContent(files, expectedCountOf(source, expectedArticleCount));
+  const { content } = await analyzeStoredContent(source, expectedArticleCount);
   const parts = source.parts.map((part, index) => {
     const read = content.parts[index];
-    return { ...part.toObject(), ...partReadingOf(read.chunks, read.analyzed, read.skippedArticles) };
+    return {
+      ...part.toObject(),
+      ...partReadingOf(read.chunks, { ...read.analyzed, notes: read.notes }, read.skippedArticles),
+    };
   });
   const changes = await commitContent({ source, content, set: { parts } });
   return finishContent(source._id, changes);
@@ -327,13 +370,16 @@ function provenanceUpdate(source: HydratedDocument<LegalSource>, input: ReplaceL
   };
 }
 
-export async function applyContentReplacement(id: string, file: LegalFile, input: ReplaceLegalSourceContentInput) {
+export async function applyContentReplacement(id: string, file: LegalFile, input: ReplaceLegalSourceContentInput = {}) {
   assertLlmConfigured();
   const source = await loadSource(id);
   const provenance = provenanceUpdate(source, input);
   const fileHash = fileHashOf(file.buffer);
   await assertReplacementFile(source, fileHash);
   const content = await analyzeContent([file], expectedCountOf(source, input.expectedArticleCount));
+  const checks = replacementChecks(source, content, input);
+  assertOrigin(checks.origin);
+  noteDocumentNumber(content, checks.documentNumber, true);
   const [read] = content.parts;
 
   const upload = await storeLegalFile(source._id, file, fileHash);
@@ -343,7 +389,7 @@ export async function applyContentReplacement(id: string, file: LegalFile, input
     changes = await commitContent({
       source,
       content,
-      set: { ...provenance, parts: [partOf(file, read.chunks, upload, read.analyzed)] },
+      set: { ...provenance, parts: [partOf(file, read.chunks, upload, { ...read.analyzed, notes: read.notes })] },
       push: source.parts.length
         ? { previousParts: { $each: source.parts.map((part) => ({ ...part.toObject(), replacedAt })) } }
         : undefined,

@@ -1591,6 +1591,11 @@ components:
                 $ref: '#/components/schemas/LegalTextCleanup'
               extraction:
                 $ref: '#/components/schemas/LegalExtractionQuality'
+              notes:
+                type: array
+                items:
+                  type: string
+                description: Warnings from the checks run when this part was read (e.g. a consolidated text numbered differently); they are kept in coverage.warnings
               fileHash:
                 type: string
                 description: SHA-256 of the uploaded file
@@ -1680,6 +1685,34 @@ components:
           type: string
           format: date-time
 
+    LegalSourceChecks:
+      type: object
+      description: Checks run before saving. A preview reports them; create, append and content replacement refuse to save when a blocking one fails.
+      properties:
+        origin:
+          type: object
+          description: Blocking on create and content replacement (400 LEGAL_ORIGIN_REQUIRED). origin.publisher and origin.url are required; a text taken from a printed Công báo issue (publisher official_gazette) may give gazette instead of url.
+          properties:
+            ok:
+              type: boolean
+            message:
+              type: string
+        documentNumber:
+          type: object
+          description: |
+            Compares the number on the "Số:" line of the file with the number of the legal source (or the one sent).
+            mismatch blocks create, append and content replacement (400 LEGAL_DOCUMENT_NUMBER_MISMATCH) for an original text. consolidated_number (textKind consolidated, or a VBHN number in the file) only adds a coverage warning, because a consolidated text carries its own number. A reparse never blocks; it only adds the warning.
+          properties:
+            result:
+              type: string
+              enum: [match, mismatch, consolidated_number, not_checked]
+            entered:
+              type: string
+            detected:
+              type: string
+            message:
+              type: string
+
     LegalContentApplied:
       allOf:
         - $ref: '#/components/schemas/LegalSource'
@@ -1698,6 +1731,8 @@ components:
           type: string
         coverage:
           $ref: '#/components/schemas/LegalCoverage'
+        checks:
+          $ref: '#/components/schemas/LegalSourceChecks'
         parts:
           type: array
           items:
@@ -1705,6 +1740,10 @@ components:
             properties:
               fileName:
                 type: string
+              notes:
+                type: array
+                items:
+                  type: string
               chunkCount:
                 type: integer
               skippedArticles:
@@ -1802,6 +1841,8 @@ components:
           $ref: '#/components/schemas/LegalTextCleanup'
         extraction:
           $ref: '#/components/schemas/LegalExtractionQuality'
+        checks:
+          $ref: '#/components/schemas/LegalSourceChecks'
         chunks:
           type: array
           items:
@@ -1826,7 +1867,7 @@ components:
 
     CreateLegalSourceRequest:
       type: object
-      required: [code, title, sourceType, citationLabel, file]
+      required: [code, title, sourceType, citationLabel, origin, file]
       properties:
         code:
           type: string
@@ -1876,7 +1917,7 @@ components:
           minLength: 1
           maxLength: 200
         origin:
-          description: Optional. Send nested form fields (origin[publisher], origin[url], origin[retrievedAt]) or one field holding a JSON object.
+          description: Required, with url (a printed Công báo issue may give gazette instead). Send nested form fields (origin[publisher], origin[url], origin[retrievedAt]) or one field holding a JSON object.
           allOf:
             - $ref: '#/components/schemas/LegalSourceOrigin'
         textKind:
@@ -4866,7 +4907,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Validation error, unsupported or unreadable file, no usable text, or LLM not configured
+          description: Validation error, unsupported or unreadable file, no usable text, LLM not configured, LEGAL_ORIGIN_REQUIRED, or LEGAL_DOCUMENT_NUMBER_MISMATCH (error.meta has entered and detected)
           content:
             application/json:
               schema:
@@ -4974,6 +5015,20 @@ paths:
                   minimum: 1
                   maximum: 5000
                   example: 324
+                documentNumber:
+                  type: string
+                  maxLength: 60
+                  description: Optional; when sent, checks.documentNumber compares it with the number in the file
+                textKind:
+                  type: string
+                  enum: [original, consolidated]
+                gazette:
+                  type: string
+                  maxLength: 200
+                origin:
+                  description: Optional; when sent, checks.origin says whether it is complete enough to create the source
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
                 file:
                   type: string
                   format: binary
@@ -5204,7 +5259,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Missing, unsupported or unreadable file, no usable text, or LLM not configured
+          description: Missing, unsupported or unreadable file, no usable text, LLM not configured, or LEGAL_DOCUMENT_NUMBER_MISMATCH when the file is numbered differently from the source (original text)
           content:
             application/json:
               schema:
@@ -5324,6 +5379,19 @@ paths:
                   minimum: 1
                   maximum: 5000
                   description: Optional; defaults to the stored expected article count
+                origin:
+                  description: Optional; the origin the source would have after the replacement (the stored one when not sent), reported in checks.origin
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                textKind:
+                  type: string
+                  enum: [original, consolidated]
+                consolidatedThrough:
+                  type: array
+                  maxItems: 30
+                  items:
+                    type: string
+                    maxLength: 60
                 file:
                   type: string
                   format: binary
@@ -5474,7 +5542,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalContentApplied'
         '400':
-          description: Validation error, LLM not configured, unreadable file, no usable text, or LEGAL_OCR_LIMIT
+          description: Validation error, LLM not configured, unreadable file, no usable text, LEGAL_OCR_LIMIT, LEGAL_ORIGIN_REQUIRED (no origin sent and none stored), or LEGAL_DOCUMENT_NUMBER_MISMATCH
           content:
             application/json:
               schema:

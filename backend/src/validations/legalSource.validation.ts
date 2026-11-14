@@ -151,6 +151,14 @@ export const updateLegalSourceSchema = z
 
 export const previewLegalSourceSchema = z.object({ expectedArticleCount });
 
+export const previewNewLegalSourceSchema = z.object({
+  expectedArticleCount,
+  documentNumber: legalSourceFields.documentNumber.optional(),
+  textKind: legalSourceFields.textKind.optional(),
+  gazette: legalSourceFields.gazette.optional(),
+  origin: z.preprocess(parseFormJson, originSchema.optional()),
+});
+
 export const replaceLegalSourceContentSchema = z.object({
   expectedArticleCount,
   origin: z.preprocess(parseFormJson, originSchema.optional()),
@@ -170,3 +178,4 @@ export type CreateLegalSourceInput = z.infer<typeof createLegalSourceSchema>;
 export type UpdateLegalSourceInput = z.infer<typeof updateLegalSourceSchema>;
 export type PreviewLegalSourceInput = z.infer<typeof previewLegalSourceSchema>;
 export type ReplaceLegalSourceContentInput = z.infer<typeof replaceLegalSourceContentSchema>;
+export type PreviewNewLegalSourceInput = z.infer<typeof previewNewLegalSourceSchema>;

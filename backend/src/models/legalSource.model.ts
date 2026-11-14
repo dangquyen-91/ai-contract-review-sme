@@ -97,6 +97,7 @@ const legalSourcePartSchema = new Schema(
     fileSize: { type: Number },
     cleanup: { type: legalTextCleanupSchema },
     extraction: { type: legalExtractionSchema },
+    notes: { type: [String], default: undefined },
   },
   { _id: false },
 );

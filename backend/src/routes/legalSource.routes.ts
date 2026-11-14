@@ -26,6 +26,7 @@ import {
   legalSourceIdParamSchema,
   legalSourcePartParamSchema,
   previewLegalSourceSchema,
+  previewNewLegalSourceSchema,
   replaceLegalSourceContentSchema,
   updateLegalSourceSchema,
 } from '../validations/legalSource.validation';
@@ -41,7 +42,7 @@ router.get('/catalog', listLegalSourceCatalogHandler);
 router.post(
   '/preview',
   legalDocUpload.single('file'),
-  validate({ body: previewLegalSourceSchema }),
+  validate({ body: previewNewLegalSourceSchema }),
   previewLegalSourceHandler,
 );
 
@@ -78,7 +79,7 @@ router.post(
 router.post(
   '/:id/content/preview',
   legalDocUpload.single('file'),
-  validate({ params: legalSourceIdParamSchema, body: previewLegalSourceSchema }),
+  validate({ params: legalSourceIdParamSchema, body: replaceLegalSourceContentSchema }),
   previewContentReplacementHandler,
 );
 
