@@ -54,6 +54,19 @@ const legalIngestionSchema = new Schema(
   { _id: false },
 );
 
+export const LEGAL_END_OF_TEXT_KINDS = ['signature', 'consolidation', 'appendix'] as const;
+
+const legalTextCleanupSchema = new Schema(
+  {
+    pageFurnitureLines: { type: Number, required: true },
+    footnoteLines: { type: Number, required: true },
+    droppedTailLines: { type: Number, required: true },
+    stoppedAt: { type: String },
+    stoppedAtKind: { type: String, enum: LEGAL_END_OF_TEXT_KINDS },
+  },
+  { _id: false },
+);
+
 const legalSourcePartSchema = new Schema(
   {
     fileName: { type: String },
@@ -69,6 +82,7 @@ const legalSourcePartSchema = new Schema(
     fileHash: { type: String },
     mimeType: { type: String },
     fileSize: { type: Number },
+    cleanup: { type: legalTextCleanupSchema },
   },
   { _id: false },
 );

@@ -25,11 +25,35 @@ export interface LegalChunkDraft {
   hierarchy?: LegalHeading[];
 }
 
+export type LegalEndOfTextKind = 'signature' | 'consolidation' | 'appendix';
+
+export interface LegalEndOfText {
+  kind: LegalEndOfTextKind;
+  marker: string;
+  droppedLines: number;
+}
+
 export interface ParsedLegalDocument {
   documentNumber?: string;
   articles: LegalArticleKey[];
   headingCount: number;
   chunks: LegalChunkDraft[];
+  footnoteLines: number;
+  endOfText?: LegalEndOfText;
+}
+
+export interface LegalTextCleanup {
+  pageFurnitureLines: number;
+  footnoteLines: number;
+  droppedTailLines: number;
+  stoppedAt?: string;
+  stoppedAtKind?: LegalEndOfTextKind;
+}
+
+export interface CleanedPdfText {
+  text: string;
+  pageFurnitureLines: number;
+  footnoteLines: number;
 }
 
 export interface LegalCoverageReport {
@@ -62,14 +86,26 @@ const HEADING_RES: [HeadingLevel, RegExp][] = [
   ['subsection', new RegExp(`^(?:TIỂU MỤC|Tiểu mục)\\s+(\\d+|[IVXLCDM]+)${NOT_WORD}\\s*[.:-]?\\s*(.*)$`, 'u')],
   ['section', new RegExp(`^(?:MỤC|Mục)\\s+(\\d+|[IVXLCDM]+)${NOT_WORD}\\s*[.:-]?\\s*(.*)$`, 'u')],
 ];
-const END_OF_TEXT_RES = [
-  /^(?:Luật|Bộ luật|Pháp lệnh|Nghị quyết) này (?:đã )?được .*thông qua/u,
-  /^(?:TM|KT|Q)\.\s*\p{Lu}/u,
-  /^(?:CHỦ TỊCH|PHÓ CHỦ TỊCH|THỦ TƯỚNG|PHÓ THỦ TƯỚNG|BỘ TRƯỞNG|THỨ TRƯỞNG)(?:\s|$)/u,
-  /^Nơi nhận\s*:/u,
-  /^PHỤ LỤC(?:\s|$)/u,
+const END_OF_TEXT: { kind: LegalEndOfTextKind; re: RegExp }[] = [
+  { kind: 'signature', re: /^(?:Luật|Bộ luật|Pháp lệnh|Nghị quyết) này (?:đã )?được .*thông qua/u },
+  { kind: 'signature', re: /^(?:TM|KT|Q)\.\s*\p{Lu}/u },
+  {
+    kind: 'signature',
+    re: /^(?:CHỦ TỊCH|PHÓ CHỦ TỊCH|THỦ TƯỚNG|PHÓ THỦ TƯỚNG|BỘ TRƯỞNG|THỨ TRƯỞNG|CHỦ NHIỆM|TỔNG THƯ KÝ)(?:\s|$)/u,
+  },
+  { kind: 'signature', re: /^Nơi nhận\s*:/u },
+  { kind: 'consolidation', re: /^XÁC THỰC VĂN BẢN HỢP NHẤT(?:\s|$)/u },
+  { kind: 'appendix', re: /^PHỤ LỤC(?:\s|$)/u },
 ];
-const DOCUMENT_NUMBER_RE = /Số\s*:\s*(\d+\/\d{4}\/[\p{Lu}\d-]+)/u;
+const MAX_MARKER_CHARS = 120;
+const QUIET_TAIL_LINES = 40;
+const INLINE_FOOTNOTE_RE = /\[\d{1,3}\]/g;
+const FOOTNOTE_LINE_RE =
+  /^\[\d{1,3}\]\s*(?:Luật|Bộ luật|Nghị định|Nghị quyết|Thông tư|Pháp lệnh|Quyết định|Văn bản|Điều|Khoản|Điểm|Cụm từ|Mục|Chương|Phần|Tiểu mục)(?![\p{L}\d])/u;
+const PAGE_EDGE_LINES = 3;
+const MIN_PAGES_FOR_REPEATS = 3;
+const PAGE_NUMBER_RE = /^(?:trang\s*)?[-–—(]?\s*\d{1,4}\s*[-–—)]?(?:\s*(?:\/|trên|of)\s*\d{1,4})?$/iu;
+const DOCUMENT_NUMBER_RE = /Số\s*:\s*(\d+\/(?:\d{4}\/[\p{Lu}\d-]+|VBHN-[\p{Lu}\d-]+))/u;
 const CLAUSE_RE = /^(\d{1,3})\.\s+\S/u;
 const POINT_RE = /^([a-zđ])\)\s*\S/u;
 
@@ -123,18 +159,94 @@ function isAfter(key: LegalArticleKey, previous: LegalArticleKey | undefined): b
 
 const articleKeyLabel = (key: LegalArticleKey) => `${key.number}${key.suffix}`;
 
+const isStructuralLine = (line: string) =>
+  ARTICLE_RE.test(line) ||
+  CLAUSE_RE.test(line) ||
+  POINT_RE.test(line) ||
+  matchHeading(line) !== null ||
+  END_OF_TEXT.some(({ re }) => re.test(line));
+
+const pageFurnitureKey = (line: string) => line.toLowerCase().replace(/\d+/g, '#').replace(/\s+/g, ' ');
+
+export function cleanPdfPages(pages: string[]): CleanedPdfText {
+  const pageLines = pages.map((page) => page.split('\n').map((l) => l.trim()).filter(Boolean));
+  const edgeKeys = (lines: string[]) =>
+    new Set([...lines.slice(0, PAGE_EDGE_LINES), ...lines.slice(-PAGE_EDGE_LINES)].map(pageFurnitureKey));
+
+  const pagesByKey = new Map<string, number>();
+  for (const lines of pageLines) {
+    for (const key of edgeKeys(lines)) pagesByKey.set(key, (pagesByKey.get(key) ?? 0) + 1);
+  }
+  const minPages = Math.max(MIN_PAGES_FOR_REPEATS, Math.ceil(pageLines.length / 2));
+  const repeated = new Set(
+    pageLines.length >= MIN_PAGES_FOR_REPEATS
+      ? [...pagesByKey].filter(([, count]) => count >= minPages).map(([key]) => key)
+      : [],
+  );
+
+  let pageFurnitureLines = 0;
+  let footnoteLines = 0;
+  const kept = pageLines.map((lines) => {
+    const out: string[] = [];
+    let inFootnotes = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const atEdge = i < PAGE_EDGE_LINES || i >= lines.length - PAGE_EDGE_LINES;
+      if (atEdge && (PAGE_NUMBER_RE.test(line) || repeated.has(pageFurnitureKey(line)))) {
+        pageFurnitureLines++;
+        continue;
+      }
+      if (FOOTNOTE_LINE_RE.test(line)) {
+        inFootnotes = true;
+        footnoteLines++;
+        continue;
+      }
+      if (inFootnotes && !isStructuralLine(line)) {
+        footnoteLines++;
+        continue;
+      }
+      inFootnotes = false;
+      out.push(line);
+    }
+    return out.join('\n');
+  });
+
+  return { text: kept.filter(Boolean).join('\n'), pageFurnitureLines, footnoteLines };
+}
+
+function stripFootnotes(fullText: string): { lines: string[]; footnoteLines: number } {
+  let footnoteLines = 0;
+  const lines: string[] = [];
+  for (const raw of fullText.split('\n')) {
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    if (FOOTNOTE_LINE_RE.test(trimmed)) {
+      footnoteLines++;
+      continue;
+    }
+    const line = trimmed.replace(INLINE_FOOTNOTE_RE, '').replace(/\s{2,}/g, ' ').trim();
+    if (line) lines.push(line);
+  }
+  return { lines, footnoteLines };
+}
+
 export function parseLegalDocument(fullText: string): ParsedLegalDocument {
-  const lines = fullText.split('\n').map((l) => l.trim()).filter(Boolean);
+  const { lines, footnoteLines } = stripFootnotes(fullText);
   const articles: ArticleDraft[] = [];
   const preamble: string[] = [];
   const hierarchy: LegalHeading[] = [];
   let headingCount = 0;
   let current: ArticleDraft | undefined;
+  let endOfText: LegalEndOfText | undefined;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
 
-    if (articles.length > 0 && END_OF_TEXT_RES.some((re) => re.test(line))) break;
+    const end = articles.length > 0 ? END_OF_TEXT.find(({ re }) => re.test(line)) : undefined;
+    if (end) {
+      endOfText = { kind: end.kind, marker: line.slice(0, MAX_MARKER_CHARS), droppedLines: lines.length - i };
+      break;
+    }
 
     const article = line.match(ARTICLE_RE);
     if (article) {
@@ -176,7 +288,7 @@ export function parseLegalDocument(fullText: string): ParsedLegalDocument {
 
   if (articles.length === 0) {
     const chunks = splitByLength(lines.join('\n')).map((text, order) => ({ order, chunkText: text }));
-    return { documentNumber, articles: [], headingCount, chunks };
+    return { documentNumber, articles: [], headingCount, chunks, footnoteLines };
   }
 
   const chunks: LegalChunkDraft[] = [];
@@ -196,7 +308,26 @@ export function parseLegalDocument(fullText: string): ParsedLegalDocument {
     }
   }
 
-  return { documentNumber, articles: articles.map((a) => a.key), headingCount, chunks };
+  return { documentNumber, articles: articles.map((a) => a.key), headingCount, chunks, footnoteLines, endOfText };
+}
+
+export interface StoredLegalTextCleanup {
+  droppedTailLines?: number | null;
+  stoppedAt?: string | null;
+  stoppedAtKind?: LegalEndOfTextKind | null;
+}
+
+export function cleanupWarnings(cleanup: StoredLegalTextCleanup | null | undefined): string[] {
+  if (!cleanup?.stoppedAt || !cleanup.droppedTailLines) return [];
+  if (cleanup.stoppedAtKind === 'appendix') {
+    return [`Stopped at "${cleanup.stoppedAt}": ${cleanup.droppedTailLines} line(s) of appendix text were not added`];
+  }
+  if (cleanup.droppedTailLines > QUIET_TAIL_LINES) {
+    return [
+      `${cleanup.droppedTailLines} line(s) after "${cleanup.stoppedAt}" were not added; check that no article was cut off`,
+    ];
+  }
+  return [];
 }
 
 function splitBlocks(lines: string[], re: RegExp): { lead: string[]; blocks: Block[] } {
@@ -359,8 +490,9 @@ export function buildLegalCoverage(input: {
   headingCount: number;
   chunkCount: number;
   expectedArticleCount?: number;
+  notes?: string[];
 }): LegalCoverageReport {
-  const { articles, headingCount, chunkCount, expectedArticleCount } = input;
+  const { articles, headingCount, chunkCount, expectedArticleCount, notes = [] } = input;
   const numbers = [...new Set(articles.map((a) => a.number))].sort((a, b) => a - b);
   const present = new Set(numbers);
   const firstArticle = numbers[0];
@@ -383,6 +515,7 @@ export function buildLegalCoverage(input: {
   if (expectedArticleCount && lastArticle && lastArticle > expectedArticleCount) {
     warnings.push(`Found Điều ${lastArticle} but only ${expectedArticleCount} articles were expected`);
   }
+  warnings.push(...new Set(notes));
 
   return {
     structured: numbers.length > 0,

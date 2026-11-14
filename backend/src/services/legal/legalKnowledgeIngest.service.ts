@@ -1,6 +1,5 @@
 import mammoth from 'mammoth';
 import { validateUploadContent } from '../../utils/uploadContent';
-import pdfParse from 'pdf-parse';
 import WordExtractor from 'word-extractor';
 import mongoose from 'mongoose';
 import {
@@ -13,9 +12,13 @@ import { env } from '../../config/env';
 import { normalizeExtractedText } from '../contract/textExtraction.service';
 import {
   buildLegalCoverage,
+  CleanedPdfText,
+  cleanPdfPages,
+  cleanupWarnings,
   LegalArticleKey,
   LegalChunkDraft,
   LegalCoverageReport,
+  LegalTextCleanup,
   parseLegalDocument,
 } from './legalDocumentParser.service';
 
@@ -147,18 +150,47 @@ const DOCX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.wordproces
 const DOC_MIME_TYPE = 'application/msword';
 const TXT_MIME_TYPE = 'text/plain';
 
-async function readLegalText(buffer: Buffer, mimeType: string): Promise<string> {
-  if (mimeType === PDF_MIME_TYPE) return (await pdfParse(buffer)).text;
-  if (mimeType === DOCX_MIME_TYPE) return (await mammoth.extractRawText({ buffer })).value;
-  if (mimeType === DOC_MIME_TYPE) return (await new WordExtractor().extract(buffer)).getBody();
-  if (mimeType === TXT_MIME_TYPE) return buffer.toString('utf-8');
+const MAX_LEGAL_PDF_PAGES = 1500;
+
+async function readPdfPages(buffer: Buffer): Promise<string[]> {
+  const mupdf = await import('mupdf');
+  const doc = mupdf.Document.openDocument(buffer, PDF_MIME_TYPE);
+  try {
+    const pageCount = doc.countPages();
+    if (pageCount > MAX_LEGAL_PDF_PAGES) {
+      throw AppError.badRequest(`The PDF has ${pageCount} pages; split it into files of at most ${MAX_LEGAL_PDF_PAGES} pages`);
+    }
+    const pages: string[] = [];
+    for (let i = 0; i < pageCount; i++) {
+      const page = doc.loadPage(i);
+      try {
+        pages.push(normalizeExtractedText(page.toStructuredText('preserve-whitespace').asText()));
+      } finally {
+        page.destroy();
+      }
+    }
+    return pages;
+  } finally {
+    doc.destroy();
+  }
+}
+
+async function readLegalText(buffer: Buffer, mimeType: string): Promise<CleanedPdfText> {
+  const plain = (text: string) => ({ text, pageFurnitureLines: 0, footnoteLines: 0 });
+  if (mimeType === PDF_MIME_TYPE) return cleanPdfPages(await readPdfPages(buffer));
+  if (mimeType === DOCX_MIME_TYPE) return plain((await mammoth.extractRawText({ buffer })).value);
+  if (mimeType === DOC_MIME_TYPE) return plain((await new WordExtractor().extract(buffer)).getBody());
+  if (mimeType === TXT_MIME_TYPE) return plain(buffer.toString('utf-8'));
   throw AppError.badRequest(`Unsupported file type: ${mimeType}`);
 }
 
-export async function extractLegalText(buffer: Buffer, mimeType: string): Promise<string> {
+export type ExtractedLegalText = CleanedPdfText;
+
+export async function extractLegalText(buffer: Buffer, mimeType: string): Promise<ExtractedLegalText> {
   try {
     await validateUploadContent(buffer, mimeType);
-    return normalizeExtractedText(await readLegalText(buffer, mimeType));
+    const extracted = await readLegalText(buffer, mimeType);
+    return { ...extracted, text: normalizeExtractedText(extracted.text) };
   } catch (err) {
     if (err instanceof AppError) throw err;
     throw AppError.badRequest('The legal document could not be read; check that the file is not corrupted');
@@ -171,20 +203,29 @@ export interface AnalyzedLegalText {
   headingCount: number;
   chunks: LegalChunkDraft[];
   coverage: LegalCoverageReport;
+  cleanup: LegalTextCleanup;
 }
 
-export function analyzeLegalText(fullText: string, expectedArticleCount?: number): AnalyzedLegalText {
-  const parsed = parseLegalDocument(fullText);
+export function analyzeLegalText(extracted: ExtractedLegalText, expectedArticleCount?: number): AnalyzedLegalText {
+  const parsed = parseLegalDocument(extracted.text);
+  const cleanup: LegalTextCleanup = {
+    pageFurnitureLines: extracted.pageFurnitureLines,
+    footnoteLines: extracted.footnoteLines + parsed.footnoteLines,
+    droppedTailLines: parsed.endOfText?.droppedLines ?? 0,
+    ...(parsed.endOfText ? { stoppedAt: parsed.endOfText.marker, stoppedAtKind: parsed.endOfText.kind } : {}),
+  };
   return {
     documentNumber: parsed.documentNumber,
     articles: parsed.articles,
     headingCount: parsed.headingCount,
     chunks: parsed.chunks,
+    cleanup,
     coverage: buildLegalCoverage({
       articles: parsed.articles,
       headingCount: parsed.headingCount,
       chunkCount: parsed.chunks.length,
       expectedArticleCount,
+      notes: cleanupWarnings(cleanup),
     }),
   };
 }

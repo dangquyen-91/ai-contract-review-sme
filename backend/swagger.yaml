@@ -1587,6 +1587,8 @@ components:
               hasFile:
                 type: boolean
                 description: False for parts uploaded before original files were kept. Download it with GET /kb/legal-sources/{id}/parts/{partIndex}/file.
+              cleanup:
+                $ref: '#/components/schemas/LegalTextCleanup'
               fileHash:
                 type: string
                 description: SHA-256 of the uploaded file
@@ -1658,6 +1660,28 @@ components:
           type: string
           format: date-time
 
+    LegalTextCleanup:
+      type: object
+      description: What was left out while reading the file. Absent on parts uploaded before it was recorded.
+      properties:
+        pageFurnitureLines:
+          type: integer
+          description: PDF only. Page numbers and header/footer lines repeated at the top or bottom of at least half of the pages (and of 3 pages or more)
+        footnoteLines:
+          type: integer
+          description: Footnote lines of a consolidated text, e.g. "[1] Luật số 44/2019/QH14 sửa đổi..."; inline markers such as "[1]" are removed from the article text too
+        droppedTailLines:
+          type: integer
+          description: Lines from stoppedAt to the end of the file
+        stoppedAt:
+          type: string
+          description: The line where the legal text was considered finished
+          example: XÁC THỰC VĂN BẢN HỢP NHẤT
+        stoppedAtKind:
+          type: string
+          enum: [signature, consolidation, appendix]
+          description: appendix adds a coverage warning, because appendix text is not added. A signature or consolidation stop adds one only when more than 40 lines follow it.
+
     LegalSourcePreview:
       type: object
       properties:
@@ -1666,6 +1690,8 @@ components:
           example: 36/2005/QH11
         coverage:
           $ref: '#/components/schemas/LegalCoverage'
+        cleanup:
+          $ref: '#/components/schemas/LegalTextCleanup'
         chunks:
           type: array
           items:
@@ -4698,7 +4724,9 @@ paths:
       description: |
         Manager only. Rate-limited (AI cost control). Use POST /kb/legal-sources/preview first to check coverage without spending embedding quota.
 
-        The text is read as Phần > Chương > Mục > Tiểu mục > Điều > khoản > điểm. An "Điều N" heading only counts when its number is higher than the previous article, so cross-references such as "Điều 5 của Luật này" at the start of a line stay in the body. The signature block after the last article (e.g. "Luật này đã được Quốc hội ... thông qua", "CHỦ TỊCH QUỐC HỘI", "Nơi nhận:") is dropped.
+        The text is read as Phần > Chương > Mục > Tiểu mục > Điều > khoản > điểm. An "Điều N" heading only counts when its number is higher than the previous article, so cross-references such as "Điều 5 của Luật này" at the start of a line stay in the body. The signature block after the last article (e.g. "Luật này đã được Quốc hội ... thông qua", "CHỦ TỊCH QUỐC HỘI", "Nơi nhận:", or "XÁC THỰC VĂN BẢN HỢP NHẤT" of a consolidated text) is dropped, and so is an appendix ("PHỤ LỤC"), which adds a coverage warning.
+
+        A PDF is read page by page: page numbers and header/footer lines repeated across pages are removed, and the footnote block at the bottom of a page of a consolidated text is left out. Footnote lines and inline "[n]" markers are removed from any file type. parts[].cleanup (and cleanup in the preview) counts what was left out.
 
         Each article becomes one chunk of up to 2200 characters. A longer article is split into groups of whole khoản, and each group repeats the article heading (and the short lead-in sentence) so it can be read alone, e.g. "Điều 3, khoản 1-9". A khoản that is still too long is split into groups of điểm. A document with no "Điều N" headings (e.g. a standard template) is split into plain passages.
 
