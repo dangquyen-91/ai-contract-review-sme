@@ -1,6 +1,7 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
 import {
   keyTermSchema,
+  legalCoverageSnapshotSchema,
   LEGAL_RETRIEVAL_STATUSES,
   RISK_LEVELS,
   RULE_CHECK_STATUSES,
@@ -58,6 +59,7 @@ const reviewResultSchema = new Schema(
     findings: { type: [findingSnapshotSchema], default: [] },
     legalRetrievalStatus: { type: String, enum: LEGAL_RETRIEVAL_STATUSES },
     ruleCheckStatus: { type: String, enum: RULE_CHECK_STATUSES },
+    legalCoverage: { type: legalCoverageSnapshotSchema },
     keyTerms: { type: [keyTermSchema], default: undefined },
     partial: { type: Boolean, default: false },
   },

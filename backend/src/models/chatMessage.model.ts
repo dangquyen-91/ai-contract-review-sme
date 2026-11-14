@@ -1,5 +1,6 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
 import { decryptOnSerialize, encryptedString } from '../utils/fieldEncryption';
+import { LEGAL_PROVENANCES, legalSourceOriginSchema } from './legalSource.model';
 
 export const CHAT_ROLES = ['user', 'assistant'] as const;
 
@@ -9,6 +10,10 @@ const chatLegalSourceSchema = new Schema(
     citationLabel: { type: String, required: true },
     sourceTitle: { type: String, required: true },
     articleRef: { type: String },
+    legalSourceId: { type: Types.ObjectId, ref: 'LegalSource' },
+    documentNumber: { type: String },
+    origin: { type: legalSourceOriginSchema },
+    provenance: { type: String, enum: LEGAL_PROVENANCES },
   },
   { _id: false },
 );

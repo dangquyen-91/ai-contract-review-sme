@@ -6,6 +6,7 @@ import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model
 import { ContractProfileModel } from '../../models/contractProfile.model';
 import { DEFAULT_PROFILES } from '../contract/contractProfile.data';
 import { SALES_LEGAL_SOURCE_CODES } from '../legal/legalSourceCatalog.data';
+import { inForceSourceFilter } from '../legal/legalSourceAvailability';
 
 export const studioLawIdsSchema = z.array(z.string().regex(/^[a-f\d]{24}$/i).transform(id => id.toLowerCase()))
   .max(10, 'Chỉ chọn tối đa 10 văn bản.').refine(ids => new Set(ids).size === ids.length, 'Văn bản được chọn không được trùng.');
@@ -21,13 +22,8 @@ const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$
 function availableSources() {
   const now = new Date();
   return {
-    status: { $in: ['in_force', 'amended'] },
     sourceType: { $ne: 'standard_template' },
-    $and: [
-      { $or: [{ effectiveDate: null }, { effectiveDate: { $lte: now } }] },
-      { $or: [{ expiryDate: null }, { expiryDate: { $gt: now } }] },
-      { $or: [{ ingestion: null }, { 'ingestion.status': 'completed' }] },
-    ],
+    $and: [...inForceSourceFilter(now).$and, { $or: [{ ingestion: null }, { 'ingestion.status': 'completed' }] }],
   };
 }
 const metadata = {

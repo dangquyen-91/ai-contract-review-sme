@@ -8,6 +8,7 @@ import { seedDefaultRoles } from './services/identity/role.service';
 import {
   ensureLegalTextIndex,
   ensureLegalVectorIndex,
+  reconcileLegalEmbeddingModel,
 } from './services/legal/legalKnowledgeIngest.service';
 import { seedDefaultClauseTaxonomy } from './services/analysis/clauseTypeTaxonomy.service';
 import { seedDefaultContractProfiles } from './services/contract/contractProfile.service';
@@ -31,6 +32,7 @@ async function bootstrap() {
   await seedDefaultContractProfiles();
   await ensureLegalVectorIndex();
   await ensureLegalTextIndex();
+  await reconcileLegalEmbeddingModel();
 
   if (env.START_WORKERS) {
     startBackgroundWorkers();
