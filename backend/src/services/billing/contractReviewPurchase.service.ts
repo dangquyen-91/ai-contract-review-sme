@@ -11,12 +11,8 @@ import { getSubscription, lockSubscriptionOrganization } from './subscription.se
 import { assertAccountReviewPolicy } from '../contract/personalReviewPolicy';
 
 export async function contractReviewQuote(userId: string, orgId: string, contractId: string) {
-  const user = await UserModel.findOne({ _id: userId, isActive: true }).populate('roleId');
-  if (
-    !user ||
-    !['user', 'owner', 'staff'].includes((user.roleId as unknown as { code: string })?.code) ||
-    (user.id !== orgId && !((user.roleId as unknown as { code?: string })?.code === 'user' && user.orgId?.toString() === orgId))
-  )
+  const user = await UserModel.findOne({ _id: userId, isActive: true, platformRole: null });
+  if (!user || user.id !== orgId)
     throw AppError.forbidden('Thanh toán từng hợp đồng chỉ dành cho tài khoản cá nhân.');
   const contract = await ContractModel.findOne({ _id: contractId, orgId, uploadedBy: userId });
   if (!contract) throw AppError.notFound('Không tìm thấy hợp đồng.');

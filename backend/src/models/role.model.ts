@@ -1,13 +1,17 @@
 import { Schema, model, InferSchemaType } from 'mongoose';
 
-export const ROLE_CODES = ['administrator', 'manager', 'staff', 'owner','expert','user'] as const;
+export const ROLE_CODES = ['administrator', 'manager', 'staff', 'owner', 'expert', 'user'] as const;
 export type RoleCode = (typeof ROLE_CODES)[number];
+
+export const ROLE_SCOPES = ['platform', 'organization', 'personal'] as const;
+export type RoleScope = (typeof ROLE_SCOPES)[number];
 
 const roleSchema = new Schema(
   {
     code: { type: String, enum: ROLE_CODES, required: true, unique: true },
     name: { type: String, required: true, trim: true },
     description: { type: String, trim: true },
+    scope: { type: String, enum: ROLE_SCOPES, required: true },
     isSystemRole: { type: Boolean, default: true },
   },
   { timestamps: true },

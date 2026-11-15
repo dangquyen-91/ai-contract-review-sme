@@ -8,8 +8,10 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { calendarReportFixture } from './fixtures/report.mjs';
+import { dashboardInsightsFixture } from './fixtures/dashboard-insights.mjs';
+import ExcelJS from 'exceljs';
 const require = createRequire(import.meta.url);
-const { CONTRACT_TEMPLATES } = require('../../backend/dist/services/drafting/templates');
+const { accountTemplate, accountTemplates } = require('../../backend/dist/services/drafting/templatePolicy');
 const { buildStudioTemplate } = require('../../backend/dist/services/drafting/studioTemplate');
 const { studioInput, studioText } = require('../../backend/dist/services/drafting/studioDocument');
 const { applyStudioChanges } = require('../../backend/dist/services/drafting/studioChanges');
@@ -25,10 +27,10 @@ if (organizationValidation) Object.assign(organization, { industry: 'other', add
 let reportEmpty = false, reportFailure = false;
 const reportRequests = [];
 const personalAllowance = process.argv.includes('--personal-allowance');
-const rental = process.argv.includes('--rental') || personalAllowance;
+const personalHousing = process.argv.includes('--housing') || process.argv.includes('--rental') || personalAllowance;
 let allowanceFailures = personalAllowance ? 1 : 0;
 const subscriptionRequests = [];
-const user = { id: 'a'.repeat(24), role: rental ? 'user' : 'staff', name: 'Fixture Staff', email: 'staff@example.com', orgId: rental ? null : 'b'.repeat(24), hasCompletedOnboarding: true };
+const user = { id: 'a'.repeat(24), role: personalHousing ? 'user' : 'staff', name: 'Fixture Staff', email: 'staff@example.com', orgId: personalHousing ? null : 'b'.repeat(24), hasCompletedOnboarding: true };
 if (workspaceSwitch) Object.assign(user, { workspace: 'organization', organizationMembership: { orgId: 'b'.repeat(24), role: 'staff' } });
 if (reportsMode) Object.assign(user, { role: 'administrator', orgId: null });
 if (organizationValidation) Object.assign(user, { role: 'owner' });
@@ -50,12 +52,18 @@ const backend = http.createServer(async (req, res) => {
     reportRequests.push(url.search);
     if (reportFailure) return error('Chưa tải được báo cáo. Hãy thử lại.', 503);
     const result = calendarReportFixture(url.searchParams, reportEmpty);
+    result.role = user.role;
     if (user.role === 'owner') {
       result.scope = { type: 'organization', organizationId: user.orgId };
       result.payments = null;
       result.comparison.changes.payments = { current: null, previous: null, difference: null, changePercent: null, unit: 'percent', status: 'no_data' };
       for (const bucket of result.trend.buckets) for (const side of ['current', 'previous']) if (bucket[side]) bucket[side].receivedAmount = null;
     }
+    return send(result);
+  }
+  if (reportsMode && url.pathname === '/api/v1/dashboard/insights') {
+    const result = dashboardInsightsFixture(user.role, url.searchParams.get('period') || 'month', reportEmpty);
+    result.scope.id = ['user', 'expert'].includes(user.role) ? user.id : ['owner', 'staff'].includes(user.role) ? user.orgId : null;
     return send(result);
   }
   if (url.pathname === '/api/v1/auth/refresh') {
@@ -87,7 +95,7 @@ const backend = http.createServer(async (req, res) => {
       members: { count: 1, pending: 0, limit: 5, available: 4 },
       drafting: { used: 50 - draftingAvailable, reserved: 0, limit: 50, available: draftingAvailable } });
   }
-  if (url.pathname === '/api/v1/contract-drafts/templates') return send({ templates: CONTRACT_TEMPLATES.filter(template => template.code !== 'rental' || user.role === 'user'), organization, role: user.role });
+  if (url.pathname === '/api/v1/contract-drafts/templates') return send({ templates: accountTemplates(user.role === 'user'), organization, role: user.role });
   if (url.pathname === '/api/v1/contract-drafts/legal-sources') {
     if (lawFailures-- > 0) return error('Fixture catalog unavailable', 503);
     const q = (url.searchParams.get('q') ?? '').toLocaleLowerCase('vi');
@@ -114,7 +122,7 @@ const backend = http.createServer(async (req, res) => {
   if(listTarget&&req.method==='DELETE'&&url.pathname===`/api/v1/contract-drafts/${listTarget.id}`){if(failDeleteOnce){failDeleteOnce=false;return error('Fixture delete failed. Retry.',409);}assert.equal(body.revision,listTarget.revision);listTarget.deletedAt=new Date().toISOString();return send({id:listTarget.id});}
   if (url.pathname === '/api/v1/contract-drafts' && req.method === 'POST') {
     assert.equal(body.editorMode, 'studio');
-    const template = CONTRACT_TEMPLATES.find(item => item.code === body.templateCode);
+    const template = accountTemplate(body.templateCode, user.role === 'user');
     for (const key of Object.keys(body.input)) assert.ok(template.fields.some(field => field.key === key), `Frontend sends unknown template field: ${key}`);
     const input = { ...Object.fromEntries(template.fields.filter(field => field.defaultValue).map(field => [field.key, field.defaultValue])), ...(template.code === 'labor' ? { companyName: organization.name } : {}), ...(template.fields.some(field=>field.key==='companyTaxCode')?{companyTaxCode: organization.taxCode}:{}), companyAddress: organization.address, ...body.input };
     const document = buildStudioTemplate(template, input, organization.name, body.ourParty);
@@ -164,7 +172,7 @@ const backend = http.createServer(async (req, res) => {
   }
   if (draft && url.pathname === `/api/v1/contract-drafts/${draft.id}/copy-latest`) {
     assert.equal(body.revision, draft.revision);
-    const template = CONTRACT_TEMPLATES.find(item=>item.code===draft.templateCode);
+    const template = accountTemplate(draft.templateCode, user.role === 'user');
     const input = Object.fromEntries(template.fields.filter(field=>draft.input[field.key]!==undefined).map(field=>[field.key,draft.input[field.key]]));
     const document = buildStudioTemplate(template, input, organization.name, draft.ourParty);
     draft={...draft,id:'f'.repeat(24),templateVersion:template.version,template,input,document,content:studioText(document,template),status:'draft',revision:0}; return send(draft,201);
@@ -250,9 +258,11 @@ try {
     console.log(`PASS organization validation: required business metadata, invalid tax code blocked before API, dependent province/ward selection, normalized update through backend schema, desktop/mobile 1440/390/320. Screenshots: ${artifacts}`);
   } else if (reportsMode) {
     await call('Page.navigate', { url: `${origin}/admin/reports` });
-    await waitFor('document.querySelectorAll("[data-report-metric]").length === 6');
+    await waitFor('document.querySelectorAll("[data-report-metric]").length === 5');
     assert.match(await evaluate('document.querySelector("[data-report-metric=success]").textContent'), /80%/);
-    assert.match(await evaluate('document.querySelector("[data-report-metric=risk]").textContent'), /33,3%/);
+    assert.equal(await evaluate('!!document.querySelector("[data-report-metric=risk]")'), false);
+    assert.equal(await evaluate('document.querySelector("h1").textContent'), 'Báo cáo vận hành hệ thống');
+    assert.ok(await evaluate('document.body.innerText.includes("10 không gian có nhiều lượt rà soát nhất")'));
     assert.match(await evaluate('document.querySelector("[data-report-metric=duration]").textContent'), /45 giây/);
     assert.match(await evaluate('document.querySelector("[data-report-metric=payments]").textContent'), /99.000/);
     await evaluate('document.querySelector("[data-report-metric=success] summary").click()');
@@ -267,21 +277,21 @@ try {
       await fillSelector('[aria-label="Kỳ báo cáo"]', period);
       await fillSelector('[aria-label="Ngày trong kỳ"]', '2026-10-10');
       await click('Áp dụng bộ lọc');
-      await waitFor('document.querySelectorAll("[data-report-metric]").length === 6 && !Array.from(document.querySelectorAll("button")).some(button=>button.textContent.includes("Đang cập nhật"))');
+      await waitFor('document.querySelectorAll("[data-report-metric]").length === 5 && !Array.from(document.querySelectorAll("button")).some(button=>button.textContent.includes("Đang cập nhật"))');
       assert.ok(reportRequests.some(query => query.includes(`period=${period}`)));
     }
     await fillSelector('[aria-label="So sánh với"]', 'year');
     await fillSelector('[aria-label="Gộp biểu đồ theo"]', 'week');
     await fillSelector('[aria-label="Lọc tổ chức"]', 'b'.repeat(24));
     await click('Áp dụng bộ lọc');
-    await waitFor('document.querySelectorAll("[data-report-metric]").length === 6 && document.body.innerText.includes("2025-10-01")');
+    await waitFor('document.querySelectorAll("[data-report-metric]").length === 5 && document.body.innerText.includes("2025-10-01")');
     assert.ok(reportRequests.some(query => query.includes('comparison=year') && query.includes('organizationId=')));
     await fillSelector('[aria-label="Kỳ báo cáo"]', 'custom');
     await fillSelector('[aria-label="Từ ngày"]', '2026-10-01');
     await fillSelector('[aria-label="Đến ngày"]', '2026-10-15');
     await fillSelector('[aria-label="So sánh với"]', 'none');
     await click('Áp dụng bộ lọc');
-    await waitFor('document.querySelectorAll("[data-report-metric]").length === 6 && document.querySelector("[role=status]")?.textContent.includes("2026-10-15")');
+    await waitFor('document.querySelectorAll("[data-report-metric]").length === 5 && document.querySelector("[role=status]")?.textContent.includes("2026-10-15")');
     assert.equal(await evaluate('document.querySelector("[role=status]").textContent.includes("Kỳ so sánh:")'), false);
     assert.equal(await evaluate('document.querySelectorAll("[data-slot=chart]").length'), 5);
     await click('Tải CSV');
@@ -293,6 +303,21 @@ try {
     }
     assert.ok(exported, 'Report CSV was not downloaded');
     assert.match(await fs.readFile(path.join(artifacts, exported), 'utf8'), /Tỷ lệ thành công/);
+    await click('Xuất Excel');
+    let excelFile;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      excelFile = (await fs.readdir(artifacts)).find(name => name.endsWith('.xlsx'));
+      if (excelFile) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.ok(excelFile, 'Report Excel was not downloaded');
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await fs.readFile(path.join(artifacts, excelFile)));
+    assert.deepEqual(workbook.worksheets.map(sheet => sheet.name), ['Tổng quan', 'Xu hướng', 'Chi tiết']);
+    let rate;
+    workbook.getWorksheet('Tổng quan').eachRow(row => { if (row.getCell(1).value === 'Tỷ lệ thành công') rate = row.getCell(2); });
+    assert.equal(rate.value, 0.8);
+    assert.equal(rate.numFmt, '0.0%');
     reportEmpty = true;
     await click('Làm mới');
     await waitFor('document.querySelector("[data-report-metric=success]")?.textContent.includes("Chưa có dữ liệu")');
@@ -303,19 +328,45 @@ try {
     assert.equal(await evaluate('document.querySelectorAll("[data-report-metric]").length'), 0);
     reportFailure = false;
     await click('Thử lại');
-    await waitFor('document.querySelectorAll("[data-report-metric]").length === 6');
+    await waitFor('document.querySelectorAll("[data-report-metric]").length === 5');
     Object.assign(user, { role: 'owner', orgId: 'b'.repeat(24) });
+    reportEmpty = false;
     await call('Page.navigate', { url: `${origin}/reports` });
     await waitFor('document.querySelectorAll("[data-report-metric]").length === 5');
     assert.equal(await evaluate('!!document.querySelector("[data-report-metric=payments]")'), false);
-    assert.equal(await evaluate(`document.querySelector('select[aria-label="Lọc tổ chức"]').options[0].textContent`), 'Tổ chức của bạn');
+    assert.equal(await evaluate('!!document.querySelector("select[aria-label=\\"Lọc tổ chức\\"]")'), false);
+    assert.match(await evaluate('document.querySelector("[data-report-metric=risk]").textContent'), /33,3%/);
+    assert.equal(await evaluate('document.querySelector("h1").textContent'), 'Báo cáo hợp đồng tổ chức');
+    assert.equal(await evaluate('document.body.innerText.includes("10 không gian có nhiều lượt rà soát nhất")'), false);
     for (const width of [1440, 390, 320]) {
       await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 821 });
       await evaluate('document.fonts.ready');
       assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth'), false, `Owner report overflow at ${width}`);
       await shot(`owner-reports-${width}.png`);
     }
-    console.log(`PASS reports: computed metrics, five charts, week/month/quarter/year/custom filters, previous/year/none comparisons, organization scope, CSV, empty denominators, API failure/retry, desktop/mobile at 1440/390/320. Screenshots: ${artifacts}`);
+    for (const [role, route, title] of [
+      ['staff', '/reports', 'Báo cáo công việc tổ chức'],
+      ['user', '/reports', 'Báo cáo sử dụng cá nhân'],
+      ['manager', '/management/reports', 'Báo cáo kho pháp lý'],
+      ['expert', '/expert-verification/reports', 'Báo cáo xác minh của tôi'],
+    ]) {
+      Object.assign(user, { role, orgId: role === 'staff' ? 'b'.repeat(24) : null });
+      const operationalRequests = reportRequests.length;
+      await call('Page.navigate', { url: origin + route });
+      await waitFor(`document.querySelector('h1')?.textContent === ${JSON.stringify(title)} && !!document.querySelector('[aria-label="Chỉ số thống kê"]')`);
+      await waitFor('document.querySelectorAll(".recharts-wrapper > .recharts-surface").length === 2');
+      assert.equal(reportRequests.length, operationalRequests, `${role} must use its own insight scope`);
+      assert.equal(await evaluate('[...document.querySelectorAll("button")].some(button=>button.textContent.trim()==="Xuất Excel")'), role !== 'staff');
+      assert.equal(await evaluate('document.body.innerText.includes("Thanh toán đã nhận")'), false);
+      assert.ok(await evaluate(`!!document.querySelector('a[href="${route}"][aria-current="page"]')`));
+      for (const width of [1440, 390]) {
+        await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 821 });
+        await evaluate('document.fonts.ready');
+        assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth'), false, `${role} report overflow at ${width}`);
+        await shot(`${role}-reports-${width}.png`);
+      }
+    }
+    console.log(`PASS reports: six role-specific reports, scoped APIs and export permissions, filters/comparisons, CSV/Excel, errors/retry, desktop/mobile. Screenshots: ${artifacts}`);
   } else if (workspaceSwitch) {
     await call('Page.navigate', { url: `${origin}/contract-drafts` });
     const selector = 'select[aria-label="Chuyển không gian làm việc"]';
@@ -359,7 +410,7 @@ try {
     await waitFor(editorReady);
     assert.equal(draft.templateCode, 'sales');
     assert.equal(draft.ourParty, 'buyer');
-    assert.equal(draft.templateVersion, 3);
+    assert.equal(draft.templateVersion, 4);
     await editField('companyName', 'Doanh nghiệp bên mua');
     await editField('partnerName', 'Doanh nghiệp bên bán');
     await editField('totalPrice', '10.000.000');
@@ -385,9 +436,9 @@ try {
     assert.ok(printed.includes('ĐIỀU 15.'));
     assert.ok(printed.includes('data-page-break'));
     console.log(`PASS sales reference: 15 articles, buyer/seller placement, linked money and reference fields, appendix, print, desktop/mobile. Screenshots: ${artifacts}`);
-  } else if (rental) {
+  } else if (personalHousing) {
     await call('Page.navigate', { url: `${origin}/contract-drafts` });
-    await waitFor('document.querySelectorAll("article button").length===4');
+    await waitFor('document.querySelectorAll("article button").length===3');
     for (const width of [1440, 1024, 390]) {
       await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 600 });
       assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
@@ -396,15 +447,15 @@ try {
     await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
     const positions = await evaluate('[...document.querySelectorAll("article[data-template-code]")].map(card => ({top:card.getBoundingClientRect().top,height:card.getBoundingClientRect().height}))');
     assert.equal(positions[0].top, positions[1].top);
-    assert.equal(positions[2].top, positions[3].top);
-    assert.ok(positions[2].top > positions[0].top);
+    assert.equal(positions[2].top, positions[0].top);
     assert.equal(positions[0].height, positions[1].height);
-    await fillSelector('select[aria-label="Vai trò với Hợp đồng thuê nhà"]', 'tenant');
-    await evaluate('document.querySelectorAll("article")[3].querySelector("button").click()');
+    await fillSelector('select[aria-label="Vai trò với Hợp đồng đặt cọc và mua bán nhà / căn hộ"]', 'buyer');
+    await evaluate('document.querySelector("article[data-template-code=housing_purchase]").querySelector("button").click()');
     await waitFor(editorReady);
-    assert.equal(draft.templateCode, 'rental');
-    assert.equal(draft.ourParty, 'tenant');
+    assert.equal(draft.templateCode, 'housing_purchase');
+    assert.equal(draft.ourParty, 'buyer');
     assert.equal(draft.input.depositAmount, '0');
+    await editField('transactionStage', 'purchase');
     for (const field of draft.template.fields.filter(field => field.required && !draft.input[field.key])) {
       await editField(field.key, field.kind === 'date' ? '2027-10-26' : field.kind === 'number' ? '10.000.000' : 'Thong tin hop dong thue nha');
     }
@@ -426,11 +477,11 @@ try {
     for (let n = 0; n < 50 && !downloads; n++) await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal(downloads, 1);
     assert.equal(user.orgId, null);
-    console.log('PASS personal rental: tenant selection, linked fields, zero deposit, completion, Word export and desktop/mobile layout without orgId.');
+    console.log('PASS personal housing: buyer selection, linked fields, zero deposit, completion, Word export and desktop/mobile layout without orgId.');
     console.log(`Screenshots: ${artifacts}`);
   } else {
   await call('Page.navigate', { url: `${origin}/contract-drafts` });
-  await waitFor('document.querySelectorAll("article button").length===3');
+  await waitFor('document.querySelectorAll("article button").length===4');
   await shot('templates-desktop.png');
   await evaluate('document.querySelectorAll("article")[1].querySelector("button").click()');
   await waitFor(editorReady);
@@ -643,10 +694,10 @@ try {
   assert.ok(printed.includes('APPENDIX BROWSER CONTENT')); assert.ok(printed.includes('data-page-break'));
   await shot('studio-approved.png');
   await call('Page.navigate', { url: `${origin}/contract-drafts` });
-  await waitFor('document.querySelectorAll("article button").length===3');
+  await waitFor('document.querySelectorAll("article button").length===4');
   await evaluate('document.querySelectorAll("article")[0].querySelector("button").click()');
   await waitFor(editorReady);
-  assert.equal(draft.templateVersion, 4);
+  assert.equal(draft.templateVersion, 5);
   assert.equal(await evaluate('Array.from(document.querySelectorAll(".tiptap h2")).filter(node=>node.textContent.startsWith("ĐIỀU ")).length'), 12);
   assert.equal(await evaluate('document.querySelector("[data-field-key=partnerName]").textContent'), '[TenNguoiLaoDong]');
   await editField('signingDate', '2026-11-02'); await waitFor(saved);
@@ -664,8 +715,9 @@ try {
   await call('Page.reload', { ignoreCache: true });
   await waitFor('document.body.innerText.includes("Dùng mẫu mới")');
   await click('Dùng mẫu mới'); await waitFor('location.pathname.endsWith("ffffffffffffffffffffffff")'); await waitFor(editorReady);
-  assert.equal(draft.templateVersion,4); assert.notEqual(draft.id,oldDraft.id); assert.equal(draft.input.signingDate,'2026-11-02');
-  assert.ok(draft.content.includes('bồi thường thiệt hại bằng 06 tháng lương trung bình liền kề gần nhất'));
+  assert.equal(draft.templateVersion,5); assert.notEqual(draft.id,oldDraft.id); assert.equal(draft.input.signingDate,'2026-11-02');
+  assert.ok(draft.content.includes('14 ngày làm việc'));
+  assert.ok(!draft.content.includes('bồi thường thiệt hại bằng 06 tháng lương trung bình liền kề gần nhất'));
   listExtras=Array.from({length:21},(_,index)=>({...draft,id:(index+1).toString(16).padStart(24,'0'),title:`Fixture draft ${index+1}`,pinnedAt:null,updatedAt:'2020-01-01T00:00:00.000Z'}));
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   await call('Page.navigate',{url:`${origin}/contract-drafts`});await waitFor('document.querySelectorAll("[data-draft-id]").length===20');

@@ -12,7 +12,6 @@ const organizationSchema = new Schema(
       }, { _id: false }),
       default: undefined,
     },
-    isPersonal: { type: Boolean, default: false },
     industry: { type: String },
   },
   { timestamps: true },

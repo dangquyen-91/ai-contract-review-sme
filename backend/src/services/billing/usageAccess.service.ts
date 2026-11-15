@@ -6,26 +6,22 @@ import { ContractDraftModel } from '../../models/contractDraft.model';
 import { ContractVersionModel } from '../../models/contractVersion.model';
 import { UsageRunModel } from '../../models/subscription.model';
 import { requireReviewCost } from './reviewCost';
+import { findMembership } from '../identity/account.service';
 import type { UsageInput } from './usage.service';
 
 export async function assertUsageAccess(input: UsageInput, session: ClientSession) {
-  const query = UserModel.findOne({
-    _id: input.userId,
-    ...(input.userId === input.orgId ? {} : { orgId: input.orgId }),
-    isActive: true,
-  })
-    .select('roleId')
-    .populate('roleId')
-    .session(session);
-  const user = await query;
-  if (!user) throw AppError.forbidden('Bạn không còn quyền truy cập tổ chức này.');
-  if (!['owner', 'staff', 'user'].includes((user.roleId as unknown as { code: string })?.code))
+  const personal = input.userId === input.orgId;
+  const [user, membership] = await Promise.all([
+    UserModel.findOne({ _id: input.userId, isActive: true })
+      .select('platformRole')
+      .session(session),
+    personal ? null : findMembership(input.userId, input.orgId, session),
+  ]);
+  if (!user || (!personal && !membership))
+    throw AppError.forbidden('Bạn không còn quyền truy cập tổ chức này.');
+  if (user.platformRole)
     throw AppError.forbidden('Vai trò này không được sử dụng hạn mức hợp đồng.');
-  if (
-    input.userId === input.orgId &&
-    !['user', 'owner', 'staff'].includes((user.roleId as unknown as { code: string })?.code)
-  )
-    throw AppError.forbidden('Bạn không có quyền truy cập tài khoản cá nhân này.');
+  const role = membership?.role ?? 'user';
 
   if (input.kind !== 'drafting') {
     const contract = await ContractModel.exists({
@@ -36,14 +32,10 @@ export async function assertUsageAccess(input: UsageInput, session: ClientSessio
     return;
   }
 
-  const role = (user.roleId as unknown as { code?: string })?.code;
-  if (role !== 'owner' && role !== 'staff' && role !== 'user') {
-    throw AppError.forbidden('Bạn không có quyền truy cập bản nháp này.');
-  }
   const draft = await ContractDraftModel.exists({
     _id: input.draftId,
-    orgId: input.userId === input.orgId ? null : input.orgId,
-    ...(input.userId === input.orgId || role !== 'owner' ? { createdBy: input.userId } : {}),
+    orgId: personal ? null : input.orgId,
+    ...(personal || role !== 'owner' ? { createdBy: input.userId } : {}),
   }).session(session);
   if (!draft) throw AppError.forbidden('Bạn không có quyền truy cập bản nháp này.');
 }

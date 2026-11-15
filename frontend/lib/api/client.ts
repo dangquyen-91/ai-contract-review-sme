@@ -7,10 +7,17 @@ export class ApiClientError extends Error {
   readonly code?: string;
   readonly serverCode?: string;
   readonly details?: ApiFieldErrors;
+  readonly meta?: Record<string, unknown>;
 
   constructor(
     message: string,
-    options: { status?: number; code?: string; serverCode?: string; details?: ApiFieldErrors } = {},
+    options: {
+      status?: number;
+      code?: string;
+      serverCode?: string;
+      details?: ApiFieldErrors;
+      meta?: Record<string, unknown>;
+    } = {},
   ) {
     super(message);
     this.name = "ApiClientError";
@@ -18,6 +25,7 @@ export class ApiClientError extends Error {
     this.code = options.code;
     this.serverCode = options.serverCode;
     this.details = options.details;
+    this.meta = options.meta;
   }
 }
 
@@ -65,6 +73,8 @@ function normalizeApiError(error: unknown): ApiClientError {
     message = "Máy chủ phản hồi quá lâu. Vui lòng thử lại.";
   } else if (!error.response) {
     message = "Không thể kết nối máy chủ LawScan. Vui lòng thử lại.";
+  } else if (error.response.status === 429) {
+    message = "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.";
   }
 
   return new ApiClientError(message, {
@@ -72,6 +82,7 @@ function normalizeApiError(error: unknown): ApiClientError {
     code: error.code,
     serverCode: responseError?.code,
     details: responseError?.details,
+    meta: responseError?.meta,
   });
 }
 

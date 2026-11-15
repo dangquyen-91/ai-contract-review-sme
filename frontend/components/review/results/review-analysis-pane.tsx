@@ -23,10 +23,11 @@ type ReviewAnalysisPaneProps = {
   result: ContractReviewResult;
   sectionId: string;
   isDocx: boolean;
+  showSummary?: boolean;
   onJumpToClause: (index: number) => void;
 };
 
-export function ReviewAnalysisPane({ result, sectionId, isDocx, onJumpToClause }: ReviewAnalysisPaneProps) {
+export function ReviewAnalysisPane({ result, sectionId, isDocx, showSummary = true, onJumpToClause }: ReviewAnalysisPaneProps) {
   const [expandedFinding, setExpandedFinding] = useState<string | null>(null);
   const [severityFilter, setSeverityFilter] = useState<"all" | RiskFinding["severity"]>("all");
   const [selectedVerificationFilter, setVerificationFilter] = useState<"active" | "rejected">("active");
@@ -47,13 +48,13 @@ export function ReviewAnalysisPane({ result, sectionId, isDocx, onJumpToClause }
 
   return (
     <div id={`${sectionId}-analysis`} className={`min-w-0 [border-right:1px_solid_#e4e8ef] [@media_(max-width:_1080px)]:[border-right:0] [@media_(max-width:_1080px)]:[border-bottom:1px_solid_#e4e8ef] ${workspaceStyles.analysisPane}`}>
-      <article className="[border-bottom:1px_solid_#e4e8ef] [background:#fbfcff] px-[22px] py-5 [&_h3]:text-ui-section [&_h3]:font-semibold [&_h3]:m-0 [&_p]:text-[#5e6e84] [&_p]:text-ui [&_p]:leading-[1.7] [&_p]:whitespace-pre-wrap [&_p]:mt-[9px] [&_p]:mb-0 [&_p]:mx-0 [&_ul]:text-[#5e6e84] [&_ul]:text-ui [&_ul]:leading-[1.7] [&_ul]:mt-[9px] [&_ul]:mb-0 [&_ul]:mx-0 [&_ul]:pl-[18px] [&_li_+_li]:mt-[5px]">
+      {showSummary && <article className="[border-bottom:1px_solid_#e4e8ef] [background:#fbfcff] px-[22px] py-5 [&_h3]:text-ui-section [&_h3]:font-semibold [&_h3]:m-0 [&_p]:text-[#5e6e84] [&_p]:text-ui [&_p]:leading-[1.7] [&_p]:whitespace-pre-wrap [&_p]:mt-[9px] [&_p]:mb-0 [&_p]:mx-0 [&_ul]:text-[#5e6e84] [&_ul]:text-ui [&_ul]:leading-[1.7] [&_ul]:mt-[9px] [&_ul]:mb-0 [&_ul]:mx-0 [&_ul]:pl-[18px] [&_li_+_li]:mt-[5px]">
         <h3>Tóm tắt điều hành</h3>
         {result.contract.currentVersion?.summaryPoints?.length ?
           <ul>{result.contract.currentVersion.summaryPoints.map((point, index) => <li key={index}>{point}</li>)}</ul> :
           <p>{summaryComplete ? "Không có điểm tóm tắt để hiển thị." : "Tóm tắt chưa hoàn tất. Bạn có thể thử rà soát lại hợp đồng."}</p>}
         {!!result.contract.currentVersion?.overallAssessment?.length && <div className="[border-top:1px_solid_#e4e8ef] mt-[15px] pt-3 [&_h4]:text-[#31445f] [&_h4]:text-ui-section [&_h4]:font-semibold [&_h4]:m-0"><h4>Đánh giá tổng quan</h4><ul>{result.contract.currentVersion.overallAssessment.map((point, index) => <li key={index}>{point}</li>)}</ul></div>}
-      </article>
+      </article>}
       <section className="px-[22px] pb-[25px] pt-5" aria-labelledby="review-findings-heading">
         <div className="[&_h3]:text-ui-section [&_h3]:font-semibold [&_h3]:m-0 flex items-center gap-[7px] [&>_span]:grid [&>_span]:min-w-5 [&>_span]:h-5 [&>_span]:place-items-center [&>_span]:text-[#2859aa] [&>_span]:[background:#eaf1ff] [&>_span]:text-ui-caption [&>_span]:font-bold [&>_span]:rounded-[10px]"><h3 id="review-findings-heading">{verificationFilter === "rejected" ? "Rủi ro đã được bác bỏ" : "Điểm cần lưu ý"}</h3><span>{findings.length}</span></div>
         {rejectedFindings.length > 0 && (

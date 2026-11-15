@@ -1,12 +1,20 @@
+"use client";
+
+import dynamic from "next/dynamic";
 import { reportSeriesKeys } from "@/lib/reports/report-columns";
 import type { OperationalReport } from "@/types/reports";
 import { formatReportDuration } from "@/lib/reports/report-format";
 import { ReportDetailTable } from "./report-detail-table";
 import { ReportRiskDistribution } from "./report-risk-distribution";
-import {
-  ReportSeriesChart,
-  type ReportChartSeries,
-} from "./report-series-chart";
+import type { ReportChartSeries } from "./report-series-chart";
+import { ChartLoading } from "./chart-loading";
+import { operationalReportFeatures } from "@/config/report-profiles";
+
+const ReportSeriesChart = dynamic(
+  () =>
+    import("./report-series-chart").then((module) => module.ReportSeriesChart),
+  { ssr: false, loading: () => <ChartLoading /> },
+);
 
 const kinds = [
   {
@@ -25,6 +33,7 @@ const usageKinds = [
 ] as const;
 
 export function ReportCharts({ report }: { report: OperationalReport }) {
+  const features = operationalReportFeatures(report.role);
   const compare = !!report.comparison?.period;
   const buckets = report.trend?.buckets ?? [];
   const rows = buckets.map((bucket) => {
@@ -79,6 +88,7 @@ export function ReportCharts({ report }: { report: OperationalReport }) {
     <div className="grid min-w-0 gap-5 xl:grid-cols-2">
       <ReportSeriesChart
         title="Hợp đồng tải lên"
+        chartType="line"
         description={description}
         rows={rows}
         series={pair("uploads")}
@@ -91,7 +101,7 @@ export function ReportCharts({ report }: { report: OperationalReport }) {
         series={groupedSeries(kinds)}
         unit="lượt"
       />
-      {report.payments && (
+      {features.payments && report.payments && (
         <ReportSeriesChart
           title="Thanh toán đã nhận"
           description="Tiền VND đã được xác nhận, theo ngày thanh toán; không phải lợi nhuận."
@@ -109,36 +119,39 @@ export function ReportCharts({ report }: { report: OperationalReport }) {
       />
       <ReportSeriesChart
         title="Thời gian xử lý trung bình"
+        chartType="line"
         description="Trung bình có trọng số theo số lượt có thời gian hợp lệ; không gồm thời gian chờ."
         rows={rows}
         series={pair("averageDurationMs")}
         formatValue={formatReportDuration}
       />
-      <ReportRiskDistribution report={report} />
-      <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 xl:col-span-2">
-        <h2 className="font-semibold">
-          10 không gian có nhiều lượt rà soát nhất
-        </h2>
-        <p className="mt-2 text-xs text-slate-500">
-          Theo tổng lượt thành công và thất bại trong kỳ này.
-        </p>
-        {!report.usage.length && (
-          <p className="py-10 text-sm text-slate-500">Chưa có dữ liệu</p>
-        )}
-        <ol className="mt-4 divide-y divide-slate-100">
-          {report.usage.map((row) => (
-            <li
-              key={row.id}
-              className="flex min-w-0 justify-between gap-3 py-3 text-sm"
-            >
-              <span className="truncate" title={row.name}>
-                {row.name}
-              </span>
-              <strong>{row.total}</strong>
-            </li>
-          ))}
-        </ol>
-      </section>
+      {features.risks && <ReportRiskDistribution report={report} />}
+      {features.workspaceRanking && (
+        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 xl:col-span-2">
+          <h2 className="font-semibold">
+            10 không gian có nhiều lượt rà soát nhất
+          </h2>
+          <p className="mt-2 text-xs text-slate-500">
+            Theo tổng lượt thành công và thất bại trong kỳ này.
+          </p>
+          {!report.usage.length && (
+            <p className="py-10 text-sm text-slate-500">Chưa có dữ liệu</p>
+          )}
+          <ol className="mt-4 divide-y divide-slate-100">
+            {report.usage.map((row) => (
+              <li
+                key={row.id}
+                className="flex min-w-0 justify-between gap-3 py-3 text-sm"
+              >
+                <span className="truncate" title={row.name}>
+                  {row.name}
+                </span>
+                <strong>{row.total}</strong>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
       <ReportDetailTable report={report} />
     </div>
   );

@@ -10,10 +10,11 @@ export function VerificationShell({ name, expertId, children }: { name: string; 
   const pathname = usePathname();
   const overview = pathname === routes.expertOverview;
   const myWork = pathname === routes.expertMyWork;
+  const reports = pathname === "/expert-verification/reports";
   return (
     <DashboardShell
-      role="expert" activeKey={overview ? "expert-overview" : myWork ? "expert-my-work" : "verification"}
-      sectionLabel={overview ? "Tổng quan chuyên gia" : myWork ? "Công việc của tôi" : "Xác minh kết quả AI"}
+      role="expert" activeKey={reports ? "reports" : overview ? "expert-overview" : myWork ? "expert-my-work" : "verification"}
+      sectionLabel={reports ? "Báo cáo xác minh" : overview ? "Tổng quan chuyên gia" : myWork ? "Công việc của tôi" : "Xác minh kết quả AI"}
       workspaceName="LawScan" workspaceLabel="Không gian chuyên gia"
       name={name} roleLabel="Chuyên gia" homeHref={routes.expertOverview}
     >

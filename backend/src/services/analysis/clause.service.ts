@@ -7,16 +7,21 @@ import { RiskCitationModel } from '../../models/riskCitation.model';
 import { segmentContractClauses } from './clauseSegmentation.service';
 import {
   claimStage,
-  getCurrentVersion,
   getCurrentVersionWithText,
   setContractStatus,
   settledStatus,
+  resolveResultReview,
 } from '../contract/contractVersion.service';
 import { getTaxonomyByCodes, getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from '../contract/contractProfile.service';
 import { createRedactor } from '../ai/redaction.service';
 
-export async function segmentClauses(orgId: string, contractId: string, signal?: AbortSignal) {
+export async function segmentClauses(
+  orgId: string,
+  contractId: string,
+  reviewId: string,
+  signal?: AbortSignal,
+) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
@@ -50,10 +55,14 @@ export async function segmentClauses(orgId: string, contractId: string, signal?:
     signal?.throwIfAborted();
     const taxonomyIdByCode = await getTaxonomyIdByCode();
 
-    const oldClauseIds = await ClauseModel.find({ contractVersionId: versionId }).distinct('_id');
+    const oldClauseIds = await ClauseModel.find({
+      contractVersionId: versionId,
+      reviewId,
+    }).distinct('_id');
     await ClauseModel.insertMany(
       clauses.map((clause) => ({
         contractVersionId: versionId,
+        reviewId,
         orgId,
         index: clause.index,
         title: clause.title,
@@ -65,9 +74,10 @@ export async function segmentClauses(orgId: string, contractId: string, signal?:
       })),
     );
 
-    const oldFindingIds = await RiskFindingModel.find({ contractVersionId: versionId }).distinct(
-      '_id',
-    );
+    const oldFindingIds = await RiskFindingModel.find({
+      contractVersionId: versionId,
+      reviewId,
+    }).distinct('_id');
     await RiskCitationModel.deleteMany({ riskFindingId: { $in: oldFindingIds } });
     await RiskFindingModel.deleteMany({ _id: { $in: oldFindingIds } });
     await ClauseModel.deleteMany({ _id: { $in: oldClauseIds } });
@@ -89,6 +99,7 @@ export async function segmentClauses(orgId: string, contractId: string, signal?:
           riskDetectionError: '',
           legalRetrievalStatus: '',
           ruleCheckStatus: '',
+          legalCoverage: '',
         },
       },
     );
@@ -107,18 +118,24 @@ export async function segmentClauses(orgId: string, contractId: string, signal?:
     throw err;
   }
 
-  return ClauseModel.find({ contractVersionId: versionId })
+  return ClauseModel.find({ contractVersionId: versionId, reviewId })
     .sort({ index: 1 })
     .populate('clauseTypeId');
 }
 
-export async function listClauses(orgId: string, contractId: string) {
+export async function listClauses(
+  orgId: string,
+  contractId: string,
+  versionId?: string,
+  reviewId?: string,
+) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await getCurrentVersion(contractId);
-  return ClauseModel.find({ contractVersionId: version._id })
+  const scope = await resolveResultReview(contractId, versionId, reviewId);
+  if (!scope.reviewId) return [];
+  return ClauseModel.find({ contractVersionId: scope.versionId, reviewId: scope.reviewId })
     .sort({ index: 1 })
     .populate('clauseTypeId');
 }

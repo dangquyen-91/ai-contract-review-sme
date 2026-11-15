@@ -1,3 +1,6 @@
+import { accountTemplate, accountTemplates } from './templatePolicy';
+import { inputErrors } from './draftInputRules';
+import { migrateTemplateInput } from './draftTemplateMigration';
 import mongoose, { FilterQuery, InferSchemaType } from 'mongoose';
 import { randomBytes } from 'crypto';
 import { z } from 'zod';
@@ -10,18 +13,20 @@ import { UserModel } from '../../models/user.model';
 import { ContractModel } from '../../models/contract.model';
 import { ContractVersionModel } from '../../models/contractVersion.model';
 import { AccessTokenPayload } from '../../middlewares/auth.middleware';
-import { DraftInput, inputErrors, updateDraftSchema } from '../../validations/contractDraft.validation';
-import { CONTRACT_TEMPLATES, ContractTemplate, getTemplate, TemplateCode } from './templates';
+import { DraftInput, updateDraftSchema } from '../../validations/contractDraft.validation';
+import { ContractTemplate, getTemplate, TemplateCode } from './templates';
 import { generateDraftContent } from './generation.service';
 import { createDraftDocx } from './docx.service';
 import { deleteContractFile, uploadContractFile } from '../contract/storage.service';
 import { countDocxPages } from '../contract/documentPageCount.service';
+import { fileHashOf } from '../contract/contractVersion.service';
 import { reserveUsage, finishUsage } from '../billing/usage.service';
 import { draftingError } from './draftingErrors';
 import { buildStudioTemplate, legacyStudioDocument } from './studioTemplate';
 import { normalizeStudioDocument, studioInput, studioText } from './studioDocument';
 import { createStudioDocx } from './studioDocx.service';
 import { validateStudioLaws } from './studioLegalSources.service';
+import { findMembership } from '../identity/account.service';
 
 type Draft = InferSchemaType<typeof ContractDraftModel.schema>;
 const lockLifetime = 120_000;
@@ -30,13 +35,14 @@ const unlocked = () => ({ $or: [{ generationStartedAt: null }, { generationStart
 
 export async function requireDraftAccess(actor: AccessTokenPayload) {
   if (!['owner', 'staff', 'user'].includes(actor.role) || (!actor.orgId && actor.role !== 'user')) throw AppError.forbidden('Bạn không có quyền soạn hợp đồng.');
-  const personal = !actor.orgId && actor.role === 'user';
-  const member = await UserModel.findOne({ _id: actor.sub, ...(!personal ? { orgId: actor.orgId ?? null } : {}), isActive: true }).populate('roleId');
-  const memberRole = (member?.roleId as unknown as { code?: string })?.code;
-  if (!member || (personal ? !['user', 'owner', 'staff'].includes(memberRole ?? '') : memberRole !== actor.role)) throw AppError.forbidden('Quyền truy cập tổ chức đã thay đổi.');
+  const [member, membership] = await Promise.all([
+    UserModel.findOne({ _id: actor.sub, isActive: true, platformRole: null }),
+    actor.orgId ? findMembership(actor.sub, actor.orgId) : null,
+  ]);
+  if (!member || (actor.orgId && membership?.role !== actor.role)) throw AppError.forbidden('Quyền truy cập tổ chức đã thay đổi.');
   if (!actor.orgId) return { name: member.name, taxCode: '', address: '' };
   const organization = await OrganizationModel.findById(actor.orgId);
-  if (!organization || (actor.role === 'user' ? !organization.isPersonal : organization.isPersonal)) throw AppError.forbidden('Không gian làm việc không phù hợp với tài khoản.');
+  if (!organization) throw AppError.forbidden('Không gian làm việc không phù hợp với tài khoản.');
   return organization;
 }
 export function scope(actor: AccessTokenPayload, id?: string): FilterQuery<Draft> {
@@ -58,7 +64,7 @@ function view(draft: InstanceType<typeof ContractDraftModel>) {
   };
 }
 function validateInput(code: TemplateCode, input: Record<string, string>, ourParty: string, complete = false, template: ContractTemplate = getTemplate(code)) {
-  if (!template.parties.some(party => party.code === ourParty)) throw AppError.badRequest('Vai trò doanh nghiệp không hợp lệ.');
+  if (!template.parties.some(party => party.code === ourParty)) throw AppError.badRequest('Vai trò giao kết hợp đồng không hợp lệ.');
   const errors = inputErrors(code, input, complete, template);
   if (errors.length) throw AppError.badRequest(errors.join('. '));
 }
@@ -73,7 +79,7 @@ function requireDraftApprover(actor: AccessTokenPayload) {
 
 export async function templateCatalog(actor: AccessTokenPayload) {
   const organization = await requireDraftAccess(actor);
-  return { templates: CONTRACT_TEMPLATES.filter(template => template.code !== 'rental' || actor.role === 'user').map(({ sections: _sections, ...template }) => template), organization: { name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }, role: actor.role };
+  return { templates: accountTemplates(actor.role === 'user').map(({ sections: _sections, ...template }) => template), organization: { name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }, role: actor.role };
 }
 export async function listDrafts(actor: AccessTokenPayload, page: number) {
   await requireDraftAccess(actor);
@@ -107,16 +113,19 @@ export async function getDraft(actor: AccessTokenPayload, id: string) {
 }
 export async function createDraft(actor: AccessTokenPayload, input: DraftInput) {
   const organization = await requireDraftAccess(actor);
-  if (input.templateCode === 'rental' && actor.role !== 'user') throw AppError.forbidden('Mẫu thuê nhà hiện dành cho tài khoản cá nhân.');
-  const defaults = Object.fromEntries(getTemplate(input.templateCode).fields.filter(field => field.defaultValue).map(field => [field.key, field.defaultValue!])) as Record<string, string>;
-  const values = { ...defaults, ...(getTemplate(input.templateCode).fields.some(field => field.key === 'companyName') ? { companyName: organization.name } : {}), companyAddress: organization.address ?? '', ...(getTemplate(input.templateCode).fields.some(field => field.key === 'companyTaxCode') ? { companyTaxCode: organization.taxCode ?? '' } : {}), ...input.input };
-  validateInput(input.templateCode, values, input.ourParty);
-  const template = getTemplate(input.templateCode);
+  const personal = actor.role === 'user';
+  const template = accountTemplate(input.templateCode, personal);
+  const defaults = Object.fromEntries(template.fields.filter(field => field.defaultValue).map(field => [field.key, field.defaultValue!])) as Record<string, string>;
+  const prefilled = personal
+    ? input.templateCode === 'labor' ? { partnerName: organization.name } : { representative: organization.name }
+    : { companyName: organization.name, companyAddress: organization.address ?? '', companyTaxCode: organization.taxCode ?? '' };
+  const values = { ...defaults, ...Object.fromEntries(Object.entries(prefilled).filter(([key]) => template.fields.some(field => field.key === key))), ...input.input };
+  validateInput(input.templateCode, values, input.ourParty, false, template);
   const document = input.editorMode === 'studio' ? buildStudioTemplate(template, values, organization.name, input.ourParty) : null;
   const draft = await ContractDraftModel.create({
-    ownerType: actor.orgId ? 'organization' : 'personal', orgId: actor.orgId ?? null, createdBy: actor.sub, title: input.title,
-    templateCode: input.templateCode, templateVersion: getTemplate(input.templateCode).version, ourParty: input.ourParty,
-    templateJson: JSON.stringify(getTemplate(input.templateCode)),
+    orgId: actor.orgId ?? null, createdBy: actor.sub, title: input.title,
+    templateCode: input.templateCode, templateVersion: template.version, ourParty: input.ourParty,
+    templateJson: JSON.stringify(template),
     inputJson: JSON.stringify(values), organizationJson: JSON.stringify({ name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }),
     ...(document ? { documentJson: JSON.stringify(document), content: studioText(document, template) } : {}),
   });
@@ -168,9 +177,9 @@ export async function copyToLatestTemplate(actor: AccessTokenPayload, id: string
   const draft = await findDraft(actor, id);
   if (draft.revision !== revision) throw AppError.conflict('Bản nháp đã thay đổi. Vui lòng tải lại.');
   const code = draft.templateCode as TemplateCode;
-  const template = getTemplate(code);
+  const template = accountTemplate(code, actor.role === 'user');
   const oldInput = JSON.parse(draft.inputJson) as Record<string, string>;
-  const input = Object.fromEntries(template.fields.filter(field => oldInput[field.key] !== undefined).map(field => [field.key, oldInput[field.key]]));
+  const input = migrateTemplateInput(template, oldInput);
   return createDraft(actor, { templateCode: code, title: `${draft.title.slice(0, 180)} (mẫu v${template.version})`, ourParty: draft.ourParty, input, ...(draft.documentJson ? { editorMode: 'studio' as const } : {}) });
 }
 export async function generateDraft(actor: AccessTokenPayload, id: string, revision: number) {
@@ -251,9 +260,9 @@ export async function publishDraft(actor: AccessTokenPayload, id: string, revisi
   try {
     await requireDraftAccess(actor);
     const contractId = await mongoose.connection.transaction(async session => {
-      const [contract] = await ContractModel.create([{ orgId: actor.orgId, uploadedBy: actor.sub, title: draft.title, type: draft.templateCode, ourParty: draft.ourParty,
+      const [contract] = await ContractModel.create([{ ownerType: 'organization', orgId: actor.orgId, uploadedBy: actor.sub, title: draft.title, type: draft.templateCode, ourParty: draft.ourParty,
         classification: { status: 'completed', outcome: 'supported', type: draft.templateCode, ourParty: draft.ourParty, source: 'user', confirmedAt: new Date() } }], { session });
-      await ContractVersionModel.create([{ contractId: contract._id, versionNumber: 1, createdBy: actor.sub, extractedText: draft.content, extractionStatus: 'completed', extractionQuality: { method: 'docx', pageCount, ocrPageCount: 0, lowConfidence: false }, fileKey: stored.key, fileResourceType: stored.resourceType, fileDeliveryType: stored.deliveryType, fileFormat: stored.format, fileName: filename, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }], { session });
+      await ContractVersionModel.create([{ contractId: contract._id, versionNumber: 1, createdBy: actor.sub, extractedText: draft.content, extractionStatus: 'completed', extractionQuality: { method: 'docx', pageCount, ocrPageCount: 0, lowConfidence: false }, fileKey: stored.key, fileResourceType: stored.resourceType, fileDeliveryType: stored.deliveryType, fileFormat: stored.format, fileName: filename, fileHash: fileHashOf(buffer), mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }], { session });
       const updated = await ContractDraftModel.updateOne({ ...scope(actor, id), status: 'approved', revision, contractId: null }, { $set: { contractId: contract._id }, $inc: { revision: 1 } }, { session });
       if (!updated.modifiedCount) throw AppError.conflict('Bản nháp đã được chuyển sang rà soát. Vui lòng tải lại.');
       return contract.id;

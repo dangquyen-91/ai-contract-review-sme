@@ -16,11 +16,17 @@ export async function proxyContractRequest(
     return NextResponse.json({ success: false, error: { message: "Mã không hợp lệ." } }, { status: 400 });
   }
 
+  const method = options.method ?? "GET";
+  const versionId = method === "GET" ? request.nextUrl?.searchParams.get("versionId") : null;
+  if (versionId && !objectIdPattern.test(versionId)) {
+    return NextResponse.json({ success: false, error: { message: "Mã phiên bản không hợp lệ." } }, { status: 400 });
+  }
+  const target = versionId ? `${path}${path.includes("?") ? "&" : "?"}versionId=${versionId}` : path;
+
   try {
-    const method = options.method ?? "GET";
     const idempotencyKey = request.headers.get("Idempotency-Key");
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${contractId}${path}`,
+      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${contractId}${target}`,
       {
         method,
         headers: {

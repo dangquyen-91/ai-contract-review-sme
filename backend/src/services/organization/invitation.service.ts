@@ -4,8 +4,8 @@ import { AppError } from '../../errors/AppError';
 import { OrganizationInvitationModel } from '../../models/organizationInvitation.model';
 import { OrganizationModel } from '../../models/organization.model';
 import { UserModel } from '../../models/user.model';
-import { Role } from '../../models/role.model';
-import { getRoleByCode } from '../identity/role.service';
+import { MembershipModel } from '../../models/membership.model';
+import { countMembers, findMembership } from '../identity/account.service';
 import { ensureInvitationEmailConfigured, sendInvitationEmail } from './invitationEmail.service';
 import { CreateInvitationInput } from '../../validations/invitation.validation';
 import {
@@ -17,36 +17,28 @@ import {
 const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
 async function assertCanJoinOrganization(
-  currentOrgId: string | undefined,
+  user: { _id: unknown; platformRole?: string | null } | null,
   targetOrgId: string,
   session?: ClientSession,
 ) {
-  if (!currentOrgId) return;
-  if (currentOrgId === targetOrgId) {
-    throw AppError.conflict('This user is already a member');
-  }
-  const filter = { _id: currentOrgId };
-  // Serialize acceptance against converting the personal workspace into a company.
-  const organization = session
-    ? await OrganizationModel.findOneAndUpdate(filter, { $inc: { __v: 1 } }, { session })
-    : await OrganizationModel.findOne(filter);
-  // A dangling orgId must not prevent the user from accepting a valid invitation.
-  if (organization && !organization.isPersonal) {
-    throw AppError.conflict('This user already belongs to another organization');
-  }
-}
-
-function assertPersonalAccount(role: unknown) {
-  if ((role as Role | null)?.code !== 'user') {
+  if (!user) return;
+  if (user.platformRole) {
     throw AppError.conflict('Only personal accounts can join an organization');
   }
+  const membership = await MembershipModel.findOne({ userId: user._id }).session(session ?? null);
+  if (!membership) return;
+  if (membership.orgId.toString() === targetOrgId) {
+    throw AppError.conflict('This user is already a member');
+  }
+  throw AppError.conflict('This user already belongs to another organization');
 }
 
 async function requireOwner(userId: string, orgId: string, session?: ClientSession) {
-  const user = await UserModel.findOne({ _id: userId, orgId, isActive: true })
-    .populate('roleId')
-    .session(session ?? null);
-  if (!user || (user.roleId as unknown as Role).code !== 'owner') {
+  const [user, membership] = await Promise.all([
+    UserModel.exists({ _id: userId, isActive: true }).session(session ?? null),
+    findMembership(userId, orgId, session),
+  ]);
+  if (!user || membership?.role !== 'owner') {
     throw AppError.forbidden('Only the organization owner can manage invitations and members');
   }
   const org = await OrganizationModel.findById(orgId).session(session ?? null);
@@ -91,9 +83,8 @@ export async function createInvitation(
     throw AppError.badRequest('Owners can only invite staff members');
   }
   ensureInvitationEmailConfigured();
-  const existing = await UserModel.findOne({ email: input.email }).populate('roleId');
-  if (existing) assertPersonalAccount(existing.roleId);
-  await assertCanJoinOrganization(existing?.orgId?.toString(), orgId);
+  const existing = await UserModel.findOne({ email: input.email }).select('platformRole');
+  await assertCanJoinOrganization(existing, orgId);
   const token = randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   let invitation;
@@ -193,23 +184,26 @@ export async function revokeInvitation(userId: string, orgId: string, invitation
 
 export async function listMembers(userId: string, orgId: string, page: number, limit: number) {
   await requireOwner(userId, orgId);
-  const [users, total] = await Promise.all([
-    UserModel.find({ orgId })
-      .select('name email roleId isActive createdAt')
-      .populate('roleId')
-      .sort({ createdAt: 1 })
+  const [memberships, total] = await Promise.all([
+    MembershipModel.find({ orgId })
+      .populate<{
+        userId: { _id: unknown; name: string; email: string; isActive: boolean } | null;
+      }>('userId', 'name email isActive')
+      .sort({ joinedAt: 1, _id: 1 })
       .skip((page - 1) * limit)
       .limit(limit),
-    UserModel.countDocuments({ orgId }),
+    countMembers(orgId),
   ]);
   return {
-    items: users.map((user) => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: (user.roleId as unknown as Role).code,
-      isActive: user.isActive,
-    })),
+    items: memberships
+      .filter((membership) => membership.userId)
+      .map((membership) => ({
+        id: String(membership.userId!._id),
+        name: membership.userId!.name,
+        email: membership.userId!.email,
+        role: membership.role,
+        isActive: membership.userId!.isActive,
+      })),
     total,
   };
 }
@@ -218,22 +212,16 @@ export async function removeMember(ownerId: string, orgId: string, memberId: str
   await mongoose.connection.transaction(async (session) => {
     await requireOwner(ownerId, orgId, session);
     await lockSubscriptionOrganization(orgId, session);
-    const member = await UserModel.findOne({ _id: memberId, orgId })
-      .populate('roleId')
-      .session(session);
-    if (!member) throw AppError.notFound('Organization member not found');
-    if (member.id === ownerId || (member.roleId as unknown as Role).code === 'owner') {
+    const membership = await findMembership(memberId, orgId, session);
+    const member = membership ? await UserModel.findById(memberId).session(session) : null;
+    if (!membership || !member) throw AppError.notFound('Organization member not found');
+    if (member.id === ownerId || membership.role === 'owner') {
       throw AppError.conflict('The organization owner cannot be removed');
     }
-    const userRole = await getRoleByCode('user');
-    // Keep the account available for another invitation; do not auto-create a personal workspace.
+    await MembershipModel.deleteOne({ _id: membership._id }, { session });
     await UserModel.updateOne(
-      { _id: member._id, orgId },
-      {
-        $unset: { orgId: 1 },
-        $set: { roleId: userRole._id, hasCompletedOnboarding: false },
-        $inc: { permissionsVersion: 1 },
-      },
+      { _id: member._id },
+      { $set: { hasCompletedOnboarding: false }, $inc: { permissionsVersion: 1 } },
       { session },
     );
     // A previous pending link must not silently restore access after removal.
@@ -280,9 +268,7 @@ export async function declineReceivedInvitation(userId: string, invitationId: st
 
 export async function acceptInvitation(userId: string, token?: string, invitationId?: string) {
   return mongoose.connection.transaction(async (session) => {
-    const user = await UserModel.findOne({ _id: userId, isActive: true })
-      .populate('roleId')
-      .session(session);
+    const user = await UserModel.findOne({ _id: userId, isActive: true }).session(session);
     if (!user) throw AppError.unauthorized();
     const invitation = invitationId
       ? await OrganizationInvitationModel.findOne({
@@ -294,9 +280,7 @@ export async function acceptInvitation(userId: string, token?: string, invitatio
       : (await getPendingInvitation(token ?? '', user.email, session)).invitation;
     if (!invitation || invitation.role !== 'staff')
       throw AppError.badRequest('Invitation is no longer available');
-    await assertCanJoinOrganization(user.orgId?.toString(), invitation.orgId.toString(), session);
-    assertPersonalAccount(user.roleId);
-    const role = await getRoleByCode(invitation.role);
+    await assertCanJoinOrganization(user, invitation.orgId.toString(), session);
     // Writing the organization serializes acceptance against organization deletion.
     const organization = await OrganizationModel.findOneAndUpdate(
       { _id: invitation.orgId },
@@ -315,15 +299,30 @@ export async function acceptInvitation(userId: string, token?: string, invitatio
       { session },
     );
     if (consumed.modifiedCount !== 1) throw AppError.conflict('Invitation is no longer available');
+    try {
+      await MembershipModel.create(
+        [
+          {
+            userId: user._id,
+            orgId: invitation.orgId,
+            role: invitation.role,
+            invitedBy: invitation.invitedBy,
+          },
+        ],
+        { session },
+      );
+    } catch (error) {
+      if ((error as { code?: number }).code === 11000) {
+        throw AppError.conflict('You already belong to an organization');
+      }
+      throw error;
+    }
     const updated = await UserModel.findOneAndUpdate(
-      { _id: userId, orgId: user.orgId ?? null, isActive: true },
-      {
-        $set: { orgId: invitation.orgId, roleId: role._id, hasCompletedOnboarding: true },
-        $inc: { permissionsVersion: 1 },
-      },
+      { _id: userId, isActive: true },
+      { $set: { hasCompletedOnboarding: true }, $inc: { permissionsVersion: 1 } },
       { new: true, session },
-    ).populate('roleId');
-    if (!updated) throw AppError.conflict('You already belong to an organization');
+    );
+    if (!updated) throw AppError.unauthorized();
     // Retain the old personal workspace and its data; joining does not transfer private contracts.
     return updated;
   });

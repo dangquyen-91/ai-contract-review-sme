@@ -5,6 +5,8 @@ import {
   BarChart,
   CartesianGrid,
   Legend,
+  Line,
+  LineChart,
   Tooltip,
   XAxis,
   YAxis,
@@ -29,6 +31,7 @@ export function ReportSeriesChart({
   series,
   unit = "",
   formatValue,
+  chartType = "bar",
 }: {
   title: string;
   description: string;
@@ -36,7 +39,9 @@ export function ReportSeriesChart({
   series: ReportChartSeries[];
   unit?: string;
   formatValue?: (value: number) => string;
+  chartType?: "bar" | "line";
 }) {
+  const Chart = chartType === "line" ? LineChart : BarChart;
   return (
     <section
       aria-label={title}
@@ -53,7 +58,7 @@ export function ReportSeriesChart({
           ]),
         )}
       >
-        <BarChart
+        <Chart
           accessibilityLayer
           data={rows}
           margin={{ left: 0, right: 8, top: 8, bottom: 0 }}
@@ -91,18 +96,35 @@ export function ReportSeriesChart({
             }}
           />
           <Legend wrapperStyle={{ fontSize: 11 }} />
-          {series.map((item) => (
-            <Bar
-              key={item.key}
-              name={item.label}
-              dataKey={item.key}
-              fill={item.color}
-              stackId={item.stack}
-              maxBarSize={28}
-              isAnimationActive={false}
-            />
-          ))}
-        </BarChart>
+          {series.map((item) =>
+            chartType === "line" ? (
+              <Line
+                key={item.key}
+                name={item.label}
+                dataKey={item.key}
+                stroke={item.color}
+                strokeWidth={2}
+                strokeDasharray={
+                  item.key.startsWith("previous_") ? "5 4" : undefined
+                }
+                dot={rows.length === 1 ? { r: 3 } : false}
+                connectNulls={false}
+                type="linear"
+                isAnimationActive={false}
+              />
+            ) : (
+              <Bar
+                key={item.key}
+                name={item.label}
+                dataKey={item.key}
+                fill={item.color}
+                stackId={item.stack}
+                maxBarSize={28}
+                isAnimationActive={false}
+              />
+            ),
+          )}
+        </Chart>
       </ChartContainer>
     </section>
   );

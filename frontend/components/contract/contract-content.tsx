@@ -12,6 +12,7 @@ import { ContractTrackingSkeleton } from "./contract-tracking-skeleton";
 import { useContractListReturn } from "@/hooks/contracts/use-contract-list-return";
 import { contractListReturnScope } from "@/lib/contracts/contract-list-return";
 import type { DashboardContract } from "@/types/contracts";
+import { contractPageHref } from "@/lib/contracts/contract-href";
 import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
 
 type ContractContentProps = DashboardWorkspaceContext & {
@@ -32,7 +33,8 @@ export function ContractContent({ data, access, onReview, isReviewing = false }:
     const id = contract.id ?? contract._id;
     if (id && data.user?.email) rememberPosition(id);
     if (onReview) return onReview(contract, rerun);
-    if (id) router.push(`/contract/${encodeURIComponent(id)}${rerun ? "?rerun=1" : ""}`);
+    const href = contractPageHref(contract, rerun);
+    if (href) router.push(href);
   }
 
   return (

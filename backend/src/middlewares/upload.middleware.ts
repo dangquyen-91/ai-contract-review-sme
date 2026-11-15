@@ -24,6 +24,15 @@ function checkedUpload(upload: multer.Multer) {
           void validateUploadContent(req.file.buffer, req.file.mimetype).then(() => next(), next);
         });
     },
+    fields(fields: multer.Field[]): RequestHandler {
+      const receive = upload.fields(fields);
+      return (req, res, next) =>
+        receive(req, res, (error) => {
+          if (error) return next(error);
+          const files = Object.values((req.files ?? {}) as Record<string, Express.Multer.File[]>).flat();
+          void Promise.all(files.map((file) => validateUploadContent(file.buffer, file.mimetype))).then(() => next(), next);
+        });
+    },
   };
 }
 
@@ -56,10 +65,15 @@ const LEGAL_DOC_MIME_TYPES = new Set([
   'text/plain',
 ]);
 
+export const LEGAL_DOC_UPLOAD_FIELDS = [
+  { name: 'file', maxCount: 1 },
+  { name: 'referenceFile', maxCount: 1 },
+];
+
 export const legalDocUpload = checkedUpload(
   multer({
     storage: multer.memoryStorage(),
-    limits: uploadLimits,
+    limits: { ...uploadLimits, files: 2, parts: 22 },
     fileFilter: (_req, file, cb) => {
       if (!LEGAL_DOC_MIME_TYPES.has(file.mimetype)) {
         return cb(AppError.badRequest(`Unsupported file type: ${file.mimetype}`));

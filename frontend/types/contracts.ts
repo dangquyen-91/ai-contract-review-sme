@@ -41,6 +41,7 @@ export type ContractClassification = {
 
 export type DashboardContract = {
   orgId?: string;
+  ownerType?: "organization" | "personal";
   latestReviewId?: string | null;
   expertVerification?: {
     _id: string;
@@ -86,6 +87,9 @@ export type DashboardContract = {
     analysisFocus?: string;
     fileName?: string;
     mimeType?: string;
+    versionNumber?: number;
+    note?: string;
+    createdAt?: string;
   };
   fileName?: string;
   updatedAt: string;
@@ -93,6 +97,48 @@ export type DashboardContract = {
 };
 
 export type ContractListResult = { items: DashboardContract[]; total: number };
+
+export type ContractVersionSummary = {
+  id: string;
+  versionNumber: number;
+  isCurrent: boolean;
+  note: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  uploadedBy: { id: string; name: string } | null;
+  uploadedAt: string;
+  extractionStatus: "pending" | "processing" | "completed" | "failed" | "unsupported";
+  pageCount: number | null;
+  similarityToPrevious?: number | null;
+  latestReview: {
+    id: string;
+    status: ContractReviewRun["status"];
+    finishedAt: string | null;
+    overallRiskLevel: ContractRiskLevel | null;
+    findingCounts: { high: number; medium: number; low: number } | null;
+    verificationStatus: "requested" | "in_progress" | "approved" | "returned" | null;
+  } | null;
+};
+
+export type VersionMatch = {
+  contractId: string;
+  title: string;
+  similarity: number;
+  matchedVersionNumber: number;
+  currentVersionNumber: number;
+  nextVersionNumber: number;
+  sameType: boolean | null;
+  sameParties: boolean | null;
+};
+
+export type VersionMatchResult = { ready: boolean; eligible: boolean; match: VersionMatch | null };
+
+export type DuplicateFileMatch = {
+  contractId: string;
+  title: string;
+  versionNumber: number;
+  uploadedAt: string;
+};
 
 export type ContractShareSummary = {
   text: string;
@@ -222,6 +268,7 @@ export type ContractKeyTerms = {
   terms: {
     key: string;
     label: string;
+    unit?: string | null;
     value: number | boolean | null;
     inferredFromSilence: boolean;
     clause: { index: number; title: string | null } | null;

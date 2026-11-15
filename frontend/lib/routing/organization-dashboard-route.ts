@@ -15,9 +15,8 @@ export function organizationDashboardPath(_role: OrganizationDashboardRole, view
 }
 
 export function organizationDashboardView(pathname: string): OrganizationDashboardView {
-  if (pathname.startsWith(routes.contracts + "/") && pathname.includes("/reviews/")) return "contracts";
-  if (pathname === routes.reviewWorkspace || pathname.startsWith(routes.contracts + "/")) return "upload";
-  if (pathname === routes.contracts) return "contracts";
+  if (pathname === routes.reviewWorkspace) return "upload";
+  if (pathname === routes.contracts || pathname.startsWith(routes.contracts + "/")) return "contracts";
   if (pathname === routes.settings) return "administration";
   if (pathname === routes.members) return "members";
   return "overview";

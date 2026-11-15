@@ -18,6 +18,7 @@ tags:
   - name: ContractDrafts
   - name: Reviews
   - name: LegalKB
+  - name: Dashboard
 
 components:
   parameters:
@@ -39,6 +40,18 @@ components:
       description: Reuse for retries of the same request; use a new key for a new review, chat message or purchase.
       schema: { type: string, minLength: 8, maxLength: 128, pattern: '^[a-zA-Z0-9_-]+$' }
       example: review-request-0001
+    VersionIdQuery:
+      in: query
+      name: versionId
+      required: false
+      schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      description: Read a specific version (see GET /contracts/{id}/versions). Defaults to the current (latest) version. A version of another contract returns 404.
+    ReviewIdQuery:
+      in: query
+      name: reviewId
+      required: false
+      schema: { type: string, pattern: '^[a-f\d]{24}$' }
+      description: Read the clauses or findings stored for one review of this contract. Without it, the latest completed review of the selected version is used; an empty list means that version has no completed review.
   securitySchemes:
     bearerAuth:
       type: http
@@ -200,6 +213,10 @@ components:
           description: Machine-readable reason, present for errors the client is expected to handle (e.g. CONTRACT_NOT_CONFIRMED)
         details:
           type: object
+          description: Field validation errors
+        meta:
+          type: object
+          description: Extra data for errors the client is expected to act on, e.g. the existing contract for DUPLICATE_CONTRACT / DUPLICATE_VERSION
 
     Organization:
       type: object
@@ -289,7 +306,7 @@ components:
         invitationToken:
           type: string
           pattern: '^[a-f0-9]{64}$'
-          description: Validates the invitation email and skips automatic personal workspace creation.
+          description: Validates that the pending invitation was sent to this email.
         email:
           type: string
           format: email
@@ -377,9 +394,17 @@ components:
         invitationToken:
           type: string
           pattern: '^[a-f0-9]{64}$'
-          description: Preserve invitation flow and skip automatic personal workspace creation.
+          description: Validates that the pending invitation was sent to this account's email.
         refreshToken:
           type: string
+        workspace:
+          type: string
+          enum: [personal, organization]
+          description: >-
+            Switch workspace. `personal` is allowed for user, owner and staff accounts and
+            issues a token with role `user` and no orgId. `organization` requires a Membership
+            and returns 403 when the account no longer belongs to an organization. When omitted,
+            the workspace stored in the refresh token is kept.
 
     AuthTokens:
       type: object
@@ -391,6 +416,10 @@ components:
 
     AuthUser:
       type: object
+      description: >-
+        The effective role is derived on every login and refresh. User.platformRole
+        (administrator, manager, expert) wins; otherwise the Membership role (owner, staff)
+        applies; an account with neither is a personal account (user).
       properties:
         emailVerified:
           type: boolean
@@ -400,12 +429,27 @@ components:
           type: string
         email:
           type: string
+        avatarUrl:
+          type: string
+          nullable: true
         role:
           type: string
           enum: [administrator, manager, staff, owner, expert, user]
+          description: Effective role in the current workspace. Always `user` in the personal workspace.
         orgId:
           type: string
           nullable: true
+          description: Organization of the Membership. Null for personal and platform accounts and in the personal workspace.
+        organizationMembership:
+          type: object
+          nullable: true
+          description: The account's Membership, kept even while the personal workspace is active.
+          properties:
+            orgId: { type: string }
+            role: { type: string, enum: [owner, staff] }
+        workspace:
+          type: string
+          enum: [personal, organization]
         hasCompletedOnboarding:
           type: boolean
 
@@ -431,6 +475,14 @@ components:
         reviewBilling:
           $ref: '#/components/schemas/ReviewBillingQuote'
         id:
+          type: string
+        ownerType:
+          type: string
+          enum: [organization, personal]
+          description: Who owns the contract. orgId is an Organization ID for organization and the user's own ID for personal.
+        orgId:
+          type: string
+        uploadedBy:
           type: string
         title:
           type: string
@@ -460,7 +512,7 @@ components:
 
     ContractVersion:
       type: object
-      description: All per-upload state for a contract (currently only version 1 is ever created - no re-upload/version-compare UI yet).
+      description: All per-upload state for one version of a contract. Version 1 is created on upload; later versions come from POST /contracts/{id}/versions. Reviews and chat always run on the current (highest) version.
       properties:
         id:
           type: string
@@ -468,6 +520,12 @@ components:
           type: string
         versionNumber:
           type: integer
+        note:
+          type: string
+          description: Optional note given when the version was uploaded
+        fileHash:
+          type: string
+          description: SHA-256 of the uploaded file, used to detect duplicate uploads
         fileName:
           type: string
           description: Original file name. The file itself is stored privately - get a short-lived download link from GET /contracts/{id}/file
@@ -556,6 +614,8 @@ components:
           type: string
           enum: [ok, skipped, not_applicable]
           description: Whether the fixed legal rule checks (detectedBy rule) ran during the last risk detection. ok = key terms were extracted and every rule for this contract type was evaluated. skipped = key term extraction failed, so no rule ran and the findings come from the LLM and the missing-clause check only. not_applicable = this contract type has no fixed legal rules yet. Absent until risk detection completes, and cleared when clauses are re-segmented.
+        legalCoverage:
+          $ref: '#/components/schemas/LegalCoverageSnapshot'
         overallAssessment:
           type: array
           items:
@@ -687,6 +747,8 @@ components:
               type: string
               enum: [ok, skipped, not_applicable]
               description: Copied from the contract version (see ContractVersion.ruleCheckStatus). Absent when risk detection did not finish.
+            legalCoverage:
+              $ref: '#/components/schemas/LegalCoverageSnapshot'
             findings:
               type: array
               items:
@@ -802,7 +864,7 @@ components:
           example: [Bộ luật Dân sự 2015, Luật Kinh doanh bất động sản 2023]
         legalSources:
           type: array
-          description: The governing laws as legal source codes. Risk detection only searches these sources for citations; when none of them is in the knowledge base yet it searches every source that is not repealed.
+          description: The governing laws as legal source codes. Risk detection only searches these sources for citations, among those in force; when none of them is in force in the knowledge base it searches every source in force (see LegalCoverageSnapshot.searchScope).
           items:
             type: object
             properties:
@@ -815,9 +877,12 @@ components:
               inKnowledgeBase:
                 type: boolean
                 description: A legal source with this code has been uploaded
+              inForce:
+                type: boolean
+                description: Uploaded with status in_force or amended, effectiveDate not in the future and expiryDate not passed
               searchable:
                 type: boolean
-                description: Uploaded, not repealed, and at least one chunk is embedded
+                description: In force and at least one chunk is embedded
               ingestionStatus:
                 type: string
                 enum: [queued, running, paused, completed, failed]
@@ -945,6 +1010,19 @@ components:
         articleRef:
           type: string
           example: Điều 301
+        legalSourceId:
+          type: string
+        documentNumber:
+          type: string
+          example: 36/2005/QH11
+        origin:
+          description: Where the legal text was taken from, so the reader can open the official page
+          allOf:
+            - $ref: '#/components/schemas/LegalSourceOrigin'
+        provenance:
+          type: string
+          enum: [official, declared, unverified]
+          description: official = taken from Công báo, the national legal database (vbpl.vn) or the issuing body; declared = origin given but another site (checked against a reference file when it was loaded); unverified = the legal source has no recorded origin yet
 
     ChatReply:
       type: object
@@ -960,6 +1038,17 @@ components:
           type: string
           enum: [ok, degraded, no_sources, unavailable]
           description: Same meaning as ContractVersion.legalRetrievalStatus, for this question's legal search
+        legalScope:
+          type: object
+          description: Which laws this question's legal search covered (same meaning as LegalCoverageSnapshot.searchScope / missingSources). May be absent on an idempotent replay of an answer saved before it was added.
+          properties:
+            searchScope:
+              type: string
+              enum: [profile, partial, all_sources, none]
+            missingSources:
+              type: array
+              items:
+                type: string
         runId:
           type: string
         replayed:
@@ -1301,6 +1390,22 @@ components:
         chunkText:
           type: string
           description: citationLabel, sourceTitle, articleRef and chunkText are the text as it was when the review ran, so they survive later edits or deletion of the legal source. Citations saved before this snapshot existed are read from the knowledge base instead and disappear if their chunk was deleted.
+        legalSourceId:
+          type: string
+        documentNumber:
+          type: string
+          example: 36/2005/QH11
+        origin:
+          description: Where the legal text was taken from, so the reader can open the official page
+          allOf:
+            - $ref: '#/components/schemas/LegalSourceOrigin'
+        provenance:
+          type: string
+          enum: [official, declared, unverified]
+          description: official = taken from Công báo, the national legal database (vbpl.vn) or the issuing body; declared = origin given but another site (checked against a reference file when it was loaded); unverified = the legal source has no recorded origin yet
+        originRecordedAtReview:
+          type: boolean
+          description: True when origin and documentNumber were stored with the citation when the review ran. False for citations saved before provenance was recorded; their origin is then read from the legal source as it is today.
         inKnowledgeBase:
           type: boolean
           description: False when the cited chunk has since been deleted from the knowledge base (the legal source was deleted)
@@ -1375,6 +1480,10 @@ components:
           type: string
           description: Optional. Industry code; adds the profile's industry-specific checks and mandatory clauses
           example: fnb
+        allowDuplicate:
+          type: string
+          enum: ['true', 'false']
+          description: Send true to create a new contract even if the same file was already uploaded in this account (otherwise 409 DUPLICATE_CONTRACT)
         file:
           type: string
           format: binary
@@ -1474,6 +1583,28 @@ components:
         expiryDate:
           type: string
           format: date-time
+        signer:
+          type: string
+        legalField:
+          type: string
+        issuingPlace:
+          type: string
+        gazette:
+          type: string
+          description: Official Gazette issue the text was published in
+          example: Công báo số 1263+1264, ngày 30/10/2005
+        origin:
+          $ref: '#/components/schemas/LegalSourceOrigin'
+        textKind:
+          type: string
+          enum: [original, consolidated]
+          description: Absent when the uploader did not say which kind of text it is
+        consolidatedThrough:
+          type: array
+          items:
+            type: string
+          description: Amending documents already merged into a consolidated text
+          example: [44/2019/QH14]
         coverage:
           $ref: '#/components/schemas/LegalCoverage'
         ingestion:
@@ -1501,15 +1632,91 @@ components:
               uploadedAt:
                 type: string
                 format: date-time
+              hasFile:
+                type: boolean
+                description: False for parts uploaded before original files were kept. Download it with GET /kb/legal-sources/{id}/parts/{partIndex}/file.
+              cleanup:
+                $ref: '#/components/schemas/LegalTextCleanup'
+              extraction:
+                $ref: '#/components/schemas/LegalExtractionQuality'
+              notes:
+                type: array
+                items:
+                  type: string
+                description: Warnings from the checks run when this part was read (e.g. a consolidated text numbered differently); they are kept in coverage.warnings
+              crossCheck:
+                $ref: '#/components/schemas/LegalPartCrossCheck'
+              fileHash:
+                type: string
+                description: SHA-256 of the uploaded file
+              mimeType:
+                type: string
+              fileSize:
+                type: integer
+                description: Bytes
+        previousParts:
+          type: array
+          description: Parts replaced by PUT /kb/legal-sources/{id}/content, oldest first, with the same fields as parts plus replacedAt. Their files are kept so earlier reviews can be traced back to the text they cited; download one with GET /kb/legal-sources/{id}/previous-parts/{partIndex}/file. They are deleted only with the source.
+          items:
+            type: object
+            properties:
+              fileName:
+                type: string
+              fileHash:
+                type: string
+              hasFile:
+                type: boolean
+              uploadedAt:
+                type: string
+                format: date-time
+              replacedAt:
+                type: string
+                format: date-time
         chunkCount:
           type: integer
           description: Number of LegalKnowledgeChunk documents produced from this source, embedded or not
+        embeddingModel:
+          type: string
+          description: Embedding model and dimensions the server uses now (GEMINI_EMBEDDING_MODEL@dimensions). Only chunks embedded with this model are used by vector search.
+          example: gemini-embedding-001@768
+        createdBy:
+          description: In GET /kb/legal-sources/{id} an object with id, name and email (name/email null if the account was deleted); in the list only the user id. Absent on sources created before it was recorded.
+          oneOf:
+            - $ref: '#/components/schemas/LegalSourceActor'
+            - type: string
+        updatedBy:
+          description: Last user who changed the source's metadata or content; same shape as createdBy
+          oneOf:
+            - $ref: '#/components/schemas/LegalSourceActor'
+            - type: string
+        outdatedEmbeddingCount:
+          type: integer
+          description: Chunks embedded with another model or dimension count. They are left out of vector search (text search still finds them) until POST /kb/legal-sources/{id}/resume re-embeds them.
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+
+    LegalSourceOrigin:
+      type: object
+      required: [publisher]
+      description: Where the uploaded text was taken from. Absent on sources uploaded before provenance was recorded, which count as unverified.
+      properties:
+        publisher:
+          type: string
+          enum: [official_gazette, national_database, issuing_authority, other]
+          description: official_gazette = Công báo; national_database = Cơ sở dữ liệu quốc gia về văn bản pháp luật (vbpl.vn); issuing_authority = portal of the issuing body; other = any other site, reference only
+        url:
+          type: string
+          format: uri
+          maxLength: 500
+          description: http or https link to the page the text was taken from
+        retrievedAt:
+          type: string
+          format: date-time
+          description: When the text was taken from the publisher; cannot be in the future
 
     LegalIngestion:
       type: object
@@ -1538,6 +1745,350 @@ components:
           type: string
           format: date-time
 
+    LegalSourceChecks:
+      type: object
+      description: Checks run before saving. A preview reports them; create, append and content replacement refuse to save when a blocking one fails.
+      properties:
+        origin:
+          type: object
+          description: Blocking on create and content replacement (400 LEGAL_ORIGIN_REQUIRED). origin.publisher and origin.url are required; a text taken from a printed Công báo issue (publisher official_gazette) may give gazette instead of url.
+          properties:
+            ok:
+              type: boolean
+            message:
+              type: string
+        documentNumber:
+          type: object
+          description: |
+            Compares the number on the "Số:" line of the file with the number of the legal source (or the one sent).
+            mismatch blocks create, append and content replacement (400 LEGAL_DOCUMENT_NUMBER_MISMATCH) for an original text. consolidated_number (textKind consolidated, or a VBHN number in the file) only adds a coverage warning, because a consolidated text carries its own number. A reparse never blocks; it only adds the warning.
+          properties:
+            result:
+              type: string
+              enum: [match, mismatch, consolidated_number, not_checked]
+            entered:
+              type: string
+            detected:
+              type: string
+            message:
+              type: string
+        anchors:
+          type: object
+          description: |
+            The hard-coded legal rules cite fixed wording in specific articles (e.g. "8%" in Điều 301 of commercial_law_2005). For the articles of this source that the file contains, each cited wording must appear in the article (case and spacing ignored), exactly as the rules look it up during a review.
+            failed blocks create, append and content replacement (400 LEGAL_ANCHOR_MISMATCH, error.meta.failures); it usually means an outdated text, a wrong law, or an OCR misreading. If the law really changed, the rule must be updated in code first. A reparse only adds warnings. not_applicable = no rule cites this source, or the file has none of the cited articles.
+          properties:
+            result:
+              type: string
+              enum: [ok, failed, not_applicable]
+            checked:
+              type: integer
+              description: Cited wordings whose article is in the file
+            failures:
+              type: array
+              items:
+                type: object
+                properties:
+                  article:
+                    type: integer
+                  clause:
+                    type: integer
+                  verifyText:
+                    type: string
+                  rules:
+                    type: array
+                    items:
+                      type: string
+                    example: [LTM_PENALTY_CAP v1]
+                  message:
+                    type: string
+        crossCheck:
+          type: object
+          description: |
+            Compares every article of the uploaded file with the same article in referenceFile, word by word (punctuation, spacing, line breaks and case ignored).
+            Required when origin.publisher is other: without referenceFile the upload is refused (400 LEGAL_REFERENCE_REQUIRED). When any article differs or is missing from the reference, the upload is refused (409 LEGAL_REFERENCE_DIFFERS, error.meta.differences) until it is sent again with acknowledgeDifferences=true. referenceFile must be a different file (400 LEGAL_REFERENCE_SAME_FILE) and needs a complete referenceOrigin (400 LEGAL_ORIGIN_REQUIRED). A reference may also be sent for an official source; the same rules then apply.
+          properties:
+            result:
+              type: string
+              enum: [same, different, not_required, missing_reference]
+            required:
+              type: boolean
+            referenceOrigin:
+              type: object
+              properties:
+                ok:
+                  type: boolean
+                message:
+                  type: string
+            sameFile:
+              type: boolean
+            compared:
+              type: integer
+              description: Articles of the uploaded file that were compared
+            differing:
+              type: integer
+              description: All differing or missing articles; differences lists at most 50
+            onlyInReference:
+              type: integer
+              description: Articles the reference has but the uploaded file does not (not an error; e.g. a reference with the whole law)
+            differences:
+              type: array
+              description: Up to 50
+              items:
+                type: object
+                properties:
+                  article:
+                    type: string
+                    example: Điều 301
+                  kind:
+                    type: string
+                    enum: [different, missing_in_reference]
+                  similarity:
+                    type: integer
+                    description: 0-100, share of 3-word sequences both texts have
+                  main:
+                    type: string
+                    description: Words of the uploaded file around the first difference
+                  reference:
+                    type: string
+                    description: Words of the reference file at the same place
+
+    LegalCoverageSnapshot:
+      type: object
+      description: |
+        Which laws the last risk detection could rely on. Only legal sources in force are used: status in_force or amended, effectiveDate not in the future, expiryDate not passed.
+        Absent until risk detection completes and on results saved before it was recorded; cleared when clauses are re-segmented.
+      properties:
+        searchScope:
+          type: string
+          enum: [profile, partial, all_sources, none]
+          description: profile = every governing law of the contract type is in force and was searched. partial = only some of them are (see missingSources). all_sources = none of them is in force, so every law in force was searched and excerpts may come from unrelated laws. none = no legal source in force at all.
+        missingSources:
+          type: array
+          items:
+            type: string
+          description: Governing law codes of the contract type that are missing from the knowledge base or not in force
+        skippedRules:
+          type: array
+          description: Fixed legal rules of this contract type that did not run because a law they rely on is not in force or not in the knowledge base. A rule only runs when every law it cites is in force.
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                example: BLLD_PROBATION_MAX
+              reason:
+                type: string
+                enum: [source_not_in_force, source_missing]
+                description: source_not_in_force when at least one cited law is in the knowledge base but not in force; otherwise source_missing
+              sources:
+                type: array
+                items:
+                  type: string
+                description: The cited law codes that are not in force or missing
+
+    LegalSourceActor:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+
+    LegalSourceEvent:
+      type: object
+      description: One change to a legal source. Events are kept after the source is deleted.
+      properties:
+        _id:
+          type: string
+        action:
+          type: string
+          enum: [created, part_appended, updated, status_changed, ingestion_resumed, reparsed, content_replaced, deleted]
+          description: status_changed is an update whose changes include status (it may change other fields too)
+        code:
+          type: string
+        title:
+          type: string
+          description: Title of the source at the time of the event
+        actor:
+          $ref: '#/components/schemas/LegalSourceActor'
+        actorRole:
+          type: string
+        details:
+          type: object
+          description: |
+            created: fileName, fileHash, origin, textKind, documentNumber, chunkCount, crossCheck, warnings.
+            part_appended: partIndex, fileName, fileHash, chunkCount, skippedArticles, crossCheck.
+            updated / status_changed: changes = { field: { from, to } } with only the fields that really changed (dates as ISO strings; expectedArticleCount included).
+            ingestion_resumed: pendingChunks, previousStatus.
+            reparsed: parts, changes (unchanged, changed, added, removed, removedCitations), warnings.
+            content_replaced: fileName, fileHash, origin, crossCheck, previousFiles, changes, warnings.
+            deleted: chunkCount, documentNumber, files (fileName, fileHash of every stored file).
+          additionalProperties: true
+        createdAt:
+          type: string
+          format: date-time
+
+    LegalPartCrossCheck:
+      type: object
+      description: Present when the part was uploaded with a referenceFile. The reference file is kept in private storage so the comparison can be checked later; download it with GET /kb/legal-sources/{id}/parts/{partIndex}/reference-file.
+      properties:
+        result:
+          type: string
+          enum: [same, different]
+        acknowledged:
+          type: boolean
+          description: True when differences were kept on purpose with acknowledgeDifferences=true
+        compared:
+          type: integer
+        differing:
+          type: integer
+          description: Articles that differ from or are missing in the reference (all of them, not only the listed ones)
+        onlyInReference:
+          type: integer
+        differences:
+          type: array
+          description: Up to 50 labels
+          items:
+            type: string
+          example: [Điều 1 (67% similar), Điều 5 (missing in the reference)]
+        referenceFileName:
+          type: string
+        referenceFileHash:
+          type: string
+          description: SHA-256 of the reference file
+        referenceMimeType:
+          type: string
+        referenceFileSize:
+          type: integer
+        referenceOrigin:
+          $ref: '#/components/schemas/LegalSourceOrigin'
+        hasReferenceFile:
+          type: boolean
+        checkedAt:
+          type: string
+          format: date-time
+
+    LegalContentApplied:
+      allOf:
+        - $ref: '#/components/schemas/LegalSource'
+        - type: object
+          properties:
+            changes:
+              description: What was applied, in the same shape as the preview
+              allOf:
+                - $ref: '#/components/schemas/LegalContentPreview/properties/changes'
+
+    LegalContentPreview:
+      type: object
+      description: What reading the files again would change. Nothing is saved.
+      properties:
+        documentNumber:
+          type: string
+        coverage:
+          $ref: '#/components/schemas/LegalCoverage'
+        checks:
+          $ref: '#/components/schemas/LegalSourceChecks'
+        parts:
+          type: array
+          items:
+            type: object
+            properties:
+              fileName:
+                type: string
+              notes:
+                type: array
+                items:
+                  type: string
+              chunkCount:
+                type: integer
+              skippedArticles:
+                type: array
+                items:
+                  type: string
+                description: Articles an earlier part already had
+              cleanup:
+                $ref: '#/components/schemas/LegalTextCleanup'
+              extraction:
+                $ref: '#/components/schemas/LegalExtractionQuality'
+        changes:
+          type: object
+          description: |
+            Stored chunks are matched to the new ones by article, khoản and điểm (articleRef, in order), then the remaining chunks of the same article are matched in order. A matched chunk keeps its ID, so citations of earlier reviews keep pointing at it.
+            unchanged = same text and headings, keeps its embedding. changed = keeps its ID, gets the new text and is embedded again. added = new chunk. removed = deleted; earlier reviews still show the excerpt they cited (stored with the citation).
+          properties:
+            unchanged:
+              type: integer
+            changed:
+              type: integer
+            added:
+              type: integer
+            removed:
+              type: integer
+            changedRefs:
+              type: array
+              items:
+                type: string
+              description: Up to 50 articleRefs, then "... N more"
+            addedRefs:
+              type: array
+              items:
+                type: string
+            removedRefs:
+              type: array
+              items:
+                type: string
+            removedCitations:
+              type: integer
+              description: Risk citations of earlier reviews that point at removed chunks; they keep their stored excerpt and show inKnowledgeBase=false
+
+    LegalExtractionQuality:
+      type: object
+      description: How the text was read. Absent on parts uploaded before it was recorded.
+      properties:
+        method:
+          type: string
+          enum: [text_layer, ocr, mixed, docx, doc, txt]
+          description: For a PDF, text_layer = every page had a text layer, ocr = every page was read with OCR, mixed = some pages were
+        pageCount:
+          type: integer
+          description: PDF pages
+        ocrPageCount:
+          type: integer
+          description: Pages read with OCR (Vietnamese + English) because they had less than 30 characters of text layer. Any OCR page adds a coverage warning, because OCR can misread numbers.
+        ocrConfidence:
+          type: integer
+          description: Average OCR confidence (0-100), weighted by text length
+        lowConfidence:
+          type: boolean
+          description: True when the OCR confidence is below 70; the coverage warning then starts with "Low OCR quality"
+
+    LegalTextCleanup:
+      type: object
+      description: What was left out while reading the file. Absent on parts uploaded before it was recorded.
+      properties:
+        pageFurnitureLines:
+          type: integer
+          description: PDF only. Page numbers and header/footer lines repeated at the top or bottom of at least half of the pages (and of 3 pages or more)
+        footnoteLines:
+          type: integer
+          description: Footnote lines of a consolidated text, e.g. "[1] Luật số 44/2019/QH14 sửa đổi..."; inline markers such as "[1]" are removed from the article text too
+        droppedTailLines:
+          type: integer
+          description: Lines from stoppedAt to the end of the file
+        stoppedAt:
+          type: string
+          description: The line where the legal text was considered finished
+          example: XÁC THỰC VĂN BẢN HỢP NHẤT
+        stoppedAtKind:
+          type: string
+          enum: [signature, consolidation, appendix]
+          description: appendix adds a coverage warning, because appendix text is not added. A signature or consolidation stop adds one only when more than 40 lines follow it.
+
     LegalSourcePreview:
       type: object
       properties:
@@ -1546,6 +2097,12 @@ components:
           example: 36/2005/QH11
         coverage:
           $ref: '#/components/schemas/LegalCoverage'
+        cleanup:
+          $ref: '#/components/schemas/LegalTextCleanup'
+        extraction:
+          $ref: '#/components/schemas/LegalExtractionQuality'
+        checks:
+          $ref: '#/components/schemas/LegalSourceChecks'
         chunks:
           type: array
           items:
@@ -1570,7 +2127,7 @@ components:
 
     CreateLegalSourceRequest:
       type: object
-      required: [code, title, sourceType, citationLabel, file]
+      required: [code, title, sourceType, citationLabel, origin, file]
       properties:
         code:
           type: string
@@ -1603,6 +2160,36 @@ components:
         issuingBody:
           type: string
           maxLength: 200
+        signer:
+          type: string
+          minLength: 1
+          maxLength: 100
+        legalField:
+          type: string
+          minLength: 1
+          maxLength: 100
+        issuingPlace:
+          type: string
+          minLength: 1
+          maxLength: 100
+        gazette:
+          type: string
+          minLength: 1
+          maxLength: 200
+        origin:
+          description: Required, with url (a printed Công báo issue may give gazette instead). Send nested form fields (origin[publisher], origin[url], origin[retrievedAt]) or one field holding a JSON object.
+          allOf:
+            - $ref: '#/components/schemas/LegalSourceOrigin'
+        textKind:
+          type: string
+          enum: [original, consolidated]
+        consolidatedThrough:
+          type: array
+          maxItems: 30
+          items:
+            type: string
+            maxLength: 60
+          description: Only with textKind consolidated. Repeat the field, or send one value as a JSON array or a comma-separated list.
         issuedDate:
           type: string
           format: date
@@ -1618,12 +2205,108 @@ components:
           minimum: 1
           maximum: 5000
           description: Optional. Total number of articles in the official text, so a missing tail is reported in coverage
+        referenceFile:
+          type: string
+          format: binary
+          description: The same text taken from another source (pdf, docx, doc, or txt). Required when origin.publisher is other. Every article of file is compared with it word by word (punctuation, spacing and case ignored).
+        referenceOrigin:
+          description: Where referenceFile was taken from; required with referenceFile (publisher + url). Nested form fields or one JSON field.
+          allOf:
+            - $ref: '#/components/schemas/LegalSourceOrigin'
+        acknowledgeDifferences:
+          type: boolean
+          description: Send true after reviewing the differences reported by a 409 LEGAL_REFERENCE_DIFFERS (or by the preview) to keep this text anyway; the differing articles are then listed in coverage.warnings.
         file:
           type: string
           format: binary
           description: Legal document to chunk and embed (pdf, docx, doc, or txt)
 
 paths:
+  /dashboard/insights:
+    get:
+      tags: [Dashboard]
+      summary: Role-scoped dashboard aggregates
+      description: >-
+        Uses the verified identity and active workspace. Administrator sees system
+        operations and paid receipts; Owner sees only their organization without
+        financial metrics; Staff sees organization activity; User sees personal
+        activity; Expert sees the shared waiting queue and their own verification
+        attempts; Manager sees organization counts and legal source statistics.
+        Only period is accepted. Supplying role, userId, organizationId or other
+        query parameters returns 400. Calendar boundaries use Asia/Ho_Chi_Minh.
+        Current-state metrics are independent of the selected reporting period.
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [week, month, quarter, year]
+            default: month
+      responses:
+        '200':
+          description: Aggregates from persisted records; no contract content is returned.
+          headers:
+            Cache-Control:
+              schema: { type: string, enum: ['private, no-store'] }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: object
+                    required: [role, scope, computedAt, timezone, period, metrics, distribution, trend]
+                    properties:
+                      role:
+                        type: string
+                        enum: [administrator, owner, staff, user, expert, manager]
+                      scope:
+                        type: object
+                        properties:
+                          type: { type: string, enum: [system, organization, personal, expert] }
+                          id: { type: string, nullable: true }
+                      computedAt: { type: string, format: date-time }
+                      timezone: { type: string, enum: [Asia/Ho_Chi_Minh] }
+                      period:
+                        type: object
+                        properties:
+                          kind: { type: string, enum: [week, month, quarter, year] }
+                          startDate: { type: string, format: date }
+                          endDate: { type: string, format: date }
+                          toExclusive: { type: string, format: date-time }
+                          partial: { type: boolean }
+                      metrics:
+                        type: object
+                        description: Role-specific numeric metrics. Unknown durations and rates are null.
+                        additionalProperties: { type: number, nullable: true }
+                      distribution:
+                        type: array
+                        items:
+                          type: object
+                          required: [key, value]
+                          properties:
+                            key: { type: string }
+                            label: { type: string }
+                            value: { type: number }
+                      trend:
+                        type: array
+                        items:
+                          type: object
+                          required: [date]
+                          properties:
+                            date: { type: string }
+                          additionalProperties:
+                            oneOf:
+                              - { type: string }
+                              - { type: number, nullable: true }
+        '400':
+          description: Invalid period or unsupported query parameter.
+        '401':
+          description: Missing, expired or stale authenticated session.
+        '403':
+          description: Unsupported role or organization workspace is unavailable.
   /contract-drafts/templates:
     get:
       tags: [ContractDrafts]
@@ -2336,7 +3019,7 @@ paths:
           name: limit
           schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
       responses:
-        '200': { description: Paginated members with id, name, email, role and isActive }
+        '200': { description: Paginated members with id, name, email, role (owner or staff, from Membership) and isActive, ordered by join date }
         '403': { description: Not the owner of this organization }
 
   /organizations/{id}/members/{userId}:
@@ -2346,8 +3029,8 @@ paths:
       description: >-
         Only an active owner of this organization may remove a member. Owners cannot
         be removed. Keeps the user account, organization contracts, reviews, chat,
-        purchased plan and consumed quota. Clears the member organization, resets
-        their role to user and onboarding to incomplete, and invalidates old access
+        purchased plan and consumed quota. Deletes the member's Membership, so the
+        account becomes a personal account (role user), resets onboarding to incomplete, and invalidates old access
         tokens even if they later rejoin. Pending invitations for this email in this
         organization are revoked. The user may accept a new invitation or complete
         personal onboarding. Repeated removal returns 404. Requests already running
@@ -2391,7 +3074,7 @@ paths:
     post:
       tags: [Invitations]
       summary: Accept an invitation and receive a new authenticated session
-      description: Requires an active personal (user role) account with matching email and no business organization; administrators, managers and platform experts cannot join, and legacy expert invitations are rejected. Atomically updates user and consumes invitation using a MongoDB transaction. Call before onboarding completion. Store the returned tokens.
+      description: Requires an active personal (user role) account with matching email and no business organization; administrators, managers and platform experts cannot join, and legacy expert invitations are rejected. Creates a staff Membership (with invitedBy) and consumes the invitation in one MongoDB transaction. Call before onboarding completion. Store the returned tokens.
       requestBody:
         required: true
         content:
@@ -2581,8 +3264,8 @@ paths:
   /auth/onboarding/complete:
     post:
       tags: [Auth]
-      summary: Mark onboarding as done (creates a personal workspace for role "user" without an org)
-      description: The access token still carries the old orgId afterwards - call /auth/refresh to get one that includes the new workspace.
+      summary: Mark onboarding as done
+      description: Only sets hasCompletedOnboarding. Personal accounts need no organization record, so nothing else is created.
       responses:
         '200':
           description: OK
@@ -2604,7 +3287,7 @@ paths:
     get:
       tags: [Organizations]
       summary: List all organizations
-      description: Requires the manager role. Includes business and personal organizations across all workspaces, ordered by creation date descending.
+      description: Requires the manager role. Lists business organizations, ordered by creation date descending. Personal accounts have no organization record.
       parameters:
         - in: query
           name: page
@@ -2646,7 +3329,11 @@ paths:
     post:
       tags: [Organizations]
       summary: Create an organization for the current user
-      description: A user can create an organization only when they do not already belong to one. Refresh the access token after success to include the new orgId claim.
+      description: >-
+        Only personal accounts (role user, no Membership) can create an organization. The
+        organization and the caller's owner Membership are created in one transaction, and
+        old access tokens are invalidated. Refresh the access token to receive role owner
+        and the new orgId.
       requestBody:
         required: true
         content:
@@ -2868,6 +3555,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+        '409':
+          description: DUPLICATE_CONTRACT - the same file already exists in this account. error.meta holds { contractId, title, versionNumber, uploadedAt }; resend with allowDuplicate=true to create a new contract anyway
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
         '503':
           description: The background job queue (Redis) is unavailable; nothing was saved
           content:
@@ -2919,6 +3612,291 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /contracts/{id}/version-match:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: Suggest an existing contract this upload is probably a new version of
+      description: |
+        Compares the text fingerprint of a newly uploaded contract with every version of the account's other contracts (up to 300 most recently updated, excluding unsupported and archived ones). Only a contract with a single version and no reviews is eligible.
+        A match is returned when the best similarity is at least 0.35. Among near-equal scores, candidates with the same detected parties, then the same contract type, are preferred. The text itself is never sent to an AI model for this comparison.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      ready: { type: boolean, description: False while text extraction is still pending or running }
+                      eligible: { type: boolean, description: False when the contract already has several versions or a review }
+                      match:
+                        type: object
+                        nullable: true
+                        properties:
+                          contractId: { type: string }
+                          title: { type: string }
+                          similarity: { type: number, minimum: 0, maximum: 1 }
+                          matchedVersionNumber: { type: integer, description: Version of the matched contract that is most similar }
+                          currentVersionNumber: { type: integer }
+                          nextVersionNumber: { type: integer, description: Version number the upload would get if attached }
+                          sameType: { type: boolean, nullable: true, description: Null when either contract type is unknown }
+                          sameParties: { type: boolean, nullable: true, description: Whether the AI-detected party names overlap; null when either side has none }
+        '404':
+          description: Contract not found in this account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/versions/attach:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        description: Contract that receives the new version
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Contracts]
+      summary: Turn a just-uploaded contract into the next version of this contract
+      description: |
+        Moves the only version of the source contract into this contract as version n+1 (keeping its stored file and extracted text), then deletes the source contract. Used when an upload made as a new contract is really a revised version of an existing one.
+        The source must have exactly one version that has no review, payment, review purchase, usage record or chat. The target must not be unsupported, archived or under review, and must not already hold an identical file. The target's status returns to uploaded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceContractId]
+              properties:
+                sourceContractId: { type: string, pattern: '^[a-f\d]{24}$' }
+                note: { type: string, maxLength: 300 }
+      responses:
+        '200':
+          description: The target contract with its new current version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { type: object }
+        '400':
+          description: Source and target are the same contract
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Source or target contract not found in this account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: REVIEW_RUNNING, CONTRACT_UNSUPPORTED, VERSION_IN_USE, or DUPLICATE_VERSION (with the matching version in error.meta)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/versions/{versionId}/detach:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: versionId
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [Contracts]
+      summary: Split the latest version off into a new contract
+      description: |
+        Used when a file was uploaded as a new version of the wrong contract. Creates a new contract of the same owner whose version 1 is this version, and queues classification for it once its text is extracted. The original contract's status is recomputed from its remaining latest version.
+        Only the latest version of a contract with at least two versions can be split off, and only while it has no review, payment, review purchase, usage record or chat.
+      responses:
+        '201':
+          description: The newly created contract
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { type: object }
+        '404':
+          description: Contract or version not found in this account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: REVIEW_RUNNING or VERSION_IN_USE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /contracts/{id}/versions:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [Contracts]
+      summary: List the versions of a contract, newest first
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        versionNumber: { type: integer }
+                        isCurrent: { type: boolean }
+                        note: { type: string, nullable: true }
+                        fileName: { type: string, nullable: true }
+                        mimeType: { type: string, nullable: true }
+                        uploadedBy:
+                          type: object
+                          nullable: true
+                          properties:
+                            id: { type: string }
+                            name: { type: string }
+                        uploadedAt: { type: string, format: date-time }
+                        extractionStatus: { type: string, enum: [pending, processing, completed, failed, unsupported] }
+                        pageCount: { type: integer, nullable: true }
+                        similarityToPrevious:
+                          type: number
+                          nullable: true
+                          minimum: 0
+                          maximum: 1
+                          description: Estimated text similarity (0-1) to the previous version; null for version 1 or when either text is unavailable
+                        latestReview:
+                          type: object
+                          nullable: true
+                          description: Latest completed review of this version, or its latest attempt when none completed; open it with GET /reviews/{reviewId}
+                          properties:
+                            id: { type: string }
+                            status: { type: string, enum: [queued, running, completed, failed, cancelled] }
+                            finishedAt: { type: string, format: date-time, nullable: true }
+                            overallRiskLevel: { type: string, nullable: true, enum: [high, medium, low, none] }
+                            findingCounts:
+                              type: object
+                              nullable: true
+                              properties:
+                                high: { type: integer }
+                                medium: { type: integer }
+                                low: { type: integer }
+                            verificationStatus: { type: string, nullable: true, enum: [requested, in_progress, approved, returned] }
+        '404':
+          description: Contract not found in this account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags: [Contracts]
+      summary: Upload a new version of a contract
+      description: |
+        Creates version n+1 from the uploaded file and starts text extraction. The contract keeps its confirmed type and party, so no new classification is needed, and its status returns to uploaded until the new version is reviewed.
+        Rejected while a review of the contract is running, when the file is identical to an existing version, and for contracts marked unsupported.
+      parameters:
+        - in: header
+          name: Prefer
+          required: false
+          schema: { type: string, example: respond-async }
+          description: RFC 7240 preference. Send respond-async to get 202 without waiting for extraction.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                note:
+                  type: string
+                  maxLength: 300
+                  description: e.g. "Bản sau đàm phán"
+      responses:
+        '201':
+          description: Created; extraction of the new version has finished
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '202':
+          description: Accepted with Prefer respond-async; extraction is still running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Contract'
+        '400':
+          description: Missing file, unsupported file type or note too long
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Contract not found in this account
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: REVIEW_RUNNING (a review is running), DUPLICATE_VERSION (same file as an existing version; error.meta holds that version) or CONTRACT_UNSUPPORTED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: File exceeds the 20MB limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background job queue (Redis) is unavailable; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /contracts/{id}/clauses:
     parameters:
       - in: path
@@ -2929,7 +3907,10 @@ paths:
           pattern: '^[a-f\d]{24}$'
     get:
       tags: [Contracts]
-      summary: List clauses segmented/classified for a contract
+      summary: List clauses segmented/classified for a contract version
+      parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
+        - $ref: '#/components/parameters/ReviewIdQuery'
       responses:
         '200':
           description: OK
@@ -2956,7 +3937,10 @@ paths:
           pattern: '^[a-f\d]{24}$'
     get:
       tags: [Contracts]
-      summary: List risk findings detected for a contract
+      summary: List risk findings detected for a contract version
+      parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
+        - $ref: '#/components/parameters/ReviewIdQuery'
       responses:
         '200':
           description: OK
@@ -2983,7 +3967,9 @@ paths:
           pattern: '^[a-f\d]{24}$'
     get:
       tags: [Contracts]
-      summary: List the key terms extracted from the current version during the last review
+      summary: List the key terms extracted from a version (current by default) during its last review
+      parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
       description: |
         During risk detection the LLM extracts the terms that legal rules check for this contract type (e.g. penalty rate, deposit share, probation length, working hours). A term is kept only when its quote appears verbatim in the cited clause. A few yes/no terms have a legal default when the contract is silent (e.g. no notarization, penalty without damages); those are returned with inferredFromSilence true and no clause.
         Life insurance has no rule checks yet, so its list is empty.
@@ -3010,7 +3996,12 @@ paths:
                           example: penalty_percent
                         label:
                           type: string
-                          example: Mức phạt vi phạm (%)
+                          example: Mức phạt vi phạm
+                        unit:
+                          type: string
+                          nullable: true
+                          description: Unit to display after a numeric value (e.g. tháng, ngày, giờ/tuần, % lương chính thức). Null for yes/no terms.
+                          example: "% giá trị nghĩa vụ vi phạm"
                         value:
                           oneOf:
                             - type: number
@@ -3234,6 +4225,7 @@ paths:
         With `redacted=true` the personal data covered by the contract profile's redactionPolicy is replaced by placeholders such as `[PERSON_1]` or `[PHONE_2]` by default. Clause offsets do not apply to the redacted text.
         Use `redacted=true&redactionMode=partial` for an internal comparison view: bank accounts keep their last 4 digits, phones their last 3 digits, names use consistent numbered labels, emails keep only their first character and domain (for example m•••@gmail.com), and IDs, birth dates and personal addresses are fully concealed. Distinct accounts or phones sharing a visible suffix get numbered labels to prevent confusion. Phone/account format variants use the same display identity. This mode uses the existing contract-read permission and does not change AI prompts or sharing permissions. The returned redactionSpans refer to the displayed text and contain no original sensitive values.
       parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
         - in: query
           name: redacted
           required: false
@@ -3349,6 +4341,7 @@ paths:
       summary: Get the original file link or a separate redacted DOCX reading copy
       description: Without redacted=true, returns a signed link to the original file. With redacted=true, streams a separate DOCX reading copy using partial masking. Both modes use existing organization-scoped contract access.
       parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
         - in: query
           name: redacted
           schema:
@@ -3404,7 +4397,9 @@ paths:
           pattern: '^[a-f\d]{24}$'
     get:
       tags: [Contracts]
-      summary: List the chat history for the contract's current version, oldest first
+      summary: List the chat history of a version (current by default), oldest first. New messages always go to the current version.
+      parameters:
+        - $ref: '#/components/parameters/VersionIdQuery'
       responses:
         '200':
           description: OK
@@ -3474,7 +4469,7 @@ paths:
       description: |
         Use `fetch` (not `EventSource`). Events:
         - `token` `{ "text": string }` - next chunk of the answer
-        - `done` `{ reply, legalSources, legalRetrievalStatus, runId, replayed }` (see ChatReply) - the exchange is saved and chat quota finalized
+        - `done` `{ reply, legalSources, legalRetrievalStatus, legalScope, runId, replayed }` (see ChatReply) - the exchange is saved and chat quota finalized
         - `error` `{ "status": number, "message": string }`
         A `: ping` comment line is sent every 15s to keep proxies from closing an idle connection - SSE clients must ignore lines starting with `:`. Closing the connection cancels the LLM call; if the answer had already finished generating, it is still saved.
         Rate-limited (AI cost control).
@@ -4236,13 +5231,19 @@ paths:
       description: |
         Manager only. Rate-limited (AI cost control). Use POST /kb/legal-sources/preview first to check coverage without spending embedding quota.
 
-        The text is read as Phần > Chương > Mục > Tiểu mục > Điều > khoản > điểm. An "Điều N" heading only counts when its number is higher than the previous article, so cross-references such as "Điều 5 của Luật này" at the start of a line stay in the body. The signature block after the last article (e.g. "Luật này đã được Quốc hội ... thông qua", "CHỦ TỊCH QUỐC HỘI", "Nơi nhận:") is dropped.
+        The text is read as Phần > Chương > Mục > Tiểu mục > Điều > khoản > điểm. An "Điều N" heading only counts when its number is higher than the previous article, so cross-references such as "Điều 5 của Luật này" at the start of a line stay in the body. The signature block after the last article (e.g. "Luật này đã được Quốc hội ... thông qua", "CHỦ TỊCH QUỐC HỘI", "Nơi nhận:", or "XÁC THỰC VĂN BẢN HỢP NHẤT" of a consolidated text) is dropped, and so is an appendix ("PHỤ LỤC"), which adds a coverage warning.
+
+        A PDF is read page by page: page numbers and header/footer lines repeated across pages are removed, and the footnote block at the bottom of a page of a consolidated text is left out. Footnote lines and inline "[n]" markers are removed from any file type. parts[].cleanup (and cleanup in the preview) counts what was left out.
+
+        Scanned PDF pages (less than 30 characters of text layer) are read with OCR during the request, at most 40 pages per file; a file with more scanned pages is rejected with 400 LEGAL_OCR_LIMIT. parts[].extraction (and extraction in the preview) says how the text was read.
 
         Each article becomes one chunk of up to 2200 characters. A longer article is split into groups of whole khoản, and each group repeats the article heading (and the short lead-in sentence) so it can be read alone, e.g. "Điều 3, khoản 1-9". A khoản that is still too long is split into groups of điểm. A document with no "Điều N" headings (e.g. a standard template) is split into plain passages.
 
         The source and its chunks are saved right away and the request returns 202. A background worker then embeds the chunks in batches of 20 (task type RETRIEVAL_DOCUMENT), paced under LEGAL_EMBED_TOKENS_PER_MINUTE and LEGAL_EMBED_REQUESTS_PER_MINUTE (each text counts as one request). The text sent to the embedding model is the citation label, the chapter/section titles and the chunk text.
 
         On a Gemini 429 the worker waits the delay Gemini suggests. If the daily quota is used up, or the wait would exceed 5 minutes, the source becomes "paused" and resumes automatically at ingestion.resumeAt. Progress is kept per chunk, so a crash, retry or resume only embeds the chunks that are still missing. Poll GET /kb/legal-sources/{id} (Location header) for ingestion progress.
+
+        The original file is kept in private storage with its SHA-256 (parts[0]). A file whose SHA-256 is already stored in any legal source is rejected with 409 DUPLICATE_LEGAL_FILE before anything is saved.
       requestBody:
         required: true
         content:
@@ -4262,13 +5263,19 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Validation error, unsupported or unreadable file, no usable text, or LLM not configured
+          description: Validation error, unsupported or unreadable file, no usable text, LLM not configured, LEGAL_ORIGIN_REQUIRED, LEGAL_DOCUMENT_NUMBER_MISMATCH (error.meta has entered and detected), LEGAL_ANCHOR_MISMATCH (error.meta.failures), LEGAL_REFERENCE_REQUIRED, or LEGAL_REFERENCE_SAME_FILE
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: A legal source with this code already exists (checked before any embedding)
+          description: A legal source with this code already exists (checked before any embedding), DUPLICATE_LEGAL_FILE when the same file is already stored (error.meta has legalSourceId, code and title of that source), or LEGAL_REFERENCE_DIFFERS when articles differ from referenceFile and acknowledgeDifferences was not sent (error.meta.differences)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: File storage (Cloudinary) is not configured; nothing was saved
           content:
             application/json:
               schema:
@@ -4364,6 +5371,35 @@ paths:
                   minimum: 1
                   maximum: 5000
                   example: 324
+                code:
+                  type: string
+                  maxLength: 60
+                  description: Optional; the code the source would get, so checks.anchors can check the wording the legal rules cite
+                documentNumber:
+                  type: string
+                  maxLength: 60
+                  description: Optional; when sent, checks.documentNumber compares it with the number in the file
+                textKind:
+                  type: string
+                  enum: [original, consolidated]
+                gazette:
+                  type: string
+                  maxLength: 200
+                origin:
+                  description: Optional; when sent, checks.origin says whether it is complete enough to create the source
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                referenceFile:
+                  type: string
+                  format: binary
+                  description: The same text taken from another source (pdf, docx, doc, or txt). Required when origin.publisher is other. Every article of file is compared with it word by word (punctuation, spacing and case ignored).
+                referenceOrigin:
+                  description: Where referenceFile was taken from; required with referenceFile (publisher + url). Nested form fields or one JSON field.
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                acknowledgeDifferences:
+                  type: boolean
+                  description: Send true after reviewing the differences reported by a 409 LEGAL_REFERENCE_DIFFERS (or by the preview) to keep this text anyway; the differing articles are then listed in coverage.warnings.
                 file:
                   type: string
                   format: binary
@@ -4376,7 +5412,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSourcePreview'
         '400':
-          description: Missing, unsupported or unreadable file, or no usable text
+          description: Missing, unsupported or unreadable file, no usable text, or code LEGAL_OCR_LIMIT when more than 40 PDF pages would need OCR
           content:
             application/json:
               schema:
@@ -4423,7 +5459,8 @@ paths:
       tags: [LegalKB]
       summary: Update a legal source's metadata or legal status without re-uploading it
       description: |
-        Manager only. JSON body; send at least one field. null clears an optional field (documentNumber, issuingBody, issuedDate, effectiveDate, expiryDate, expectedArticleCount). code cannot be changed because contract profiles and legal rules reference it.
+        Manager only. JSON body; send at least one field. null clears an optional field (documentNumber, issuingBody, signer, legalField, issuingPlace, gazette, origin, textKind, consolidatedThrough, issuedDate, effectiveDate, expiryDate, expectedArticleCount). origin is replaced as a whole. code cannot be changed because contract profiles and legal rules reference it.
+        consolidatedThrough is only allowed while textKind (sent or stored) is consolidated.
         Setting status to repealed removes the source from legal search and from citation checks of new reviews right away; earlier reviews keep the excerpts they cited. A new citationLabel is used for new citations, but the stored embeddings keep the old label until the source is uploaded again.
         expectedArticleCount recomputes the coverage report.
       requestBody:
@@ -4457,6 +5494,37 @@ paths:
                   type: string
                   nullable: true
                   maxLength: 200
+                signer:
+                  type: string
+                  nullable: true
+                  maxLength: 100
+                legalField:
+                  type: string
+                  nullable: true
+                  maxLength: 100
+                issuingPlace:
+                  type: string
+                  nullable: true
+                  maxLength: 100
+                gazette:
+                  type: string
+                  nullable: true
+                  maxLength: 200
+                origin:
+                  nullable: true
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                textKind:
+                  type: string
+                  nullable: true
+                  enum: [original, consolidated]
+                consolidatedThrough:
+                  type: array
+                  nullable: true
+                  maxItems: 30
+                  items:
+                    type: string
+                    maxLength: 60
                 issuedDate:
                   type: string
                   format: date
@@ -4486,7 +5554,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Validation failed (unknown field, empty body, or expiryDate not after effectiveDate)
+          description: Validation failed (unknown field, empty body, expiryDate not after effectiveDate, or consolidatedThrough without textKind consolidated)
           content:
             application/json:
               schema:
@@ -4505,8 +5573,8 @@ paths:
                 $ref: '#/components/schemas/Error'
     delete:
       tags: [LegalKB]
-      summary: Delete a legal source and all of its chunks (also stops a running ingestion)
-      description: Manager only. Risk findings of earlier reviews keep the excerpts they cited (stored with the citation) and show them with inKnowledgeBase=false.
+      summary: Delete a legal source, all of its chunks and its stored original and reference files (also stops a running ingestion)
+      description: Manager only. Risk findings of earlier reviews keep the excerpts they cited (stored with the citation) and show them with inKnowledgeBase=false. Removing the stored files is best effort; a storage error is logged and does not fail the request.
       responses:
         '204':
           description: Deleted
@@ -4536,6 +5604,7 @@ paths:
       summary: Add another file to an existing legal source (e.g. the rest of a law uploaded in pieces)
       description: |
         Manager only. Rate-limited. The file is parsed like a new upload. Articles the source already has are skipped and listed in parts[].skippedArticles, so uploading the full text over a partial source only adds what was missing. New chunks are appended after the existing ones, coverage is recomputed over the whole source, and only the new chunks are embedded in the background. If an ingestion is already running it is replaced by one that covers both.
+        The original file is kept in private storage with its SHA-256, like on create.
       requestBody:
         required: true
         content:
@@ -4549,6 +5618,17 @@ paths:
                   minimum: 1
                   maximum: 5000
                   description: Optional; replaces the stored expected article count
+                referenceFile:
+                  type: string
+                  format: binary
+                  description: The same text taken from another source (pdf, docx, doc, or txt). Required when origin.publisher is other. Every article of file is compared with it word by word (punctuation, spacing and case ignored).
+                referenceOrigin:
+                  description: Where referenceFile was taken from; required with referenceFile (publisher + url). Nested form fields or one JSON field.
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                acknowledgeDifferences:
+                  type: boolean
+                  description: Send true after reviewing the differences reported by a 409 LEGAL_REFERENCE_DIFFERS (or by the preview) to keep this text anyway; the differing articles are then listed in coverage.warnings.
                 file:
                   type: string
                   format: binary
@@ -4561,7 +5641,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/LegalSource'
         '400':
-          description: Missing, unsupported or unreadable file, no usable text, or LLM not configured
+          description: Missing, unsupported or unreadable file, no usable text, LLM not configured, LEGAL_DOCUMENT_NUMBER_MISMATCH when the file is numbered differently from the source (original text), LEGAL_ANCHOR_MISMATCH when a new article lacks the wording a legal rule cites, or LEGAL_REFERENCE_REQUIRED / LEGAL_REFERENCE_SAME_FILE (a source taken from an unofficial site needs a reference for each new part)
           content:
             application/json:
               schema:
@@ -4579,13 +5659,552 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
         '409':
-          description: Every article in the file is already in the source, or another part is being uploaded at the same time
+          description: Every article in the file is already in the source, another part is being uploaded at the same time, DUPLICATE_LEGAL_FILE when the same file is already stored in a legal source (error.meta names it), or LEGAL_REFERENCE_DIFFERS
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: File storage (Cloudinary) is not configured; nothing was saved
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
         '503':
           description: The background queue (Redis) is unavailable; the part was saved and ingestion is marked failed, so call resume later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/history:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    get:
+      tags: [LegalKB]
+      summary: List who changed a legal source, when and what (newest first)
+      description: |
+        Manager only. Every create, append, metadata or status change, ingestion resume, reparse, content replacement and delete is recorded with the user and their role. A metadata update that changes nothing is not recorded. Reparse and content replacement events are written in the same transaction as the change. The history of a deleted source can still be read with its id.
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - in: query
+          name: action
+          schema:
+            type: string
+            enum: [created, part_appended, updated, status_changed, ingestion_resumed, reparsed, content_replaced, deleted]
+          description: e.g. status_changed to see only the legal status history
+      responses:
+        '200':
+          description: Events with page, limit, total and totalPages in meta
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LegalSourceEvent'
+                  meta:
+                    type: object
+                    properties:
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      total:
+                        type: integer
+                      totalPages:
+                        type: integer
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: No legal source and no history with this id
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/reparse/preview:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [LegalKB]
+      summary: Preview what reading the stored original files again would change
+      description: |
+        Manager only. Downloads every stored part file, checks it against its recorded SHA-256, and parses the parts in order with the current parser (later parts skip articles an earlier part already has, like an upload of more parts). Saves nothing and calls no AI model.
+        Use it after a parser improvement, e.g. to drop PDF headers or footnotes that older uploads kept.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  description: Optional; defaults to the stored expected article count
+      responses:
+        '200':
+          description: Preview; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalContentPreview'
+        '400':
+          description: A stored file can no longer be read, no usable text, or LEGAL_OCR_LIMIT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Code LEGAL_FILE_NOT_STORED when a part was uploaded before original files were kept (error.meta.partIndexes; replace the content instead), or LEGAL_FILE_CHANGED when a stored file no longer matches its SHA-256
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/content/preview:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [LegalKB]
+      summary: Preview replacing the whole text of a legal source with one new file
+      description: |
+        Manager only. Parses the file like an upload and compares it with the stored chunks. Saves nothing and calls no AI model.
+        Use it to swap a text taken from an unofficial site for the official one, to give a source uploaded before original files were kept its file, or to load a new consolidated text. After the replacement the source has this one file as its only part; more parts can still be added.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                  description: Optional; defaults to the stored expected article count
+                origin:
+                  description: Optional; the origin the source would have after the replacement (the stored one when not sent), reported in checks.origin
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                textKind:
+                  type: string
+                  enum: [original, consolidated]
+                consolidatedThrough:
+                  type: array
+                  maxItems: 30
+                  items:
+                    type: string
+                    maxLength: 60
+                referenceFile:
+                  type: string
+                  format: binary
+                  description: The same text taken from another source (pdf, docx, doc, or txt). Required when origin.publisher is other. Every article of file is compared with it word by word (punctuation, spacing and case ignored).
+                referenceOrigin:
+                  description: Where referenceFile was taken from; required with referenceFile (publisher + url). Nested form fields or one JSON field.
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                acknowledgeDifferences:
+                  type: boolean
+                  description: Send true after reviewing the differences reported by a 409 LEGAL_REFERENCE_DIFFERS (or by the preview) to keep this text anyway; the differing articles are then listed in coverage.warnings.
+                file:
+                  type: string
+                  format: binary
+                  description: pdf, docx, doc, or txt
+      responses:
+        '200':
+          description: Preview; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalContentPreview'
+        '400':
+          description: Missing, unsupported or unreadable file, no usable text, or LEGAL_OCR_LIMIT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Code SAME_LEGAL_FILE when the file is the stored file of this single-part source (use reparse), or DUPLICATE_LEGAL_FILE when another legal source already stores it
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/reparse:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    post:
+      tags: [LegalKB]
+      summary: Read the stored original files again with the current parser and apply the result
+      description: |
+        Manager only. Rate-limited. Same reading and matching as POST /kb/legal-sources/{id}/reparse/preview, then applied in one transaction: unchanged chunks keep their ID and embedding, changed chunks keep their ID and lose their embedding, new chunks are added and removed chunks are deleted. Parts keep their files; their chunk counts, cleanup and extraction are refreshed.
+        Chunks that need an embedding are queued for the background worker (ingestion.status queued). Citations of earlier reviews keep the excerpt they stored, so their wording does not change.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+      responses:
+        '202':
+          description: Applied; changed and new chunks are embedded in the background
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalContentApplied'
+        '400':
+          description: LLM not configured, a stored file can no longer be read, no usable text, or LEGAL_OCR_LIMIT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: LEGAL_FILE_NOT_STORED, LEGAL_FILE_CHANGED, or LEGAL_SOURCE_CHANGED when the source was changed by another request meanwhile (nothing was applied)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background queue (Redis) is unavailable; the change was applied and ingestion is marked failed, so call resume later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/content:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+    put:
+      tags: [LegalKB]
+      summary: Replace the whole text of a legal source with one new file and apply the result
+      description: |
+        Manager only. Rate-limited. Same reading and matching as POST /kb/legal-sources/{id}/content/preview, then applied in one transaction like a reparse. The new file becomes the only part; the old parts move to previousParts with replacedAt and keep their files.
+        Send origin (and textKind / consolidatedThrough) when the new file comes from a different place; fields that are not sent keep their stored value. consolidatedThrough is only allowed while textKind (sent or stored) is consolidated.
+        If the transaction fails, the uploaded file is removed again.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                referenceFile:
+                  type: string
+                  format: binary
+                  description: The same text taken from another source (pdf, docx, doc, or txt). Required when origin.publisher is other. Every article of file is compared with it word by word (punctuation, spacing and case ignored).
+                referenceOrigin:
+                  description: Where referenceFile was taken from; required with referenceFile (publisher + url). Nested form fields or one JSON field.
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                acknowledgeDifferences:
+                  type: boolean
+                  description: Send true after reviewing the differences reported by a 409 LEGAL_REFERENCE_DIFFERS (or by the preview) to keep this text anyway; the differing articles are then listed in coverage.warnings.
+                file:
+                  type: string
+                  format: binary
+                  description: pdf, docx, doc, or txt
+                expectedArticleCount:
+                  type: integer
+                  minimum: 1
+                  maximum: 5000
+                origin:
+                  description: Nested form fields (origin[publisher], origin[url], origin[retrievedAt]) or one field holding a JSON object
+                  allOf:
+                    - $ref: '#/components/schemas/LegalSourceOrigin'
+                textKind:
+                  type: string
+                  enum: [original, consolidated]
+                consolidatedThrough:
+                  type: array
+                  maxItems: 30
+                  items:
+                    type: string
+                    maxLength: 60
+      responses:
+        '202':
+          description: Applied; changed and new chunks are embedded in the background
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LegalContentApplied'
+        '400':
+          description: Validation error, LLM not configured, unreadable file, no usable text, LEGAL_OCR_LIMIT, LEGAL_ORIGIN_REQUIRED (no origin sent and none stored), LEGAL_DOCUMENT_NUMBER_MISMATCH, LEGAL_ANCHOR_MISMATCH, LEGAL_REFERENCE_REQUIRED, or LEGAL_REFERENCE_SAME_FILE
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: SAME_LEGAL_FILE, DUPLICATE_LEGAL_FILE, LEGAL_REFERENCE_DIFFERS (acknowledgeDifferences not sent), or LEGAL_SOURCE_CHANGED (nothing was applied)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: File storage (Cloudinary) is not configured; nothing was saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: The background queue (Redis) is unavailable; the change was applied and ingestion is marked failed, so call resume later
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/previous-parts/{partIndex}/file:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: partIndex
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 999
+        description: Position in previousParts[]
+    get:
+      tags: [LegalKB]
+      summary: Get a short-lived download link to the file of a replaced part
+      description: Manager only. Same response as GET /kb/legal-sources/{id}/parts/{partIndex}/file. The link expires after 5 minutes.
+      responses:
+        '200':
+          description: Signed link (url, expiresAt, fileName, mimeType, fileHash)
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Source or part not found, or LEGAL_FILE_NOT_STORED when the replaced part had no stored file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/parts/{partIndex}/reference-file:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: partIndex
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 999
+    get:
+      tags: [LegalKB]
+      summary: Get a short-lived download link to the reference file a part was compared with
+      description: Manager only. Same response as GET /kb/legal-sources/{id}/parts/{partIndex}/file. The link expires after 5 minutes. GET /kb/legal-sources/{id}/previous-parts/{partIndex}/reference-file does the same for a replaced part.
+      responses:
+        '200':
+          description: Signed link (url, expiresAt, fileName, mimeType, fileHash)
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Source or part not found, or LEGAL_REFERENCE_FILE_NOT_STORED when the part was not uploaded with a reference file
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/previous-parts/{partIndex}/reference-file:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: partIndex
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 999
+    get:
+      tags: [LegalKB]
+      summary: Get a short-lived download link to the reference file of a replaced part
+      description: Manager only. Same as GET /kb/legal-sources/{id}/parts/{partIndex}/reference-file for previousParts.
+      responses:
+        '200':
+          description: Signed link (url, expiresAt, fileName, mimeType, fileHash)
+        '404':
+          description: Source or part not found, or LEGAL_REFERENCE_FILE_NOT_STORED
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /kb/legal-sources/{id}/parts/{partIndex}/file:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+          pattern: '^[a-f\d]{24}$'
+      - in: path
+        name: partIndex
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 999
+        description: Position of the part in parts[] (0 = the file uploaded on create)
+    get:
+      tags: [LegalKB]
+      summary: Get a short-lived download link to the original file of one part
+      description: Manager only. The link expires after 5 minutes.
+      responses:
+        '200':
+          description: Signed link
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                      expiresAt:
+                        type: string
+                        format: date-time
+                      fileName:
+                        type: string
+                      mimeType:
+                        type: string
+                      fileHash:
+                        type: string
+        '403':
+          description: Requires manager role
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Source or part not found, or code LEGAL_FILE_NOT_STORED when the part was uploaded before original files were kept
           content:
             application/json:
               schema:
@@ -4601,8 +6220,10 @@ paths:
           pattern: '^[a-f\d]{24}$'
     post:
       tags: [LegalKB]
-      summary: Resume embedding the chunks that are still missing
-      description: Manager only. Use it after ingestion.status became failed, or to resume a paused source before its resumeAt. Only chunks without an embedding are sent to Gemini.
+      summary: Resume embedding the chunks that are still missing or were embedded with another model
+      description: |
+        Manager only. Use it after ingestion.status became failed, to resume a paused source before its resumeAt, or after GEMINI_EMBEDDING_MODEL changed (outdatedEmbeddingCount > 0). Only chunks without an embedding of the current model are sent to Gemini.
+        Every chunk records the model it was embedded with. On startup, embeddings stored before the model was recorded are labelled with the current model, and sources with outdated embeddings are logged.
       responses:
         '202':
           description: Queued

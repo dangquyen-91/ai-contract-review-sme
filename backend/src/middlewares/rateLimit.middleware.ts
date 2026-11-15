@@ -44,6 +44,10 @@ export const apiLimiter = rateLimit({
   keyGenerator: userOrIpKey,
   standardHeaders: true,
   legacyHeaders: false,
+  message: {
+    success: false,
+    error: { message: 'Too many requests. Please try again in a few minutes.', code: 'RATE_LIMITED' },
+  },
 });
 
 // Stricter limiter reserved for endpoints that call an LLM API (cost control),

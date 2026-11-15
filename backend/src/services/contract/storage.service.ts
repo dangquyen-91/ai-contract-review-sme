@@ -57,12 +57,20 @@ export async function uploadContractFile(
   orgId: string,
   originalName: string,
 ): Promise<StoredFile> {
+  return uploadPrivateFile(buffer, `contracts/${orgId}`, originalName);
+}
+
+export async function uploadPrivateFile(
+  buffer: Buffer,
+  folder: string,
+  originalName: string,
+): Promise<StoredFile> {
   assertStorageConfigured();
 
   const result = await new Promise<UploadApiResponse>((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
       {
-        folder: `contracts/${orgId}`,
+        folder,
         resource_type: 'raw',
         type: PRIVATE_DELIVERY_TYPE,
         filename_override: originalName,

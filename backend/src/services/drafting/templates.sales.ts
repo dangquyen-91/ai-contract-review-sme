@@ -1,5 +1,5 @@
 import type { ContractTemplate, TemplateField } from './templates';
-import { SALES_REFERENCE_SECTIONS } from './sales-reference-content';
+import { SALES_CURRENT_SECTIONS } from './sales-current-content';
 
 const field = (
   key: string,
@@ -62,7 +62,7 @@ export function buildSalesTemplate(base: ContractTemplate): ContractTemplate {
     field('deliveryDays', 'Số ngày giao hàng sau tạm ứng'),
     field('deliveryPlace', 'Địa điểm giao hàng'),
     field('transportCostParty', 'Bên chịu phí vận chuyển (A hoặc B)'),
-    field('storageFee', 'Chi phí lưu kho tối thiểu (VND/ngày)', 'number'),
+    field('storageFee', 'Chi phí lưu kho thỏa thuận (VND/ngày)', 'number'),
     field('complaintDays', 'Số ngày khiếu nại khuyết tật ẩn'),
     field('replacementDays', 'Số ngày làm việc khắc phục / thay thế'),
     field('warrantyMonths', 'Số tháng bảo hành'),
@@ -70,6 +70,15 @@ export function buildSalesTemplate(base: ContractTemplate): ContractTemplate {
     field('packaging', 'Quy cách đóng gói, bao bì, ký mã hiệu', 'textarea'),
     field('deliveryBatchOne', 'Tiến độ giao hàng đợt 1', 'textarea', false),
     field('deliveryBatchTwo', 'Tiến độ giao hàng đợt 2', 'textarea', false),
+    {
+      ...field('penaltyPercent', 'Mức phạt vi phạm (%; 0 nếu không thỏa thuận)', 'number'),
+      defaultValue: '0',
+    },
+    {
+      ...field('latePaymentTerms', 'Thỏa thuận lãi chậm trả', 'textarea'),
+      defaultValue:
+        'Nếu không có thỏa thuận lãi hợp pháp khác, xác định theo Điều 306 Luật Thương mại khi thuộc phạm vi áp dụng hoặc pháp luật dân sự tương ứng.',
+    },
   ];
   const tokens: Record<string, string> = {
     companyName: 'TenCuaBan',
@@ -123,11 +132,13 @@ export function buildSalesTemplate(base: ContractTemplate): ContractTemplate {
     packaging: 'QuyCachDongGoi',
     deliveryBatchOne: 'TienDoDot1',
     deliveryBatchTwo: 'TienDoDot2',
+    penaltyPercent: 'MucPhatViPham',
+    latePaymentTerms: 'LaiChamTra',
   };
   for (const item of fields) item.token = tokens[item.key];
   return {
     ...base,
-    version: 3,
+    version: 4,
     fields,
     formGroups: [
       {
@@ -147,7 +158,7 @@ export function buildSalesTemplate(base: ContractTemplate): ContractTemplate {
     ],
     legalBasis:
       'Luật Thương mại số 36/2005/QH11; Bộ luật Dân sự số 91/2015/QH13; Luật Chất lượng sản phẩm, hàng hóa số 05/2007/QH12 (đã được sửa đổi, bổ sung, bao gồm Luật số 78/2025/QH15); Luật Bảo vệ quyền lợi người tiêu dùng số 19/2023/QH15 khi bên mua là người tiêu dùng.',
-    sections: SALES_REFERENCE_SECTIONS,
+    sections: SALES_CURRENT_SECTIONS,
     reviewNotes: [
       'Đối chiếu số lượng, đơn giá, thuế, tiền tạm ứng và tổng thanh toán với Phụ lục 01. Thuế suất do các bên xác định theo hàng hóa và thời điểm giao dịch.',
       'Mức lãi chậm trả, phạt vi phạm, chuyển rủi ro và thời hạn khiếu nại là nội dung thỏa thuận của mẫu; cần kiểm tra phạm vi áp dụng pháp luật và quyền của người tiêu dùng trước khi ký.',
