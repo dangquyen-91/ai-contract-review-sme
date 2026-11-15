@@ -6,12 +6,15 @@ import { toast } from "sonner";
 import { AnalysisFocusDialog } from "@/components/review/upload/analysis-focus-dialog";
 import { Button } from "@/components/ui/button";
 import { reviewableTypeLabels } from "@/config/contract-display";
-import { useConfirmProfileMutation, useContractClassification, useContractProfiles, useDeleteContract, useRetryClassificationMutation } from "@/hooks/contracts/use-contracts";
+import { useAttachVersionMutation, useConfirmProfileMutation, useContractClassification, useContractProfiles, useDeleteContract, useRetryClassificationMutation, useVersionMatch } from "@/hooks/contracts/use-contracts";
 import { confirmationView, detectedNamesFor, extractionFailureCopy, LOW_CONFIDENCE, otherPartyNames, suggestedProfile } from "@/lib/contracts/contract-classification";
 import { classificationOutcomeCopy, serverCodeMessage } from "@/lib/review/review-error-codes";
 import { isApiClientError } from "@/lib/api/client";
 import type { ClassificationOutcome, ReviewBillingConfirmation } from "@/types/contracts";
 import { ContractReviewPayment } from "./contract-review-payment";
+import { defaultIdentity, UploadIdentityChoice, type UploadIdentity } from "./upload-identity-choice";
+
+export type ReviewTarget = { id: string; title: string };
 
 type ContractConfirmationDialogProps = {
   contractId: string;
@@ -19,7 +22,8 @@ type ContractConfirmationDialogProps = {
   isReviewing: boolean;
   onDismiss: () => void;
   onDeleted: () => void;
-  onReview: (focus: string, billing?: ReviewBillingConfirmation) => void;
+  onReview: (focus: string, billing?: ReviewBillingConfirmation, target?: ReviewTarget) => void;
+  onAttached?: (target: ReviewTarget, versionNumber: number) => void;
   orgId?: string;
   role?: string;
 };
@@ -50,7 +54,7 @@ function Notice({ title, children, actions }: { title: string; children: ReactNo
   </div>;
 }
 
-export function ContractConfirmationDialog({ contractId, contractTitle, isReviewing, onDismiss, onDeleted, onReview, orgId, role }: ContractConfirmationDialogProps) {
+export function ContractConfirmationDialog({ contractId, contractTitle, isReviewing, onDismiss, onDeleted, onReview, onAttached, orgId, role }: ContractConfirmationDialogProps) {
   const personal = role === "user";
   const typeLabels = reviewableTypeLabels(personal);
   const allowedTypes = Object.keys(typeLabels);
@@ -61,7 +65,11 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
   const remove = useDeleteContract();
   const [editing, setEditing] = useState<boolean | null>(null);
   const [choice, setChoice] = useState<Choice | null>(null);
-  const busy = isReviewing || confirm.isPending || remove.isPending;
+  const [identity, setIdentity] = useState<UploadIdentity | null>(null);
+  const attach = useAttachVersionMutation();
+  const earlyView = contract ? confirmationView(contract) : null;
+  const matchQuery = useVersionMatch(contractId, Boolean(earlyView) && earlyView !== "reading" && earlyView !== "classifying" && earlyView !== "extraction_failed");
+  const busy = isReviewing || confirm.isPending || remove.isPending || attach.isPending;
 
   if (!contract) {
     return <AnalysisFocusDialog contractTitle={contractTitle} isReviewing={false} onDismiss={onDismiss} onReview={() => undefined} hideFocus
@@ -70,6 +78,11 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
   }
 
   const view = confirmationView(contract);
+  const matchEligible = Boolean(matchQuery.data?.ready && matchQuery.data.eligible);
+  const match = matchEligible ? matchQuery.data?.match ?? null : null;
+  const currentIdentity = identity ?? defaultIdentity(match);
+  const asVersion = matchEligible && currentIdentity.mode === "version";
+  const versionTarget = currentIdentity.mode === "version" ? currentIdentity.target : null;
   const classification = contract.classification;
   const suggestion = suggestedProfile(contract, allowedTypes);
   const selected: Choice = choice ?? suggestion;
@@ -77,10 +90,11 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
   const partyLocked = personal && selected.type === "labor";
   const selectedParty = partyLocked ? "employee" : selected.ourParty;
   const lowConfidence = (classification?.confidence ?? 1) < LOW_CONFIDENCE;
-  const autoEdit = view === "classify_failed" || (view === "ready" && !contract.type && (lowConfidence || !suggestion.type));
+  const partyRequired = Boolean(profile?.parties.length) && !partyLocked;
+  const missingParty = partyRequired && !selectedParty;
+  const autoEdit = view === "classify_failed" || (view === "ready" && (missingParty || !selected.type || (!contract.type && lowConfidence)));
   const showEdit = editing ?? autoEdit;
   const canChoose = view === "ready" || view === "classify_failed" || (view === "blocked" && showEdit);
-  const partyRequired = Boolean(profile?.parties.length) && !partyLocked;
   const canStart = canChoose && Boolean(selected.type) && (!partyRequired || Boolean(selectedParty));
   const changed = !contract.type || selected.type !== contract.type || selectedParty !== contract.ourParty;
 
@@ -112,7 +126,30 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
     }
   }
 
+  async function attachToTarget() {
+    if (!versionTarget) return null;
+    try {
+      const updated = await attach.mutateAsync({ targetContractId: versionTarget.id, sourceContractId: contractId });
+      return { target: { id: versionTarget.id, title: updated.title ?? versionTarget.title }, versionNumber: updated.currentVersion?.versionNumber ?? versionTarget.versionNumber + 1 };
+    } catch (error) {
+      toast.error("Chưa lưu được thành phiên bản mới", { description: errorMessage(error) });
+      return null;
+    }
+  }
+
+  async function saveAsVersion() {
+    const attached = await attachToTarget();
+    if (attached) onAttached?.(attached.target, attached.versionNumber);
+  }
+
   async function confirmAndReview(focus: string) {
+    if (asVersion) {
+      const attached = await attachToTarget();
+      if (!attached) return;
+      const billing = contract?.reviewBilling;
+      onReview(focus, billing?.ready && billing.units !== null ? { versionId: billing.versionId, units: billing.units } : undefined, attached.target);
+      return;
+    }
     if (!selected.type) return;
     if (changed) {
       try {
@@ -130,7 +167,9 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
   const partyName = (code?: string) => profile?.parties.find((party) => party.code === code)?.name;
   const withNames = (code: string) => {
     const names = detectedNamesFor(contract, code);
-    return names.length ? `${partyName(code)} — ${names.join(", ")}` : partyName(code);
+    const label = partyName(code);
+    if (!names.length) return label;
+    return label ? `${label} — ${names.join(", ")}` : names.join(", ");
   };
 
   let status: ReactNode = null;
@@ -165,6 +204,7 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
     <div className="flex flex-wrap gap-2">{allowedTypes.map((code) => <Chip key={code} selected={selected.type === code} disabled={busy} onClick={() => pickType(code)}>{typeLabels[code]}</Chip>)}</div>
     {profile && !partyLocked && profile.parties.length > 0 && <>
       <p className="mb-2 mt-4 text-ui font-semibold text-card-foreground">Bạn là bên nào?</p>
+      {missingParty && <p className="mb-2 mt-0 text-ui-meta leading-5 text-muted-foreground">Chọn vai trò của bạn trong hợp đồng để bắt đầu rà soát.</p>}
       <div className="flex flex-wrap gap-2">{profile.parties.map((party) => <Chip key={party.code} selected={selectedParty === party.code} disabled={busy} onClick={() => setChoice({ type: selected.type, ourParty: party.code })}>{withNames(party.code)}</Chip>)}</div>
     </>}
     {partyLocked && <p className="mb-0 mt-3 text-ui-meta text-muted-foreground">Tài khoản cá nhân rà soát hợp đồng lao động từ phía người lao động.</p>}
@@ -172,17 +212,27 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
   </div>;
 
   const waiting = view === "reading" || view === "classifying";
+  const identityBlock = matchEligible && !waiting && view !== "extraction_failed"
+    ? <UploadIdentityChoice contractId={contractId} match={match} value={currentIdentity} disabled={busy} onChange={setIdentity} />
+    : null;
+  const shownStatus = asVersion && (view === "blocked" || view === "classify_failed") ? null : status;
   return <AnalysisFocusDialog contractTitle={contractTitle} orgId={orgId} role={role}
-    paymentOption={personal && orgId && canStart && contract.reviewBilling?.ready ? <ContractReviewPayment key={contract.reviewBilling.versionId} contractId={contractId} accountId={orgId} disabled={busy} onPrepare={async () => {
+    paymentOption={!asVersion && personal && orgId && canStart && contract.reviewBilling?.ready ? <ContractReviewPayment key={contract.reviewBilling.versionId} contractId={contractId} accountId={orgId} disabled={busy} onPrepare={async () => {
       if (changed) await confirm.mutateAsync({ contractId, type: selected.type!, ourParty: selectedParty });
     }} /> : undefined}
     billing={contract.reviewBilling}
+    contractType={asVersion ? undefined : selected.type}
     isReviewing={busy}
-    title={waiting ? "Đang chuẩn bị hợp đồng" : "Xác nhận hợp đồng"}
-    description={`Đã tải lên “${contractTitle}”. Kiểm tra loại hợp đồng và vai trò của bạn trước khi rà soát.`}
-    confirmation={<>{status}{summary}{editor}</>}
-    hideFocus={waiting || view === "extraction_failed" || (view === "blocked" && !showEdit)}
-    submitDisabled={!canStart}
+    title={contract.status === "reviewed" ? "Rà soát lại hợp đồng" : waiting ? "Đang chuẩn bị hợp đồng" : "Xác nhận hợp đồng"}
+    description={asVersion
+      ? `Đã tải lên “${contractTitle}”. Kiểm tra lại trước khi lưu thành phiên bản mới.`
+      : contract.status === "reviewed"
+        ? `AI sẽ rà soát lại “${contractTitle}” trên phiên bản hiện tại. Kết quả cũ vẫn được giữ trong lịch sử phiên bản.`
+        : `Đã tải lên “${contractTitle}”. Kiểm tra loại hợp đồng và vai trò của bạn trước khi rà soát.`}
+    confirmation={<>{shownStatus}{identityBlock}{!asVersion && summary}{!asVersion && editor}</>}
+    hideFocus={waiting || view === "extraction_failed" || (!asVersion && view === "blocked" && !showEdit)}
+    submitDisabled={asVersion ? false : !canStart}
+    secondaryAction={asVersion ? { label: "Lưu phiên bản, rà soát sau", onClick: () => { void saveAsVersion(); } } : undefined}
     onDismiss={onDismiss}
     onReview={confirmAndReview} />;
 }

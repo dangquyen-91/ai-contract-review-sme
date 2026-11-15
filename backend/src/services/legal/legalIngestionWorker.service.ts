@@ -5,7 +5,7 @@ import { logger } from '../../config/logger';
 import { LegalSourceModel } from '../../models/legalSource.model';
 import { EMBEDDING_DIMENSIONS, LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model';
 import { embedTexts, isLlmConfigured, rateLimitInfoOf } from '../ai/llm.service';
-import { embeddingInputOf } from './legalKnowledgeIngest.service';
+import { CURRENT_EMBEDDING, embeddingInputOf, NEEDS_EMBEDDING } from './legalKnowledgeIngest.service';
 
 const LEGAL_INGESTION_QUEUE = 'legal-ingestion';
 const MAX_ATTEMPTS = 5;
@@ -98,7 +98,7 @@ const ownedBy = (job: Job<LegalIngestionJobData>) => ({
 async function countChunks(legalSourceId: string) {
   const [total, embedded] = await Promise.all([
     LegalKnowledgeChunkModel.countDocuments({ legalSourceId }),
-    LegalKnowledgeChunkModel.countDocuments({ legalSourceId, embedding: { $exists: true } }),
+    LegalKnowledgeChunkModel.countDocuments({ legalSourceId, embedding: { $exists: true }, ...CURRENT_EMBEDDING }),
   ]);
   return { total, embedded };
 }
@@ -130,7 +130,7 @@ async function runIngestion(job: Job<LegalIngestionJobData>): Promise<void> {
     const source = await LegalSourceModel.findOne(ownedBy(job)).select('citationLabel');
     if (!source) return;
 
-    const pending = await LegalKnowledgeChunkModel.find({ legalSourceId, embedding: { $exists: false } })
+    const pending = await LegalKnowledgeChunkModel.find({ legalSourceId, ...NEEDS_EMBEDDING })
       .sort({ order: 1 })
       .limit(EMBED_BATCH_SIZE)
       .select('chunkText hierarchy');
@@ -168,8 +168,8 @@ async function runIngestion(job: Job<LegalIngestionJobData>): Promise<void> {
     await LegalKnowledgeChunkModel.bulkWrite(
       pending.map((chunk, i) => ({
         updateOne: {
-          filter: { _id: chunk._id, embedding: { $exists: false } },
-          update: { $set: { embedding: vectors[i] } },
+          filter: { _id: chunk._id, chunkText: chunk.chunkText, ...NEEDS_EMBEDDING },
+          update: { $set: { embedding: vectors[i], ...CURRENT_EMBEDDING } },
         },
       })),
     );

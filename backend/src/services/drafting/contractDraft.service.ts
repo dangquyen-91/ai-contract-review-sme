@@ -19,12 +19,14 @@ import { generateDraftContent } from './generation.service';
 import { createDraftDocx } from './docx.service';
 import { deleteContractFile, uploadContractFile } from '../contract/storage.service';
 import { countDocxPages } from '../contract/documentPageCount.service';
+import { fileHashOf } from '../contract/contractVersion.service';
 import { reserveUsage, finishUsage } from '../billing/usage.service';
 import { draftingError } from './draftingErrors';
 import { buildStudioTemplate, legacyStudioDocument } from './studioTemplate';
 import { normalizeStudioDocument, studioInput, studioText } from './studioDocument';
 import { createStudioDocx } from './studioDocx.service';
 import { validateStudioLaws } from './studioLegalSources.service';
+import { findMembership } from '../identity/account.service';
 
 type Draft = InferSchemaType<typeof ContractDraftModel.schema>;
 const lockLifetime = 120_000;
@@ -33,13 +35,14 @@ const unlocked = () => ({ $or: [{ generationStartedAt: null }, { generationStart
 
 export async function requireDraftAccess(actor: AccessTokenPayload) {
   if (!['owner', 'staff', 'user'].includes(actor.role) || (!actor.orgId && actor.role !== 'user')) throw AppError.forbidden('Bạn không có quyền soạn hợp đồng.');
-  const personal = !actor.orgId && actor.role === 'user';
-  const member = await UserModel.findOne({ _id: actor.sub, ...(!personal ? { orgId: actor.orgId ?? null } : {}), isActive: true }).populate('roleId');
-  const memberRole = (member?.roleId as unknown as { code?: string })?.code;
-  if (!member || (personal ? !['user', 'owner', 'staff'].includes(memberRole ?? '') : memberRole !== actor.role)) throw AppError.forbidden('Quyền truy cập tổ chức đã thay đổi.');
+  const [member, membership] = await Promise.all([
+    UserModel.findOne({ _id: actor.sub, isActive: true, platformRole: null }),
+    actor.orgId ? findMembership(actor.sub, actor.orgId) : null,
+  ]);
+  if (!member || (actor.orgId && membership?.role !== actor.role)) throw AppError.forbidden('Quyền truy cập tổ chức đã thay đổi.');
   if (!actor.orgId) return { name: member.name, taxCode: '', address: '' };
   const organization = await OrganizationModel.findById(actor.orgId);
-  if (!organization || (actor.role === 'user' ? !organization.isPersonal : organization.isPersonal)) throw AppError.forbidden('Không gian làm việc không phù hợp với tài khoản.');
+  if (!organization) throw AppError.forbidden('Không gian làm việc không phù hợp với tài khoản.');
   return organization;
 }
 export function scope(actor: AccessTokenPayload, id?: string): FilterQuery<Draft> {
@@ -257,9 +260,9 @@ export async function publishDraft(actor: AccessTokenPayload, id: string, revisi
   try {
     await requireDraftAccess(actor);
     const contractId = await mongoose.connection.transaction(async session => {
-      const [contract] = await ContractModel.create([{ orgId: actor.orgId, uploadedBy: actor.sub, title: draft.title, type: draft.templateCode, ourParty: draft.ourParty,
+      const [contract] = await ContractModel.create([{ ownerType: 'organization', orgId: actor.orgId, uploadedBy: actor.sub, title: draft.title, type: draft.templateCode, ourParty: draft.ourParty,
         classification: { status: 'completed', outcome: 'supported', type: draft.templateCode, ourParty: draft.ourParty, source: 'user', confirmedAt: new Date() } }], { session });
-      await ContractVersionModel.create([{ contractId: contract._id, versionNumber: 1, createdBy: actor.sub, extractedText: draft.content, extractionStatus: 'completed', extractionQuality: { method: 'docx', pageCount, ocrPageCount: 0, lowConfidence: false }, fileKey: stored.key, fileResourceType: stored.resourceType, fileDeliveryType: stored.deliveryType, fileFormat: stored.format, fileName: filename, mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }], { session });
+      await ContractVersionModel.create([{ contractId: contract._id, versionNumber: 1, createdBy: actor.sub, extractedText: draft.content, extractionStatus: 'completed', extractionQuality: { method: 'docx', pageCount, ocrPageCount: 0, lowConfidence: false }, fileKey: stored.key, fileResourceType: stored.resourceType, fileDeliveryType: stored.deliveryType, fileFormat: stored.format, fileName: filename, fileHash: fileHashOf(buffer), mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }], { session });
       const updated = await ContractDraftModel.updateOne({ ...scope(actor, id), status: 'approved', revision, contractId: null }, { $set: { contractId: contract._id }, $inc: { revision: 1 } }, { session });
       if (!updated.modifiedCount) throw AppError.conflict('Bản nháp đã được chuyển sang rà soát. Vui lòng tải lại.');
       return contract.id;

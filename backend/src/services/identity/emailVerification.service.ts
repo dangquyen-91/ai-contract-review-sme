@@ -3,7 +3,6 @@ import { UserModel } from '../../models/user.model';
 import { AppError } from '../../errors/AppError';
 import { ensureEmailConfigured, sendEmail } from '../email/email.service';
 import { getPendingInvitation } from '../organization/invitation.service';
-import { getRoleByCode } from './role.service';
 import {
   activateChallenge,
   attemptChallenge,
@@ -144,7 +143,6 @@ export async function completeEmailVerification(
     }
     if (await UserModel.exists({ email }).session(session))
       throw AppError.conflict('Email already registered');
-    const role = await getRoleByCode('user');
     const [created] = await UserModel.create(
       [
         {
@@ -152,7 +150,6 @@ export async function completeEmailVerification(
           name: pending.name,
           passwordHash: pending.passwordHash,
           hasPassword: true,
-          roleId: role._id,
           emailVerifiedAt: new Date(),
         },
       ],
@@ -160,6 +157,5 @@ export async function completeEmailVerification(
     );
     return created;
   });
-  await user.populate('roleId');
   return { user, remember: pending.remember === true };
 }

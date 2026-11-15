@@ -8,6 +8,8 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { calendarReportFixture } from './fixtures/report.mjs';
+import { dashboardInsightsFixture } from './fixtures/dashboard-insights.mjs';
+import ExcelJS from 'exceljs';
 const require = createRequire(import.meta.url);
 const { accountTemplate, accountTemplates } = require('../../backend/dist/services/drafting/templatePolicy');
 const { buildStudioTemplate } = require('../../backend/dist/services/drafting/studioTemplate');
@@ -50,12 +52,18 @@ const backend = http.createServer(async (req, res) => {
     reportRequests.push(url.search);
     if (reportFailure) return error('Chưa tải được báo cáo. Hãy thử lại.', 503);
     const result = calendarReportFixture(url.searchParams, reportEmpty);
+    result.role = user.role;
     if (user.role === 'owner') {
       result.scope = { type: 'organization', organizationId: user.orgId };
       result.payments = null;
       result.comparison.changes.payments = { current: null, previous: null, difference: null, changePercent: null, unit: 'percent', status: 'no_data' };
       for (const bucket of result.trend.buckets) for (const side of ['current', 'previous']) if (bucket[side]) bucket[side].receivedAmount = null;
     }
+    return send(result);
+  }
+  if (reportsMode && url.pathname === '/api/v1/dashboard/insights') {
+    const result = dashboardInsightsFixture(user.role, url.searchParams.get('period') || 'month', reportEmpty);
+    result.scope.id = ['user', 'expert'].includes(user.role) ? user.id : ['owner', 'staff'].includes(user.role) ? user.orgId : null;
     return send(result);
   }
   if (url.pathname === '/api/v1/auth/refresh') {
@@ -250,9 +258,11 @@ try {
     console.log(`PASS organization validation: required business metadata, invalid tax code blocked before API, dependent province/ward selection, normalized update through backend schema, desktop/mobile 1440/390/320. Screenshots: ${artifacts}`);
   } else if (reportsMode) {
     await call('Page.navigate', { url: `${origin}/admin/reports` });
-    await waitFor('document.querySelectorAll("[data-report-metric]").length === 6');
+    await waitFor('document.querySelectorAll("[data-report-metric]").length === 5');
     assert.match(await evaluate('document.querySelector("[data-report-metric=success]").textContent'), /80%/);
-    assert.match(await evaluate('document.querySelector("[data-report-metric=risk]").textContent'), /33,3%/);
+    assert.equal(await evaluate('!!document.querySelector("[data-report-metric=risk]")'), false);
+    assert.equal(await evaluate('document.querySelector("h1").textContent'), 'Báo cáo vận hành hệ thống');
+    assert.ok(await evaluate('document.body.innerText.includes("10 không gian có nhiều lượt rà soát nhất")'));
     assert.match(await evaluate('document.querySelector("[data-report-metric=duration]").textContent'), /45 giây/);
     assert.match(await evaluate('document.querySelector("[data-report-metric=payments]").textContent'), /99.000/);
     await evaluate('document.querySelector("[data-report-metric=success] summary").click()');
@@ -267,21 +277,21 @@ try {
       await fillSelector('[aria-label="Kỳ báo cáo"]', period);
       await fillSelector('[aria-label="Ngày trong kỳ"]', '2026-10-10');
       await click('Áp dụng bộ lọc');
-      await waitFor('document.querySelectorAll("[data-report-metric]").length === 6 && !Array.from(document.querySelectorAll("button")).some(button=>button.textContent.includes("Đang cập nhật"))');
+      await waitFor('document.querySelectorAll("[data-report-metric]").length === 5 && !Array.from(document.querySelectorAll("button")).some(button=>button.textContent.includes("Đang cập nhật"))');
       assert.ok(reportRequests.some(query => query.includes(`period=${period}`)));
     }
     await fillSelector('[aria-label="So sánh với"]', 'year');
     await fillSelector('[aria-label="Gộp biểu đồ theo"]', 'week');
     await fillSelector('[aria-label="Lọc tổ chức"]', 'b'.repeat(24));
     await click('Áp dụng bộ lọc');
-    await waitFor('document.querySelectorAll("[data-report-metric]").length === 6 && document.body.innerText.includes("2025-10-01")');
+    await waitFor('document.querySelectorAll("[data-report-metric]").length === 5 && document.body.innerText.includes("2025-10-01")');
     assert.ok(reportRequests.some(query => query.includes('comparison=year') && query.includes('organizationId=')));
     await fillSelector('[aria-label="Kỳ báo cáo"]', 'custom');
     await fillSelector('[aria-label="Từ ngày"]', '2026-10-01');
     await fillSelector('[aria-label="Đến ngày"]', '2026-10-15');
     await fillSelector('[aria-label="So sánh với"]', 'none');
     await click('Áp dụng bộ lọc');
-    await waitFor('document.querySelectorAll("[data-report-metric]").length === 6 && document.querySelector("[role=status]")?.textContent.includes("2026-10-15")');
+    await waitFor('document.querySelectorAll("[data-report-metric]").length === 5 && document.querySelector("[role=status]")?.textContent.includes("2026-10-15")');
     assert.equal(await evaluate('document.querySelector("[role=status]").textContent.includes("Kỳ so sánh:")'), false);
     assert.equal(await evaluate('document.querySelectorAll("[data-slot=chart]").length'), 5);
     await click('Tải CSV');
@@ -293,6 +303,21 @@ try {
     }
     assert.ok(exported, 'Report CSV was not downloaded');
     assert.match(await fs.readFile(path.join(artifacts, exported), 'utf8'), /Tỷ lệ thành công/);
+    await click('Xuất Excel');
+    let excelFile;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      excelFile = (await fs.readdir(artifacts)).find(name => name.endsWith('.xlsx'));
+      if (excelFile) break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.ok(excelFile, 'Report Excel was not downloaded');
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(await fs.readFile(path.join(artifacts, excelFile)));
+    assert.deepEqual(workbook.worksheets.map(sheet => sheet.name), ['Tổng quan', 'Xu hướng', 'Chi tiết']);
+    let rate;
+    workbook.getWorksheet('Tổng quan').eachRow(row => { if (row.getCell(1).value === 'Tỷ lệ thành công') rate = row.getCell(2); });
+    assert.equal(rate.value, 0.8);
+    assert.equal(rate.numFmt, '0.0%');
     reportEmpty = true;
     await click('Làm mới');
     await waitFor('document.querySelector("[data-report-metric=success]")?.textContent.includes("Chưa có dữ liệu")');
@@ -303,19 +328,45 @@ try {
     assert.equal(await evaluate('document.querySelectorAll("[data-report-metric]").length'), 0);
     reportFailure = false;
     await click('Thử lại');
-    await waitFor('document.querySelectorAll("[data-report-metric]").length === 6');
+    await waitFor('document.querySelectorAll("[data-report-metric]").length === 5');
     Object.assign(user, { role: 'owner', orgId: 'b'.repeat(24) });
+    reportEmpty = false;
     await call('Page.navigate', { url: `${origin}/reports` });
     await waitFor('document.querySelectorAll("[data-report-metric]").length === 5');
     assert.equal(await evaluate('!!document.querySelector("[data-report-metric=payments]")'), false);
-    assert.equal(await evaluate(`document.querySelector('select[aria-label="Lọc tổ chức"]').options[0].textContent`), 'Tổ chức của bạn');
+    assert.equal(await evaluate('!!document.querySelector("select[aria-label=\\"Lọc tổ chức\\"]")'), false);
+    assert.match(await evaluate('document.querySelector("[data-report-metric=risk]").textContent'), /33,3%/);
+    assert.equal(await evaluate('document.querySelector("h1").textContent'), 'Báo cáo hợp đồng tổ chức');
+    assert.equal(await evaluate('document.body.innerText.includes("10 không gian có nhiều lượt rà soát nhất")'), false);
     for (const width of [1440, 390, 320]) {
       await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 821 });
       await evaluate('document.fonts.ready');
       assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth'), false, `Owner report overflow at ${width}`);
       await shot(`owner-reports-${width}.png`);
     }
-    console.log(`PASS reports: computed metrics, five charts, week/month/quarter/year/custom filters, previous/year/none comparisons, organization scope, CSV, empty denominators, API failure/retry, desktop/mobile at 1440/390/320. Screenshots: ${artifacts}`);
+    for (const [role, route, title] of [
+      ['staff', '/reports', 'Báo cáo công việc tổ chức'],
+      ['user', '/reports', 'Báo cáo sử dụng cá nhân'],
+      ['manager', '/management/reports', 'Báo cáo kho pháp lý'],
+      ['expert', '/expert-verification/reports', 'Báo cáo xác minh của tôi'],
+    ]) {
+      Object.assign(user, { role, orgId: role === 'staff' ? 'b'.repeat(24) : null });
+      const operationalRequests = reportRequests.length;
+      await call('Page.navigate', { url: origin + route });
+      await waitFor(`document.querySelector('h1')?.textContent === ${JSON.stringify(title)} && !!document.querySelector('[aria-label="Chỉ số thống kê"]')`);
+      await waitFor('document.querySelectorAll(".recharts-wrapper > .recharts-surface").length === 2');
+      assert.equal(reportRequests.length, operationalRequests, `${role} must use its own insight scope`);
+      assert.equal(await evaluate('[...document.querySelectorAll("button")].some(button=>button.textContent.trim()==="Xuất Excel")'), role !== 'staff');
+      assert.equal(await evaluate('document.body.innerText.includes("Thanh toán đã nhận")'), false);
+      assert.ok(await evaluate(`!!document.querySelector('a[href="${route}"][aria-current="page"]')`));
+      for (const width of [1440, 390]) {
+        await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 821 });
+        await evaluate('document.fonts.ready');
+        assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth'), false, `${role} report overflow at ${width}`);
+        await shot(`${role}-reports-${width}.png`);
+      }
+    }
+    console.log(`PASS reports: six role-specific reports, scoped APIs and export permissions, filters/comparisons, CSV/Excel, errors/retry, desktop/mobile. Screenshots: ${artifacts}`);
   } else if (workspaceSwitch) {
     await call('Page.navigate', { url: `${origin}/contract-drafts` });
     const selector = 'select[aria-label="Chuyển không gian làm việc"]';

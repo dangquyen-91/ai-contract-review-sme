@@ -6,6 +6,7 @@ export const routes = {
   admin: "/admin", users: "/admin/users",
   contract: (id: string) => "/contract/" + encodeURIComponent(id),
   review: (contractId: string, reviewId: string) => "/contract/" + encodeURIComponent(contractId) + "/reviews/" + encodeURIComponent(reviewId),
+  uploadVersion: (contractId: string) => "/review?versionOf=" + encodeURIComponent(contractId),
   expertVerification: "/expert-verification",
   expertOverview: "/expert-verification/overview",
   expertMyWork: "/expert-verification/my-work",

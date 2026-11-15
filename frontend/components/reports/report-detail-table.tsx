@@ -1,8 +1,9 @@
-import { reportValueColumns } from "@/lib/reports/report-columns";
+import { visibleReportColumns } from "@/lib/reports/report-columns";
 import type { OperationalReport, ReportSeries } from "@/types/reports";
 import { formatReportDuration } from "@/lib/reports/report-format";
 
 export function ReportDetailTable({ report }: { report: OperationalReport }) {
+  const columns = visibleReportColumns(report);
   const compare = !!report.comparison?.period;
   const buckets = report.trend?.buckets ?? [];
   return (
@@ -18,7 +19,7 @@ export function ReportDetailTable({ report }: { report: OperationalReport }) {
                 "Nhóm",
                 "Kỳ",
                 "Ngày nhóm",
-                ...reportValueColumns.map((column) => column.label),
+                ...columns.map((column) => column.label),
                 "Xử lý TB",
               ].map((label) => (
                 <th key={label} className="p-2">
@@ -40,7 +41,7 @@ export function ReportDetailTable({ report }: { report: OperationalReport }) {
                     <td className="p-2">{bucket.index}</td>
                     <td>{side === "current" ? "Kỳ này" : "So sánh"}</td>
                     <td>{item?.date ?? "—"}</td>
-                    {reportValueColumns.map(({ key }) => (
+                    {columns.map(({ key }) => (
                       <td key={key}>
                         {item?.[key]?.toLocaleString("vi-VN") ?? "—"}
                       </td>

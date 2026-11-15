@@ -8,6 +8,7 @@ import { extractContractText, ExtractionProgress, recycleOcrIfNeeded } from './t
 import { redactionPolicyFor } from './redactionPolicy.service';
 import { enqueueClassification } from './classificationWorker.service';
 import { detectSensitiveData, summarizeSensitiveData } from '../ai/redaction.service';
+import { TEXT_SIGNATURE_VERSION, textSignature } from '../../utils/textFingerprint';
 
 const EXTRACTION_QUEUE = 'contract-extraction';
 const MAX_ATTEMPTS = 3;
@@ -94,6 +95,8 @@ async function processExtraction(job: Job<ExtractionJobData>): Promise<Extractio
   if (!fresh) return { status: 'skipped' };
   fresh.set({
     extractedText: result.text,
+    textSignature: result.status === 'completed' ? textSignature(result.text) : undefined,
+    textSignatureVersion: result.status === 'completed' ? TEXT_SIGNATURE_VERSION : undefined,
     extractionStatus: result.status,
     extractionError: result.error,
     extractionErrorCode: result.errorCode,

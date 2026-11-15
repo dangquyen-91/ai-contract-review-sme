@@ -36,9 +36,14 @@ export const contractStatusLabels: Record<ContractStatus, string> = {
 
 export const contractRiskLabels: Record<ContractRiskLevel, string> = {
   high: "Rủi ro cao",
-  medium: "Trung bình",
+  medium: "Rủi ro trung bình",
   low: "Rủi ro thấp",
   none: "Chưa đánh giá",
+};
+
+export const reviewedRiskLabels: Record<ContractRiskLevel, string> = {
+  ...contractRiskLabels,
+  none: "Không phát hiện rủi ro",
 };
 
 export const contractStatusClasses: Record<ContractStatus, string> = {

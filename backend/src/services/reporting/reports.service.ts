@@ -194,9 +194,7 @@ async function getReportSnapshot(
         },
       },
     ]),
-    OrganizationModel.find(
-      actor.role === 'owner' ? { _id: actor.orgId } : { isPersonal: { $ne: true } },
-    )
+    OrganizationModel.find(actor.role === 'owner' ? { _id: actor.orgId } : {})
       .select('_id name')
       .sort({ name: 1, _id: 1 })
       .limit(200)
@@ -246,6 +244,7 @@ async function getReportSnapshot(
     unitRows.map((row) => [`${row._id.date}:${row._id.kind}`, row.units]),
   );
   return {
+    role: actor.role as 'administrator' | 'owner',
     computedAt: now,
     timezone: REPORT_TIMEZONE,
     period: {

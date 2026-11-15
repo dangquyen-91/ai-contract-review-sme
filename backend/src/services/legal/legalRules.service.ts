@@ -5,6 +5,7 @@ import type { ReviewContext } from '../contract/contractProfile.service';
 import type { ExtractedKeyTerm } from '../analysis/keyTermExtraction.service';
 import type { LegalBasisVerification } from './legalRetrieval.service';
 import { LEGAL_RULES, LegalRule, RuleCitation, Severity, Terms } from './legalRules.data';
+import { inForceSourceFilter, LegalSourceAvailability, legalSourceAvailability } from './legalSourceAvailability';
 
 export interface RuleFinding {
   rule: LegalRule;
@@ -20,7 +21,37 @@ export function hasLegalRules(profileCode: string): boolean {
   return LEGAL_RULES.some((rule) => rule.profiles.includes(profileCode));
 }
 
-export function evaluateLegalRules(context: ReviewContext, keyTerms: ExtractedKeyTerm[]): RuleFinding[] {
+export type RuleSourceAvailability = Map<string, LegalSourceAvailability>;
+
+export interface SkippedLegalRule {
+  code: string;
+  reason: 'source_not_in_force' | 'source_missing';
+  sources: string[];
+}
+
+const rulesOf = (profileCode: string) => LEGAL_RULES.filter((rule) => rule.profiles.includes(profileCode));
+const sourcesOf = (rule: LegalRule) => [...new Set(rule.citations.map((citation) => citation.sourceCode))];
+const unavailableSources = (rule: LegalRule, availability: RuleSourceAvailability) =>
+  sourcesOf(rule).filter((code) => availability.get(code) !== 'in_force');
+
+export function ruleAvailabilityFor(profileCode: string): Promise<RuleSourceAvailability> {
+  return legalSourceAvailability(rulesOf(profileCode).flatMap(sourcesOf));
+}
+
+export function skippedLegalRules(profileCode: string, availability: RuleSourceAvailability): SkippedLegalRule[] {
+  return rulesOf(profileCode).flatMap((rule) => {
+    const sources = unavailableSources(rule, availability);
+    if (sources.length === 0) return [];
+    const reason = sources.some((code) => availability.get(code) === 'not_in_force') ? 'source_not_in_force' : 'source_missing';
+    return [{ code: rule.code, reason, sources }];
+  });
+}
+
+export function evaluateLegalRules(
+  context: ReviewContext,
+  keyTerms: ExtractedKeyTerm[],
+  availability?: RuleSourceAvailability,
+): RuleFinding[] {
   const byKey = new Map(keyTerms.map((t) => [t.key, t]));
   const terms: Terms = {
     num: (key) => byKey.get(key)?.numberValue,
@@ -30,6 +61,7 @@ export function evaluateLegalRules(context: ReviewContext, keyTerms: ExtractedKe
   const findings: RuleFinding[] = [];
   for (const rule of LEGAL_RULES) {
     if (!rule.profiles.includes(context.profileCode)) continue;
+    if (availability && unavailableSources(rule, availability).length > 0) continue;
     const outcome = rule.evaluate(terms, context);
     if (!outcome) continue;
     const anchor = outcome.anchor ?? rule.anchor;
@@ -60,8 +92,7 @@ export async function resolveRuleCitations(findings: RuleFinding[]): Promise<Map
   if (citations.length === 0) return resolvedByRule;
 
   const sources = await LegalSourceModel.find({
-    code: { $in: [...new Set(citations.map((c) => c.sourceCode))] },
-    status: { $ne: 'repealed' },
+    $and: [inForceSourceFilter(), { code: { $in: [...new Set(citations.map((c) => c.sourceCode))] } }],
   }).select('code');
   const sourceIdByCode = new Map(sources.map((s) => [s.code, s._id]));
   const chunks = sources.length

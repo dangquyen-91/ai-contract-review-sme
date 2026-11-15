@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
+import { AppError } from '../errors/AppError';
 import { ok, paginated } from '../utils/ApiResponse';
 import { parsePagination } from '../utils/pagination';
 import { getContractUser } from '../middlewares/auth.middleware';
@@ -9,6 +10,8 @@ import { confirmContractProfile } from '../services/contract/contractClassificat
 import { retryClassification } from '../services/contract/classificationWorker.service';
 import { ListContractsQuery } from '../validations/contract.validation';
 import { contractReviewQuote } from '../services/billing/contractReviewPurchase.service';
+import { findVersionMatch } from '../services/contract/versionMatch.service';
+import { attachAsVersion, detachVersion } from '../services/contract/versionTransfer.service';
 
 export const contractReviewQuoteHandler = asyncHandler(async (req, res) => {
   const user = getContractUser(req);
@@ -32,6 +35,50 @@ export const createContractHandler = asyncHandler(async (req: Request, res: Resp
 
   if (respondAsync) res.set('Preference-Applied', 'respond-async');
   ok(res, contract, respondAsync ? 202 : 201);
+});
+
+export const createContractVersionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getContractUser(req);
+  if (!req.file) throw AppError.badRequest('Vui lòng chọn tệp hợp đồng cho phiên bản mới.');
+  const respondAsync = /\brespond-async\b/i.test(req.get('Prefer') ?? '');
+  const contract = await contractService.addContractVersion({
+    orgId: user.orgId,
+    uploadedBy: user.sub,
+    contractId: req.params.id,
+    note: req.body.note,
+    file: { name: req.file.originalname, mimeType: req.file.mimetype, buffer: req.file.buffer },
+    waitForExtraction: !respondAsync,
+  });
+  if (respondAsync) res.set('Preference-Applied', 'respond-async');
+  ok(res, contract, respondAsync ? 202 : 201);
+});
+
+export const listContractVersionsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getContractUser(req);
+  ok(res, await contractService.listContractVersions(user.orgId, req.params.id));
+});
+
+export const getVersionMatchHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getContractUser(req);
+  ok(res, await findVersionMatch(user.orgId, req.params.id));
+});
+
+export const attachVersionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getContractUser(req);
+  ok(
+    res,
+    await attachAsVersion({
+      orgId: user.orgId,
+      targetContractId: req.params.id,
+      sourceContractId: req.body.sourceContractId,
+      note: req.body.note,
+    }),
+  );
+});
+
+export const detachVersionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const user = getContractUser(req);
+  ok(res, await detachVersion({ orgId: user.orgId, contractId: req.params.id, versionId: req.params.versionId }), 201);
 });
 
 export const listContractsHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -75,6 +122,7 @@ export const getContractTextHandler = asyncHandler(async (req: Request, res: Res
     req.params.id,
     req.query.redacted === 'true',
     req.query.redactionMode === 'partial' ? 'partial' : 'token',
+    req.query.versionId as string | undefined,
   );
   ok(res, text);
 });
@@ -82,7 +130,11 @@ export const getContractTextHandler = asyncHandler(async (req: Request, res: Res
 export const getContractFileHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);
   if (req.query.redacted === 'true') {
-    const file = await contractService.getRedactedContractDocx(user.orgId, req.params.id);
+    const file = await contractService.getRedactedContractDocx(
+      user.orgId,
+      req.params.id,
+      req.query.versionId as string | undefined,
+    );
     res.set({
       'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'Content-Disposition': `inline; filename="contract-redacted.docx"; filename*=UTF-8''${encodeURIComponent(file.fileName)}`,
@@ -93,6 +145,10 @@ export const getContractFileHandler = asyncHandler(async (req: Request, res: Res
     res.send(file.buffer);
     return;
   }
-  const link = await contractService.getContractFileLink(user.orgId, req.params.id);
+  const link = await contractService.getContractFileLink(
+    user.orgId,
+    req.params.id,
+    req.query.versionId as string | undefined,
+  );
   ok(res, link);
 });

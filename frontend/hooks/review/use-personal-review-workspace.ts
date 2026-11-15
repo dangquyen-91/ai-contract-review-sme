@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { toast } from "sonner";
 import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
@@ -8,9 +8,9 @@ import { reviewErrorMessage } from "@/hooks/review/use-review-workflow";
 import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider";
 import { useLoadContract } from "@/hooks/contracts/use-contracts";
 import { isReviewCancelled } from "@/lib/review/review-session";
+import { shouldAutoOpenReview } from "@/lib/review/auto-open-review";
 
 export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const { contractId: routeContractId } = useParams<{ contractId?: string }>();
   const workflow = useDashboardReviewWorkflow();
@@ -38,7 +38,9 @@ export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) 
           ?? await loadContract(contractId);
         if (!cancelled) {
           initiated = true;
-          await openReview(contract, searchParams.get("rerun") === "1", searchParams.get("reviewMode") === "resume");
+          const rerun = searchParams.get("rerun") === "1";
+          const resume = searchParams.get("reviewMode") === "resume";
+          if (shouldAutoOpenReview(contract, rerun, resume)) await openReview(contract, rerun, resume);
         }
       } catch (requestError) {
         if (cancelled || isReviewCancelled(requestError)) return;
@@ -53,7 +55,6 @@ export function usePersonalReviewWorkspace({ data }: DashboardWorkspaceContext) 
 
   return {
     workflow,
-    onViewAll: () => router.push("/contract"),
     onDismissUpload: () => {
       setUploadedContract(null);
       toast.success("Đã tải hợp đồng lên");

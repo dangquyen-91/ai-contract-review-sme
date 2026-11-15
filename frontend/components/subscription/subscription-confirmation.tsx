@@ -9,6 +9,7 @@ import {
 } from "@/lib/subscription/subscription-plans";
 import { PaymentCheckout } from "./payment-checkout";
 import { PaymentHistory } from "./payment-history";
+import { billingAccountId } from "@/lib/subscription/billing-account";
 import type { PlanCode } from "@/types/subscription";
 import type { AuthUser } from "@/types/auth";
 
@@ -76,7 +77,7 @@ export function SubscriptionConfirmation({
     );
   const plan = describePlan(source);
   const paymentOrgId =
-    user?.orgId && ["owner", "user"].includes(user.role) ? user.orgId : null;
+    user && ["owner", "user"].includes(user.role) ? billingAccountId(user) : null;
 
   return (
     <>

@@ -4,6 +4,7 @@ import type {
   ReportFilters as Filters,
 } from "@/types/reports";
 import { Button } from "@/components/ui/button";
+import { ReportExportActions } from "./report-export-actions";
 
 const control =
   "min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800";
@@ -90,28 +91,28 @@ export function ReportFilters({
             <option value="month">Tháng</option>
           </select>
         </label>
-        <label className={field}>
-          Tổ chức
-          <select
-            className={control}
-            aria-label="Lọc tổ chức"
-            value={value.organizationId ?? ""}
-            onChange={(event) =>
-              set({ organizationId: event.target.value || undefined })
-            }
-          >
-            <option value="">
-              {organizationOnly
-                ? "Tổ chức của bạn"
-                : "Toàn hệ thống, gồm tài khoản cá nhân"}
-            </option>
-            {report?.organizations.map((org) => (
-              <option key={org.id} value={org.id}>
-                {org.name}
+        {!organizationOnly && (
+          <label className={field}>
+            Tổ chức
+            <select
+              className={control}
+              aria-label="Lọc tổ chức"
+              value={value.organizationId ?? ""}
+              onChange={(event) =>
+                set({ organizationId: event.target.value || undefined })
+              }
+            >
+              <option value="">
+                Toàn hệ thống, gồm tài khoản cá nhân
               </option>
-            ))}
-          </select>
-        </label>
+              {report?.organizations.map((org) => (
+                <option key={org.id} value={org.id}>
+                  {org.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         {value.period === "custom" ? (
           <>
             <label className={field}>
@@ -165,14 +166,14 @@ export function ReportFilters({
         >
           {fetching ? "Đang cập nhật…" : "Làm mới"}
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={!ready}
-          onClick={onDownload}
-        >
-          Tải CSV
-        </Button>
+        <ReportExportActions
+          source={
+            ready && report ? { kind: "operational", data: report } : null
+          }
+          ready={ready}
+          onCsv={onDownload}
+          csvLabel="Tải CSV"
+        />
         <p className="text-xs leading-5 text-slate-500">
           Tuần bắt đầu từ thứ Hai. Kỳ đang diễn ra được so sánh đến thời điểm
           tương ứng.

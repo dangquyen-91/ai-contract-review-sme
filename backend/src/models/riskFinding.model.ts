@@ -77,6 +77,7 @@ const riskFindingSchema = new Schema(
       required: true,
       index: true,
     },
+    reviewId: { type: Types.ObjectId, ref: 'Review', required: true, index: true },
     orgId: { type: Types.ObjectId, ref: 'Organization', required: true, index: true },
     clauseId: { type: Types.ObjectId, ref: 'Clause', default: null },
     expectedClauseTypeId: { type: Types.ObjectId, ref: 'ClauseTypeTaxonomy', default: null },

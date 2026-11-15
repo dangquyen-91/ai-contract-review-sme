@@ -39,11 +39,11 @@ const PDF_MIME_TYPE = 'application/pdf';
 const DOCX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const OCR_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg']);
 
-const MIN_TEXT_LAYER_CHARS_PER_PAGE = 30;
+export const MIN_TEXT_LAYER_CHARS_PER_PAGE = 30;
 const MAX_PDF_PAGES = 100;
-const OCR_RENDER_SCALE = 2.5;
+export const OCR_RENDER_SCALE = 2.5;
 const LOW_OCR_CONFIDENCE = 70;
-const MAX_PENDING_OCR_PAGES_PER_WORKER = 2;
+export const MAX_PENDING_OCR_PAGES_PER_WORKER = 2;
 const OCR_RECYCLE_AFTER_PAGES = 100;
 
 export function normalizeExtractedText(text: string): string {
@@ -99,12 +99,12 @@ export async function recycleOcrIfNeeded(): Promise<void> {
   await terminateOcr();
 }
 
-interface OcrPage {
+export interface OcrPage {
   text: string;
   confidence: number;
 }
 
-async function ocrImage(image: Buffer): Promise<OcrPage> {
+export async function ocrImage(image: Buffer): Promise<OcrPage> {
   activeOcrPages++;
   try {
     const scheduler = await getOcrScheduler();
@@ -116,7 +116,7 @@ async function ocrImage(image: Buffer): Promise<OcrPage> {
   }
 }
 
-function summarizeOcr(pages: OcrPage[]) {
+export function summarizeOcr(pages: OcrPage[]) {
   const chars = pages.reduce((sum, p) => sum + p.text.length, 0);
   if (pages.length === 0 || chars === 0) {
     return { ocrPageCount: pages.length, lowConfidence: pages.length > 0 };

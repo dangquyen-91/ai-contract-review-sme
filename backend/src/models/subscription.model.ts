@@ -24,9 +24,19 @@ planSchema.index({ code: 1 }, { unique: true });
 export const PlanModel = model('Plan', planSchema);
 export type Plan = InferSchemaType<typeof planSchema>;
 
+export const SUBSCRIPTION_ACCOUNT_TYPES = ['organization', 'personal'] as const;
+
 const subscriptionSchema = new Schema(
   {
-    orgId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, unique: true },
+    accountType: { type: String, enum: SUBSCRIPTION_ACCOUNT_TYPES, required: true },
+    orgId: {
+      type: Schema.Types.ObjectId,
+      ref: function (this: { accountType?: string }) {
+        return this.accountType === 'personal' ? 'User' : 'Organization';
+      },
+      required: true,
+      unique: true,
+    },
     scheduledDowngrade: {
       type: new Schema(
         {
@@ -40,7 +50,7 @@ const subscriptionSchema = new Schema(
   },
   { timestamps: true },
 );
-export const OrganizationSubscriptionModel = model('OrganizationSubscription', subscriptionSchema);
+export const SubscriptionModel = model('Subscription', subscriptionSchema);
 
 const periodSchema = new Schema(
   {
@@ -111,7 +121,7 @@ export const UsageRunModel = model('UsageRun', usageRunSchema);
 export async function initializeSubscriptionModels() {
   await Promise.all([
     PlanModel.init(),
-    OrganizationSubscriptionModel.init(),
+    SubscriptionModel.init(),
     SubscriptionPeriodModel.init(),
     UsageRunModel.init(),
   ]);

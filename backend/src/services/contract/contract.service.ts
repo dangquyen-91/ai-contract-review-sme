@@ -20,7 +20,12 @@ import {
   uploadContractFile,
 } from './storage.service';
 import { enqueueExtraction, waitForExtraction } from './extractionWorker.service';
-import { getCurrentVersion, getCurrentVersionWithText } from './contractVersion.service';
+import {
+  fileHashOf,
+  findVersionByFileHash,
+  getCurrentVersion,
+  resolveVersion,
+} from './contractVersion.service';
 import { resolveContractProfile, validateContractContext } from './contractProfile.service';
 import { redactionPolicyFor } from './redactionPolicy.service';
 import { createRedactor, SensitiveDataType } from '../ai/redaction.service';
@@ -30,6 +35,7 @@ import { ContractReviewPurchaseModel } from '../../models/contractReviewPurchase
 import { PaymentModel } from '../../models/payment.model';
 import { lockSubscriptionOrganization } from '../billing/subscription.service';
 import { contractDisplayNames } from './contractDisplayNames';
+import { similarityToPrevious } from './versionMatch.service';
 
 interface CreateContractParams {
   orgId: string;
@@ -43,7 +49,7 @@ interface CreateContractParams {
   waitForExtraction: boolean;
 }
 
-function titleFromFileName(fileName?: string) {
+export function titleFromFileName(fileName?: string) {
   const base = fileName?.replace(/\.[^.]+$/, '').trim();
   return base && base.length >= 2 ? base.slice(0, 300) : 'Hợp đồng chưa đặt tên';
 }
@@ -59,6 +65,18 @@ export async function createContract({
   if (profile) await validateContractContext(profile, input);
   else if (input.ourParty) throw AppError.badRequest('ourParty requires a contract type');
 
+  const fileHash = file ? fileHashOf(file.buffer) : undefined;
+  if (fileHash && !input.allowDuplicate) {
+    const duplicate = await findVersionByFileHash(orgId, fileHash);
+    if (duplicate) {
+      throw AppError.conflict(
+        `Tệp này giống hệt hợp đồng "${duplicate.title}" (phiên bản ${duplicate.versionNumber}) đã tải lên trước đó.`,
+        'DUPLICATE_CONTRACT',
+        duplicate,
+      );
+    }
+  }
+
   const stored = file ? await uploadContractFile(file.buffer, orgId, file.name) : undefined;
 
   let contractId: Types.ObjectId | undefined;
@@ -66,6 +84,7 @@ export async function createContract({
   let job: Awaited<ReturnType<typeof enqueueExtraction>> | undefined;
   try {
     const contract = await ContractModel.create({
+      ownerType: orgId === uploadedBy ? 'personal' : 'organization',
       orgId,
       uploadedBy,
       title: input.title ?? titleFromFileName(file?.name),
@@ -95,6 +114,7 @@ export async function createContract({
       fileFormat: stored?.format,
       fileName: file?.name,
       mimeType: file?.mimeType,
+      fileHash,
       extractionStatus: stored ? 'processing' : 'pending',
       extractionStartedAt: stored ? new Date() : undefined,
     });
@@ -117,6 +137,171 @@ export async function createContract({
 
   if (job && shouldWait) await waitForExtraction(job);
   return getContractById(orgId, contractId.toString());
+}
+
+interface AddContractVersionParams {
+  orgId: string;
+  uploadedBy: string;
+  contractId: string;
+  note?: string;
+  file: { name: string; mimeType: string; buffer: Buffer };
+  waitForExtraction: boolean;
+}
+
+const reviewRunning = () =>
+  AppError.conflict(
+    'Hợp đồng đang được rà soát. Vui lòng chờ hoàn tất trước khi tải phiên bản mới.',
+    'REVIEW_RUNNING',
+  );
+
+export async function addContractVersion({
+  orgId,
+  uploadedBy,
+  contractId,
+  note,
+  file,
+  waitForExtraction: shouldWait,
+}: AddContractVersionParams) {
+  const contract = await ContractModel.findOne({ _id: contractId, orgId }).select('status');
+  if (!contract) throw AppError.notFound('Không tìm thấy hợp đồng.');
+  if (contract.status === 'unsupported') {
+    throw AppError.conflict(
+      'Hợp đồng không thuộc loại được hỗ trợ nên không thể thêm phiên bản.',
+      'CONTRACT_UNSUPPORTED',
+    );
+  }
+  if (await ReviewModel.exists({ contractId, activeLock: true })) throw reviewRunning();
+
+  const fileHash = fileHashOf(file.buffer);
+  const duplicate = await findVersionByFileHash(orgId, fileHash, contractId);
+  if (duplicate) {
+    throw AppError.conflict(
+      `Tệp này giống hệt phiên bản ${duplicate.versionNumber} của hợp đồng.`,
+      'DUPLICATE_VERSION',
+      duplicate,
+    );
+  }
+
+  const previousStatus = contract.status;
+  const stored = await uploadContractFile(file.buffer, orgId, file.name);
+  let versionId: Types.ObjectId | undefined;
+  let job: Awaited<ReturnType<typeof enqueueExtraction>> | undefined;
+  try {
+    versionId = await mongoose.connection.transaction(async (session) => {
+      const locked = await ContractModel.findOneAndUpdate(
+        { _id: contractId, orgId },
+        { $inc: { __v: 1 }, $set: { status: 'uploaded' } },
+        { session },
+      );
+      if (!locked) throw AppError.notFound('Không tìm thấy hợp đồng.');
+      if (await ReviewModel.exists({ contractId, activeLock: true }).session(session)) {
+        throw reviewRunning();
+      }
+      const latest = await ContractVersionModel.findOne({ contractId })
+        .sort({ versionNumber: -1 })
+        .select('versionNumber')
+        .session(session);
+      const [created] = await ContractVersionModel.create(
+        [
+          {
+            contractId,
+            versionNumber: (latest?.versionNumber ?? 0) + 1,
+            createdBy: uploadedBy,
+            note,
+            fileKey: stored.key,
+            fileResourceType: stored.resourceType,
+            fileDeliveryType: stored.deliveryType,
+            fileFormat: stored.format,
+            fileName: file.name,
+            mimeType: file.mimeType,
+            fileHash,
+            extractionStatus: 'processing',
+            extractionStartedAt: new Date(),
+          },
+        ],
+        { session },
+      );
+      return created._id;
+    });
+    job = await enqueueExtraction(versionId.toString());
+  } catch (err) {
+    if (versionId) {
+      await ContractVersionModel.deleteOne({ _id: versionId });
+      await ContractModel.updateOne({ _id: contractId, orgId }, { $set: { status: previousStatus } });
+    }
+    await deleteContractFile(stored).catch((cleanupErr) =>
+      logger.warn('Failed to remove uploaded contract file after a failed version upload', {
+        fileKey: stored.key,
+        error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+      }),
+    );
+    throw err;
+  }
+
+  if (shouldWait) await waitForExtraction(job);
+  return getContractById(orgId, contractId);
+}
+
+export async function listContractVersions(orgId: string, contractId: string) {
+  if (!(await ContractModel.exists({ _id: contractId, orgId }))) {
+    throw AppError.notFound('Không tìm thấy hợp đồng.');
+  }
+  const [versions, reviews] = await Promise.all([
+    ContractVersionModel.find({ contractId })
+      .sort({ versionNumber: -1 })
+      .select('+textSignature +textSignatureVersion versionNumber fileName mimeType note createdBy createdAt extractionStatus extractionQuality')
+      .populate<{ createdBy: { _id: Types.ObjectId; name: string } | null }>('createdBy', 'name')
+      .lean(),
+    ReviewModel.find({ contractId, orgId })
+      .sort({ createdAt: -1 })
+      .select('versionId status finishedAt result.overallRiskLevel result.findingCounts')
+      .lean(),
+  ]);
+  const latestReviewByVersion = new Map<string, (typeof reviews)[number]>();
+  for (const review of reviews) {
+    const key = String(review.versionId);
+    const chosen = latestReviewByVersion.get(key);
+    if (!chosen || (chosen.status !== 'completed' && review.status === 'completed')) {
+      latestReviewByVersion.set(key, review);
+    }
+  }
+  const verifications = await ExpertReviewModel.find({
+    reviewId: { $in: [...latestReviewByVersion.values()].map((review) => review._id) },
+  })
+    .select('reviewId status')
+    .lean();
+  const verificationByReview = new Map(
+    verifications.map((verification) => [String(verification.reviewId), verification.status]),
+  );
+
+  return versions.map((version, index) => {
+    const review = latestReviewByVersion.get(String(version._id));
+    return {
+      id: String(version._id),
+      versionNumber: version.versionNumber,
+      isCurrent: index === 0,
+      fileName: version.fileName ?? null,
+      mimeType: version.mimeType ?? null,
+      note: version.note ?? null,
+      uploadedBy: version.createdBy
+        ? { id: String(version.createdBy._id), name: version.createdBy.name }
+        : null,
+      uploadedAt: version.createdAt,
+      extractionStatus: version.extractionStatus,
+      pageCount: version.extractionQuality?.pageCount ?? null,
+      similarityToPrevious: similarityToPrevious(versions, index),
+      latestReview: review
+        ? {
+            id: String(review._id),
+            status: review.status,
+            finishedAt: review.finishedAt ?? null,
+            overallRiskLevel: review.result?.overallRiskLevel ?? null,
+            findingCounts: review.result?.findingCounts ?? null,
+            verificationStatus: verificationByReview.get(String(review._id)) ?? null,
+          }
+        : null,
+    };
+  });
 }
 
 export async function listContracts(
@@ -311,12 +496,13 @@ export async function getContractText(
   id: string,
   redacted = false,
   redactionMode: 'token' | 'partial' = 'token',
+  versionId?: string,
 ) {
   const contract = await ContractModel.findOne({ _id: id, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await getCurrentVersionWithText(id);
+  const version = await resolveVersion(id, versionId, true);
   const text = version.extractedText ?? '';
   let shownText = text;
   let redactionSpans: { type: SensitiveDataType; start: number; end: number }[] = [];
@@ -340,10 +526,10 @@ export async function getContractText(
   };
 }
 
-export async function getRedactedContractDocx(orgId: string, id: string) {
+export async function getRedactedContractDocx(orgId: string, id: string, versionId?: string) {
   const contract = await ContractModel.findOne({ _id: id, orgId });
   if (!contract) throw AppError.notFound('Contract not found');
-  const version = await getCurrentVersionWithText(id);
+  const version = await resolveVersion(id, versionId, true);
   if (version.mimeType !== DOCX_MIME)
     throw AppError.badRequest('Redacted file preview is supported only for DOCX');
   const file = storedFileOf(version);
@@ -358,12 +544,12 @@ export async function getRedactedContractDocx(orgId: string, id: string) {
   };
 }
 
-export async function getContractFileLink(orgId: string, id: string) {
+export async function getContractFileLink(orgId: string, id: string, versionId?: string) {
   const contract = await ContractModel.findOne({ _id: id, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await getCurrentVersion(id);
+  const version = await resolveVersion(id, versionId);
   const file = storedFileOf(version);
   if (!file) {
     throw AppError.notFound('This contract has no uploaded file');
