@@ -1,9 +1,5 @@
 # Phạm vi vai trò
 
-Dashboard theo role được mô tả tại [Dashboard và reporting](../dashboard-reporting.md). Endpoint `/dashboard/insights` trả số liệu tổng hợp đúng workspace; quyền báo cáo vận hành `/reports` vẫn chỉ dành cho Administrator và Owner. Manager xem thống kê kho pháp lý, Expert xem công việc của mình và hàng đợi được phép tiếp nhận, User chỉ xem scope cá nhân.
-
-Menu báo cáo riêng được mở cho từng role theo tính năng hiện có. Trang frontend `/reports` của Staff/User dùng API `/dashboard/insights`; Staff chỉ xem thống kê tổ chức, không có quyền xuất file. Manager dùng `/management/reports`, Expert dùng `/expert-verification/reports`. Admin xem vận hành/thanh toán; Owner xem hợp đồng/rủi ro/hạn mức trong tổ chức và không có bảng xếp hạng không gian hay cột thanh toán. Quyền API backend `/reports` không mở rộng sang các role khác.
-
 | Phạm vi | Vai trò | Quyền chính |
 | --- | --- | --- |
 | Tổ chức | Owner | Quản lý tổ chức, Staff, gói và hợp đồng |

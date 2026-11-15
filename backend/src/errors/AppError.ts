@@ -2,20 +2,12 @@ export class AppError extends Error {
   public readonly statusCode: number;
   public readonly isOperational: boolean;
   public readonly code?: string;
-  public readonly meta?: Record<string, unknown>;
 
-  constructor(
-    message: string,
-    statusCode: number,
-    isOperational = true,
-    code?: string,
-    meta?: Record<string, unknown>,
-  ) {
+  constructor(message: string, statusCode: number, isOperational = true, code?: string) {
     super(message);
     this.statusCode = statusCode;
     this.isOperational = isOperational;
     this.code = code;
-    this.meta = meta;
     Error.captureStackTrace(this, this.constructor);
   }
 
@@ -35,8 +27,8 @@ export class AppError extends Error {
     return new AppError(message, 404, true, code);
   }
 
-  static conflict(message: string, code?: string, meta?: Record<string, unknown>) {
-    return new AppError(message, 409, true, code, meta);
+  static conflict(message: string, code?: string) {
+    return new AppError(message, 409, true, code);
   }
 
   static internal(message = 'Internal server error') {

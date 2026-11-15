@@ -22,5 +22,4 @@ const schema = new Schema({
 
 schema.index({ expertReviewId: 1, attempt: 1 }, { unique: true });
 schema.index({ expertId: 1, status: 1, assignedAt: -1 });
-schema.index({ expertId: 1, completedAt: 1 });
 export const ExpertWorkRecordModel = model('ExpertWorkRecord', schema);

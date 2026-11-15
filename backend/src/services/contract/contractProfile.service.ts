@@ -9,7 +9,6 @@ import { getTaxonomyByCodes } from '../analysis/clauseTypeTaxonomy.service';
 import type { SensitiveDataType } from '../ai/redaction.service';
 import { DEFAULT_INDUSTRIES, DEFAULT_PROFILES, DefaultProfile } from './contractProfile.data';
 import { LEGAL_SOURCE_CATALOG, LegalSourceCode } from '../legal/legalSourceCatalog.data';
-import { legalSourceAvailability } from '../legal/legalSourceAvailability';
 
 function assertProfileConsistency(profile: DefaultProfile) {
   const categories = new Set(profile.clauseCategories);
@@ -168,19 +167,16 @@ export async function listContractProfiles() {
     code,
     name: taxonomy.find((t) => t.code === code)?.name ?? code,
   });
-  const codes = [...new Set(profiles.flatMap((p) => p.legalSourceCodes))];
-  const [sources, availability] = await Promise.all([
-    LegalSourceModel.find({ code: { $in: codes } }).select('code title status ingestion.status ingestion.embeddedChunks'),
-    legalSourceAvailability(codes),
-  ]);
+  const sources = await LegalSourceModel.find({
+    code: { $in: [...new Set(profiles.flatMap((p) => p.legalSourceCodes))] },
+  }).select('code title status ingestion.status ingestion.embeddedChunks');
   const legalSource = (code: string) => {
     const source = sources.find((s) => s.code === code);
     return {
       code,
       name: source?.title ?? LEGAL_SOURCE_CATALOG[code as LegalSourceCode] ?? code,
       inKnowledgeBase: Boolean(source),
-      inForce: availability.get(code) === 'in_force',
-      searchable: Boolean(source && availability.get(code) === 'in_force' && (source.ingestion?.embeddedChunks ?? 0) > 0),
+      searchable: Boolean(source && source.status !== 'repealed' && (source.ingestion?.embeddedChunks ?? 0) > 0),
       ingestionStatus: source?.ingestion?.status,
     };
   };

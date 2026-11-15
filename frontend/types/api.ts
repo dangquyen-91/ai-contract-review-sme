@@ -11,6 +11,5 @@ export type ApiErrorResponse = {
     message: string;
     code?: string;
     details?: ApiFieldErrors;
-    meta?: Record<string, unknown>;
   };
 };

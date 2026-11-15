@@ -6,7 +6,6 @@ export function reportFixture(days = 7, organizationId = '', empty = false) {
   const date = new Date('2026-11-10T00:00:00Z');
   const dates = Array.from({ length: days }, (_, index) => new Date(date.getTime() - (days - index - 1) * 86400000).toISOString().slice(0, 10));
   return {
-    role: 'administrator',
     computedAt: '2026-11-10T03:00:00Z', timezone: 'Asia/Ho_Chi_Minh',
     period: { days, from: `${dates[0]}T00:00:00+07:00`, toExclusive: '2026-11-11T00:00:00+07:00', startDate: dates[0], endDate: dates.at(-1) },
     scope: { type: organizationId ? 'organization' : 'system', organizationId: organizationId || null },

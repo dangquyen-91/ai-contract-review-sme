@@ -107,7 +107,7 @@ export function OrganizationWorkspace({
       contractCount={data.totalContracts}
       className="text-sm leading-normal"
       mainClassName={
-        pathname === "/reports" || activeTab === "overview" || activeTab === "upload" || activeTab === "contracts" ? "" : mainClassName
+        pathname === "/reports" || activeTab === "upload" || activeTab === "contracts" ? "" : mainClassName
       }
     >
       {activeTab !== "upload" &&

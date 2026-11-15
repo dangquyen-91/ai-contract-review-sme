@@ -5,7 +5,6 @@ import { env } from '../../config/env';
 import { logger } from '../../config/logger';
 import { AppError } from '../../errors/AppError';
 import { ClauseModel } from '../../models/clause.model';
-import { ContractModel } from '../../models/contract.model';
 import { ContractVersionModel } from '../../models/contractVersion.model';
 import { RiskFindingModel } from '../../models/riskFinding.model';
 import { REVIEW_STAGES, ReviewModel } from '../../models/review.model';
@@ -149,11 +148,11 @@ async function waitForExtraction(job: Job<ReviewJobData>, versionId: string, sig
   }
 }
 
-async function buildReviewResult(versionId: string, reviewId: string) {
+async function buildReviewResult(versionId: string) {
   const [version, clauses, findings] = await Promise.all([
     ContractVersionModel.findById(versionId),
-    ClauseModel.find({ contractVersionId: versionId, reviewId }).select('index title'),
-    RiskFindingModel.find({ contractVersionId: versionId, reviewId }).select('findingType severity title clauseId detectedBy riskCode ruleCode'),
+    ClauseModel.find({ contractVersionId: versionId }).select('index title'),
+    RiskFindingModel.find({ contractVersionId: versionId }).select('findingType severity title clauseId detectedBy riskCode ruleCode'),
   ]);
   const clauseById = new Map(clauses.map((c) => [c._id.toString(), c]));
   const counts = { high: 0, medium: 0, low: 0 };
@@ -167,8 +166,6 @@ async function buildReviewResult(versionId: string, reviewId: string) {
     findingCounts: counts,
     legalRetrievalStatus: version?.legalRetrievalStatus ?? undefined,
     ruleCheckStatus: version?.ruleCheckStatus ?? undefined,
-    legalCoverage: version?.legalCoverage ?? undefined,
-    keyTerms: version?.keyTerms ?? undefined,
     findings: findings
       .map((f) => {
         const clause = f.clauseId ? clauseById.get(f.clauseId.toString()) : undefined;
@@ -189,11 +186,11 @@ async function buildReviewResult(versionId: string, reviewId: string) {
 
 type ReviewStages = { segmentation?: string | null; summary?: string | null; riskDetection?: string | null } | null | undefined;
 
-async function buildPartialResult(versionId: string, reviewId: string, stages: ReviewStages) {
+async function buildPartialResult(versionId: string, stages: ReviewStages) {
   const summaryDone = stages?.summary === 'completed';
   const riskDone = stages?.riskDetection === 'completed';
   if (!summaryDone && !riskDone) return undefined;
-  const result = await buildReviewResult(versionId, reviewId);
+  const result = await buildReviewResult(versionId);
   return {
     ...result,
     ...(summaryDone ? {} : { summaryPoints: [] }),
@@ -206,52 +203,16 @@ async function buildPartialResult(versionId: string, reviewId: string, stages: R
           findings: [],
           legalRetrievalStatus: undefined,
           ruleCheckStatus: undefined,
-          legalCoverage: undefined,
-          keyTerms: undefined,
         }),
     partial: true,
   };
-}
-
-async function restoreCompletedResult(reviewId: string, versionId: string, contractId: string, orgId: string) {
-  const previous = await ReviewModel.findOne({ versionId, status: 'completed', _id: { $ne: reviewId } })
-    .sort({ finishedAt: -1 })
-    .select('result');
-  const result = previous?.result;
-  if (!result || result.partial) return;
-  await ContractVersionModel.updateOne(
-    { _id: versionId },
-    {
-      $set: {
-        segmentationStatus: 'completed',
-        summaryStatus: 'completed',
-        riskDetectionStatus: 'completed',
-        summaryPoints: result.summaryPoints,
-        overallAssessment: result.overallAssessment,
-        overallRiskLevel: result.overallRiskLevel,
-        keyTerms: result.keyTerms ?? [],
-        ...(result.legalRetrievalStatus ? { legalRetrievalStatus: result.legalRetrievalStatus } : {}),
-        ...(result.ruleCheckStatus ? { ruleCheckStatus: result.ruleCheckStatus } : {}),
-        ...(result.legalCoverage ? { legalCoverage: result.legalCoverage } : {}),
-      },
-      $unset: {
-        segmentationError: '',
-        summaryError: '',
-        riskDetectionError: '',
-        ...(result.legalCoverage ? {} : { legalCoverage: '' }),
-      },
-    },
-  );
-  await ContractModel.updateOne({ _id: contractId, orgId }, { $set: { status: 'reviewed' } });
 }
 
 export async function finishUnsuccessfulReview(reviewId: string, code: ReviewErrorCode, message: string) {
   const review = await ReviewModel.findById(reviewId);
   if (!review) return;
   if (UNFINISHED_STATUSES.includes(review.status)) {
-    const partial = await buildPartialResult(review.versionId.toString(), review.id, review.stages).catch(
-      () => undefined,
-    );
+    const partial = await buildPartialResult(review.versionId.toString(), review.stages).catch(() => undefined);
     await ReviewModel.updateOne(
       { _id: review._id, status: { $in: UNFINISHED_STATUSES } },
       {
@@ -264,17 +225,6 @@ export async function finishUnsuccessfulReview(reviewId: string, code: ReviewErr
         },
         $unset: { activeLock: '', currentStage: '', stageDetail: '', cancelRequested: '' },
       },
-    );
-    await restoreCompletedResult(
-      review.id,
-      review.versionId.toString(),
-      review.contractId.toString(),
-      review.orgId.toString(),
-    ).catch((restoreErr) =>
-      logger.warn('Failed to restore the previous review result after an unsuccessful review', {
-        reviewId,
-        error: restoreErr instanceof Error ? restoreErr.message : String(restoreErr),
-      }),
     );
   }
   await finishUsage(review.orgId.toString(), review.usageRunId.toString(), false).catch((releaseErr) =>
@@ -358,7 +308,7 @@ async function runReview(job: Job<ReviewJobData>): Promise<void> {
 
   let result: Awaited<ReturnType<typeof buildReviewResult>>;
   if (await isUsageSucceeded(usageRunId)) {
-    result = await buildReviewResult(versionId, job.data.reviewId);
+    result = await buildReviewResult(versionId);
   } else {
     if (!(await extendUsageLease(usageRunId))) {
       throw reviewFailure('CREDIT_EXPIRED', 'Lượt đã giữ hết hạn trước khi bắt đầu xử lý. Vui lòng gửi lại yêu cầu rà soát.');
@@ -370,9 +320,9 @@ async function runReview(job: Job<ReviewJobData>): Promise<void> {
         { status: 'running', startedAt: review.startedAt ?? new Date(), aiModel: env.GEMINI_MODEL },
         ['error'],
       );
-      await runStages(job, review.stages, { reviewId: job.data.reviewId, orgId, contractId, analysisFocus, versionId }, credit.signal);
+      await runStages(job, review.stages, { orgId, contractId, analysisFocus, versionId }, credit.signal);
       credit.signal.throwIfAborted();
-      result = await buildReviewResult(versionId, job.data.reviewId);
+      result = await buildReviewResult(versionId);
       await finishUsage(orgId, usageRunId, true, { reviewId: job.data.reviewId }, async session => {
         const completed = await ReviewModel.updateOne({ _id: review._id, usageRunId, status: { $in: UNFINISHED_STATUSES }, cancelRequested: { $ne: true } }, {
           $set: { status: 'completed', finishedAt: new Date(), result },
@@ -395,7 +345,6 @@ async function runReview(job: Job<ReviewJobData>): Promise<void> {
 }
 
 interface StageInput {
-  reviewId: string;
   orgId: string;
   contractId: string;
   versionId: string;
@@ -405,13 +354,13 @@ interface StageInput {
 async function runStages(
   job: Job<ReviewJobData>,
   stages: ReviewStages,
-  { reviewId, orgId, contractId, versionId, analysisFocus }: StageInput,
+  { orgId, contractId, versionId, analysisFocus }: StageInput,
   signal: AbortSignal,
 ) {
   await waitForExtraction(job, versionId, signal);
 
   if (stages?.segmentation !== 'completed') {
-    await runStage(job, 'segmentation', 'segmentation', () => segmentClauses(orgId, contractId, reviewId, signal));
+    await runStage(job, 'segmentation', 'segmentation', () => segmentClauses(orgId, contractId, signal));
   }
 
   const parallel: Promise<void>[] = [];
@@ -419,7 +368,7 @@ async function runStages(
   if (stages?.summary !== 'completed') {
     parallel.push(
       runStage(job, 'summary', riskPending ? null : 'summary', () =>
-        generateContractSummary(orgId, contractId, reviewId, analysisFocus, signal),
+        generateContractSummary(orgId, contractId, analysisFocus, signal),
       ),
     );
   }
@@ -429,7 +378,6 @@ async function runStages(
         detectRisks(
           orgId,
           contractId,
-          reviewId,
           analysisFocus,
           (detail) => {
             updateReview(job, { stageDetail: detail }).catch(() => undefined);

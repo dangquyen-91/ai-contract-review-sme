@@ -51,32 +51,7 @@ export const LEGAL_RETRIEVAL_STATUSES = ['ok', 'degraded', 'no_sources', 'unavai
 
 export const RULE_CHECK_STATUSES = ['ok', 'skipped', 'not_applicable'] as const;
 
-export const LEGAL_SEARCH_SCOPES = ['profile', 'partial', 'all_sources', 'none'] as const;
-
-export const SKIPPED_RULE_REASONS = ['source_not_in_force', 'source_missing'] as const;
-
-export const legalCoverageSnapshotSchema = new Schema(
-  {
-    searchScope: { type: String, enum: LEGAL_SEARCH_SCOPES },
-    missingSources: { type: [String], default: undefined },
-    skippedRules: {
-      type: [
-        new Schema(
-          {
-            code: { type: String, required: true },
-            reason: { type: String, enum: SKIPPED_RULE_REASONS, required: true },
-            sources: { type: [String], default: [] },
-          },
-          { _id: false },
-        ),
-      ],
-      default: undefined,
-    },
-  },
-  { _id: false },
-);
-
-export const keyTermSchema = new Schema(
+const keyTermSchema = new Schema(
   {
     key: { type: String, required: true },
     numberValue: { type: Number },
@@ -98,11 +73,7 @@ const contractVersionSchema = new Schema(
     fileFormat: { type: String },
     fileName: { type: String },
     mimeType: { type: String },
-    fileHash: { type: String, index: true },
-    note: { type: String, trim: true, maxlength: 300 },
     extractedText: { type: String, select: false, ...encryptedString },
-    textSignature: { type: [Number], default: undefined, select: false },
-    textSignatureVersion: { type: Number, select: false },
     extractionStatus: { type: String, enum: EXTRACTION_STATUSES, default: 'pending', index: true },
     extractionError: { type: String },
     extractionErrorCode: { type: String },
@@ -128,7 +99,6 @@ const contractVersionSchema = new Schema(
     riskDetectionStartedAt: { type: Date },
     legalRetrievalStatus: { type: String, enum: LEGAL_RETRIEVAL_STATUSES },
     ruleCheckStatus: { type: String, enum: RULE_CHECK_STATUSES },
-    legalCoverage: { type: legalCoverageSnapshotSchema },
     overallAssessment: { type: [String], default: [] },
     keyTerms: { type: [keyTermSchema], default: undefined },
     keyTermsExtractedAt: { type: Date },

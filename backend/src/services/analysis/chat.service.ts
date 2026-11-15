@@ -3,17 +3,12 @@ import { ChatMessageModel } from '../../models/chatMessage.model';
 import { ClauseModel } from '../../models/clause.model';
 import { ContractModel } from '../../models/contract.model';
 import { RiskFindingModel } from '../../models/riskFinding.model';
-import {
-  findResultReviewId,
-  getCurrentVersionWithText,
-  resolveVersion,
-} from '../contract/contractVersion.service';
+import { getCurrentVersion, getCurrentVersionWithText } from '../contract/contractVersion.service';
 import { generateText, generateTextStream } from '../ai/llm.service';
 import { buildReviewContext, describeReviewContext, ReviewContext } from '../contract/contractProfile.service';
 import { createRedactor, placeholderInstruction } from '../ai/redaction.service';
 import { withUsage } from '../billing/usage.service';
-import { LegalRetrievalStatus, LegalSearchScope, searchLegalChunks } from '../legal/legalRetrieval.service';
-import type { LegalSourceReference } from '../legal/legalSourceAvailability';
+import { LegalRetrievalStatus, searchLegalChunks } from '../legal/legalRetrieval.service';
 
 const HISTORY_LIMIT = 10;
 const LEGAL_EXCERPTS_PER_QUESTION = 4;
@@ -23,7 +18,7 @@ Answer in Vietnamese, in plain language, using ONLY the contract content, the an
 When the answer relies on a legal excerpt, name the article and the law it comes from (e.g. "Điều 301 Luật Thương mại 2005"). Never cite a law or an article that is not in the prompt; if the question is about the law and no excerpt covers it, say that the legal knowledge base has no matching provision instead of answering from memory.
 If the answer is not in the contract, say so instead of guessing. You give information, not formal legal advice - recommend consulting a lawyer for important decisions.`;
 
-interface ChatLegalSource extends LegalSourceReference {
+interface ChatLegalSource {
   legalKnowledgeChunkId: string;
   citationLabel: string;
   sourceTitle: string;
@@ -34,7 +29,6 @@ interface ChatResult {
   reply: string;
   legalSources: ChatLegalSource[];
   legalRetrievalStatus: LegalRetrievalStatus;
-  legalScope?: { searchScope?: LegalSearchScope; missingSources?: string[] };
 }
 
 async function loadContractContext(orgId: string, contractId: string) {
@@ -58,11 +52,9 @@ async function buildContractContext(
     analysisFocus?: string | null;
   },
 ): Promise<string> {
-  const reviewId = await findResultReviewId(version._id);
-  const clauses = await ClauseModel.find({ contractVersionId: version._id, reviewId }).sort({ index: 1 });
+  const clauses = await ClauseModel.find({ contractVersionId: version._id }).sort({ index: 1 });
   const findings = await RiskFindingModel.find({
     contractVersionId: version._id,
-    reviewId,
     'verification.verdict': { $ne: 'rejected' },
   }).populate<{
     expectedClauseTypeId: { name: string } | null;
@@ -120,8 +112,6 @@ async function retrieveLegalContext(question: string, legalSourceCodes: string[]
   const {
     matches: [found = []],
     status,
-    scope,
-    missingSources,
   } = await searchLegalChunks([question], LEGAL_EXCERPTS_PER_QUESTION, { legalSourceCodes, signal });
   const excerpts = found
     .map((m, i) => `[L${i + 1}] ${m.citationLabel}${m.articleRef ? `, ${m.articleRef}` : ''}\n${m.chunkText}`)
@@ -131,17 +121,12 @@ async function retrieveLegalContext(question: string, legalSourceCodes: string[]
       ? `Legal excerpts that may be relevant to the question (retrieved by search, they may or may not apply):\n"""\n${excerpts}\n"""\n\n`
       : '',
     status,
-    scope: { searchScope: scope, missingSources: missingSources?.length ? missingSources : undefined },
     sources: found.map(
       (m): ChatLegalSource => ({
         legalKnowledgeChunkId: m.chunkId,
         citationLabel: m.citationLabel,
         sourceTitle: m.sourceTitle,
         articleRef: m.articleRef,
-        legalSourceId: m.legalSourceId,
-        documentNumber: m.documentNumber,
-        origin: m.origin,
-        provenance: m.provenance,
       }),
     ),
   };
@@ -207,7 +192,7 @@ export async function askAboutContract(
       const reply = redactor.unmask(await generateText(buildPrompt(legal.block), systemInstruction, runSignal));
       runSignal.throwIfAborted();
       await saveExchange(versionId, orgId, userId, message, reply, legal.sources);
-      return { reply, legalSources: legal.sources, legalRetrievalStatus: legal.status, legalScope: legal.scope };
+      return { reply, legalSources: legal.sources, legalRetrievalStatus: legal.status };
     },
     signal,
   );
@@ -254,7 +239,7 @@ export async function streamAboutContract(
       runSignal.throwIfAborted();
       if (!reply) throw AppError.internal('LLM returned an empty response.');
       await saveExchange(versionId, orgId, userId, message, reply, legal.sources);
-      return { reply, legalSources: legal.sources, legalRetrievalStatus: legal.status, legalScope: legal.scope };
+      return { reply, legalSources: legal.sources, legalRetrievalStatus: legal.status };
     },
     signal,
   );
@@ -262,11 +247,11 @@ export async function streamAboutContract(
   return { ...usage.result, runId: usage.runId, replayed: usage.replayed };
 }
 
-export async function listChatMessages(orgId: string, contractId: string, versionId?: string) {
+export async function listChatMessages(orgId: string, contractId: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await resolveVersion(contractId, versionId);
+  const version = await getCurrentVersion(contractId);
   return ChatMessageModel.find({ contractVersionId: version._id }).sort({ createdAt: 1, _id: 1 });
 }

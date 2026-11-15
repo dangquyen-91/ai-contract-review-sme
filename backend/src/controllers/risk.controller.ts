@@ -7,18 +7,13 @@ import { listKeyTerms } from '../services/analysis/keyTermExtraction.service';
 
 export const listRiskFindingsHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);
-  const findings = await riskService.listRiskFindings(
-    user.orgId,
-    req.params.id,
-    req.query.versionId as string | undefined,
-    req.query.reviewId as string | undefined,
-  );
+  const findings = await riskService.listRiskFindings(user.orgId, req.params.id);
   ok(res, findings);
 });
 
 export const listKeyTermsHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);
-  ok(res, await listKeyTerms(user.orgId, req.params.id, req.query.versionId as string | undefined));
+  ok(res, await listKeyTerms(user.orgId, req.params.id));
 });
 
 export const updateProposedRevisionHandler = asyncHandler(async (req: Request, res: Response) => {

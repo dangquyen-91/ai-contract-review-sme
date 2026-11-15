@@ -26,7 +26,6 @@ const legalKnowledgeChunkSchema = new Schema(
     clauseTo: { type: Number },
     hierarchy: { type: [legalHeadingSchema], default: undefined },
     embedding: { type: [Number], default: undefined, select: false },
-    embeddingModel: { type: String },
   },
   { timestamps: true },
 );

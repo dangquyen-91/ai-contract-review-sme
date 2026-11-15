@@ -2,24 +2,16 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { useContractReviewResult, useReviewContractMutation, useUploadContractMutation, useUploadContractVersionMutation } from "@/hooks/contracts/use-contracts";
+import { useContractReviewResult, useReviewContractMutation, useUploadContractMutation } from "@/hooks/contracts/use-contracts";
 import { contractsApi } from "@/lib/api/contracts";
 import { isApiClientError } from "@/lib/api/client";
 import { isReviewCancelled, readReviewSession } from "@/lib/review/review-session";
 import { serverCodeMessage } from "@/lib/review/review-error-codes";
 import { reviewBlockReason, reviewBlockedMessage, type ReviewBlockReason } from "@/lib/review/review-failure";
-import type { ContractReviewRun, DashboardContract, DuplicateFileMatch, ReviewBillingConfirmation } from "@/types/contracts";
+import type { ContractReviewRun, DashboardContract, ReviewBillingConfirmation } from "@/types/contracts";
 
 type ReviewStage = "idle" | "uploading" | "reviewing" | "done";
 type Access = { upload: boolean; review: boolean };
-
-export type UploadTarget = {
-  versionOf?: { id: string; title: string };
-  note?: string;
-  allowDuplicate?: boolean;
-};
-
-export type DuplicateUpload = { file: File; match: DuplicateFileMatch };
 
 export function reviewErrorMessage(error: unknown) {
   const blocked = reviewBlockReason(error);
@@ -55,18 +47,15 @@ export function useReviewWorkflow({ access, workspaceReady = true, personal = fa
   const [reviewError, setReviewError] = useState("");
   const [reviewBlocked, setReviewBlocked] = useState<ReviewBlockReason | null>(null);
   const [cancelling, setCancelling] = useState(false);
-  const [duplicateUpload, setDuplicateUpload] = useState<DuplicateUpload | null>(null);
   const uploadContractMutation = useUploadContractMutation();
-  const uploadVersionMutation = useUploadContractVersionMutation();
   const reviewContractMutation = useReviewContractMutation();
   const resultQuery = useContractReviewResult(selectedContractId);
   const reviewResult = workflowComplete ? resultQuery.data ?? null : null;
-  const uploading = uploadContractMutation.isPending || uploadVersionMutation.isPending;
-  const stage: ReviewStage = uploading ? "uploading" : reviewContractMutation.isPending ? "reviewing" : workflowComplete ? "done" : "idle";
+  const stage: ReviewStage = uploadContractMutation.isPending ? "uploading" : reviewContractMutation.isPending ? "reviewing" : workflowComplete ? "done" : "idle";
   const isReviewing = stage === "reviewing" || resultQuery.isLoadingResult;
 
-  async function selectFile(nextFile?: File, target: UploadTarget = {}): Promise<boolean> {
-    if (!nextFile || !access.upload || uploading || isReviewing) return false;
+  async function selectFile(nextFile?: File): Promise<boolean> {
+    if (!nextFile || !access.upload || uploadContractMutation.isPending || isReviewing) return false;
     if (!workspaceReady) {
       toast.error("Chưa thể tải hợp đồng", { description: "Chưa tải được thông tin tài khoản. Vui lòng tải lại trang và thử lại." });
       return false;
@@ -77,8 +66,7 @@ export function useReviewWorkflow({ access, workspaceReady = true, personal = fa
       return false;
     }
     if (nextFile.size > 20 * 1024 * 1024) { toast.error("Tệp vượt quá 20 MB"); return false; }
-    const uploadTitle = target.versionOf?.title ?? (nextFile.name.replace(/\.[^.]+$/, "").trim() || "Hợp đồng mới");
-    setDuplicateUpload(null);
+    const uploadTitle = nextFile.name.replace(/\.[^.]+$/, "").trim() || "Hợp đồng mới";
     setFile(nextFile);
     setTitle(uploadTitle);
     setSelectedContractId("");
@@ -90,44 +78,18 @@ export function useReviewWorkflow({ access, workspaceReady = true, personal = fa
     setWorkflowComplete(false);
     const formData = new FormData();
     formData.set("file", nextFile);
-    if (target.allowDuplicate) formData.set("allowDuplicate", "true");
-    const note = target.note?.trim();
-    if (target.versionOf && note) formData.set("note", note);
     try {
-      const contract = target.versionOf
-        ? await uploadVersionMutation.mutateAsync({ contractId: target.versionOf.id, formData })
-        : await uploadContractMutation.mutateAsync(formData);
+      const contract = await uploadContractMutation.mutateAsync(formData);
       const contractId = contract.id ?? contract._id;
       setFile(null);
       setTitle("");
-      if (target.versionOf) {
-        const versionNumber = contract.currentVersion?.versionNumber;
-        toast.success(versionNumber ? `Đã tải phiên bản ${versionNumber}` : "Đã tải phiên bản mới", { description: contract.title });
-      }
       if (access.review && contractId) setUploadedContract({ id: contractId, title: contract.title });
-      else if (!target.versionOf) toast.success("Đã tải hợp đồng lên");
+      else toast.success("Đã tải hợp đồng lên");
       return true;
     } catch (error) {
-      if (isApiClientError(error) && error.serverCode === "DUPLICATE_CONTRACT" && error.meta?.contractId) {
-        setFile(null);
-        setTitle("");
-        setDuplicateUpload({ file: nextFile, match: error.meta as DuplicateFileMatch });
-        return false;
-      }
-      toast.error(target.versionOf ? "Chưa thể tải phiên bản mới" : "Chưa thể tải hợp đồng lên", { description: reviewErrorMessage(error) });
+      toast.error("Chưa thể tải hợp đồng lên", { description: reviewErrorMessage(error) });
       return false;
     }
-  }
-
-  function dismissDuplicateUpload() {
-    setDuplicateUpload(null);
-  }
-
-  async function uploadDuplicateAnyway() {
-    const pending = duplicateUpload;
-    if (!pending) return;
-    setDuplicateUpload(null);
-    await selectFile(pending.file, { allowDuplicate: true });
   }
 
   function notifyFailedRun(error: unknown) {
@@ -170,11 +132,10 @@ export function useReviewWorkflow({ access, workspaceReady = true, personal = fa
     setWorkflowComplete(true);
   }
 
-  async function reviewUploadedContract(focus: string, billing?: ReviewBillingConfirmation, target?: { id: string; title: string }) {
-    const contract = target ?? uploadedContract;
-    if (!contract) return;
-    const contractId = contract.id;
-    setTitle(contract.title);
+  async function reviewUploadedContract(focus: string, billing?: ReviewBillingConfirmation) {
+    if (!uploadedContract) return;
+    const contractId = uploadedContract.id;
+    setTitle(uploadedContract.title);
     setUploadedContract(null);
     setTimelineScrollRequest((request) => request + 1);
     try { await runReview(contractId, focus, false, billing); }
@@ -246,5 +207,5 @@ export function useReviewWorkflow({ access, workspaceReady = true, personal = fa
     }
   }
 
-  return { selectedContractId, duplicateUpload, dismissDuplicateUpload, uploadDuplicateAnyway, file, title, setTitle, uploadedContract, setUploadedContract, cancelReview, cancelling, reviewResult, reviewProgress, reviewResultRef, reviewTimelineRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, runReview, reviewUploadedContract, reviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing: reviewContractMutation.isPending, loadingResult: resultQuery.isLoadingResult, reconnecting: reviewContractMutation.reconnecting };
+  return { file, title, setTitle, uploadedContract, setUploadedContract, cancelReview, cancelling, reviewResult, reviewProgress, reviewResultRef, reviewTimelineRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, runReview, reviewUploadedContract, reviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing: reviewContractMutation.isPending, loadingResult: resultQuery.isLoadingResult, reconnecting: reviewContractMutation.reconnecting };
 }

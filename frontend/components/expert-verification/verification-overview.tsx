@@ -8,7 +8,8 @@ import { useVerificationOverview } from "@/hooks/expert-verification/use-verific
 import { verificationDate } from "@/lib/review/verification-display";
 import { VerificationWorkList } from "./verification-work-list";
 import { VerificationOverviewHero } from "./verification-overview-hero";
-import { RoleInsights } from "@/components/overview/role-insights";
+import { VerificationOverviewMetrics } from "./verification-overview-metrics";
+import { VerificationDistributionChart } from "./verification-distribution-chart";
 import { useRestoreVerificationList } from "@/hooks/expert-verification/use-verification-list-navigation";
 import { filterVerificationQueue } from "@/lib/review/verification-queue-list";
 
@@ -29,7 +30,12 @@ export function VerificationOverview() {
   return (
     <div className="grid gap-[22px] font-sans text-card-foreground max-[650px]:gap-[15px]">
       <VerificationOverviewHero />
-      <RoleInsights role="expert" />
+      <VerificationOverviewMetrics
+        assigned={assigned.data?.length}
+        waiting={waiting.data?.length}
+        assignedPending={assigned.isPending}
+        waitingPending={waiting.isPending}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div
           className="flex flex-wrap gap-2"
@@ -37,12 +43,12 @@ export function VerificationOverview() {
         >
           <Button asChild variant="outline" size="sm">
             <Link href="/expert-verification?status=in_progress">
-              Tôi đang xử lý
+              Tôi đang xử lý · {assigned.data?.length ?? "—"}
             </Link>
           </Button>
           <Button asChild variant="outline" size="sm">
             <Link href="/expert-verification?status=requested">
-              Chờ tiếp nhận
+              Chờ tiếp nhận · {waiting.data?.length ?? "—"}
             </Link>
           </Button>
           <Button asChild variant="outline" size="sm">
@@ -66,7 +72,7 @@ export function VerificationOverview() {
           Làm mới
         </Button>
       </div>
-      <div className="grid min-w-0 items-start gap-5">
+      <div className="grid items-start gap-5 min-[1101px]:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
         <VerificationWorkList
           kind={group}
           title="Tiếp tục công việc"
@@ -108,6 +114,15 @@ export function VerificationOverview() {
             </div>
           }
         />
+        <VerificationDistributionChart
+          assigned={assigned.data?.length}
+          waiting={waiting.data?.length}
+          pending={assigned.isPending || waiting.isPending}
+          unavailable={assigned.isError || waiting.isError}
+          onRetry={() => {
+            void refresh();
+          }}
+        />
       </div>
       <VerificationWorkList
         kind="waiting"
@@ -123,8 +138,8 @@ export function VerificationOverview() {
         }}
       />
       <p className="m-0 text-ui-meta leading-6 text-muted-foreground">
-        Các danh sách công việc hiển thị tối đa 100 yêu cầu mỗi nhóm;
-        chưa bao gồm yêu cầu đã kết thúc. Thống kê phía trên được tính riêng từ toàn bộ dữ liệu phù hợp. Tự cập nhật mỗi 15 giây.
+        Số liệu và biểu đồ theo danh sách đã tải, tối đa 100 yêu cầu mỗi nhóm;
+        chưa bao gồm yêu cầu đã kết thúc. Tự cập nhật mỗi 15 giây.
         {updatedAt
           ? ` Cập nhật danh sách lúc ${verificationDate(new Date(updatedAt).toISOString())}.`
           : ""}

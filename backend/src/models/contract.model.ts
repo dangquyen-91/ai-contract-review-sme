@@ -16,12 +16,6 @@ export const CLASSIFICATION_OUTCOMES = [
   'not_allowed_for_account',
 ] as const;
 export const CLASSIFICATION_SOURCES = ['ai', 'user'] as const;
-export const OWNER_TYPES = ['organization', 'personal'] as const;
-export type OwnerType = (typeof OWNER_TYPES)[number];
-
-export function ownerRef(this: { ownerType?: string }) {
-  return this.ownerType === 'personal' ? 'User' : 'Organization';
-}
 
 const detectedPartySchema = new Schema(
   {
@@ -51,8 +45,7 @@ const classificationSchema = new Schema(
 
 const contractSchema = new Schema(
   {
-    ownerType: { type: String, enum: OWNER_TYPES, required: true, index: true },
-    orgId: { type: Types.ObjectId, ref: ownerRef, required: true, index: true },
+    orgId: { type: Types.ObjectId, ref: 'Organization', required: true, index: true },
     uploadedBy: { type: Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true, trim: true },
     type: { type: String, index: true },

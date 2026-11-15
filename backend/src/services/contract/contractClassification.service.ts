@@ -190,7 +190,6 @@ export async function classifyContract(contractId: string, signal?: AbortSignal)
       getCurrentVersionWithText(contractId),
       ContractProfileModel.find().select('code name parties'),
     ]);
-    const isPersonal = !organization;
     const org = organization ?? {
       ...(await findBillingAccount(contract.orgId.toString())),
       name: uploader?.name ?? '',
@@ -228,12 +227,12 @@ export async function classifyContract(contractId: string, signal?: AbortSignal)
       }))
       .filter((p) => p.name);
 
-    const allowedTypes = isPersonal ? PERSONAL_REVIEW_TYPES : BUSINESS_REVIEW_TYPES;
+    const allowedTypes = org.isPersonal ? PERSONAL_REVIEW_TYPES : BUSINESS_REVIEW_TYPES;
     const outcome = decideOutcome(type, allowedTypes, supportedTypes);
     const ourParty =
       outcome !== 'supported'
         ? undefined
-        : isPersonal
+        : org.isPersonal
           ? type === 'labor'
             ? 'employee'
             : (uploader ? matchPersonParty(parties, uploader.name) : undefined) ?? PERSONAL_DEFAULT_PARTY[type]

@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 import { reportQuerySchema } from "@/schemas/report.schema";
-import { permissions } from "@/config/permissions";
 
 export async function GET(request: NextRequest) {
   const session = await getApiSession();
   if (session.error) return session.error;
-  if (!permissions.operationalReports(session.user.role))
+  if (!["administrator", "owner"].includes(session.user.role))
     return NextResponse.json(
       { success: false, error: { message: "Bạn không có quyền xem báo cáo." } },
       { status: 403 },

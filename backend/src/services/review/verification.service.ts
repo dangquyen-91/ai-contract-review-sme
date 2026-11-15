@@ -16,9 +16,10 @@ import { UserModel } from '../../models/user.model';
 import { normalizeUploadFileName } from '../../utils/uploadFileName';
 import { AddFindingInput, DecideFindingInput } from '../../validations/verification.validation';
 import { createRedactor } from '../ai/redaction.service';
-import { listReviewFindings } from '../analysis/risk.service';
+import { listVersionFindings } from '../analysis/risk.service';
 import { getCurrentVersion } from '../contract/contractVersion.service';
 import { redactionPolicyFor } from '../contract/redactionPolicy.service';
+import { getRoleByCode } from '../identity/role.service';
 import { archiveExpertWork, historicalExpertWork } from './expertWork.service';
 
 type RiskLevel = (typeof RISK_LEVELS)[number];
@@ -76,7 +77,8 @@ async function loadVerifiableReview(orgId: string, reviewId: string) {
 }
 
 async function assertExpertAvailable() {
-  const hasExpert = await UserModel.exists({ platformRole: 'expert', isActive: true, deletedAt: null });
+  const expertRole = await getRoleByCode('expert');
+  const hasExpert = await UserModel.exists({ roleId: expertRole._id, isActive: true, deletedAt: null });
   if (!hasExpert) {
     throw AppError.conflict('Hiện chưa có chuyên gia LawScan nhận xác minh. Vui lòng thử lại sau.', 'NO_EXPERT');
   }
@@ -193,7 +195,7 @@ export async function decideFinding(
   input: DecideFindingInput,
 ) {
   const { session, review } = await loadOwnSession(expertId, reviewId);
-  const finding = await RiskFindingModel.findOne({ _id: findingId, orgId: session.orgId, reviewId: review._id });
+  const finding = await RiskFindingModel.findOne({ _id: findingId, orgId: session.orgId, contractVersionId: review.versionId });
   if (!finding) throw AppError.notFound('Không tìm thấy rủi ro trong kết quả rà soát này.');
   const addedByExpert = finding.detectedBy === 'expert';
   if (addedByExpert && input.verdict !== 'adjusted') {
@@ -228,13 +230,12 @@ export async function addFinding(expertId: string, reviewId: string, input: AddF
   const { session, review } = await loadOwnSession(expertId, reviewId);
   let clauseId: Types.ObjectId | null = null;
   if (input.clauseIndex !== undefined) {
-    const clause = await ClauseModel.findOne({ contractVersionId: review.versionId, reviewId: review._id, index: input.clauseIndex }).select('_id');
+    const clause = await ClauseModel.findOne({ contractVersionId: review.versionId, index: input.clauseIndex }).select('_id');
     if (!clause) throw AppError.badRequest('Không tìm thấy điều khoản đã chọn trong hợp đồng.', 'CLAUSE_NOT_FOUND');
     clauseId = clause._id;
   }
   const finding = new RiskFindingModel({
     contractVersionId: review.versionId,
-    reviewId: review._id,
     orgId: session.orgId,
     clauseId,
     findingType: clauseId ? 'clause_risk' : 'missing_clause',
@@ -257,7 +258,7 @@ export async function addFinding(expertId: string, reviewId: string, input: AddF
 
 export async function removeFinding(expertId: string, reviewId: string, findingId: string) {
   const { session, review } = await loadOwnSession(expertId, reviewId);
-  const finding = await RiskFindingModel.findOne({ _id: findingId, orgId: session.orgId, reviewId: review._id });
+  const finding = await RiskFindingModel.findOne({ _id: findingId, orgId: session.orgId, contractVersionId: review.versionId });
   if (!finding) throw AppError.notFound('Không tìm thấy rủi ro trong kết quả rà soát này.');
   if (finding.detectedBy !== 'expert') {
     throw AppError.badRequest('Chỉ có thể xóa rủi ro do chuyên gia thêm. Hãy bác bỏ rủi ro do AI phát hiện.', 'INVALID_VERDICT');
@@ -272,7 +273,7 @@ export async function removeFinding(expertId: string, reviewId: string, findingI
 
 export async function approveVerification(expertId: string, reviewId: string, decisionNote?: string) {
   const { session, review } = await loadOwnSession(expertId, reviewId);
-  const findings = await RiskFindingModel.find({ reviewId: review._id }).select('severity verification');
+  const findings = await RiskFindingModel.find({ contractVersionId: review.versionId }).select('severity verification');
   const pending = findings.filter((finding) => !finding.verification);
   if (pending.length) {
     throw AppError.badRequest(`Còn ${pending.length} rủi ro chưa được xử lý.`, 'VERIFICATION_INCOMPLETE');
@@ -389,10 +390,8 @@ export async function getExpertWorkspace(expertId: string, reviewId: string, att
   const versionId = review.versionId.toString();
   const [version, clauses, findings, actions, policy] = await Promise.all([
     ContractVersionModel.findById(versionId).select('+extractedText mimeType'),
-    ClauseModel.find({ contractVersionId: versionId, reviewId: session.reviewId })
-      .sort({ index: 1 })
-      .populate('clauseTypeId'),
-    listReviewFindings(session.reviewId.toString()),
+    ClauseModel.find({ contractVersionId: versionId }).sort({ index: 1 }).populate('clauseTypeId'),
+    listVersionFindings(versionId),
     ExpertActionModel.find({ expertReviewId: session._id }).sort({ createdAt: 1 }).populate('expertId', 'name'),
     redactionPolicyFor(contract.type),
   ]);

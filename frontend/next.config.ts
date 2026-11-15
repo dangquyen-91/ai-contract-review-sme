@@ -1,13 +1,5 @@
 import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
-  // Excel export runs on demand in the browser. Avoid bundling ExcelJS's
-  // Node-only streaming/filesystem dependencies into the server's async graph.
-  serverExternalPackages: ["exceljs"],
-  experimental: {
-    // On Windows this workspace spends tens of seconds compacting the disk
-    // cache. Keep Turbopack's in-memory cache and avoid that extra filesystem IO.
-    turbopackFileSystemCacheForDev: process.platform !== "win32",
-  },
   async redirects() {
     return [
       { source: "/dashboard/contracts/new", destination: "/review", permanent: true },

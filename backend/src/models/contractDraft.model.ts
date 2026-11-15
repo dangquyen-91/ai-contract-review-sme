@@ -1,7 +1,6 @@
 import { TEMPLATE_CODES } from '../config/contractTemplates';
 import { Schema, model } from 'mongoose';
 import { decryptOnSerialize, encryptedString } from '../utils/fieldEncryption';
-import { OWNER_TYPES } from './contract.model';
 
 const schema = new Schema(
   {

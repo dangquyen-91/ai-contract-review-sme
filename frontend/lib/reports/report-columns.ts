@@ -1,6 +1,3 @@
-import type { OperationalReport } from "@/types/reports";
-import { operationalReportFeatures } from "@/config/report-profiles";
-
 // Keep chart/table/CSV field order and labels consistent. Calculations stay in the backend.
 export const reportValueColumns = [
   { key: "uploads", label: "Tải lên" },
@@ -12,15 +9,6 @@ export const reportValueColumns = [
   { key: "chat", label: "Chat" },
   { key: "drafting", label: "Soạn AI" },
 ] as const;
-
-export function visibleReportColumns(report: OperationalReport) {
-  const features = operationalReportFeatures(report.role);
-  return reportValueColumns.filter(
-    (column) =>
-      column.key !== "receivedAmount" ||
-      (features.payments && report.payments !== null),
-  );
-}
 
 export const reportSeriesKeys = [
   ...reportValueColumns.map((column) => column.key),

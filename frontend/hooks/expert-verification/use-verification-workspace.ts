@@ -4,7 +4,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { expertWorkspaceApi } from "@/lib/api/expert-workspace";
 import { expertVerificationKeys as keys } from "@/lib/query-keys/expert-verification";
 import { contractKeys } from "@/lib/query-keys/contracts";
-import { dashboardKeys } from "@/lib/query-keys/dashboard";
 import type { ExpertCommand, VerificationQueueFilter } from "@/types/verification-workspace";
 
 export function useVerificationQueue(status: VerificationQueueFilter) {
@@ -34,7 +33,6 @@ export function useExpertCommand(reviewId: string, contractId?: string) {
     onSettled: async () => {
       await client.cancelQueries({ queryKey: keys.workspace(reviewId) });
       await Promise.all([
-        client.invalidateQueries({ queryKey: dashboardKeys.all }),
         client.invalidateQueries({ queryKey: keys.workspace(reviewId) }),
         client.invalidateQueries({ queryKey: keys.queues }),
         client.invalidateQueries({ queryKey: keys.workLists }),

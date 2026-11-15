@@ -1,233 +1,74 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
-import { ArrowDown, ArrowRight, ArrowUp, BookOpen, CircleAlert, FileText, LockKeyhole, MessageSquareText, Scale, ShieldCheck, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ContractChatMessageView } from "@/components/review/results/contract-chat-message";
-import { useContractChat } from "@/hooks/review/use-contract-chat";
 
-const suggestions = [
-  {
-    icon: ShieldCheck,
-    title: "Nhận diện rủi ro",
-    description: "Những điểm cần lưu ý trước khi ký",
-    question: "Những rủi ro nào trong hợp đồng này cần ưu tiên xử lý trước khi ký?",
-  },
-  {
-    icon: BookOpen,
-    title: "Hiểu rõ điều khoản",
-    description: "Làm rõ quyền lợi và nghĩa vụ của bạn",
-    question: "Hãy giải thích các quyền lợi và nghĩa vụ chính của các bên trong hợp đồng này.",
-  },
-  {
-    icon: Scale,
-    title: "Gợi ý thương lượng",
-    description: "Điều khoản nào nên được điều chỉnh?",
-    question: "Tôi nên thương lượng điều chỉnh những điều khoản nào để hợp đồng cân bằng hơn?",
-  },
-];
+import { useState, type FormEvent } from "react";
+import { toast } from "sonner";
+import { isApiClientError } from "@/lib/api/client";
+import { useContractChatMessages, useStreamChatMutation } from "@/hooks/contracts/use-contracts";
+import type { ContractChatMessage } from "@/types/contracts";
 
-export function ContractChat({ contractId, canAsk, contractTitle }: {
-  contractId: string;
-  canAsk: boolean;
-  contractTitle?: string;
-}) {
-  const chat = useContractChat(contractId, canAsk);
-  const id = useId();
-  const input = useRef<HTMLTextAreaElement>(null);
-  const viewport = useRef<HTMLDivElement>(null);
-  const content = useRef<HTMLDivElement>(null);
-  const followAnswer = useRef(true);
-  const [showScrollDown, setShowScrollDown] = useState(false);
-  const empty = !chat.isLoading && !chat.error && !chat.messages.length && !chat.pendingQuestion;
-  const disabled = chat.isSending || chat.isLoading || Boolean(chat.error);
+function errorMessage(error: unknown) {
+  return isApiClientError(error) ? error.message : "Vui lòng thử lại sau.";
+}
 
-  // Follow new tokens while reading the latest answer; preserve the reader's position above it.
-  useEffect(() => {
-    const element = viewport.current;
-    const body = content.current;
-    if (!element || !body) return;
-    const observer = new ResizeObserver(() => {
-      if (followAnswer.current && body.querySelector('[role="log"]')?.childElementCount) {
-        element.scrollTop = element.scrollHeight;
-      }
-    });
-    observer.observe(body);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+function ChatLegalSources({ sources = [] }: { sources?: ContractChatMessage["legalSources"] }) {
+  const items = sources.filter((source, index) => sources.findIndex((other) =>
+    other.citationLabel === source.citationLabel && other.articleRef === source.articleRef) === index);
+  if (!items.length) return null;
+  return (
+    <div className="mt-2 border-t border-[#e4e8ef] pt-2">
+      <span className="text-ui-meta font-semibold text-[#31445f]">Căn cứ tham khảo</span>
+      <ul className="m-0 mt-1 grid list-disc gap-0.5 pl-4 text-ui-meta leading-5 text-[#52647e]">
+        {items.map((source) => (
+          <li key={`${source.citationLabel}-${source.articleRef ?? ""}`}>
+            {source.citationLabel || source.sourceTitle}
+            {source.articleRef && ` · ${source.articleRef}`}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
-  useEffect(() => {
-    if (!input.current) return;
-    input.current.style.height = "auto";
-    input.current.style.height = `${Math.min(input.current.scrollHeight, 160)}px`;
-  }, [chat.draft]);
+export function ContractChat({ contractId, canAsk }: { contractId: string; canAsk: boolean }) {
+  const { data: messages = [], isLoading, error, refetch } = useContractChatMessages(contractId);
+  const stream = useStreamChatMutation();
+  const [draft, setDraft] = useState("");
+  const [pendingQuestion, setPendingQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
 
-  function scrollToLatest() {
-    followAnswer.current = true;
-    if (viewport.current) viewport.current.scrollTop = viewport.current.scrollHeight;
-    setShowScrollDown(false);
-  }
-
-  function submit(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
-    if (disabled || !chat.draft.trim()) return;
-    scrollToLatest();
-    void chat.ask();
-  }
-
-  function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
-    if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && event.nativeEvent.keyCode !== 229) {
-      event.preventDefault();
-      submit();
+  async function ask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const message = draft.trim();
+    if (!message || stream.isPending) return;
+    setDraft("");
+    setPendingQuestion(message);
+    setAnswer("");
+    try {
+      await stream.mutateAsync({ contractId, message, onEvent: (event) => {
+        if (event.event === "token") setAnswer((current) => current + event.data.text);
+      } });
+      await refetch();
+      setPendingQuestion("");
+      setAnswer("");
+    } catch (requestError) {
+      toast.error("Chưa thể trả lời câu hỏi", { description: errorMessage(requestError) });
+      setDraft(message);
+      setPendingQuestion("");
+      setAnswer("");
     }
   }
 
-  return (
-    <section aria-labelledby={`${id}-heading`} className="flex min-w-0 flex-col bg-white text-slate-800">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:px-7">
-        <div className="flex items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-primary text-white shadow-[0_4px_12px_-5px_#2864dc80]">
-            <Sparkles aria-hidden="true" className="size-5" />
-          </span>
-          <div>
-            <h3 id={`${id}-heading`} className="m-0 text-ui-section font-semibold tracking-tight">Trợ lý hợp đồng</h3>
-            <p className="m-0 mt-0.5 text-ui-meta text-slate-500">Cùng LawScan AI làm rõ từng điều khoản</p>
-          </div>
-        </div>
-        <span className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-ui-caption text-slate-500">
-          <FileText aria-hidden="true" className="size-3.5" />
-          Theo nội dung hợp đồng
-        </span>
-      </header>
-
-      {contractTitle && (
-        <div className="flex min-w-0 items-center gap-2 border-b border-slate-100 bg-slate-50/70 px-5 py-2.5 text-ui-meta sm:px-7">
-          <FileText aria-hidden="true" className="size-3.5 shrink-0 text-slate-400" />
-          <span className="shrink-0 text-slate-500">Đang trao đổi:</span>
-          <span className="truncate font-medium text-slate-700" title={contractTitle}>{contractTitle}</span>
-        </div>
-      )}
-
-      <div className="relative">
-        <div
-          ref={viewport}
-          className={`${empty ? "min-h-[420px]" : "h-[clamp(360px,52dvh,580px)]"} overflow-y-auto overscroll-contain [scrollbar-gutter:stable] sm:h-[clamp(380px,52dvh,580px)]`}
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            followAnswer.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
-            setShowScrollDown(!followAnswer.current);
-          }}
-        >
-          <div ref={content} className="mx-auto flex min-h-full w-full max-w-[880px] flex-col px-5 py-7 sm:px-8 sm:py-9">
-            {chat.isLoading && (
-              <div role="status" className="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-ui text-slate-500">
-                <MessageSquareText aria-hidden="true" className="size-7 animate-pulse text-blue-300 motion-reduce:animate-none" />
-                Đang tải cuộc trò chuyện…
-              </div>
-            )}
-            {chat.error && (
-              <div role="alert" className="flex flex-1 flex-col items-center justify-center gap-3 py-12 text-center">
-                <CircleAlert aria-hidden="true" className="size-7 text-amber-500" />
-                <p className="m-0 text-ui text-slate-600">Chưa tải được cuộc trò chuyện. Vui lòng thử lại.</p>
-                <Button variant="outline" size="sm" onClick={() => void chat.refetch()}>Thử lại</Button>
-              </div>
-            )}
-            {empty && (
-              <div className="flex flex-1 flex-col items-center justify-center py-3 text-center">
-                <div className="relative mb-5 grid size-16 place-items-center rounded-[20px] border border-blue-100 bg-[linear-gradient(145deg,#f5f9ff,#eaf1ff)] text-primary">
-                  <MessageSquareText aria-hidden="true" className="size-7" strokeWidth={1.5} />
-                  <span className="absolute -right-1.5 -top-1.5 grid size-6 place-items-center rounded-lg border-[3px] border-white bg-primary text-white">
-                    <Sparkles aria-hidden="true" className="size-3" />
-                  </span>
-                </div>
-                <h4 className="m-0 text-[22px] font-semibold leading-snug tracking-tight text-slate-800 sm:text-[26px]">Hiểu rõ hợp đồng của bạn</h4>
-                <p className="mb-0 mt-2 max-w-[410px] text-ui leading-6 text-slate-500">
-                  Hỏi về điều khoản, tìm hiểu rủi ro và chuẩn bị cho bước thương lượng tiếp theo.
-                </p>
-                {canAsk && (
-                  <div className="mt-7 grid w-full gap-2.5 text-left sm:grid-cols-3">
-                    {suggestions.map(({ icon: SuggestionIcon, title, description, question }) => (
-                      <button
-                        key={title}
-                        type="button"
-                        onClick={() => { chat.setDraft(question); input.current?.focus(); }}
-                        className="group flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3.5 text-left transition-colors hover:border-blue-300 hover:bg-blue-50/40 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/30 sm:block sm:p-4"
-                      >
-                        <SuggestionIcon aria-hidden="true" className="size-[18px] shrink-0 text-primary sm:mb-3" strokeWidth={1.7} />
-                        <span className="min-w-0 flex-1 sm:block">
-                          <span className="flex items-center justify-between gap-1 text-ui-meta font-semibold text-slate-700">
-                            {title}
-                            <ArrowRight aria-hidden="true" className="hidden size-3.5 text-slate-300 transition-colors group-hover:text-primary sm:block" />
-                          </span>
-                          <span className="mt-1 block text-ui-caption leading-5 text-slate-500">{description}</span>
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-            <div role="log" aria-label="Cuộc trò chuyện về hợp đồng" aria-live="polite" aria-relevant="additions text" className="grid gap-7">
-              {chat.messages.map((message) => (
-                <ContractChatMessageView key={message._id} role={message.role} content={message.content} sources={message.legalSources} />
-              ))}
-              {chat.pendingQuestion && (
-                <>
-                  <ContractChatMessageView role="user" content={chat.pendingQuestion} />
-                  <ContractChatMessageView role="assistant" content={chat.answer} pending />
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-        {showScrollDown && (
-          <Button variant="outline" size="sm" onClick={scrollToLatest} className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white shadow-sm">
-            <ArrowDown aria-hidden="true" className="size-3.5" />
-            Tin nhắn mới nhất
-          </Button>
-        )}
-      </div>
-
-      <div className="border-t border-slate-100 bg-[#fbfcfe] px-4 pb-4 pt-4 sm:px-7 sm:pb-5">
-        {canAsk ? (
-          <form onSubmit={submit} className="mx-auto max-w-[816px]">
-            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_2px_6px_-3px_#172d4e15] transition-[border-color,box-shadow] focus-within:border-blue-300 focus-within:ring-[3px] focus-within:ring-blue-50 sm:p-3.5">
-              <label htmlFor={`${id}-question`} className="sr-only">Câu hỏi của bạn</label>
-              <textarea
-                ref={input}
-                id={`${id}-question`}
-                rows={2}
-                value={chat.draft}
-                onChange={(event) => chat.setDraft(event.target.value)}
-                onKeyDown={onKeyDown}
-                placeholder="Bạn muốn làm rõ điều gì trong hợp đồng?"
-                maxLength={2000}
-                disabled={chat.isLoading || Boolean(chat.error)}
-                readOnly={chat.isSending}
-                aria-describedby={`${id}-input-help`}
-                className="block max-h-40 min-h-14 w-full resize-none border-0 bg-transparent px-1 py-0.5 text-ui leading-6 text-slate-700 outline-none placeholder:text-slate-400 disabled:cursor-wait disabled:opacity-60"
-              />
-              <div className="mt-2 flex items-center justify-between gap-2">
-                <span className="pl-1 text-ui-caption tabular-nums text-slate-400">{chat.draft.length.toLocaleString("vi-VN")} / 2.000</span>
-                <Button type="submit" size="sm" disabled={disabled || !chat.draft.trim()} className="gap-2 rounded-xl px-3.5">
-                  {chat.isSending ? "Đang trả lời…" : "Gửi câu hỏi"}
-                  <ArrowUp aria-hidden="true" className="size-4" />
-                </Button>
-              </div>
-            </div>
-            <div id={`${id}-input-help`} className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] leading-5 text-slate-400">
-              <span>AI hỗ trợ tham khảo, không thay thế tư vấn pháp lý.</span>
-              <span className="hidden sm:inline">Enter để gửi · Shift + Enter để xuống dòng</span>
-            </div>
-          </form>
-        ) : (
-          <p className="m-0 flex items-center justify-center gap-2 py-2 text-ui-meta text-slate-500">
-            <LockKeyhole aria-hidden="true" className="size-4 shrink-0" />
-            Vai trò hiện tại chỉ có thể xem cuộc trò chuyện.
-          </p>
-        )}
-      </div>
-    </section>
-  );
+  return <section className="[&_button:not([data-slot=button]):focus-visible]:[outline:2px_solid_#2864dc] [&_button:not([data-slot=button]):focus-visible]:outline-offset-[3px] [border-top:1px_solid_#e4e8ef] p-[22px]" aria-labelledby="contract-chat-heading">
+    <div className="[&_h3]:text-ui-section [&_h3]:font-semibold [&_h3]:m-0 [&_p]:text-[#66758a] [&_p]:text-ui [&_p]:mt-[5px] [&_p]:mb-0 [&_p]:mx-0"><h3 id="contract-chat-heading">Hỏi về hợp đồng</h3><p>Đặt câu hỏi dựa trên nội dung và kết quả rà soát.</p></div>
+    <div className="[&_button:not([data-slot=button])]:text-[#2864dc] [&_button:not([data-slot=button])]:[background:none] [&_button:not([data-slot=button])]:[font:inherit] [&_button:not([data-slot=button])]:cursor-pointer [&_button:not([data-slot=button])]:mt-[9px] [&_button:not([data-slot=button])]:p-0 [&_button:not([data-slot=button])]:border-0 [&_button:not([data-slot=button])]:border-none [&_button:not([data-slot=button])]:border-current [&_button:not([data-slot=button])]:text-ui [&_button:not([data-slot=button])]:font-semibold grid gap-2.5 max-h-[360px] overflow-y-auto border [background:#fbfcff] mt-3.5 p-3.5 rounded-[9px] border-solid border-[#e4e8ef] [&>_p]:text-[#66758a] [&>_p]:text-ui [&>_p]:m-0" role="log" aria-live="polite" aria-relevant="additions text">
+      {isLoading && <p>Đang tải cuộc trò chuyện...</p>}
+      {error && <p>Chưa tải được cuộc trò chuyện. <Button variant="outline" size="sm" type="button" onClick={() => refetch()}>Thử lại</Button></p>}
+      {!isLoading && !error && !messages.length && !pendingQuestion && <p>Chưa có câu hỏi nào cho hợp đồng này.</p>}
+      {messages.map((message) => <div key={message._id} className={message.role === "user" ? "w-fit max-w-[min(85%,680px)] [background:#eaf1ff] px-3 py-2.5 rounded-[9px] justify-self-end [&_strong]:text-[#31445f] [&_strong]:text-ui [&_p]:text-[#354967] [&_p]:text-ui [&_p]:leading-[1.6] [&_p]:whitespace-pre-wrap [&_p]:mt-[5px] [&_p]:mb-0 [&_p]:mx-0" : "w-fit max-w-[min(85%,680px)] [background:#eaf1ff] px-3 py-2.5 rounded-[9px] [background:#fff] border border-solid border-[#e4e8ef] [&_strong]:text-[#31445f] [&_strong]:text-ui [&_p]:text-[#354967] [&_p]:text-ui [&_p]:leading-[1.6] [&_p]:whitespace-pre-wrap [&_p]:mt-[5px] [&_p]:mb-0 [&_p]:mx-0"}><strong>{message.role === "user" ? "Bạn" : "LawScan AI"}</strong><p>{message.content}</p>{message.role === "assistant" && <ChatLegalSources sources={message.legalSources} />}</div>)}
+      {pendingQuestion && <><div className="w-fit max-w-[min(85%,680px)] [background:#eaf1ff] px-3 py-2.5 rounded-[9px] justify-self-end [&_strong]:text-[#31445f] [&_strong]:text-ui [&_p]:text-[#354967] [&_p]:text-ui [&_p]:leading-[1.6] [&_p]:whitespace-pre-wrap [&_p]:mt-[5px] [&_p]:mb-0 [&_p]:mx-0"><strong>Bạn</strong><p>{pendingQuestion}</p></div><div className="w-fit max-w-[min(85%,680px)] [background:#eaf1ff] px-3 py-2.5 rounded-[9px] [background:#fff] border border-solid border-[#e4e8ef] [&_strong]:text-[#31445f] [&_strong]:text-ui [&_p]:text-[#354967] [&_p]:text-ui [&_p]:leading-[1.6] [&_p]:whitespace-pre-wrap [&_p]:mt-[5px] [&_p]:mb-0 [&_p]:mx-0"><strong>LawScan AI</strong><p>{answer || "Đang trả lời..."}</p></div></>}
+    </div>
+    {canAsk ? <form className="[&_label]:grid [&_label]:gap-[5px] [&_label]:text-[#31445f] [&_label]:text-ui [&_label]:font-bold mt-[13px] [&>_div]:flex [&>_div]:gap-2 [&>_div]:mt-1.5 [&_input]:flex-1 [&_input]:min-w-0 [&_input]:border [&_input]:[font:inherit] [&_input]:px-3 [&_input]:py-2.5 [&_input]:rounded-[7px] [&_input]:border-solid [&_input]:border-[#cad5e5] [&_input]:text-ui-document [&_button:not([data-slot=button])]:[background:#2864dc] [&_button:not([data-slot=button])]:text-white [&_button:not([data-slot=button])]:[font:inherit] [&_button:not([data-slot=button])]:cursor-pointer [&_button:not([data-slot=button])]:px-3.5 [&_button:not([data-slot=button])]:py-0 [&_button:not([data-slot=button])]:rounded-[7px] [&_button:not([data-slot=button])]:border-0 [&_button:not([data-slot=button])]:border-none [&_button:not([data-slot=button])]:border-current [&_button:not([data-slot=button])]:disabled:opacity-50 [&_button:not([data-slot=button])]:disabled:cursor-default [&_button:not([data-slot=button])]:[@media_(max-width:_580px)]:min-h-[38px] [&_button:not([data-slot=button])]:text-ui [&_button:not([data-slot=button])]:font-semibold [&>_div]:[@media_(max-width:_580px)]:flex-col" onSubmit={ask}><label htmlFor="contract-question">Câu hỏi của bạn</label><div><input id="contract-question" value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Ví dụ: Điều khoản thanh toán có rủi ro gì?" maxLength={2000} disabled={stream.isPending} /><Button variant="default" size="sm" type="submit" disabled={stream.isPending || !draft.trim()}>{stream.isPending ? "Đang trả lời..." : "Gửi câu hỏi"}</Button></div></form> : <p className="text-[#66758a] text-ui mt-[5px] mb-0 mx-0 mt-3">Vai trò hiện tại chỉ có thể xem cuộc trò chuyện.</p>}
+  </section>;
 }

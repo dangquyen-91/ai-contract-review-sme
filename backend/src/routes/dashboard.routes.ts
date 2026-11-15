@@ -1,14 +1,8 @@
 import { Router } from 'express';
 import { requireAuth } from '../middlewares/auth.middleware';
-import { dashboardInsightsHandler } from '../controllers/dashboard.controller';
-import { validate } from '../middlewares/validate.middleware';
-import { dashboardQuerySchema } from '../validations/dashboard.validation';
+import { requireRole } from '../middlewares/rbac.middleware';
+import { getDashboardHandler } from '../controllers/dashboard.controller';
 
 const router = Router();
-router.get(
-  '/insights',
-  requireAuth,
-  validate({ query: dashboardQuerySchema }),
-  dashboardInsightsHandler,
-);
+router.get('/', requireAuth, requireRole('owner', 'staff', 'user'), getDashboardHandler);
 export default router;

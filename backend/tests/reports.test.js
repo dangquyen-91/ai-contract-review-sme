@@ -10,20 +10,19 @@ process.env.MONGOMS_DOWNLOAD_DIR = require('path').join(
 );
 
 const mongoose = require('mongoose');
-const jwt = require('jsonwebtoken');
 const request = require('supertest');
 const { MongoMemoryServer } = require('mongodb-memory-server');
 const { createApp } = require('../dist/app');
 const { logger } = require('../dist/config/logger');
 logger.silent = true;
 const { UserModel } = require('../dist/models/user.model');
-const { MembershipModel } = require('../dist/models/membership.model');
 const { ContractModel } = require('../dist/models/contract.model');
 const { ReviewModel } = require('../dist/models/review.model');
 const { PaymentModel } = require('../dist/models/payment.model');
 const { OrganizationModel } = require('../dist/models/organization.model');
 const { UsageRunModel } = require('../dist/models/subscription.model');
-const { seedDefaultRoles } = require('../dist/services/identity/role.service');
+const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
+const { tokensForUser } = require('../dist/services/identity/auth.service');
 const { getReports, getComparedReports } = require('../dist/services/reporting/reports.service');
 const { percentage, reportWindow } = require('../dist/services/reporting/reportFormulas');
 const { reviewCost } = require('../dist/services/billing/reviewCost');
@@ -39,27 +38,17 @@ let mongo,
   app,
   serial = 0;
 async function account(role, orgId) {
-  const scopeId = ['owner', 'staff'].includes(role)
-    ? String(orgId ?? (await OrganizationModel.create({ name: 'Report test org' }))._id)
-    : undefined;
-  const user = await UserModel.create({
-    name: role,
-    email: `report-${++serial}@example.com`,
-    platformRole: ['administrator', 'manager', 'expert'].includes(role) ? role : undefined,
-    passwordHash: 'unused',
-    isActive: true,
-    emailVerifiedAt: now,
-  });
-  if (scopeId) await MembershipModel.create({ userId: user._id, orgId: scopeId, role });
-  return { id: user.id, role, orgId: scopeId };
-}
-function tokensForUser(user) {
-  return {
-    accessToken: jwt.sign(
-      { sub: user.id, role: user.role, orgId: user.orgId, permissionsVersion: 0 },
-      process.env.JWT_ACCESS_SECRET,
-    ),
-  };
+  return (
+    await UserModel.create({
+      name: role,
+      email: `report-${++serial}@example.com`,
+      roleId: (await getRoleByCode(role))._id,
+      orgId,
+      passwordHash: 'unused',
+      isActive: true,
+      emailVerifiedAt: now,
+    })
+  ).populate('roleId');
 }
 beforeAll(async () => {
   mongo = await MongoMemoryServer.create();
@@ -78,7 +67,6 @@ beforeAll(async () => {
 beforeEach(async () => {
   await Promise.all([
     UserModel.deleteMany({}),
-    MembershipModel.deleteMany({}),
     ContractModel.deleteMany({}),
     ReviewModel.deleteMany({}),
     OrganizationModel.deleteMany({}),
@@ -245,7 +233,6 @@ test('Owner is isolated from other organizations and system receipts, and empty 
   await ContractModel.collection.insertOne({ orgId: other._id, createdAt: inside });
   const owner = { sub: String(id()), role: 'owner', orgId: own.id };
   const report = await getReports(owner, 1, undefined, now);
-  expect(report.role).toBe('owner');
   expect(report.uploadedContracts).toBe(0);
   expect(report.reviews.successRate).toBeNull();
   expect(report.reviews.averageDurationMs).toBeNull();

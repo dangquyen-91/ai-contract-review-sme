@@ -1,11 +1,9 @@
-import { Schema, model, InferSchemaType } from 'mongoose';
-
-export const PLATFORM_ROLES = ['administrator', 'manager', 'expert'] as const;
-export type PlatformRole = (typeof PLATFORM_ROLES)[number];
+import { Schema, model, Types, InferSchemaType } from 'mongoose';
 
 const userSchema = new Schema(
   {
-    platformRole: { type: String, enum: PLATFORM_ROLES, index: true },
+    orgId: { type: Types.ObjectId, ref: 'Organization', index: true },
+    roleId: { type: Types.ObjectId, ref: 'Role', required: true, index: true },
     name: { type: String, required: true, trim: true },
     phone: { type: String, trim: true },
     avatarUrl: String,

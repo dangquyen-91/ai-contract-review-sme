@@ -11,8 +11,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ReviewCostLine } from "./review-cost-line";
+import { ReviewBillingNotice } from "./review-billing-notice";
 import { ReviewFocusFields } from "./review-focus-fields";
+import { ReviewAllowanceSummary } from "@/components/review/upload/review-allowance-summary";
 import { useReviewAllowance } from "@/hooks/review/use-review-allowance";
 import type { DashboardContract } from "@/types/contracts";
 
@@ -30,8 +31,6 @@ type AnalysisFocusDialogProps = {
   submitDisabled?: boolean;
   billing?: DashboardContract["reviewBilling"];
   paymentOption?: ReactNode;
-  contractType?: string;
-  secondaryAction?: { label: string; onClick: () => void };
 };
 
 export function AnalysisFocusDialog({
@@ -48,8 +47,6 @@ export function AnalysisFocusDialog({
   submitDisabled = false,
   billing,
   paymentOption,
-  contractType,
-  secondaryAction,
 }: AnalysisFocusDialogProps) {
   const id = useId();
   const [focus, setFocus] = useState("");
@@ -59,7 +56,6 @@ export function AnalysisFocusDialog({
     !billing.ready || billing.purchaseStatus === "consumed" ||
     (billing.purchaseStatus !== "available" && creditsUnavailable)
   ));
-  const units = billing?.ready && billing.purchaseStatus !== "available" ? billing.units : null;
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -93,28 +89,35 @@ export function AnalysisFocusDialog({
         <form onSubmit={submit} className="flex min-h-0 flex-col">
           <div className="min-h-0 overflow-y-auto overscroll-contain px-5 pb-5 sm:px-6 sm:pb-6">
             {confirmation}
-            {!hideFocus && (
-              <ReviewCostLine billing={billing} allowance={allowance.data} blocked={quotaBlocked} role={role} showPlanLink={!paymentOption} />
-            )}
             {paymentOption}
             {!hideFocus && (
-              <ReviewFocusFields
-                id={id}
-                value={focus}
-                onChange={setFocus}
-                contractType={contractType}
-                disabled={isReviewing}
-              />
+              <>
+                <ReviewAllowanceSummary orgId={orgId} role={role} />
+                {billing && (
+                  <ReviewBillingNotice
+                    billing={billing}
+                    available={allowance.data?.analysis.available}
+                    blocked={quotaBlocked}
+                  />
+                )}
+                <ReviewFocusFields
+                  id={id}
+                  value={focus}
+                  onChange={setFocus}
+                  autoFocus={!confirmation}
+                  disabled={isReviewing}
+                />
+              </>
             )}
           </div>
-          <div className="flex shrink-0 flex-wrap justify-end gap-2.5 border-t border-border p-5 sm:px-6 sm:py-4 max-sm:[&>button]:flex-1">
+          <div className="flex shrink-0 flex-wrap justify-end gap-2.5 border-t border-border p-5 sm:px-6 sm:py-4">
             <Button
               variant="outline"
               type="button"
-              onClick={secondaryAction?.onClick ?? onDismiss}
+              onClick={onDismiss}
               disabled={isReviewing}
             >
-              {secondaryAction?.label ?? "Để sau"}
+              Để sau
             </Button>
             {!hideFocus && (
               <Button
@@ -122,7 +125,7 @@ export function AnalysisFocusDialog({
                 disabled={isReviewing || submitDisabled || quotaBlocked}
               >
                 <Icon name="sparkle" />
-                {isReviewing ? "Đang bắt đầu rà soát…" : units ? `Bắt đầu rà soát · ${units} lượt` : "Bắt đầu rà soát"}
+                {isReviewing ? "Đang bắt đầu rà soát…" : "Bắt đầu rà soát"}
               </Button>
             )}
           </div>

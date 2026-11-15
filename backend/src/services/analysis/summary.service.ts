@@ -16,7 +16,6 @@ interface PopulatedClauseType {
 export async function generateContractSummary(
   orgId: string,
   contractId: string,
-  reviewId: string,
   analysisFocus?: string,
   signal?: AbortSignal,
 ) {
@@ -41,7 +40,7 @@ export async function generateContractSummary(
   }
 
   try {
-    const clauses = await ClauseModel.find({ contractVersionId: version._id, reviewId })
+    const clauses = await ClauseModel.find({ contractVersionId: version._id })
       .sort({ index: 1 })
       .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
     if (clauses.length === 0) {

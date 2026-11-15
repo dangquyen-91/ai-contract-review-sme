@@ -9,24 +9,6 @@ export const createContractSchema = z.object({
   type: codeSchema.optional(),
   ourParty: codeSchema.optional(),
   industry: codeSchema.optional(),
-  allowDuplicate: z
-    .enum(['true', 'false'])
-    .optional()
-    .transform((value) => value === 'true'),
-});
-
-export const createContractVersionSchema = z.object({
-  note: z.string().trim().max(300).optional(),
-});
-
-export const attachVersionSchema = z.object({
-  sourceContractId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
-  note: z.string().trim().max(300).optional(),
-});
-
-export const versionParamSchema = z.object({
-  id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
-  versionId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid version id'),
 });
 
 export const confirmContractProfileSchema = z.object({
@@ -62,26 +44,12 @@ export const contractIdParamSchema = z.object({
   id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
 });
 
-export const versionQuerySchema = z.object({
-  versionId: z
-    .string()
-    .regex(/^[a-f\d]{24}$/i, 'Invalid version id')
-    .optional(),
-});
-
-export const resultQuerySchema = versionQuerySchema.extend({
-  reviewId: z
-    .string()
-    .regex(/^[a-f\d]{24}$/i, 'Invalid review id')
-    .optional(),
-});
-
-export const contractTextQuerySchema = versionQuerySchema.extend({
+export const contractTextQuerySchema = z.object({
   redacted: z.enum(['true', 'false']).optional(),
   redactionMode: z.enum(['token', 'partial']).optional(),
 });
 
-export const contractFileQuerySchema = versionQuerySchema.extend({
+export const contractFileQuerySchema = z.object({
   redacted: z.enum(['true', 'false']).optional(),
 });
 

@@ -1,5 +1,4 @@
 export type OperationalReport = {
-  role: "administrator" | "owner";
   computedAt: string;
   timezone: string;
   period: {
