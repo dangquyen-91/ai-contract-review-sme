@@ -244,6 +244,7 @@ async function getReportSnapshot(
     unitRows.map((row) => [`${row._id.date}:${row._id.kind}`, row.units]),
   );
   return {
+    role: actor.role as 'administrator' | 'owner',
     computedAt: now,
     timezone: REPORT_TIMEZONE,
     period: {

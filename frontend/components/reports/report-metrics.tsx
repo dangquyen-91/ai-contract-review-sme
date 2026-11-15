@@ -1,11 +1,13 @@
 import type { OperationalReport } from "@/types/reports";
 import { ReportChange } from "./report-change";
+import { operationalReportFeatures } from "@/config/report-profiles";
 import {
   formatReportDuration,
   formatReportPercent,
 } from "@/lib/reports/report-format";
 
 export function ReportMetrics({ report }: { report: OperationalReport }) {
+  const features = operationalReportFeatures(report.role);
   const metrics = [
     {
       id: "uploads",
@@ -46,7 +48,7 @@ export function ReportMetrics({ report }: { report: OperationalReport }) {
       formula:
         "Tổng đơn vị đã chốt thành công trong sổ hạn mức. File 6 trang tính 2 lượt; yêu cầu thất bại không tính lượt đã dùng.",
     },
-    ...(report.payments
+    ...(features.payments && report.payments
       ? [
           {
             id: "payments",
@@ -64,30 +66,34 @@ export function ReportMetrics({ report }: { report: OperationalReport }) {
       aria-label="Chỉ số báo cáo"
       className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
     >
-      {metrics.map((metric) => (
-        <article
-          key={metric.id}
-          data-report-metric={metric.id}
-          className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-        >
-          <h2 className="text-sm font-medium text-slate-600">{metric.label}</h2>
-          <p className="mt-3 break-words text-2xl font-bold tracking-tight text-slate-900">
-            {metric.value}
-          </p>
-          <p className="mt-2 text-xs leading-5 text-slate-500">
-            {metric.detail}
-          </p>
-          {report.comparison?.mode !== "none" && (
-            <ReportChange change={report.comparison?.changes[metric.id]} />
-          )}
-          <details className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
-            <summary className="cursor-pointer font-medium text-blue-700">
-              Cách tính
-            </summary>
-            <p className="mt-2 leading-5">{metric.formula}</p>
-          </details>
-        </article>
-      ))}
+      {metrics
+        .filter((metric) => features.risks || metric.id !== "risk")
+        .map((metric) => (
+          <article
+            key={metric.id}
+            data-report-metric={metric.id}
+            className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+          >
+            <h2 className="text-sm font-medium text-slate-600">
+              {metric.label}
+            </h2>
+            <p className="mt-3 break-words text-2xl font-bold tracking-tight text-slate-900">
+              {metric.value}
+            </p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              {metric.detail}
+            </p>
+            {report.comparison?.mode !== "none" && (
+              <ReportChange change={report.comparison?.changes[metric.id]} />
+            )}
+            <details className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
+              <summary className="cursor-pointer font-medium text-blue-700">
+                Cách tính
+              </summary>
+              <p className="mt-2 leading-5">{metric.formula}</p>
+            </details>
+          </article>
+        ))}
     </section>
   );
 }

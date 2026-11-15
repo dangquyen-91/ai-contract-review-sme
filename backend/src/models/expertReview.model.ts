@@ -25,6 +25,8 @@ const expertReviewSchema = new Schema(
 );
 
 expertReviewSchema.index({ orgId: 1, status: 1, requestedAt: -1 });
+expertReviewSchema.index({ status: 1, expertId: 1 });
+expertReviewSchema.index({ expertId: 1, completedAt: 1 });
 expertReviewSchema.index({ contractId: 1, status: 1 });
 expertReviewSchema.index({ orgId: 1, contractId: 1, requestedAt: -1, _id: -1 });
 

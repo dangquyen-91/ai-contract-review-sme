@@ -90,10 +90,11 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
   const partyLocked = personal && selected.type === "labor";
   const selectedParty = partyLocked ? "employee" : selected.ourParty;
   const lowConfidence = (classification?.confidence ?? 1) < LOW_CONFIDENCE;
-  const autoEdit = view === "classify_failed" || (view === "ready" && !contract.type && (lowConfidence || !suggestion.type));
+  const partyRequired = Boolean(profile?.parties.length) && !partyLocked;
+  const missingParty = partyRequired && !selectedParty;
+  const autoEdit = view === "classify_failed" || (view === "ready" && (missingParty || !selected.type || (!contract.type && lowConfidence)));
   const showEdit = editing ?? autoEdit;
   const canChoose = view === "ready" || view === "classify_failed" || (view === "blocked" && showEdit);
-  const partyRequired = Boolean(profile?.parties.length) && !partyLocked;
   const canStart = canChoose && Boolean(selected.type) && (!partyRequired || Boolean(selectedParty));
   const changed = !contract.type || selected.type !== contract.type || selectedParty !== contract.ourParty;
 
@@ -203,6 +204,7 @@ export function ContractConfirmationDialog({ contractId, contractTitle, isReview
     <div className="flex flex-wrap gap-2">{allowedTypes.map((code) => <Chip key={code} selected={selected.type === code} disabled={busy} onClick={() => pickType(code)}>{typeLabels[code]}</Chip>)}</div>
     {profile && !partyLocked && profile.parties.length > 0 && <>
       <p className="mb-2 mt-4 text-ui font-semibold text-card-foreground">Bạn là bên nào?</p>
+      {missingParty && <p className="mb-2 mt-0 text-ui-meta leading-5 text-muted-foreground">Chọn vai trò của bạn trong hợp đồng để bắt đầu rà soát.</p>}
       <div className="flex flex-wrap gap-2">{profile.parties.map((party) => <Chip key={party.code} selected={selectedParty === party.code} disabled={busy} onClick={() => setChoice({ type: selected.type, ourParty: party.code })}>{withNames(party.code)}</Chip>)}</div>
     </>}
     {partyLocked && <p className="mb-0 mt-3 text-ui-meta text-muted-foreground">Tài khoản cá nhân rà soát hợp đồng lao động từ phía người lao động.</p>}

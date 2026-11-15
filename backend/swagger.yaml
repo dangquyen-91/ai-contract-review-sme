@@ -18,6 +18,7 @@ tags:
   - name: ContractDrafts
   - name: Reviews
   - name: LegalKB
+  - name: Dashboard
 
 components:
   parameters:
@@ -2221,6 +2222,91 @@ components:
           description: Legal document to chunk and embed (pdf, docx, doc, or txt)
 
 paths:
+  /dashboard/insights:
+    get:
+      tags: [Dashboard]
+      summary: Role-scoped dashboard aggregates
+      description: >-
+        Uses the verified identity and active workspace. Administrator sees system
+        operations and paid receipts; Owner sees only their organization without
+        financial metrics; Staff sees organization activity; User sees personal
+        activity; Expert sees the shared waiting queue and their own verification
+        attempts; Manager sees organization counts and legal source statistics.
+        Only period is accepted. Supplying role, userId, organizationId or other
+        query parameters returns 400. Calendar boundaries use Asia/Ho_Chi_Minh.
+        Current-state metrics are independent of the selected reporting period.
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [week, month, quarter, year]
+            default: month
+      responses:
+        '200':
+          description: Aggregates from persisted records; no contract content is returned.
+          headers:
+            Cache-Control:
+              schema: { type: string, enum: ['private, no-store'] }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  data:
+                    type: object
+                    required: [role, scope, computedAt, timezone, period, metrics, distribution, trend]
+                    properties:
+                      role:
+                        type: string
+                        enum: [administrator, owner, staff, user, expert, manager]
+                      scope:
+                        type: object
+                        properties:
+                          type: { type: string, enum: [system, organization, personal, expert] }
+                          id: { type: string, nullable: true }
+                      computedAt: { type: string, format: date-time }
+                      timezone: { type: string, enum: [Asia/Ho_Chi_Minh] }
+                      period:
+                        type: object
+                        properties:
+                          kind: { type: string, enum: [week, month, quarter, year] }
+                          startDate: { type: string, format: date }
+                          endDate: { type: string, format: date }
+                          toExclusive: { type: string, format: date-time }
+                          partial: { type: boolean }
+                      metrics:
+                        type: object
+                        description: Role-specific numeric metrics. Unknown durations and rates are null.
+                        additionalProperties: { type: number, nullable: true }
+                      distribution:
+                        type: array
+                        items:
+                          type: object
+                          required: [key, value]
+                          properties:
+                            key: { type: string }
+                            label: { type: string }
+                            value: { type: number }
+                      trend:
+                        type: array
+                        items:
+                          type: object
+                          required: [date]
+                          properties:
+                            date: { type: string }
+                          additionalProperties:
+                            oneOf:
+                              - { type: string }
+                              - { type: number, nullable: true }
+        '400':
+          description: Invalid period or unsupported query parameter.
+        '401':
+          description: Missing, expired or stale authenticated session.
+        '403':
+          description: Unsupported role or organization workspace is unavailable.
   /contract-drafts/templates:
     get:
       tags: [ContractDrafts]

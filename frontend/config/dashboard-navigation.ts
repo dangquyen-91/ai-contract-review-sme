@@ -3,6 +3,8 @@ import type { DashboardRole } from "./dashboard-roles";
 import { organizationDashboardPath } from "@/lib/routing/organization-dashboard-route";
 import { userManagementPath } from "./user-management";
 import { routes } from "./routes";
+import { roleReportConfig } from "./report-profiles";
+import { permissions } from "./permissions";
 
 export type NavigationItem = {
   key: string;
@@ -30,22 +32,28 @@ const supportNavigation: NavigationItem[] = [
 ];
 
 export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
+  const reports: NavigationItem[] = permissions.reports(role) ? [{ key: "reports", href: roleReportConfig[role].href, label: "Báo cáo & thống kê", icon: "chart", mobile: true }] : [];
   if (role === "administrator") return adminNavigation;
   if (role === "expert") return [
     { key: "expert-overview", href: routes.expertOverview, label: "Tổng quan", icon: "chart", group: "Không gian chuyên gia", mobile: true },
     { key: "verification", href: routes.expertVerification, label: "Yêu cầu xác minh", icon: "shield", mobile: true },
     { key: "expert-my-work", href: routes.expertMyWork, label: "Công việc của tôi", icon: "briefcase", mobile: true },
+    ...reports,
     { key: "profile", href: "/ho-so", label: "Hồ sơ cá nhân", icon: "user", mobile: true },
   ];
   if (role === "manager") return [
-    { key: "organizations", href: "/management/organizations", label: "Tổ chức", icon: "building", group: "Không gian quản lý", mobile: true },
+    { key: "overview", href: "/management", label: "Tổng quan", icon: "chart", group: "Không gian quản lý", mobile: true },
+    { key: "organizations", href: "/management/organizations", label: "Tổ chức", icon: "building", mobile: true },
     { key: "legal-sources", href: "/management/legal-sources", label: "Kho pháp lý", icon: "scales", mobile: true },
+    ...reports,
     ...supportNavigation,
   ];
   if (role === "user") return [
-    { key: "review", href: "/review", label: "Tải & rà soát", icon: "upload", group: "Không gian làm việc", mobile: true },
+    { key: "overview", href: "/dashboard", label: "Tổng quan", icon: "chart", group: "Không gian làm việc", mobile: true },
+    { key: "review", href: "/review", label: "Tải & rà soát", icon: "upload", mobile: true },
     { key: "contract", href: "/contract", label: "Hợp đồng", icon: "document", count: true, mobile: true },
     { key: "drafts", href: "/contract-drafts", label: "Tạo hợp đồng", icon: "document", mobile: true },
+    ...reports,
     { key: "create-organization", href: "/chon-to-chuc", label: "Tạo tổ chức", icon: "building", group: "Hỗ trợ", mobile: true },
     ...supportNavigation.map((item) => ({ ...item, ...(item.key === "plans" ? { key: "subscription", href: routes.subscription } : {}), group: undefined })),
   ];
@@ -55,8 +63,8 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
     { key: "upload", href: organizationDashboardPath(role, "upload"), label: "Tải & rà soát", icon: "upload", mobile: true, workspaceTab: true },
     { key: "contracts", href: organizationDashboardPath(role, "contracts"), label: "Hợp đồng", icon: "document", count: true, mobile: true, workspaceTab: true },
     ...(["owner", "staff"].includes(role) ? [{ key: "drafts", href: "/contract-drafts", label: "Tạo hợp đồng", icon: "document" as const, mobile: true }] : []),
+    ...reports,
     ...(role === "owner" ? [
-      { key: "reports", href: "/reports", label: "Báo cáo & thống kê", icon: "chart" as const, mobile: true },
       { key: "administration", href: organizationDashboardPath(role, "administration"), label: "Quản trị", icon: "team" as const, mobile: true, workspaceTab: true },
       { key: "members", href: organizationDashboardPath(role, "members"), label: "Thành viên & lời mời", icon: "team" as const, mobile: true, workspaceTab: true },
     ] : []),

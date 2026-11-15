@@ -9,6 +9,7 @@ import type { ReportFilters as Filters } from "@/types/reports";
 import { ReportFilters } from "./report-filters";
 import { ReportMetrics } from "./report-metrics";
 import { ReportCharts } from "./report-charts";
+import { operationalReportFeatures, roleReportConfig } from "@/config/report-profiles";
 
 const initialFilters: Filters = {
   period: "month",
@@ -18,12 +19,17 @@ const initialFilters: Filters = {
 
 export function ReportsOverview({
   organizationOnly = false,
+  scopeId,
 }: {
   organizationOnly?: boolean;
+  scopeId?: string;
 }) {
+  const role = organizationOnly ? "owner" : "administrator";
+  const config = roleReportConfig[role];
+  const features = operationalReportFeatures(role);
   const [filters, setFilters] = useState(initialFilters);
   const [applied, setApplied] = useState(initialFilters);
-  const query = useReport(applied);
+  const query = useReport(applied, role, scopeId);
   const report = query.data;
   const ready = !!report && !query.isPlaceholderData && !query.isError;
 
@@ -51,8 +57,8 @@ export function ReportsOverview({
     <>
       <PageHeading
         eyebrow="Phân tích"
-        title="Báo cáo & thống kê"
-        description="Theo dõi hoạt động và so sánh kết quả theo tuần, tháng, quý hoặc năm."
+        title={config.title}
+        description={config.description}
       />
       <ReportFilters
         value={filters}
@@ -63,7 +69,7 @@ export function ReportsOverview({
         report={report}
         fetching={query.isFetching}
         ready={ready}
-        organizationOnly={organizationOnly}
+        organizationOnly={!features.organizationFilter}
       />
       {query.isError ? (
         <div
@@ -137,11 +143,13 @@ export function ReportsOverview({
                 bại) × 100%. Không tính đang chờ, đang chạy hoặc đã hủy vào mẫu
                 số.
               </li>
-              <li>
-                Rủi ro dùng kết quả thành công mới nhất trong kỳ của mỗi hợp
-                đồng. Kết quả thiếu mức rủi ro không được coi là không có rủi
-                ro.
-              </li>
+              {features.risks && (
+                <li>
+                  Rủi ro dùng kết quả thành công mới nhất trong kỳ của mỗi hợp
+                  đồng. Kết quả thiếu mức rủi ro không được coi là không có rủi
+                  ro.
+                </li>
+              )}
               <li>
                 Thời gian trung bình = tổng thời gian xử lý hợp lệ ÷ số lượt có
                 thời gian hợp lệ. Khi gộp theo tuần/tháng, backend dùng tổng
@@ -152,11 +160,13 @@ export function ReportsOverview({
                 cáo chỉ cộng hạn mức đã chốt thành công; tách riêng rà soát,
                 chat và soạn AI.
               </li>
-              <li>
-                Thanh toán đã nhận tính theo ngày xác nhận thanh toán VND. Không
-                cộng đơn chưa trả tiền, đã hủy hoặc hết hạn. Đây là tiền thu
-                được, không phải lợi nhuận.
-              </li>
+              {features.payments && (
+                <li>
+                  Thanh toán đã nhận tính theo ngày xác nhận thanh toán VND.
+                  Không cộng đơn chưa trả tiền, đã hủy hoặc hết hạn. Đây là tiền
+                  thu được, không phải lợi nhuận.
+                </li>
+              )}
               <li>
                 Ô trống hoặc “Chưa có dữ liệu” khác với số 0. Biểu đồ so sánh
                 các nhóm theo thứ tự trong kỳ; bảng chi tiết và CSV ghi rõ ngày

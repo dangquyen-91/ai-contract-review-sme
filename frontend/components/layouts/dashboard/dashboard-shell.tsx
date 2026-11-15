@@ -41,7 +41,7 @@ type WorkspaceProps = {
 };
 
 type DataProps = {
-  view: "review" | "contract" | "subscription";
+  view: "review" | "contract" | "subscription" | "overview" | "reports";
   children: (context: DashboardWorkspaceContext) => ReactNode;
 };
 
@@ -76,7 +76,11 @@ function DashboardDataView({ view, children }: DataProps) {
       role={role}
       activeKey={activeKey}
       sectionLabel={
-        view === "subscription"
+        view === "reports"
+          ? "Báo cáo & thống kê"
+          : view === "overview"
+          ? "Tổng quan"
+          : view === "subscription"
           ? "Gói dịch vụ"
           : view === "review"
             ? "Tải & rà soát"

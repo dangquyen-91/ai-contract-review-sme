@@ -1,13 +1,13 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { contractDetailTabs, type ContractDetailTab } from "@/hooks/contracts/use-contract-detail-tab";
 
 const tabLabels: Record<ContractDetailTab, string> = {
   overview: "Tổng quan",
   risks: "Rủi ro & văn bản",
   terms: "Thông tin chính",
-  chat: "Hỏi đáp",
+  chat: "Chat với AI",
   versions: "Phiên bản",
 };
 
@@ -20,6 +20,16 @@ export function ContractDetailTabs({ tab, onSelect, counts, panels }: {
   const [visited, setVisited] = useState<ContractDetailTab[]>([tab]);
   const buttons = useRef<Partial<Record<ContractDetailTab, HTMLButtonElement | null>>>({});
   if (!visited.includes(tab)) setVisited([...visited, tab]);
+
+  useEffect(() => {
+    const button = buttons.current[tab];
+    const list = button?.parentElement;
+    if (!button || !list) return;
+    const selected = button.getBoundingClientRect();
+    const bounds = list.getBoundingClientRect();
+    if (selected.left < bounds.left) list.scrollLeft += selected.left - bounds.left - 12;
+    else if (selected.right > bounds.right) list.scrollLeft += selected.right - bounds.right + 12;
+  }, [tab]);
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
