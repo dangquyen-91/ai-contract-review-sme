@@ -1,3 +1,4 @@
+import { TEMPLATE_CODES } from '../config/contractTemplates';
 import { z } from 'zod';
 import { studioLawIdsSchema } from './studio.validation';
 
@@ -22,7 +23,7 @@ const inputSchema = z
   );
 export const createDraftSchema = z
   .object({
-    templateCode: z.enum(['labor', 'service', 'sales', 'rental']),
+    templateCode: z.enum(TEMPLATE_CODES),
     title: z.string().trim().min(2).max(200),
     ourParty: z.string().min(1).max(30),
     input: inputSchema,

@@ -15,7 +15,11 @@ export function buildStudioTemplate(
   if (template.code === 'sales' && template.version >= 3)
     return buildSalesStudioTemplate(template, input, companyName, ourParty);
   if (template.code === 'labor' && template.version >= 3)
-    return buildLaborStudioTemplate(template, input, companyName);
+    return buildLaborStudioTemplate(
+      template,
+      input,
+      ourParty === 'employee' ? (input.companyName ?? '') : companyName,
+    );
   const field = (key: string): StudioNode => ({
     type: 'templateField',
     attrs: { key, value: input[key] ?? '' },
@@ -41,10 +45,12 @@ export function buildStudioTemplate(
         return text(piece);
       });
   const party = template.parties.find((item) => item.code === ourParty)!;
+  const individual = template.code === 'rental' || template.identityKind === 'individual';
   const partner =
     template.code === 'labor'
       ? 'Người lao động'
-      : template.parties.find((item) => item.code !== ourParty)!.name;
+      : (template.counterpartyLabel ??
+        template.parties.find((item) => item.code !== ourParty)!.name);
   const document: StudioDocument = {
     type: 'doc',
     content: [
@@ -64,16 +70,18 @@ export function buildStudioTemplate(
         text(', chúng tôi gồm:'),
       ]),
       heading(`BÊN A — ${party.name.toLocaleUpperCase('vi-VN')}`),
-      template.code === 'rental'
+      individual
         ? p([text('Họ và tên: '), field('representative')])
-        : p([text(`Tên doanh nghiệp: ${companyName}`)]),
+        : template.fields.some((item) => item.key === 'companyName')
+          ? p([text('Tên doanh nghiệp: '), field('companyName')])
+          : p([text(`Tên doanh nghiệp: ${companyName}`)]),
       ...template.fields
         .filter(
           (item) =>
             item.group === 'parties' &&
             !item.key.startsWith('partner') &&
-            !(template.code === 'rental' && item.key === 'representative') &&
-            !['reference', 'signingDate', 'signingPlace'].includes(item.key),
+            !(individual && item.key === 'representative') &&
+            !['reference', 'signingDate', 'signingPlace', 'companyName'].includes(item.key),
         )
         .map((item) => p([text(`${item.label}: `), field(item.key)])),
       heading(`BÊN B — ${partner.toLocaleUpperCase('vi-VN')}`),
@@ -97,8 +105,18 @@ export function buildStudioTemplate(
         type: 'table',
         attrs: { blockId: randomUUID(), layout: 'signature' },
         content: [
-          [template.code === 'rental' ? party.name.toLocaleUpperCase('vi-VN') : 'ĐẠI DIỆN BÊN A', template.code === 'rental' ? partner.toLocaleUpperCase('vi-VN') : template.code === 'labor' ? 'NGƯỜI LAO ĐỘNG' : 'ĐẠI DIỆN BÊN B'],
-          [template.code === 'rental' ? '(Ký, ghi rõ họ tên)' : '(Ký, ghi rõ họ tên, chức vụ; đóng dấu nếu có)', '(Ký, ghi rõ họ tên)'],
+          [
+            individual ? party.name.toLocaleUpperCase('vi-VN') : 'ĐẠI DIỆN BÊN A',
+            individual
+              ? partner.toLocaleUpperCase('vi-VN')
+              : template.code === 'labor'
+                ? 'NGƯỜI LAO ĐỘNG'
+                : 'ĐẠI DIỆN BÊN B',
+          ],
+          [
+            individual ? '(Ký, ghi rõ họ tên)' : '(Ký, ghi rõ họ tên, chức vụ; đóng dấu nếu có)',
+            '(Ký, ghi rõ họ tên)',
+          ],
           ['', ''],
           ['', ''],
           ['', ''],
@@ -121,7 +139,9 @@ export function buildStudioTemplate(
               type: 'tableRow',
               content: [
                 field('representative'),
-                field(template.code === 'labor' || template.code === 'rental' ? 'partnerName' : 'partnerRepresentative'),
+                field(
+                  template.code === 'labor' || individual ? 'partnerName' : 'partnerRepresentative',
+                ),
               ].map((value) => ({ type: 'tableCell', content: [p([value])] })),
             },
           ]),

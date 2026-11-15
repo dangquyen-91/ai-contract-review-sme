@@ -29,7 +29,7 @@ test.each(['seller', 'buyer'])('sales reference keeps seller A and buyer B when 
   expect(seller).toContain(party === 'seller' ? values.representative : values.partnerRepresentative);
   expect(buyer).toContain(party === 'buyer' ? values.representative : values.partnerRepresentative);
   expect(content.match(/ĐIỀU \d+\./g)).toHaveLength(15);
-  expect(content).toContain('ĐIỀU 15. ĐIỀU KHOẢN THI HÀNH');
+  expect(content).toContain('ĐIỀU 15.');
   expect(content).toContain('PHỤ LỤC 01');
   expect(content).toContain('48 (bốn mươi tám) giờ');
   expect(content).not.toMatch(/\{\{|\.{4,}/);

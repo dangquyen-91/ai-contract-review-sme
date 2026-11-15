@@ -32,9 +32,9 @@ async function templateLawFilter(templateCode?: string) {
   if (templateCode === 'sales') {
     return { code: { $in: SALES_LEGAL_SOURCE_CODES } };
   }
-  if (templateCode !== 'labor') return {};
-  const profile = await ContractProfileModel.findOne({ code: 'labor' }).select('legalSourceCodes').lean();
-  const codes = profile?.legalSourceCodes ?? DEFAULT_PROFILES.find(item => item.code === 'labor')?.legalSources ?? [];
+  if (!templateCode || !['labor', 'office_lease', 'housing_purchase', 'life_insurance'].includes(templateCode)) return {};
+  const profile = await ContractProfileModel.findOne({ code: templateCode }).select('legalSourceCodes').lean();
+  const codes = profile?.legalSourceCodes ?? DEFAULT_PROFILES.find(item => item.code === templateCode)?.legalSources ?? [];
   return { code: { $in: codes } };
 }
 export async function listStudioLaws(query: z.infer<typeof studioLawQuerySchema>) {

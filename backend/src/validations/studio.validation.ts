@@ -1,3 +1,4 @@
+import { TEMPLATE_CODES } from '../config/contractTemplates';
 import { z } from 'zod';
 
 export const studioLawIdsSchema = z
@@ -12,7 +13,7 @@ export const studioLawIdsSchema = z
 export const studioLawQuerySchema = z.object({
   q: z.string().trim().max(100).default(''),
   page: z.coerce.number().int().min(1).max(10000).default(1),
-  templateCode: z.enum(['labor', 'service', 'sales', 'rental']).optional(),
+  templateCode: z.enum(TEMPLATE_CODES).optional(),
   ids: z
     .string()
     .max(249)

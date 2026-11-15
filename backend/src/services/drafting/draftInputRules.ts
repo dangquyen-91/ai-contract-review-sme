@@ -1,10 +1,6 @@
 import { ContractTemplate, getTemplate, TemplateCode } from './templates';
-import { validateLineItems } from './line-items';
-
-const cents = (value: string) => {
-  const [whole, fraction = ''] = value.split('.');
-  return BigInt(whole) * BigInt(100) + BigInt(fraction.padEnd(2, '0'));
-};
+import { moneyToCents, validateLineItems } from './line-items';
+import { draftFinancialErrors } from './draftFinancialRules';
 
 export function inputErrors(
   code: TemplateCode,
@@ -22,9 +18,12 @@ export function inputErrors(
       errors.push(`Vui lòng nhập ${field.label.toLowerCase()}`);
     if (!value) continue;
     const allowsZero =
-      (code === 'rental' && field.key === 'depositAmount') ||
+      (['rental', 'office_lease', 'housing_purchase'].includes(code) &&
+        field.key === 'depositAmount') ||
       (code === 'sales' &&
-        ['vatAmount', 'advanceAmount', 'remainingAmount', 'storageFee'].includes(field.key));
+        ['vatAmount', 'advanceAmount', 'remainingAmount', 'storageFee', 'penaltyPercent'].includes(
+          field.key,
+        ));
     if (
       field.kind === 'number' &&
       (!/^\d+(\.\d{1,2})?$/.test(value) ||
@@ -50,7 +49,7 @@ export function inputErrors(
         complete &&
         table.total &&
         (!/^\d+(\.\d{1,2})?$/.test(values.price ?? '') ||
-          cents(table.total) !== cents(values.price))
+          moneyToCents(table.total) !== moneyToCents(values.price))
       )
         errors.push('Tổng giá trị trước thuế phải khớp với bảng hạng mục.');
     }
@@ -63,7 +62,11 @@ export function inputErrors(
   }
   if (values.startDate && values.endDate && values.endDate < values.startDate)
     errors.push('Ngày kết thúc phải từ ngày bắt đầu trở đi');
-  if (code === 'rental' && values.startDate && values.endDate === values.startDate)
+  if (
+    ['rental', 'office_lease'].includes(code) &&
+    values.startDate &&
+    values.endDate === values.startDate
+  )
     errors.push('Ngày kết thúc thuê phải sau ngày bắt đầu thuê.');
   if (code === 'labor') {
     if (
@@ -96,5 +99,5 @@ export function inputErrors(
     }
   } else if (complete && fields.has('endDate') && !values.endDate)
     errors.push('Vui lòng nhập ngày kết thúc thực hiện');
-  return errors;
+  return [...errors, ...draftFinancialErrors(template, values, complete)];
 }

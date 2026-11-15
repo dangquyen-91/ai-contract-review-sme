@@ -1,4 +1,5 @@
 import type { ContractTemplate } from './templates';
+import { SALES_CURRENT_OPENING } from './sales-current-content';
 import { normalizeStudioDocument, type StudioDocument, type StudioNode } from './studioDocument';
 import { studioParagraph as p, studioTextNode as text } from './studioNodes';
 import { SALES_REFERENCE_OPENING, SALES_REFERENCE_APPENDIX } from './sales-reference-content';
@@ -78,7 +79,8 @@ export function buildSalesStudioTemplate(
       content: row.map((paragraph) => ({ type: 'tableCell', content: [paragraph] })),
     })),
   });
-  const opening = SALES_REFERENCE_OPENING.map((value, index): StudioNode => {
+  const openingLines = template.version >= 4 ? SALES_CURRENT_OPENING : SALES_REFERENCE_OPENING;
+  const opening = openingLines.map((value, index): StudioNode => {
     if ([0, 1].includes(index)) return boldLine(value, 'center');
     if (index === 4) return heading(value, true);
     if ([13, 24].includes(index)) return heading(value);
