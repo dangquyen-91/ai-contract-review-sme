@@ -11,7 +11,7 @@ import { calendarReportFixture } from './fixtures/report.mjs';
 import { dashboardInsightsFixture } from './fixtures/dashboard-insights.mjs';
 import ExcelJS from 'exceljs';
 const require = createRequire(import.meta.url);
-const { CONTRACT_TEMPLATES } = require('../../backend/dist/services/drafting/templates');
+const { accountTemplate, accountTemplates } = require('../../backend/dist/services/drafting/templatePolicy');
 const { buildStudioTemplate } = require('../../backend/dist/services/drafting/studioTemplate');
 const { studioInput, studioText } = require('../../backend/dist/services/drafting/studioDocument');
 const { applyStudioChanges } = require('../../backend/dist/services/drafting/studioChanges');
@@ -27,10 +27,10 @@ if (organizationValidation) Object.assign(organization, { industry: 'other', add
 let reportEmpty = false, reportFailure = false;
 const reportRequests = [];
 const personalAllowance = process.argv.includes('--personal-allowance');
-const rental = process.argv.includes('--rental') || personalAllowance;
+const personalHousing = process.argv.includes('--housing') || process.argv.includes('--rental') || personalAllowance;
 let allowanceFailures = personalAllowance ? 1 : 0;
 const subscriptionRequests = [];
-const user = { id: 'a'.repeat(24), role: rental ? 'user' : 'staff', name: 'Fixture Staff', email: 'staff@example.com', orgId: rental ? null : 'b'.repeat(24), hasCompletedOnboarding: true };
+const user = { id: 'a'.repeat(24), role: personalHousing ? 'user' : 'staff', name: 'Fixture Staff', email: 'staff@example.com', orgId: personalHousing ? null : 'b'.repeat(24), hasCompletedOnboarding: true };
 if (workspaceSwitch) Object.assign(user, { workspace: 'organization', organizationMembership: { orgId: 'b'.repeat(24), role: 'staff' } });
 if (reportsMode) Object.assign(user, { role: 'administrator', orgId: null });
 if (organizationValidation) Object.assign(user, { role: 'owner' });
@@ -95,7 +95,7 @@ const backend = http.createServer(async (req, res) => {
       members: { count: 1, pending: 0, limit: 5, available: 4 },
       drafting: { used: 50 - draftingAvailable, reserved: 0, limit: 50, available: draftingAvailable } });
   }
-  if (url.pathname === '/api/v1/contract-drafts/templates') return send({ templates: CONTRACT_TEMPLATES.filter(template => template.code !== 'rental' || user.role === 'user'), organization, role: user.role });
+  if (url.pathname === '/api/v1/contract-drafts/templates') return send({ templates: accountTemplates(user.role === 'user'), organization, role: user.role });
   if (url.pathname === '/api/v1/contract-drafts/legal-sources') {
     if (lawFailures-- > 0) return error('Fixture catalog unavailable', 503);
     const q = (url.searchParams.get('q') ?? '').toLocaleLowerCase('vi');
@@ -122,7 +122,7 @@ const backend = http.createServer(async (req, res) => {
   if(listTarget&&req.method==='DELETE'&&url.pathname===`/api/v1/contract-drafts/${listTarget.id}`){if(failDeleteOnce){failDeleteOnce=false;return error('Fixture delete failed. Retry.',409);}assert.equal(body.revision,listTarget.revision);listTarget.deletedAt=new Date().toISOString();return send({id:listTarget.id});}
   if (url.pathname === '/api/v1/contract-drafts' && req.method === 'POST') {
     assert.equal(body.editorMode, 'studio');
-    const template = CONTRACT_TEMPLATES.find(item => item.code === body.templateCode);
+    const template = accountTemplate(body.templateCode, user.role === 'user');
     for (const key of Object.keys(body.input)) assert.ok(template.fields.some(field => field.key === key), `Frontend sends unknown template field: ${key}`);
     const input = { ...Object.fromEntries(template.fields.filter(field => field.defaultValue).map(field => [field.key, field.defaultValue])), ...(template.code === 'labor' ? { companyName: organization.name } : {}), ...(template.fields.some(field=>field.key==='companyTaxCode')?{companyTaxCode: organization.taxCode}:{}), companyAddress: organization.address, ...body.input };
     const document = buildStudioTemplate(template, input, organization.name, body.ourParty);
@@ -172,7 +172,7 @@ const backend = http.createServer(async (req, res) => {
   }
   if (draft && url.pathname === `/api/v1/contract-drafts/${draft.id}/copy-latest`) {
     assert.equal(body.revision, draft.revision);
-    const template = CONTRACT_TEMPLATES.find(item=>item.code===draft.templateCode);
+    const template = accountTemplate(draft.templateCode, user.role === 'user');
     const input = Object.fromEntries(template.fields.filter(field=>draft.input[field.key]!==undefined).map(field=>[field.key,draft.input[field.key]]));
     const document = buildStudioTemplate(template, input, organization.name, draft.ourParty);
     draft={...draft,id:'f'.repeat(24),templateVersion:template.version,template,input,document,content:studioText(document,template),status:'draft',revision:0}; return send(draft,201);
@@ -410,7 +410,7 @@ try {
     await waitFor(editorReady);
     assert.equal(draft.templateCode, 'sales');
     assert.equal(draft.ourParty, 'buyer');
-    assert.equal(draft.templateVersion, 3);
+    assert.equal(draft.templateVersion, 4);
     await editField('companyName', 'Doanh nghiệp bên mua');
     await editField('partnerName', 'Doanh nghiệp bên bán');
     await editField('totalPrice', '10.000.000');
@@ -436,9 +436,9 @@ try {
     assert.ok(printed.includes('ĐIỀU 15.'));
     assert.ok(printed.includes('data-page-break'));
     console.log(`PASS sales reference: 15 articles, buyer/seller placement, linked money and reference fields, appendix, print, desktop/mobile. Screenshots: ${artifacts}`);
-  } else if (rental) {
+  } else if (personalHousing) {
     await call('Page.navigate', { url: `${origin}/contract-drafts` });
-    await waitFor('document.querySelectorAll("article button").length===4');
+    await waitFor('document.querySelectorAll("article button").length===3');
     for (const width of [1440, 1024, 390]) {
       await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 600 });
       assert.equal(await evaluate('document.documentElement.scrollWidth <= innerWidth'), true);
@@ -447,15 +447,15 @@ try {
     await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
     const positions = await evaluate('[...document.querySelectorAll("article[data-template-code]")].map(card => ({top:card.getBoundingClientRect().top,height:card.getBoundingClientRect().height}))');
     assert.equal(positions[0].top, positions[1].top);
-    assert.equal(positions[2].top, positions[3].top);
-    assert.ok(positions[2].top > positions[0].top);
+    assert.equal(positions[2].top, positions[0].top);
     assert.equal(positions[0].height, positions[1].height);
-    await fillSelector('select[aria-label="Vai trò với Hợp đồng thuê nhà"]', 'tenant');
-    await evaluate('document.querySelectorAll("article")[3].querySelector("button").click()');
+    await fillSelector('select[aria-label="Vai trò với Hợp đồng đặt cọc và mua bán nhà / căn hộ"]', 'buyer');
+    await evaluate('document.querySelector("article[data-template-code=housing_purchase]").querySelector("button").click()');
     await waitFor(editorReady);
-    assert.equal(draft.templateCode, 'rental');
-    assert.equal(draft.ourParty, 'tenant');
+    assert.equal(draft.templateCode, 'housing_purchase');
+    assert.equal(draft.ourParty, 'buyer');
     assert.equal(draft.input.depositAmount, '0');
+    await editField('transactionStage', 'purchase');
     for (const field of draft.template.fields.filter(field => field.required && !draft.input[field.key])) {
       await editField(field.key, field.kind === 'date' ? '2027-10-26' : field.kind === 'number' ? '10.000.000' : 'Thong tin hop dong thue nha');
     }
@@ -477,11 +477,11 @@ try {
     for (let n = 0; n < 50 && !downloads; n++) await new Promise(resolve => setTimeout(resolve, 100));
     assert.equal(downloads, 1);
     assert.equal(user.orgId, null);
-    console.log('PASS personal rental: tenant selection, linked fields, zero deposit, completion, Word export and desktop/mobile layout without orgId.');
+    console.log('PASS personal housing: buyer selection, linked fields, zero deposit, completion, Word export and desktop/mobile layout without orgId.');
     console.log(`Screenshots: ${artifacts}`);
   } else {
   await call('Page.navigate', { url: `${origin}/contract-drafts` });
-  await waitFor('document.querySelectorAll("article button").length===3');
+  await waitFor('document.querySelectorAll("article button").length===4');
   await shot('templates-desktop.png');
   await evaluate('document.querySelectorAll("article")[1].querySelector("button").click()');
   await waitFor(editorReady);
@@ -694,10 +694,10 @@ try {
   assert.ok(printed.includes('APPENDIX BROWSER CONTENT')); assert.ok(printed.includes('data-page-break'));
   await shot('studio-approved.png');
   await call('Page.navigate', { url: `${origin}/contract-drafts` });
-  await waitFor('document.querySelectorAll("article button").length===3');
+  await waitFor('document.querySelectorAll("article button").length===4');
   await evaluate('document.querySelectorAll("article")[0].querySelector("button").click()');
   await waitFor(editorReady);
-  assert.equal(draft.templateVersion, 4);
+  assert.equal(draft.templateVersion, 5);
   assert.equal(await evaluate('Array.from(document.querySelectorAll(".tiptap h2")).filter(node=>node.textContent.startsWith("ĐIỀU ")).length'), 12);
   assert.equal(await evaluate('document.querySelector("[data-field-key=partnerName]").textContent'), '[TenNguoiLaoDong]');
   await editField('signingDate', '2026-11-02'); await waitFor(saved);
@@ -715,8 +715,9 @@ try {
   await call('Page.reload', { ignoreCache: true });
   await waitFor('document.body.innerText.includes("Dùng mẫu mới")');
   await click('Dùng mẫu mới'); await waitFor('location.pathname.endsWith("ffffffffffffffffffffffff")'); await waitFor(editorReady);
-  assert.equal(draft.templateVersion,4); assert.notEqual(draft.id,oldDraft.id); assert.equal(draft.input.signingDate,'2026-11-02');
-  assert.ok(draft.content.includes('bồi thường thiệt hại bằng 06 tháng lương trung bình liền kề gần nhất'));
+  assert.equal(draft.templateVersion,5); assert.notEqual(draft.id,oldDraft.id); assert.equal(draft.input.signingDate,'2026-11-02');
+  assert.ok(draft.content.includes('14 ngày làm việc'));
+  assert.ok(!draft.content.includes('bồi thường thiệt hại bằng 06 tháng lương trung bình liền kề gần nhất'));
   listExtras=Array.from({length:21},(_,index)=>({...draft,id:(index+1).toString(16).padStart(24,'0'),title:`Fixture draft ${index+1}`,pinnedAt:null,updatedAt:'2020-01-01T00:00:00.000Z'}));
   await call('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
   await call('Page.navigate',{url:`${origin}/contract-drafts`});await waitFor('document.querySelectorAll("[data-draft-id]").length===20');

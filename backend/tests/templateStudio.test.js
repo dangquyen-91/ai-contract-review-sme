@@ -269,7 +269,7 @@ test.each([['personal_free', 3], ['personal_pro', 30]])('standalone %s grants dr
   await personal.populate('roleId');
   if (planCode === 'personal_pro') await activatePaidSubscription({ orgId: personal.id, planCode,
     action: 'purchase', amount: 99000, paymentReference: `personal-drafting-${++sequence}` });
-  const created = await call(personal, 'post').send({ templateCode: 'labor', title: 'Personal drafting', ourParty: 'employer', editorMode: 'studio', input: {} });
+  const created = await call(personal, 'post').send({ templateCode: 'labor', title: 'Personal drafting', ourParty: 'employee', editorMode: 'studio', input: {} });
   expect(created.status).toBe(201);
   const draft = created.body.data;
   expect((await getSubscription(personal.id, personal.id)).drafting).toMatchObject({ used: 0, available: limit, limit });
@@ -493,19 +493,20 @@ test('appendices preserve explicit page breaks in persisted JSON, text and Word 
 
 test('labor reference follows the reference layout with complete parties, 12 articles and linked date components', async () => {
   const draft = await create({}, 'labor');
-  expect(draft.templateVersion).toBe(4);
+  expect(draft.templateVersion).toBe(5);
   expect(draft.input.companyName).toBe(org.name);
   expect(draft.document.content.filter(node => node.type === 'heading' && node.content[0]?.text.startsWith('ĐIỀU '))).toHaveLength(12);
   expect(draft.document.content.some(node => node.type === 'bulletList')).toBe(true);
   for (const token of ['[SoHopDong]', '[TenNguoiLaoDong]', '[Ngay]', '[Thang]', '[Nam]', '[SoTienLuong]']) expect(draft.content).toContain(token);
-  expect(draft.content).toContain('38/2013/QH13'); expect(draft.template.reviewNotes.length).toBeGreaterThan(0);
-  expect(draft.content).toContain('a. Số giờ làm việc: 8 giờ/ngày, 40 giờ/tuần.');
-  expect(draft.content).toContain('nhân viên phải hoàn trả lại 100% phí đào tạo');
-  expect(draft.content).toContain('Trong thời hạn 02 (hai) năm kể từ ngày kết thúc quan hệ lao động');
-  expect(draft.content).toContain('bồi thường thiệt hại bằng 06 tháng lương trung bình liền kề gần nhất');
-  expect(draft.content).not.toContain('không mặc định');
+  expect(draft.content).toContain('74/2025/QH15'); expect(draft.template.reviewNotes.length).toBeGreaterThan(0);
+  expect(draft.content).toContain('18/VBHN-VPQH');
+  expect(draft.content).toContain('14 ngày làm việc');
+  expect(draft.content).toContain('ngày làm việc kế tiếp');
+  for (const obsolete of ['38/2013/QH13', 'hoàn trả lại 100%', 'Trong thời hạn 02 (hai) năm', 'bằng 06 tháng lương', 'Trong thời hạn 07 ngày']) {
+    expect(draft.content).not.toContain(obsolete);
+  }
   const fields = studioInput(draft.document);
-  for (const key of ['companyPhone', 'companyFax', 'companyWebsite', 'partnerNationality', 'partnerContactAddress', 'partnerPhone', 'jobTitle', 'salaryInWords']) expect(fields).toHaveProperty(key);
+  for (const key of ['companyPhone', 'companyFax', 'companyWebsite', 'partnerNationality', 'partnerContactAddress', 'partnerPhone', 'jobTitle', 'salaryInWords', 'partnerGender', 'workplace', 'allowances', 'salaryReview', 'insurance', 'protection', 'training']) expect(fields).toHaveProperty(key);
   walkStudio(draft.document, node => { if (node.type === 'templateField' && node.attrs.key === 'signingDate') node.attrs.value = '2026-10-26'; });
   const saved = await call(staff, 'patch', `/${draft.id}`).send(patch(draft)); expect(saved.status).toBe(200);
   expect(saved.body.data.content).toContain('ngày 26 tháng 10 năm 2026');
@@ -517,7 +518,7 @@ test('copying a studio draft to the current reference preserves its original and
   const draft = await create({ partnerName: 'Existing Employee' }, 'labor');
   const stored = await ContractDraftModel.findById(draft.id); stored.templateVersion = 3; stored.content = 'Original manually edited content'; await stored.save();
   const response = await call(staff, 'post', `/${draft.id}/copy-latest`).send({ revision: draft.revision });
-  expect(response.status).toBe(201); expect(response.body.data.templateVersion).toBe(4); expect(response.body.data.document.type).toBe('doc');
+  expect(response.status).toBe(201); expect(response.body.data.templateVersion).toBe(5); expect(response.body.data.document.type).toBe('doc');
   expect(response.body.data.input.partnerName).toBe('Existing Employee'); expect(response.body.data.id).not.toBe(draft.id);
   expect((await ContractDraftModel.findById(draft.id)).content).toBe('Original manually edited content');
 });

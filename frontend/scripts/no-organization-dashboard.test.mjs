@@ -83,12 +83,19 @@ test('personal dashboard loads saved contracts without requesting or creating an
   let calls = 0;
   let authenticated = true;
   vm.runInNewContext(source, {
-    exports, Buffer, Date, process: { env: {} },
-    fetch: async url => {
+    exports, Buffer, Date, AbortSignal, process: { env: {} },
+    fetch: async (url, options) => {
       calls++;
-      assert.ok(url.includes('/api/v1/contracts?'));
-      const main = url.includes('limit=10');
-      return NextResponse.json({ data: main ? [{ _id: 'personal-contract', title: 'Saved contract' }] : [], meta: { total: main ? 1 : 0 } });
+      assert.equal(url, 'http://localhost:4000/api/v1/dashboard');
+      assert.equal(options.headers.Authorization, 'Bearer verified-access');
+      assert.equal(options.cache, 'no-store');
+      return NextResponse.json({ success: true, data: {
+        organization: { id: '', name: 'Tài khoản cá nhân' },
+        user: { name: user.name, email: user.email },
+        contractScopeId: user.id,
+        contracts: [{ _id: 'personal-contract', title: 'Saved contract' }],
+        totalContracts: 1,
+      } });
     },
     require: name => name === 'next/server' ? { NextResponse } : { getApiSession: async () => authenticated ? { user, accessToken: 'verified-access' } : { error: NextResponse.json({ success: false }, { status: 401 }) } },
   });
@@ -104,8 +111,30 @@ test('personal dashboard loads saved contracts without requesting or creating an
   assert.equal(payload.data.contracts[0]._id, 'personal-contract');
   assert.equal(payload.data.totalContracts, 1);
   assert.equal(user.orgId, null);
-  assert.equal(calls, 4);
+  assert.equal(calls, 1);
   authenticated = false;
   const expired = await exports.GET(new NextRequest('http://localhost/api/dashboard', { headers: { cookie: `lawscan_access=${token(1)}` } }));
   assert.equal(expired.status, 401);
+});
+
+test('dashboard proxy preserves backend permission errors and reports unavailable upstream', async () => {
+  const source = ts.transpileModule(fs.readFileSync(new URL('../app/api/dashboard/route.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const exports = {};
+  let unavailable = false;
+  vm.runInNewContext(source, {
+    exports, AbortSignal, process: { env: {} },
+    fetch: async () => {
+      if (unavailable) throw new Error('offline');
+      return NextResponse.json({ success: false, error: { message: 'Forbidden' } }, { status: 403 });
+    },
+    require: name => name === 'next/server' ? { NextResponse } : { getApiSession: async () => ({ accessToken: 'verified-access' }) },
+  });
+  const forbidden = await exports.GET();
+  assert.equal(forbidden.status, 403);
+  assert.equal((await forbidden.json()).error.message, 'Forbidden');
+  assert.equal(forbidden.headers.get('Cache-Control'), 'private, no-store');
+  unavailable = true;
+  assert.equal((await exports.GET()).status, 503);
 });

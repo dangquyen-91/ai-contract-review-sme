@@ -39,14 +39,12 @@ export function buildLaborStudioTemplate(
   ];
   const legalList: StudioNode = {
     type: 'bulletList',
-    content: [
-      'Căn cứ Bộ Luật Lao động số 45/2019/QH14 được Quốc hội khóa XIV nước Cộng hòa xã hội chủ nghĩa Việt Nam thông qua ngày 20/11/2019 và văn bản hướng dẫn thi hành;',
-      'Căn cứ Luật Việc làm số 38/2013/QH13 được Quốc hội khóa XIII nước Cộng hòa xã hội chủ nghĩa Việt Nam thông qua ngày 20/11/2019;',
-      'Căn cứ nhu cầu thực tế của các bên',
-    ].map((value) => ({
-      type: 'listItem',
-      content: [p([{ ...text(value), marks: [{ type: 'italic' }] }])],
-    })),
+    content: [`Căn cứ ${template.legalBasis}`, 'Căn cứ nhu cầu thực tế của các bên'].map(
+      (value) => ({
+        type: 'listItem',
+        content: [p([{ ...text(value), marks: [{ type: 'italic' }] }])],
+      }),
+    ),
   };
   const signatureRows: StudioNode[][] = [
     [bold('NGƯỜI LAO ĐỘNG'), bold('BÊN SỬ DỤNG LAO ĐỘNG')],
@@ -76,6 +74,9 @@ export function buildLaborStudioTemplate(
       ]),
       p([bold('BÊN SỬ DỤNG LAO ĐỘNG:')]),
       line('Tên công ty', 'companyName'),
+      ...(template.fields.some((item) => item.key === 'companyTaxCode')
+        ? [line('Mã số thuế', 'companyTaxCode')]
+        : []),
       line('Người đại diện', 'representative'),
       line('Chức vụ', 'representativePosition'),
       line('Địa chỉ', 'companyAddress'),
@@ -96,6 +97,9 @@ export function buildLaborStudioTemplate(
       line('Tên người lao động', 'partnerName'),
       line('Quốc tịch', 'partnerNationality'),
       line('Ngày Sinh', 'partnerBirthDate'),
+      ...(template.fields.some((item) => item.key === 'partnerGender')
+        ? [line('Giới tính', 'partnerGender')]
+        : []),
       line('Nơi thường trú', 'partnerAddress'),
       line('Địa chỉ liên hệ', 'partnerContactAddress'),
       line('Số CCCD', 'partnerIdentifier'),

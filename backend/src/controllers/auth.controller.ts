@@ -1,3 +1,4 @@
+import { toPublicUser } from '../services/identity/publicUser';
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
