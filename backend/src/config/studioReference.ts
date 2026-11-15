@@ -1,1 +1,0 @@
-export const STUDIO_REFERENCE_MAX_BYTES = 2 * 1024 * 1024;

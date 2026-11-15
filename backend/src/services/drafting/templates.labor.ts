@@ -1,5 +1,5 @@
 import type { ContractTemplate, TemplateField } from './templates';
-import { LABOR_SECTIONS } from './labor-current-content';
+import { LABOR_REFERENCE_SECTIONS } from './labor-reference-content';
 
 const tokens: Record<string, string> = {
   companyName: 'TenCongTy',
@@ -56,10 +56,19 @@ const extra = (
   required = false,
 ): TemplateField => ({ key, label, group, kind, required, token: tokens[key] });
 export function buildLaborTemplate(base: ContractTemplate): ContractTemplate {
-  const fields: TemplateField[] = base.fields.map((field) => ({
-    ...field,
-    token: tokens[field.key],
-  }));
+  const unusedFields = new Set([
+    'companyTaxCode',
+    'partnerGender',
+    'workplace',
+    'allowances',
+    'salaryReview',
+    'insurance',
+    'protection',
+    'training',
+  ]);
+  const fields: TemplateField[] = base.fields
+    .filter((field) => !unusedFields.has(field.key))
+    .map((field) => ({ ...field, token: tokens[field.key] }));
   Object.assign(
     fields.find((field) => field.key === 'reference')!,
     {
@@ -89,13 +98,13 @@ export function buildLaborTemplate(base: ContractTemplate): ContractTemplate {
     extra('salaryInWords', 'Tiền lương bằng chữ', 'terms', 'text', true),
     extra('saturdayHours', 'Giờ làm việc thứ Bảy', 'terms'),
     extra('sundayHours', 'Giờ làm việc Chủ nhật', 'terms'),
-    extra('weeklyRest', 'Ngày nghỉ hằng tuần', 'terms', 'text', true),
+    extra('weeklyRest', 'Ngày nghỉ hằng tuần', 'terms'),
     extra('generalDirector', 'Tổng giám đốc / người có quyền cho phép tiết lộ thông tin', 'terms'),
     extra('effectiveDate', 'Ngày hợp đồng có hiệu lực', 'terms', 'date', true),
   );
   const groups = base.formGroups!.map((group) => ({
     ...group,
-    fields: [...group.fields],
+    fields: group.fields.filter((key) => !unusedFields.has(key)),
   }));
   groups
     .find((group) => group.key === 'company')!
@@ -119,15 +128,15 @@ export function buildLaborTemplate(base: ContractTemplate): ContractTemplate {
   groups.find((group) => group.key === 'conditions')!.fields.push('generalDirector');
   return {
     ...base,
-    version: 5,
+    version: 4,
     fields,
     formGroups: groups,
     legalBasis:
-      'Bộ luật Lao động số 45/2019/QH14 đã được sửa đổi, bổ sung (đối chiếu Văn bản hợp nhất 18/VBHN-VPQH ngày 12/02/2026); Luật Việc làm số 74/2025/QH15; Nghị định 145/2020/NĐ-CP và các quy định sửa đổi, bổ sung có liên quan.',
+      'Nội dung chép theo mẫu tham khảo: Bộ luật Lao động số 45/2019/QH14 và Luật Việc làm số 38/2013/QH13.',
     reviewNotes: [
-      'Mẫu v5 cập nhật ngày 15/11/2026. Kiểm tra lương tối thiểu theo địa bàn, điều kiện công việc, bảo hiểm và thỏa ước áp dụng trước khi ký. Các trường dữ liệu do người dùng sửa vẫn cần được đối chiếu.',
-      'Nguồn Bộ luật Lao động hợp nhất: https://vanban.chinhphu.vn/?pageid=27160&docid=217002 ; Luật Việc làm 2025: https://vanban.chinhphu.vn/?pageid=27160&docid=214560 .',
+      'Mẫu được chép theo ảnh bạn cung cấp, chưa xác nhận tính phù hợp pháp luật. Căn cứ Luật Việc làm 2013 và ngày thông qua trong mẫu cần được rà soát theo thời điểm ký.',
+      'Cần rà soát riêng các điều khoản về điều chuyển, chấm dứt, nghỉ phép, hoàn trả chi phí đào tạo, cấm cạnh tranh 02 năm và bồi thường 06 tháng lương trước khi sử dụng.',
     ],
-    sections: LABOR_SECTIONS,
+    sections: LABOR_REFERENCE_SECTIONS,
   };
 }

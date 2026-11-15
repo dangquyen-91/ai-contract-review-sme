@@ -27,8 +27,8 @@ const responseSchema = {
 const privateFields = new Set(['companyName', 'companyTaxCode', 'companyAddress', 'representative', 'authorization', 'partnerName', 'partnerAddress', 'partnerIdentifier', 'partnerRepresentative', 'partnerBirthDate', 'partnerIdIssuedDate', 'partnerIdIssuedPlace']);
 
 export function renderDraftDocument(code: TemplateCode, input: Record<string, string>, companyName: string, ourParty: string, additions: Map<string, string> = new Map(), template: ContractTemplate = getTemplate(code)) {
-  if (['rental', 'office_lease', 'housing_purchase', 'life_insurance'].includes(code) || (code === 'sales' && template.version >= 3) || (code === 'labor' && template.version >= 4)) {
-    const document = code === 'labor' ? buildLaborStudioTemplate(template, input, ourParty === 'employee' ? input.companyName ?? '' : companyName) : buildStudioTemplate(template, input, companyName, ourParty);
+  if (code === 'rental' || (code === 'sales' && template.version >= 3) || (code === 'labor' && template.version >= 4)) {
+    const document = code === 'labor' ? buildLaborStudioTemplate(template, input, companyName) : buildStudioTemplate(template, input, companyName, ourParty);
     const content: StudioNode[] = [];
     let sectionIndex = -1;
     const addComment = () => { const addition = additions.get(template.sections[sectionIndex]?.key); if (addition) content.push(studioParagraph([studioTextNode(addition)])); };

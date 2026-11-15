@@ -7,8 +7,6 @@ import {
   Handshake,
   House,
   Package,
-  Building2,
-  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ContractTemplate } from "@/types/contract-drafts";
@@ -18,9 +16,6 @@ const icons = {
   service: Handshake,
   sales: Package,
   rental: House,
-  office_lease: Building2,
-  housing_purchase: House,
-  life_insurance: ShieldCheck,
 };
 
 export function DraftTemplateCard({

@@ -4,8 +4,6 @@ const itemSchema = z.object({ name: z.string().trim().max(160), unit: z.string()
 export type DraftLineItem = z.infer<typeof itemSchema>;
 const hundred = BigInt(100), thousand = BigInt(1000);
 const scale = (value: string, decimals: number) => { const [whole, fraction = ''] = value.split('.'); return BigInt(whole) * BigInt(10 ** decimals) + BigInt(fraction.padEnd(decimals, '0')); };
-// Call only after validating a nonnegative amount with at most two decimal places.
-export const moneyToCents = (value: string) => scale(value, 2);
 export function moneyString(cents: bigint) {
   const fraction = (cents % hundred).toString().padStart(2, '0');
   return `${cents / hundred}${fraction === '00' ? '' : `.${fraction}`}`;

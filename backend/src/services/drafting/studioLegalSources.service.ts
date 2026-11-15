@@ -7,8 +7,15 @@ import { ContractProfileModel } from '../../models/contractProfile.model';
 import { DEFAULT_PROFILES } from '../contract/contractProfile.data';
 import { SALES_LEGAL_SOURCE_CODES } from '../legal/legalSourceCatalog.data';
 
-import { studioLawQuerySchema } from '../../validations/studio.validation';
-export { studioLawIdsSchema, studioLawQuerySchema } from '../../validations/studio.validation';
+export const studioLawIdsSchema = z.array(z.string().regex(/^[a-f\d]{24}$/i).transform(id => id.toLowerCase()))
+  .max(10, 'Chỉ chọn tối đa 10 văn bản.').refine(ids => new Set(ids).size === ids.length, 'Văn bản được chọn không được trùng.');
+export const studioLawQuerySchema = z.object({
+  q: z.string().trim().max(100).default(''),
+  page: z.coerce.number().int().min(1).max(10000).default(1),
+  templateCode: z.enum(['labor', 'service', 'sales', 'rental']).optional(),
+  ids: z.string().max(249).optional().transform(value => value ? value.split(',') : undefined)
+    .pipe(studioLawIdsSchema.optional()),
+});
 const pageSize = 20;
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function availableSources() {
@@ -32,9 +39,9 @@ async function templateLawFilter(templateCode?: string) {
   if (templateCode === 'sales') {
     return { code: { $in: SALES_LEGAL_SOURCE_CODES } };
   }
-  if (!templateCode || !['labor', 'office_lease', 'housing_purchase', 'life_insurance'].includes(templateCode)) return {};
-  const profile = await ContractProfileModel.findOne({ code: templateCode }).select('legalSourceCodes').lean();
-  const codes = profile?.legalSourceCodes ?? DEFAULT_PROFILES.find(item => item.code === templateCode)?.legalSources ?? [];
+  if (templateCode !== 'labor') return {};
+  const profile = await ContractProfileModel.findOne({ code: 'labor' }).select('legalSourceCodes').lean();
+  const codes = profile?.legalSourceCodes ?? DEFAULT_PROFILES.find(item => item.code === 'labor')?.legalSources ?? [];
   return { code: { $in: codes } };
 }
 export async function listStudioLaws(query: z.infer<typeof studioLawQuerySchema>) {

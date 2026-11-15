@@ -1,6 +1,3 @@
-import { accountTemplate, accountTemplates } from './templatePolicy';
-import { inputErrors } from './draftInputRules';
-import { migrateTemplateInput } from './draftTemplateMigration';
 import mongoose, { FilterQuery, InferSchemaType } from 'mongoose';
 import { randomBytes } from 'crypto';
 import { z } from 'zod';
@@ -13,8 +10,8 @@ import { UserModel } from '../../models/user.model';
 import { ContractModel } from '../../models/contract.model';
 import { ContractVersionModel } from '../../models/contractVersion.model';
 import { AccessTokenPayload } from '../../middlewares/auth.middleware';
-import { DraftInput, updateDraftSchema } from '../../validations/contractDraft.validation';
-import { ContractTemplate, getTemplate, TemplateCode } from './templates';
+import { DraftInput, inputErrors, updateDraftSchema } from '../../validations/contractDraft.validation';
+import { CONTRACT_TEMPLATES, ContractTemplate, getTemplate, TemplateCode } from './templates';
 import { generateDraftContent } from './generation.service';
 import { createDraftDocx } from './docx.service';
 import { deleteContractFile, uploadContractFile } from '../contract/storage.service';
@@ -61,7 +58,7 @@ function view(draft: InstanceType<typeof ContractDraftModel>) {
   };
 }
 function validateInput(code: TemplateCode, input: Record<string, string>, ourParty: string, complete = false, template: ContractTemplate = getTemplate(code)) {
-  if (!template.parties.some(party => party.code === ourParty)) throw AppError.badRequest('Vai trò giao kết hợp đồng không hợp lệ.');
+  if (!template.parties.some(party => party.code === ourParty)) throw AppError.badRequest('Vai trò doanh nghiệp không hợp lệ.');
   const errors = inputErrors(code, input, complete, template);
   if (errors.length) throw AppError.badRequest(errors.join('. '));
 }
@@ -76,7 +73,7 @@ function requireDraftApprover(actor: AccessTokenPayload) {
 
 export async function templateCatalog(actor: AccessTokenPayload) {
   const organization = await requireDraftAccess(actor);
-  return { templates: accountTemplates(actor.role === 'user').map(({ sections: _sections, ...template }) => template), organization: { name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }, role: actor.role };
+  return { templates: CONTRACT_TEMPLATES.filter(template => template.code !== 'rental' || actor.role === 'user').map(({ sections: _sections, ...template }) => template), organization: { name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }, role: actor.role };
 }
 export async function listDrafts(actor: AccessTokenPayload, page: number) {
   await requireDraftAccess(actor);
@@ -110,19 +107,16 @@ export async function getDraft(actor: AccessTokenPayload, id: string) {
 }
 export async function createDraft(actor: AccessTokenPayload, input: DraftInput) {
   const organization = await requireDraftAccess(actor);
-  const personal = actor.role === 'user';
-  const template = accountTemplate(input.templateCode, personal);
-  const defaults = Object.fromEntries(template.fields.filter(field => field.defaultValue).map(field => [field.key, field.defaultValue!])) as Record<string, string>;
-  const prefilled = personal
-    ? input.templateCode === 'labor' ? { partnerName: organization.name } : { representative: organization.name }
-    : { companyName: organization.name, companyAddress: organization.address ?? '', companyTaxCode: organization.taxCode ?? '' };
-  const values = { ...defaults, ...Object.fromEntries(Object.entries(prefilled).filter(([key]) => template.fields.some(field => field.key === key))), ...input.input };
-  validateInput(input.templateCode, values, input.ourParty, false, template);
+  if (input.templateCode === 'rental' && actor.role !== 'user') throw AppError.forbidden('Mẫu thuê nhà hiện dành cho tài khoản cá nhân.');
+  const defaults = Object.fromEntries(getTemplate(input.templateCode).fields.filter(field => field.defaultValue).map(field => [field.key, field.defaultValue!])) as Record<string, string>;
+  const values = { ...defaults, ...(getTemplate(input.templateCode).fields.some(field => field.key === 'companyName') ? { companyName: organization.name } : {}), companyAddress: organization.address ?? '', ...(getTemplate(input.templateCode).fields.some(field => field.key === 'companyTaxCode') ? { companyTaxCode: organization.taxCode ?? '' } : {}), ...input.input };
+  validateInput(input.templateCode, values, input.ourParty);
+  const template = getTemplate(input.templateCode);
   const document = input.editorMode === 'studio' ? buildStudioTemplate(template, values, organization.name, input.ourParty) : null;
   const draft = await ContractDraftModel.create({
-    orgId: actor.orgId ?? null, createdBy: actor.sub, title: input.title,
-    templateCode: input.templateCode, templateVersion: template.version, ourParty: input.ourParty,
-    templateJson: JSON.stringify(template),
+    ownerType: actor.orgId ? 'organization' : 'personal', orgId: actor.orgId ?? null, createdBy: actor.sub, title: input.title,
+    templateCode: input.templateCode, templateVersion: getTemplate(input.templateCode).version, ourParty: input.ourParty,
+    templateJson: JSON.stringify(getTemplate(input.templateCode)),
     inputJson: JSON.stringify(values), organizationJson: JSON.stringify({ name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }),
     ...(document ? { documentJson: JSON.stringify(document), content: studioText(document, template) } : {}),
   });
@@ -174,9 +168,9 @@ export async function copyToLatestTemplate(actor: AccessTokenPayload, id: string
   const draft = await findDraft(actor, id);
   if (draft.revision !== revision) throw AppError.conflict('Bản nháp đã thay đổi. Vui lòng tải lại.');
   const code = draft.templateCode as TemplateCode;
-  const template = accountTemplate(code, actor.role === 'user');
+  const template = getTemplate(code);
   const oldInput = JSON.parse(draft.inputJson) as Record<string, string>;
-  const input = migrateTemplateInput(template, oldInput);
+  const input = Object.fromEntries(template.fields.filter(field => oldInput[field.key] !== undefined).map(field => [field.key, oldInput[field.key]]));
   return createDraft(actor, { templateCode: code, title: `${draft.title.slice(0, 180)} (mẫu v${template.version})`, ourParty: draft.ourParty, input, ...(draft.documentJson ? { editorMode: 'studio' as const } : {}) });
 }
 export async function generateDraft(actor: AccessTokenPayload, id: string, revision: number) {
