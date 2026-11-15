@@ -1,61 +1,24 @@
 "use client";
 import Link from "next/link";
-import { useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { FileText, Sparkles } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { contractDraftsApi } from "@/lib/api/contract-drafts";
 import {
-  draftKeys,
   useDraftCatalog,
   useDraftList,
 } from "@/hooks/contract-drafts/use-contract-drafts";
 import type { AuthUser } from "@/types/auth";
-import type { ContractTemplate } from "@/types/contract-drafts";
+import { useCreateContractDraft } from "@/hooks/contract-drafts/use-create-contract-draft";
 import { DraftShell } from "./draft-shell";
 import { DraftListRow } from "./draft-list-row";
 import { DraftTemplateCard } from "./draft-template-card";
 
 export function DraftWorkspace({ user }: { user: AuthUser }) {
-  const router = useRouter();
-  const client = useQueryClient();
   const catalog = useDraftCatalog();
   const [page, setPage] = useState(1);
   const [parties, setParties] = useState<Record<string, string>>({});
   const drafts = useDraftList(page);
-  const create = useMutation({ mutationFn: contractDraftsApi.create });
-  const lock = useRef(false);
-  async function start(template: ContractTemplate) {
-    if (lock.current) return;
-    lock.current = true;
-    try {
-      const today = new Date().toLocaleDateString("en-CA", {
-        timeZone: "Asia/Ho_Chi_Minh",
-      });
-      const draft = await create.mutateAsync({
-        templateCode: template.code,
-        title: `${template.name} - ${new Date().toLocaleDateString("vi-VN")}`,
-        ourParty: parties[template.code] ?? template.parties[0].code,
-        editorMode: "studio",
-        input: Object.fromEntries(
-          template.fields
-            .filter((field) =>
-              ["signingDate", "startDate", "termType"].includes(field.key),
-            )
-            .map((field) => [
-              field.key,
-              field.key === "termType" ? "fixed" : today,
-            ]),
-        ),
-      });
-      client.setQueryData(draftKeys.detail(draft.id), draft);
-      await client.invalidateQueries({ queryKey: draftKeys.lists });
-      router.push(`/contract-drafts/${draft.id}`);
-    } catch {
-      lock.current = false;
-    }
-  }
+  const create = useCreateContractDraft();
   return (
     <DraftShell
       user={user}
@@ -76,6 +39,11 @@ export function DraftWorkspace({ user }: { user: AuthUser }) {
             Mở mẫu và chỉnh ngay trên trang hợp đồng. Trợ lý AI giúp bạn thay
             đổi từng điều khoản bằng chat hoặc giọng nói; bạn quyết định nội
             dung được áp dụng.
+          </p>
+          <p className="mt-3 text-sm font-medium text-blue-700">
+            {user.role === "user"
+              ? "3 loại hợp đồng cá nhân · Lao động ở góc nhìn người lao động"
+              : "4 loại hợp đồng dành cho doanh nghiệp"}
           </p>
         </div>
         <Link className="text-sm font-medium text-blue-600" href="/contract">
@@ -133,7 +101,9 @@ export function DraftWorkspace({ user }: { user: AuthUser }) {
                     [template.code]: value,
                   }))
                 }
-                onOpen={() => void start(template)}
+                onOpen={() =>
+                  void create.start(template, parties[template.code] ?? template.parties[0].code)
+                }
               />
             ))}
           </div>

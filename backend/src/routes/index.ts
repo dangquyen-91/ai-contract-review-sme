@@ -10,6 +10,7 @@ import invitationRoutes from './invitation.routes';
 import profileRoutes from './profile.routes';
 import contractDraftRoutes from './contractDraft.routes';
 import reportsRoutes from './reports.routes';
+import dashboardRoutes from './dashboard.routes';
 import { listPlansHandler } from '../controllers/subscription.controller';
 
 const router = Router();
@@ -20,6 +21,7 @@ router.use('/auth', authRoutes);
 router.use('/profile', profileRoutes);
 router.use('/contract-drafts', contractDraftRoutes);
 router.use('/reports', reportsRoutes);
+router.use('/dashboard', dashboardRoutes);
 router.use('/admin/users', userManagementRoutes);
 // Compatibility alias for existing clients.
 router.use('/admin/userManagement', userManagementRoutes);

@@ -18,3 +18,7 @@ export const invitationPaginationSchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 export type CreateInvitationInput = z.infer<typeof createInvitationSchema>;
+
+export const receivedInvitationParamsSchema = z.object({
+  invitationId: z.string().regex(/^[a-f\d]{24}$/i),
+});

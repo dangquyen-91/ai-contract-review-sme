@@ -1,26 +1,11 @@
-import multer from 'multer';
-import type { RequestHandler } from 'express';
 import { validateDocxArchive } from '../../utils/uploadContent';
 import mammoth from 'mammoth';
 import pdf from 'pdf-parse';
 import { AppError } from '../../errors/AppError';
 
-const maxBytes = 2 * 1024 * 1024;
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: maxBytes, files: 1, fields: 0 },
-}).single('file');
-export const uploadStudioReference: RequestHandler = (req, res, next) =>
-  upload(req, res, (error) => {
-    if (error instanceof multer.MulterError)
-      return next(
-        AppError.badRequest('Chỉ đính kèm một tệp PDF, Word hoặc TXT, tối đa 2 MB mỗi lần.'),
-      );
-    next(error);
-  });
-
+import { STUDIO_REFERENCE_MAX_BYTES } from '../../config/studioReference';
 export async function readStudioReference(file?: Express.Multer.File) {
-  if (!file || file.buffer.length > maxBytes)
+  if (!file || file.buffer.length > STUDIO_REFERENCE_MAX_BYTES)
     throw AppError.badRequest('Vui lòng chọn tệp tham khảo tối đa 2 MB.');
   const name = [...file.originalname]
     .filter((character) => character.charCodeAt(0) >= 32 && !['/', '\\'].includes(character))
