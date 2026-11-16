@@ -230,7 +230,7 @@ test('joining preserves personal Pro, private contracts and independent organiza
   await SubscriptionPeriodModel.updateOne({ _id: paid._id }, { $set: { chatUsed: paid.plan.chatLimit } });
   await expect(reserveUsage({ ...base, orgId: member.id, contractId: contract.id, idempotencyKey: randomUUID() })).rejects.toMatchObject({ statusCode: 403 });
   expect((await getSubscription(member.id, w.org.id)).chat.used).toBe(1);
-  const draft = await request(app).post('/api/v1/contract-drafts').set('Authorization', auth).send({ templateCode: 'rental', title: 'Private rental', ourParty: 'tenant', input: {}, editorMode: 'studio' });
+  const draft = await request(app).post('/api/v1/contract-drafts').set('Authorization', auth).send({ templateCode: 'housing_purchase', title: 'Private housing purchase', ourParty: 'buyer', input: {}, editorMode: 'studio' });
   expect(draft.status).toBe(201);
   expect((await request(app).get(`/api/v1/contract-drafts/${draft.body.data.id}`).set('Authorization', `Bearer ${orgSession.accessToken}`)).status).toBe(404);
   expect((await ContractModel.findById(contract.id)).orgId.toString()).toBe(personal.id);

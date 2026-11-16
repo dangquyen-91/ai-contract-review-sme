@@ -22,6 +22,7 @@ export function useCreateContractDraft() {
       });
       const draft = await mutation.mutateAsync({
         templateCode: template.code,
+        ...(template.id ? { templateId: template.id } : {}),
         title: `${template.name} - ${new Date().toLocaleDateString("vi-VN")}`,
         ourParty: party,
         editorMode: "studio",
