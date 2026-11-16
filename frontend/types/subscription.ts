@@ -41,6 +41,8 @@ export type OrganizationSubscription = {
   startsAt: string | null;
   endsAt: string | null;
   scheduledDowngrade: { planCode: PlanCode; effectiveAt: string } | null;
+  // Paid periods that start after the current one (renewals, a paid downgrade).
+  futurePeriods?: { plan: SubscriptionPlan; startsAt: string; endsAt: string }[];
   members: { count: number; pending: number; limit: number; available: number };
   analysis: UsageCounter;
   chat: UsageCounter;

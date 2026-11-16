@@ -16,6 +16,21 @@ export function paymentAction(
   return "downgrade";
 }
 
+/**
+ * What an upgrade replaces: it starts a fresh full-price period immediately and
+ * cancels the current period and every prepaid future period without refund.
+ */
+export function upgradeImpact(current: OrganizationSubscription) {
+  const prepaid = (current.futurePeriods ?? []).filter((period) => period.plan.price > 0);
+  return {
+    currentEndsAt: current.status === "active" ? current.endsAt : null,
+    prepaidCount: prepaid.length,
+    prepaidUntil: prepaid.length ? prepaid[prepaid.length - 1].endsAt : null,
+    bonusUnits:
+      (current.analysis.bonus ?? 0) + (current.chat.bonus ?? 0) + (current.drafting.bonus ?? 0),
+  };
+}
+
 export function isUnfinishedPayment(order: PaymentOrder) {
   return (
     (!order.fulfilledAt &&

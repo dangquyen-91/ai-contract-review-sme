@@ -278,3 +278,23 @@ test('quota errors point owners to top-ups only when a paid plan is active', () 
   assert.equal(quota.canBuyTopUp('owner') && quota.canBuyTopUp('user'), true);
   assert.equal(quota.canBuyTopUp('staff'), false);
 });
+
+test('upgrade impact lists the current period, prepaid periods lost and carried top-ups', () => {
+  const plan = (price) => ({ code: 'business_pro', price });
+  const counter = (bonus = 0) => ({ used: 0, reserved: 0, limit: 0, available: 0, bonus });
+  const current = {
+    status: 'active', endsAt: '2026-12-01T00:00:00Z', plan: plan(499000),
+    analysis: counter(30), chat: counter(), drafting: counter(5),
+    futurePeriods: [
+      { plan: plan(499000), startsAt: '2026-12-01T00:00:00Z', endsAt: '2027-01-01T00:00:00Z' },
+      { plan: plan(499000), startsAt: '2027-01-01T00:00:00Z', endsAt: '2027-02-01T00:00:00Z' },
+    ],
+  };
+  assert.deepEqual({ ...state.upgradeImpact(current) }, {
+    currentEndsAt: '2026-12-01T00:00:00Z', prepaidCount: 2, prepaidUntil: '2027-02-01T00:00:00Z', bonusUnits: 35,
+  });
+  const fresh = state.upgradeImpact({ ...current, futurePeriods: undefined, analysis: counter(), drafting: counter() });
+  assert.equal(fresh.prepaidCount, 0);
+  assert.equal(fresh.prepaidUntil, null);
+  assert.equal(fresh.bonusUnits, 0);
+});

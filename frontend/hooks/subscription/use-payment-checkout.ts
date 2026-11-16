@@ -8,6 +8,7 @@ import {
   isUnfinishedPayment,
   paymentAction,
   safeCheckoutUrl,
+  upgradeImpact,
 } from "@/lib/subscription/payment-state";
 import type { SubscriptionPlan } from "@/types/subscription";
 
@@ -43,8 +44,13 @@ export function usePaymentCheckout(orgId: string, plan: SubscriptionPlan) {
         ? "Đang có lịch hạ gói. Hủy lịch trong trang quản lý gói trước khi gia hạn gói hiện tại."
         : null;
 
+  const impact = action === "upgrade" && current ? upgradeImpact(current) : null;
+  // Losing already-paid future periods must be acknowledged explicitly.
+  const [acknowledged, setAcknowledged] = useState(false);
+  const needsAcknowledgement = Boolean(impact?.prepaidCount) && !acknowledged;
+
   async function checkout() {
-    if (lock.current || loading || loadError || blockReason || open || !current)
+    if (lock.current || loading || loadError || blockReason || open || !current || needsAcknowledgement)
       return;
     lock.current = true;
     setBusy(true);
@@ -88,6 +94,10 @@ export function usePaymentCheckout(orgId: string, plan: SubscriptionPlan) {
     needsSchedule,
     open,
     blockReason,
+    impact,
+    acknowledged,
+    setAcknowledged,
+    needsAcknowledgement,
     busy,
     error,
     checkout,
