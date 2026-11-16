@@ -1,14 +1,28 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { paymentsApi } from "@/lib/api/payments";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useContractChatMessages, useStreamChatMutation } from "@/hooks/contracts/use-contracts";
 import { isApiClientError } from "@/lib/api/client";
 import { isQuotaExhausted, TOP_UP_HREF } from "@/lib/subscription/quota-error";
 
-export function useContractChat(contractId: string, canAsk: boolean, canManagePlan = false) {
+export const contractChatAllowanceKey = (contractId: string) =>
+  ["contract-chat-allowance", contractId] as const;
+
+export function useContractChat(contractId: string, canAsk: boolean, canManagePlan = false, personal = false) {
   const router = useRouter();
+  const client = useQueryClient();
+  // Chat included with a paid per-contract review; only personal accounts can buy one.
+  const allowance = useQuery({
+    queryKey: contractChatAllowanceKey(contractId),
+    queryFn: async () => (await paymentsApi.reviewQuote(contractId)).contractChat ?? null,
+    enabled: personal,
+    retry: false,
+    staleTime: 0,
+  });
   const history = useContractChatMessages(contractId);
   const stream = useStreamChatMutation();
   const sending = useRef(false);
@@ -45,6 +59,7 @@ export function useContractChat(contractId: string, canAsk: boolean, canManagePl
       setPendingQuestion("");
       setAnswer("");
       sending.current = false;
+      if (personal) void client.invalidateQueries({ queryKey: contractChatAllowanceKey(contractId) });
     }
   }
 
@@ -58,6 +73,7 @@ export function useContractChat(contractId: string, canAsk: boolean, canManagePl
     pendingQuestion,
     answer,
     isSending: Boolean(pendingQuestion),
+    includedChat: allowance.data?.allowance ? allowance.data : null,
     ask,
   };
 }

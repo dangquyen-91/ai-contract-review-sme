@@ -30,4 +30,7 @@ export type ContractReviewQuote = {
   contractId: string; versionId: string; pageCount: number; units: number;
   amount: number; unitPrice: number; currency: "VND"; availableUnits: number; canPurchase: boolean;
   purchaseStatus: "available" | "reserved" | "consumed" | null; openOrderCode: number | null;
+  // Chat questions about this contract included with a new purchase, and what earlier purchases have left.
+  includedChat?: number;
+  contractChat?: { allowance: number; used: number; reserved: number; available: number };
 };

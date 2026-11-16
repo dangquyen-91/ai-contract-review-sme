@@ -99,7 +99,7 @@ function ResultTabs({ result, contractId, role, canAsk, canUpload, versionCount 
           </div>
         ),
         terms: () => <TermsPanel contractId={contractId} />,
-        chat: () => <ContractChat key={contractId} contractId={contractId} contractTitle={result.contract.title} canAsk={canAsk} canManagePlan={canBuyTopUp(role)} />,
+        chat: () => <ContractChat key={contractId} contractId={contractId} contractTitle={result.contract.title} canAsk={canAsk} canManagePlan={canBuyTopUp(role)} personal={role === "user"} />,
         versions: () => <ContractVersionsPanel contractId={contractId} embedded canUpload={canUpload} />,
       }}
     />

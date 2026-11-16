@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose, { ClientSession } from 'mongoose';
 import { env } from '../../config/env';
 import { AppError } from '../../errors/AppError';
 import { ContractModel } from '../../models/contract.model';
@@ -9,6 +9,36 @@ import { UserModel } from '../../models/user.model';
 import { requireReviewCost } from './reviewCost';
 import { getSubscription, lockSubscriptionOrganization } from './subscription.service';
 import { assertAccountReviewPolicy } from '../contract/personalReviewPolicy';
+
+// Purchases of this contract that still have included chat questions left.
+const withChatLeft = {
+  $expr: { $lt: [{ $add: ['$chatUsed', '$chatReserved'] }, '$chatAllowance'] },
+};
+
+/** The paid review purchase whose included chat the next question should use. */
+export function findChatAllowance(
+  orgId: string,
+  userId: string,
+  contractId: string,
+  session: ClientSession | null = null,
+) {
+  return ContractReviewPurchaseModel.findOne({ orgId, userId, contractId, ...withChatLeft })
+    .sort({ createdAt: 1 })
+    .session(session);
+}
+
+/** Included chat questions across every paid review of the contract. */
+export async function contractChatAllowance(orgId: string, userId: string, contractId: string) {
+  const rows = await ContractReviewPurchaseModel.find({ orgId, userId, contractId })
+    .select('chatAllowance chatUsed chatReserved')
+    .lean();
+  const total = (field: 'chatAllowance' | 'chatUsed' | 'chatReserved') =>
+    rows.reduce((sum, row) => sum + (row[field] ?? 0), 0);
+  const allowance = total('chatAllowance');
+  const used = total('chatUsed');
+  const reserved = total('chatReserved');
+  return { allowance, used, reserved, available: Math.max(0, allowance - used - reserved) };
+}
 
 export async function contractReviewQuote(userId: string, orgId: string, contractId: string) {
   const user = await UserModel.findOne({ _id: userId, isActive: true, platformRole: null });
@@ -39,6 +69,9 @@ export async function contractReviewQuote(userId: string, orgId: string, contrac
     canPurchase: !purchase && subscription.analysis.available < cost.units,
     purchaseStatus: purchase?.status ?? null,
     openOrderCode: pending?.orderCode ?? null,
+    // Chat included with a new purchase, and what earlier purchases have left.
+    includedChat: env.PERSONAL_REVIEW_CHAT_ALLOWANCE,
+    contractChat: await contractChatAllowance(orgId, userId, contractId),
   };
 }
 
@@ -84,6 +117,7 @@ export async function activateContractReviewPurchase(order: InstanceType<typeof 
           pageCount: order.pageCount,
           units: order.reviewUnits,
           amount: order.amount,
+          chatAllowance: env.PERSONAL_REVIEW_CHAT_ALLOWANCE,
         },
       ],
       { session },

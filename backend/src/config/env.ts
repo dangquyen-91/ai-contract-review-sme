@@ -7,6 +7,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
   PERSONAL_REVIEW_PRICE_PER_UNIT: z.coerce.number().int().min(1000).max(1000000).default(10000),
+  // Chat questions about that contract included with each per-contract review purchase.
+  PERSONAL_REVIEW_CHAT_ALLOWANCE: z.coerce.number().int().min(0).max(1000).default(20),
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
   DNS_SERVERS: z
     .string()

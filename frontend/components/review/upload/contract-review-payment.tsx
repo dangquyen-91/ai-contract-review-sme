@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { paymentsApi } from "@/lib/api/payments";
+import { useSubscriptionPlans } from "@/hooks/subscription/use-subscription-plans";
 import { safeCheckoutUrl } from "@/lib/subscription/payment-state";
 
 export function ContractReviewPayment({
@@ -29,6 +30,7 @@ export function ContractReviewPayment({
   const lock = useRef(false);
   const key = useRef<{ fingerprint: string; value: string } | null>(null);
   const quote = query.data;
+  const pro = useSubscriptionPlans().data?.find((plan) => plan.code === "personal_pro");
   async function checkout() {
     if (!quote || !quote.canPurchase || lock.current || disabled) return;
     lock.current = true;
@@ -102,8 +104,10 @@ export function ContractReviewPayment({
       </p>
       <p className="text-xs leading-5 text-muted-foreground">
         Giữ nguyên {quote.availableUnits} lượt còn lại. Một lần rà soát thành
-        công cho đúng phiên bản này; AI lỗi hoặc hủy được thử lại miễn phí. Chat
-        dùng hạn mức gói hiện tại.
+        công cho đúng phiên bản này; AI lỗi hoặc hủy được thử lại miễn phí.
+        {quote.includedChat
+          ? ` Kèm ${quote.includedChat} câu hỏi chat về hợp đồng này, dùng trước hạn mức chat của gói.`
+          : " Chat dùng hạn mức gói hiện tại."}
       </p>
       {quote.openOrderCode ? (
         <Button asChild variant="outline">
@@ -122,7 +126,9 @@ export function ContractReviewPayment({
         href="/goi-dich-vu/xac-nhan?plan=personal_pro"
         className="block font-medium text-blue-700"
       >
-        Hoặc xem gói Personal Pro
+        {pro
+          ? `Hoặc Personal Pro ${pro.price.toLocaleString("vi-VN")}đ/tháng: ${pro.analysisLimit} lượt rà soát, ${pro.chatLimit} lượt chat, ${pro.draftingLimit} lượt soạn`
+          : "Hoặc xem gói Personal Pro"}
       </Link>
       {error && (
         <p role="alert" className="text-red-700">

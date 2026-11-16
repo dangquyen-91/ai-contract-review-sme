@@ -764,3 +764,60 @@ test('upgrading keeps purchased units that were not used yet', async () => {
     available: 630,
   });
 });
+
+const contractChat = (w, key = randomUUID()) => ({
+  orgId: w.org.id,
+  userId: w.owner.id,
+  contractId: w.contract.id,
+  kind: 'chat',
+  idempotencyKey: key,
+  payload: { message: 'Điều khoản này có rủi ro gì?' },
+});
+
+test('a paid contract review includes chat about that contract, spent before the plan quota', async () => {
+  const w = await personalReview();
+  const before = await reviewQuote(w);
+  expect(before.body.data).toMatchObject({ includedChat: 20, contractChat: { allowance: 0, available: 0 } });
+  await paidReview(w);
+  expect((await reviewQuote(w)).body.data.contractChat).toMatchObject({ allowance: 20, used: 0, available: 20 });
+  const planChat = async () => (await getSubscription(w.owner.id, w.org.id)).chat;
+  const startingPlan = await planChat();
+
+  const failed = await reserveUsage(contractChat(w));
+  expect(failed.run.reviewPurchaseId).toBeTruthy();
+  expect(failed.run.periodId).toBeFalsy();
+  expect((await reviewQuote(w)).body.data.contractChat).toMatchObject({ reserved: 1, available: 19 });
+  await finishUsage(w.org.id, failed.run.id, false);
+  const ok = await reserveUsage(contractChat(w));
+  await finishUsage(w.org.id, ok.run.id, true, { reply: 'ok' });
+  expect((await reviewQuote(w)).body.data.contractChat).toMatchObject({ used: 1, reserved: 0, available: 19 });
+  expect(await planChat()).toMatchObject({ used: startingPlan.used, reserved: 0 });
+
+  // Once the included questions are spent, chat falls back to the plan quota.
+  await ContractReviewPurchaseModel.updateOne({ orgId: w.org.id }, { $set: { chatUsed: 20 } });
+  const fallback = await reserveUsage(contractChat(w));
+  expect(fallback.run.reviewPurchaseId).toBeFalsy();
+  expect(fallback.run.periodId).toBeTruthy();
+  await finishUsage(w.org.id, fallback.run.id, true, { reply: 'ok' });
+  expect(await planChat()).toMatchObject({ used: startingPlan.used + 1 });
+});
+
+test('included chat is restored when a lease expires and is not granted to purchases sold without it', async () => {
+  const w = await personalReview();
+  await paidReview(w);
+  const { run } = await reserveUsage(contractChat(w));
+  const { UsageRunModel } = require('../dist/models/subscription.model');
+  await UsageRunModel.updateOne({ _id: run.id }, { $set: { leaseExpiresAt: new Date(Date.now() - 1000) } });
+  await getSubscription(w.owner.id, w.org.id);
+  expect((await ContractReviewPurchaseModel.findOne({ orgId: w.org.id })).toObject()).toMatchObject({ chatReserved: 0, chatUsed: 0 });
+
+  const legacy = await personalReview();
+  await paidReview(legacy);
+  await ContractReviewPurchaseModel.collection.updateOne(
+    { orgId: new mongoose.Types.ObjectId(legacy.org.id) },
+    { $unset: { chatAllowance: '', chatUsed: '', chatReserved: '' } },
+  );
+  const planned = await reserveUsage(contractChat(legacy));
+  expect(planned.run.reviewPurchaseId).toBeFalsy();
+  expect(planned.run.periodId).toBeTruthy();
+});

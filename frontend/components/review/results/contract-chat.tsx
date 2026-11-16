@@ -27,13 +27,14 @@ const suggestions = [
   },
 ];
 
-export function ContractChat({ contractId, canAsk, contractTitle, canManagePlan = false }: {
+export function ContractChat({ contractId, canAsk, contractTitle, canManagePlan = false, personal = false }: {
   contractId: string;
   canAsk: boolean;
   contractTitle?: string;
   canManagePlan?: boolean;
+  personal?: boolean;
 }) {
-  const chat = useContractChat(contractId, canAsk, canManagePlan);
+  const chat = useContractChat(contractId, canAsk, canManagePlan, personal);
   const id = useId();
   const input = useRef<HTMLTextAreaElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
@@ -219,6 +220,13 @@ export function ContractChat({ contractId, canAsk, contractTitle, canManagePlan 
             </div>
             <div id={`${id}-input-help`} className="mt-2.5 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] leading-5 text-slate-400">
               <span>AI hỗ trợ tham khảo, không thay thế tư vấn pháp lý.</span>
+              {chat.includedChat && (
+                <span className="font-medium text-slate-500">
+                  {chat.includedChat.available > 0
+                    ? `Còn ${chat.includedChat.available}/${chat.includedChat.allowance} câu hỏi đã thanh toán cho hợp đồng này`
+                    : "Đã dùng hết câu hỏi kèm lượt rà soát; tiếp tục dùng hạn mức chat của gói"}
+                </span>
+              )}
               <span className="hidden sm:inline">Enter để gửi · Shift + Enter để xuống dòng</span>
             </div>
           </form>

@@ -6,6 +6,7 @@ import { assertUsageAvailable, type UsageKind } from './usagePolicy';
 import { assertUsageAccess, assertNoActiveReview, calculateUsageCost } from './usageAccess.service';
 import { lockSubscriptionOrganization, resolveSubscription } from './subscription.service';
 import { ContractReviewPurchaseModel } from '../../models/contractReviewPurchase.model';
+import { findChatAllowance } from './contractReviewPurchase.service';
 
 export interface UsageInput {
   orgId: string;
@@ -103,6 +104,35 @@ export async function reserveUsage(input: UsageInput, now = new Date(), leaseMs 
       await purchase.save({ session });
       return { run, replayed: false };
     }
+    // A paid review includes chat about that contract; spend it before the plan's
+    // shared chat quota so plan questions stay available for other contracts.
+    if (input.kind === 'chat' && input.contractId) {
+      const included = await findChatAllowance(input.orgId, input.userId, input.contractId, session);
+      if (included) {
+        await ContractReviewPurchaseModel.updateOne(
+          { _id: included._id },
+          { $inc: { chatReserved: cost.units } },
+          { session },
+        );
+        const [run] = await UsageRunModel.create(
+          [
+            {
+              orgId: input.orgId,
+              userId: input.userId,
+              contractId: input.contractId,
+              ...cost,
+              reviewPurchaseId: included._id,
+              kind: input.kind,
+              idempotencyKey: input.idempotencyKey,
+              fingerprint,
+              leaseExpiresAt: new Date(now.getTime() + leaseMs),
+            },
+          ],
+          { session },
+        );
+        return { run, replayed: false };
+      }
+    }
     if (!period) {
       const message =
         input.kind === 'drafting'
@@ -181,7 +211,18 @@ export async function finishUsage(
       if (run.status !== 'reserved') return;
     }
     if (success && commit) await commit(session);
-    if (run.reviewPurchaseId)
+    if (run.reviewPurchaseId && run.kind === 'chat')
+      await ContractReviewPurchaseModel.updateOne(
+        { _id: run.reviewPurchaseId },
+        {
+          $inc: {
+            chatReserved: -(run.units ?? 1),
+            ...(success ? { chatUsed: run.units ?? 1 } : {}),
+          },
+        },
+        { session },
+      );
+    else if (run.reviewPurchaseId)
       await ContractReviewPurchaseModel.updateOne(
         {
           _id: run.reviewPurchaseId,

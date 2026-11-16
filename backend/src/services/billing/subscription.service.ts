@@ -161,7 +161,13 @@ export async function resolveSubscription(orgId: string, session: ClientSession,
     leaseExpiresAt: { $lte: now },
   }).session(session);
   for (const run of expiredRuns) {
-    if (run.reviewPurchaseId)
+    if (run.reviewPurchaseId && run.kind === 'chat')
+      await ContractReviewPurchaseModel.updateOne(
+        { _id: run.reviewPurchaseId },
+        { $inc: { chatReserved: -(run.units ?? 1) } },
+        { session },
+      );
+    else if (run.reviewPurchaseId)
       await ContractReviewPurchaseModel.updateOne(
         {
           _id: run.reviewPurchaseId,
