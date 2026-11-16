@@ -1,17 +1,18 @@
 jest.mock('../dist/models/contract.model', () => ({ ContractModel: { findOne: jest.fn() } }));
 jest.mock('../dist/models/riskFinding.model', () => ({ RiskFindingModel: { find: jest.fn() } }));
-jest.mock('../dist/services/contract/contractVersion.service', () => ({ getCurrentVersionWithText: jest.fn() }));
+jest.mock('../dist/services/contract/contractVersion.service', () => ({ getCurrentVersionWithText: jest.fn(), findResultReviewId: jest.fn() }));
 jest.mock('../dist/services/contract/contractProfile.service', () => ({ resolveContractProfile: jest.fn() }));
 const { buildShareSummary, getShareSummary } = require('../dist/services/contract/shareSummary.service');
 const { ContractModel } = require('../dist/models/contract.model');
 const { RiskFindingModel } = require('../dist/models/riskFinding.model');
-const { getCurrentVersionWithText } = require('../dist/services/contract/contractVersion.service');
+const { getCurrentVersionWithText, findResultReviewId } = require('../dist/services/contract/contractVersion.service');
 const { resolveContractProfile } = require('../dist/services/contract/contractProfile.service');
 const updatedAt = new Date('2026-10-15T01:00:00Z');
 
 beforeEach(() => {
   jest.clearAllMocks();
   ContractModel.findOne.mockResolvedValue({ type: 'service', status: 'reviewed', updatedAt });
+  findResultReviewId.mockResolvedValue('review');
   getCurrentVersionWithText.mockResolvedValue({ _id: 'version', summaryStatus: 'completed', riskDetectionStatus: 'completed', extractedText: '', summaryPoints: ['A short overview'], updatedAt });
   RiskFindingModel.find.mockReturnValue({ select: jest.fn().mockResolvedValue([]) });
   resolveContractProfile.mockResolvedValue({ name: 'Cung ứng dịch vụ' });
@@ -32,11 +33,11 @@ test('Changed or incomplete results are not presented as a finished summary', as
   expect(RiskFindingModel.find).not.toHaveBeenCalled();
 });
 
-test('The summary uses existing results and scopes findings to the contract version and organization', async () => {
+test('The summary uses existing results and scopes findings to the completed review, version and organization', async () => {
   const result = await getShareSummary('org', 'contract', updatedAt.toISOString());
   expect(result.redacted).toBe(true);
   expect(result.text).toContain('A short overview');
-  expect(RiskFindingModel.find).toHaveBeenCalledWith({ contractVersionId: 'version', orgId: 'org' });
+  expect(RiskFindingModel.find).toHaveBeenCalledWith({ contractVersionId: 'version', reviewId: 'review', orgId: 'org' });
 });
 
 test('Sharing fully replaces recognized personal data including values in titles and recommendations', () => {

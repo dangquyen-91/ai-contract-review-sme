@@ -12,10 +12,9 @@ jest.mock('../dist/services/organization/invitationEmail.service', () => ({
 
 const mongoose = require('mongoose');
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
-const { OrganizationModel } = require('../dist/models/organization.model');
 const { UserModel } = require('../dist/models/user.model');
 const { OrganizationInvitationModel } = require('../dist/models/organizationInvitation.model');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
+const { seedDefaultRoles } = require('../dist/services/identity/role.service');
 const { createOrganization } = require('../dist/services/organization/organization.service');
 const { createInvitation, revokeInvitation, acceptInvitation } = require('../dist/services/organization/invitation.service');
 const { sendInvitationEmail } = require('../dist/services/organization/invitationEmail.service');
@@ -25,15 +24,12 @@ const { initializeSubscriptionModels } = require('../dist/models/subscription.mo
 let replicaSet;
 let serial = 0;
 
-async function makeUser(email, orgId) {
-  const role = await getRoleByCode('user');
+async function makeUser(email) {
   return UserModel.create({
     name: 'Test user',
     email: email ?? `free-member-${++serial}@example.com`,
     passwordHash: 'unused',
-      emailVerifiedAt: new Date(),
-    roleId: role._id,
-    orgId,
+    emailVerifiedAt: new Date(),
   });
 }
 
@@ -105,9 +101,9 @@ test.each(['manager', 'expert'])('invitation service rejects %s without reservin
 });
 
 test('personal workspaces remain limited to one member', async () => {
-  const personal = await OrganizationModel.create({ name: 'Personal', isPersonal: true });
-  const user = await makeUser(undefined, personal._id);
-  expect(await getSubscription(user.id, personal.id)).toMatchObject({
+  // A standalone personal account is billed under its own user ID.
+  const user = await makeUser();
+  expect(await getSubscription(user.id, user.id)).toMatchObject({
     members: { count: 1, pending: 0, limit: 1, available: 0 },
   });
 });

@@ -26,8 +26,8 @@ const request = require('supertest');
 const { createApp } = require('../dist/app');
 const { UserModel } = require('../dist/models/user.model');
 const { OrganizationModel } = require('../dist/models/organization.model');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
-const { tokensForUser } = require('../dist/services/identity/auth.service');
+const { seedDefaultRoles } = require('../dist/services/identity/role.service');
+const { createAccount, organizationOf } = require('./helpers/accounts');
 const { cloudinary } = require('../dist/config/cloudinary');
 const { logger } = require('../dist/config/logger');
 logger.silent = true;
@@ -40,19 +40,17 @@ const png = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jhWQAAAAASUVORK5CYII=',
   'base64',
 );
-async function user(extra = {}, role = 'user') {
-  const roleDoc = await getRoleByCode(role);
-  return (
-    await UserModel.create({
-      name: 'Profile user',
-      email: `profile-${++serial}@example.com`,
-      passwordHash: await bcrypt.hash(currentPassword, 10),
-      roleId: roleDoc._id,
-      emailVerifiedAt: new Date(),
-      ...extra,
-    })
-  ).populate('roleId');
+async function user({ orgId, ...extra } = {}, role = 'user') {
+  return createAccount({
+    role,
+    orgId,
+    name: 'Profile user',
+    email: `profile-${++serial}@example.com`,
+    passwordHash: await bcrypt.hash(currentPassword, 10),
+    ...extra,
+  });
 }
+const tokensForUser = (account) => account.testSession;
 const auth = (account) => `Bearer ${tokensForUser(account).accessToken}`;
 beforeAll(async () => {
   repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
@@ -102,7 +100,7 @@ test('self updates name and phone, cannot change email, role, organization or an
   expect((await UserModel.findById(other.id)).name).toBe(other.name);
   for (const extra of [
     { email: 'other@example.com' },
-    { roleId: other.roleId._id },
+    { platformRole: 'administrator' },
     { orgId: new mongoose.Types.ObjectId() },
     { isActive: false },
   ]) {
@@ -159,7 +157,7 @@ test('avatar upload, replacement and deletion update only this account and clean
   const removed = await request(app).delete('/api/v1/profile/avatar').set('Authorization', bearer);
   expect(removed.status).toBe(200);
   expect(removed.body.data.user.avatarUrl).toBeNull();
-  expect((await UserModel.findById(account.id)).orgId).toBeUndefined();
+  expect(await organizationOf(account.id)).toBeUndefined();
 });
 
 test('avatar rejects oversized files, SVG, and files whose contents do not match the image type', async () => {

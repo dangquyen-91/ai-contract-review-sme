@@ -32,8 +32,9 @@ const {
   initializeSubscriptionModels,
   SubscriptionPeriodModel,
 } = require('../dist/models/subscription.model');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
-const { tokensForUser } = require('../dist/services/identity/auth.service');
+const { seedDefaultRoles } = require('../dist/services/identity/role.service');
+const { sessionFor } = require('../dist/services/identity/auth.service');
+const { MembershipModel } = require('../dist/models/membership.model');
 const {
   seedPlans,
   activatePaidSubscription,
@@ -50,20 +51,25 @@ let replica,
   passwordHash,
   serial = 0;
 const password = 'TestMemberPassword123!';
+// Organization roles live in memberships and system roles on the user. Each test
+// account keeps the remembered session it would have received at sign-in.
+const PLATFORM_ROLES = ['administrator', 'manager', 'expert'];
+const tokensForUser = (user) => user.testSession;
 const bearer = (user) => `Bearer ${tokensForUser(user).accessToken}`;
+const membershipOf = (userId) => MembershipModel.findOne({ userId });
 async function user(role, orgId) {
-  const roleDoc = await getRoleByCode(role);
-  return (
-    await UserModel.create({
-      name: 'Member Test',
-      email: `remove-${++serial}@example.com`,
-      passwordHash,
-      emailVerifiedAt: new Date(),
-      roleId: roleDoc._id,
-      orgId,
-      hasCompletedOnboarding: true,
-    })
-  ).populate('roleId');
+  const account = await UserModel.create({
+    name: 'Member Test',
+    email: `remove-${++serial}@example.com`,
+    passwordHash,
+    emailVerifiedAt: new Date(),
+    hasCompletedOnboarding: true,
+    ...(PLATFORM_ROLES.includes(role) ? { platformRole: role } : {}),
+  });
+  if (orgId && ['owner', 'staff'].includes(role))
+    await MembershipModel.create({ userId: account._id, orgId, role });
+  account.testSession = await sessionFor(account, true);
+  return account;
 }
 async function team() {
   const org = await OrganizationModel.create({ name: 'Removal test company' });
@@ -88,11 +94,11 @@ test('creating a business saves its name, tax code, address and validated indust
   });
   expect(response.status).toBe(201);
   const organization = await OrganizationModel.findById(response.body.data.id ?? response.body.data._id);
-  expect(organization.toObject()).toMatchObject({ name: 'Công ty Minh Tâm', taxCode: '0312345678', address: '12 Hoàng Hoa Thám, Phường Ba Đình, Thành phố Hà Nội', industry: 'organization-create-fixture', isPersonal: false, addressDetails: { provinceCode: '01', provinceName: 'Thành phố Hà Nội', wardCode: '00004', wardName: 'Phường Ba Đình', addressLine: '12 Hoàng Hoa Thám' } });
-  const updated = await UserModel.findById(personal.id).populate('roleId');
-  expect(updated.orgId.toString()).toBe(organization.id);
-  expect(updated.roleId.code).toBe('owner');
-  expect(updated.hasCompletedOnboarding).toBe(true);
+  expect(organization.toObject()).toMatchObject({ name: 'Công ty Minh Tâm', taxCode: '0312345678', address: '12 Hoàng Hoa Thám, Phường Ba Đình, Thành phố Hà Nội', industry: 'organization-create-fixture', addressDetails: { provinceCode: '01', provinceName: 'Thành phố Hà Nội', wardCode: '00004', wardName: 'Phường Ba Đình', addressLine: '12 Hoàng Hoa Thám' } });
+  const membership = await membershipOf(personal.id);
+  expect(membership.orgId.toString()).toBe(organization.id);
+  expect(membership.role).toBe('owner');
+  expect((await UserModel.findById(personal.id)).hasCompletedOnboarding).toBe(true);
 });
 
 test('creating a business rejects an unknown industry without creating an orphan organization', async () => {
@@ -101,14 +107,14 @@ test('creating a business rejects an unknown industry without creating an orphan
   const response = await request(app).post('/api/v1/organizations').set('Authorization', bearer(personal)).send({ name: 'Business', taxCode: '0312345678', industry: 'nonexistent-industry', addressDetails: { provinceCode: '01', wardCode: '00004', addressLine: '12 Hoàng Hoa Thám' } });
   expect(response.status).toBe(400);
   expect(await OrganizationModel.countDocuments()).toBe(before);
-  expect((await UserModel.findById(personal.id)).orgId ?? null).toBeNull();
+  expect(await membershipOf(personal.id)).toBeNull();
 });
 
 test('business creation requires tax code, address and industry instead of accepting only a name', async () => {
   const personal = await user('user');
   const response = await request(app).post('/api/v1/organizations').set('Authorization', bearer(personal)).send({ name: 'Nhóm mới' });
   expect(response.status).toBe(400);
-  expect((await UserModel.findById(personal.id)).orgId ?? null).toBeNull();
+  expect(await membershipOf(personal.id)).toBeNull();
 });
 
 test('address directory includes all 34 provinces and 3321 wards; mismatched addresses are rejected before creating a business', async () => {
@@ -129,16 +135,15 @@ test('address directory includes all 34 provinces and 3321 wards; mismatched add
 
 test('deleting the last-owner organization restores the same personal account and keeps its refresh session', async () => {
   const { org, owner } = await team();
-  const previous = tokensForUser(owner, true);
+  const previous = tokensForUser(owner);
   const otherOrg = await OrganizationModel.create({ name: 'Unchanged company' });
   const unrelated = await user('owner', otherOrg._id);
   await invitation(owner, org, 'deleted-org-invite@example.com');
   const response = await request(app).delete(`/api/v1/organizations/${org.id}`).set('Authorization', `Bearer ${previous.accessToken}`);
   expect(response.status).toBe(204);
   expect(await OrganizationModel.findById(org.id)).toBeNull();
-  const updated = await UserModel.findById(owner.id).select('+passwordHash').populate('roleId');
-  expect(updated.roleId.code).toBe('user');
-  expect(updated.orgId ?? null).toBeNull();
+  const updated = await UserModel.findById(owner.id).select('+passwordHash');
+  expect(await membershipOf(owner.id)).toBeNull();
   expect(updated.hasCompletedOnboarding).toBe(true);
   expect(updated.email).toBe(owner.email);
   expect(updated.passwordHash).toBe(owner.passwordHash);
@@ -151,33 +156,19 @@ test('deleting the last-owner organization restores the same personal account an
   expect(refreshed.body.data.user).toMatchObject({ id: owner.id, role: 'user', orgId: null, hasCompletedOnboarding: true });
   expect((await request(app).get('/api/v1/profile').set('Authorization', `Bearer ${refreshed.body.data.accessToken}`)).status).toBe(200);
   expect((await request(app).get(`/api/v1/organizations/${otherOrg.id}`).set('Authorization', `Bearer ${refreshed.body.data.accessToken}`)).status).toBe(403);
-  expect((await UserModel.findById(unrelated.id)).orgId.toString()).toBe(otherOrg.id);
-});
-
-test('refresh recovers legacy Owner accounts left without an organization without requiring onboarding again', async () => {
-  const legacy = await user('owner');
-  await UserModel.updateOne({ _id: legacy.id }, { $set: { hasCompletedOnboarding: false } });
-  const previous = tokensForUser(legacy);
-  const response = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: previous.refreshToken });
-  expect(response.status).toBe(200);
-  expect(response.body.data.user).toMatchObject({ id: legacy.id, role: 'user', orgId: null, hasCompletedOnboarding: true });
-  const repaired = await UserModel.findById(legacy.id);
-  expect(repaired.permissionsVersion).toBe(1);
-  const repeated = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: previous.refreshToken });
-  expect(repeated.status).toBe(200);
-  expect((await UserModel.findById(legacy.id)).permissionsVersion).toBe(1);
+  expect((await membershipOf(unrelated.id)).orgId.toString()).toBe(otherOrg.id);
 });
 
 test.each(['member', 'contract'])('failed organization deletion with a remaining %s preserves membership and the session', async resource => {
   const { org, owner } = await team();
   const previous = tokensForUser(owner);
   if (resource === 'member') await user('staff', org._id);
-  else await ContractModel.create({ orgId: org._id, uploadedBy: owner._id, title: 'Protected contract' });
+  else await ContractModel.create({ ownerType: 'organization', orgId: org._id, uploadedBy: owner._id, title: 'Protected contract' });
   const response = await request(app).delete(`/api/v1/organizations/${org.id}`).set('Authorization', `Bearer ${previous.accessToken}`);
   expect(response.status).toBe(409);
-  const updated = await UserModel.findById(owner.id).populate('roleId');
-  expect(updated.roleId.code).toBe('owner');
-  expect(updated.orgId.toString()).toBe(org.id);
+  const updated = await UserModel.findById(owner.id);
+  expect(await membershipOf(owner.id)).toMatchObject({ role: 'owner' });
+  expect((await membershipOf(owner.id)).orgId.toString()).toBe(org.id);
   expect(updated.permissionsVersion ?? 0).toBe(owner.permissionsVersion ?? 0);
   expect(await OrganizationModel.exists({ _id: org.id })).toBeTruthy();
   const refreshed = await request(app).post('/api/v1/auth/refresh').send({ refreshToken: previous.refreshToken });
@@ -207,7 +198,7 @@ afterAll(async () => {
 test('removal frees one paid seat while retaining the account, organization data, plan and usage', async () => {
   const { org, owner } = await team();
   const staff = await user('staff', org._id);
-  await Promise.all(['manager', 'expert', 'staff'].map((role) => user(role, org._id)));
+  await Promise.all(['staff', 'staff', 'staff'].map((role) => user(role, org._id)));
   const paid = await activatePaidSubscription({
     orgId: org.id,
     planCode: 'business_starter',
@@ -221,6 +212,7 @@ test('removal frees one paid seat while retaining the account, organization data
   );
   const before = await SubscriptionPeriodModel.findById(paid._id).lean();
   const contract = await ContractModel.create({
+    ownerType: 'organization',
     orgId: org._id,
     uploadedBy: staff._id,
     title: 'Retained contract',
@@ -247,9 +239,9 @@ test('removal frees one paid seat while retaining the account, organization data
   const response = await remove(owner, org.id, staff.id);
   expect(response.status).toBe(204);
   expect(response.text).toBe('');
-  const removed = await UserModel.findById(staff.id).populate('roleId');
-  expect(removed.orgId).toBeUndefined();
-  expect(removed.roleId.code).toBe('user');
+  const removed = await UserModel.findById(staff.id);
+  expect(await membershipOf(staff.id)).toBeNull();
+  expect(removed.platformRole).toBeFalsy();
   expect(removed.isActive).toBe(true);
   expect(removed.hasCompletedOnboarding).toBe(false);
   expect(removed.permissionsVersion).toBe(1);
@@ -353,11 +345,9 @@ test('only the organization owner can remove members; owner and cross-org target
   expect((await remove(other.owner, org.id, staff.id)).status).toBe(403);
   expect((await remove(owner, org.id, other.owner.id)).status).toBe(404);
   expect((await remove(owner, org.id, owner.id)).status).toBe(409);
-  const secondOwner = await user('owner', org._id);
-  expect((await remove(owner, org.id, secondOwner.id)).status).toBe(409);
   expect((await remove(owner, org.id, 'invalid')).status).toBe(400);
   expect((await remove(owner, 'invalid', staff.id)).status).toBe(400);
-  expect((await UserModel.findById(staff.id)).orgId.toString()).toBe(org.id);
+  expect((await membershipOf(staff.id)).orgId.toString()).toBe(org.id);
 });
 
 test('concurrent deletion frees only one seat and another organization can invite the removed user', async () => {
@@ -377,7 +367,7 @@ test('concurrent deletion frees only one seat and another organization can invit
   const other = await team();
   const token = await invitation(other.owner, other.org, staff.email);
   await acceptInvitation(staff.id, token);
-  expect((await UserModel.findById(staff.id)).orgId.toString()).toBe(other.org.id);
+  expect((await membershipOf(staff.id)).orgId.toString()).toBe(other.org.id);
 });
 
 test('legacy access tokens work before removal and are rejected afterwards', async () => {

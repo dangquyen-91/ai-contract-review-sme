@@ -9,6 +9,10 @@ jest.mock('../src/models/user.model', () => ({
   UserModel: { findOne: jest.fn() },
 }));
 
+jest.mock('../src/models/membership.model', () => ({
+  MembershipModel: { findOne: jest.fn() },
+}));
+
 jest.mock('../src/controllers/organization.controller', () => ({
   createOrganizationHandler: jest.fn((_req, res) => res.status(201).json({ success: true })),
   getOrganizationHandler: jest.fn(),
@@ -21,6 +25,8 @@ jest.mock('../src/controllers/organization.controller', () => ({
 const router = require('../src/routes/organization.routes').default;
 const { createOrganizationHandler } = require('../src/controllers/organization.controller');
 const { UserModel } = require('../src/models/user.model');
+const { MembershipModel } = require('../src/models/membership.model');
+const PLATFORM_ROLES = ['administrator', 'manager', 'expert'];
 let server;
 let baseUrl;
 
@@ -47,10 +53,18 @@ async function createOrganization(role, orgId) {
   const headers = { 'Content-Type': 'application/json' };
   if (role) {
     const userId = '507f1f77bcf86cd799439011';
-    UserModel.findOne.mockReturnValue({
-      populate: jest.fn().mockResolvedValue({ id: userId, emailVerifiedAt: new Date(), roleId: { code: role }, orgId }),
+    const platform = PLATFORM_ROLES.includes(role);
+    UserModel.findOne.mockResolvedValue({
+      _id: userId, id: userId, emailVerifiedAt: new Date(), permissionsVersion: 0,
+      ...(platform ? { platformRole: role } : {}),
     });
-    const token = jwt.sign({ sub: userId, role, orgId }, 'organization-access-test-only', { expiresIn: '1m' });
+    // Organization roles come from a membership; a stray one on a platform account is ignored.
+    const membership = ['owner', 'staff'].includes(role)
+      ? { orgId: orgId ?? '507f1f77bcf86cd799439022', role }
+      : orgId ? { orgId, role: 'staff' } : null;
+    MembershipModel.findOne.mockReturnValue({ session: () => ({ lean: async () => membership }) });
+    const access = platform ? { role } : { role: membership?.role ?? 'user', orgId: membership?.orgId };
+    const token = jwt.sign({ sub: userId, ...access }, 'organization-access-test-only', { expiresIn: '1m' });
     headers.Authorization = `Bearer ${token}`;
   }
   const response = await fetch(`${baseUrl}/organizations`, {

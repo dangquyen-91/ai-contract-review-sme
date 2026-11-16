@@ -28,8 +28,8 @@ const { OrganizationModel } = require('../dist/models/organization.model');
 const { ContractDraftModel: Drafts } = require('../dist/models/contractDraft.model');
 const { ContractModel } = require('../dist/models/contract.model');
 const { ContractVersionModel } = require('../dist/models/contractVersion.model');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
-const { tokensForUser } = require('../dist/services/identity/auth.service');
+const { seedDefaultRoles } = require('../dist/services/identity/role.service');
+const { createAccount, organizationOf } = require('./helpers/accounts');
 const { CONTRACT_TEMPLATES } = require('../dist/services/drafting/templates');
 const { accountTemplate } = require('../dist/services/drafting/templatePolicy');
 const { renderDraftDocument } = require('../dist/services/drafting/generation.service');
@@ -39,10 +39,8 @@ const { createDraftDocx } = require('../dist/services/drafting/docx.service');
 const { seedPlans, activatePaidSubscription, getSubscription } = require('../dist/services/billing/subscription.service');
 const { PlanModel, UsageRunModel, SubscriptionPeriodModel, initializeSubscriptionModels } = require('../dist/models/subscription.model');
 let repl, app, org, owner, staff, otherStaff, otherOwner, sequence = 0;
-async function user(role, orgId) {
-  return (await UserModel.create({ name: `Draft ${role}`, email: `draft-${++sequence}@example.com`, roleId: (await getRoleByCode(role))._id, orgId, passwordHash: 'unused', emailVerifiedAt: new Date() })).populate('roleId');
-}
-const bearer = member => `Bearer ${tokensForUser(member).accessToken}`;
+const user = (role, orgId) => createAccount({ role, orgId, name: `Draft ${role}`, email: `draft-${++sequence}@example.com` });
+const bearer = member => `Bearer ${member.testSession.accessToken}`;
 const call = (member, method, suffix = '') => request(app)[method](`/api/v1/contract-drafts${suffix}`).set('Authorization', bearer(member));
 function values(code) {
   const template = CONTRACT_TEMPLATES.find(item => item.code === code);
@@ -59,7 +57,7 @@ function values(code) {
   return input;
 }
 async function create(member = staff, code = 'service', input = values(code)) {
-  const response = await call(member, 'post').send({ templateCode: code, title: 'Hợp đồng kiểm thử', ourParty: accountTemplate(code, member.roleId.code === 'user').parties[0].code, input });
+  const response = await call(member, 'post').send({ templateCode: code, title: 'Hợp đồng kiểm thử', ourParty: accountTemplate(code, member.roleCode === 'user').parties[0].code, input });
   expect(response.status).toBe(201); return response.body.data;
 }
 const generate = (member, draft) => call(member, 'post', `/${draft.id}/generate`).send({ revision: draft.revision });
@@ -81,18 +79,14 @@ afterAll(async () => { await mongoose.disconnect(); if (repl) await repl.stop();
 test('catalog admits personal users and business owner/staff, excluding other roles', async () => {
   expect((await request(app).get('/api/v1/contract-drafts/templates')).status).toBe(401);
   for (const role of ['manager', 'expert', 'administrator']) expect((await call(await user(role), 'get', '/templates')).status).toBe(403);
-  expect((await call(await user('user', org.id), 'get', '/templates')).status).toBe(403);
-  const personal = await OrganizationModel.create({ name: 'Personal', isPersonal: true });
-  expect((await call(await user('owner', personal.id), 'get', '/templates')).status).toBe(403);
   const response = await call(staff, 'get', '/templates');
   expect(response.status).toBe(200);
   expect(response.body.data.templates.map(template => template.code)).toEqual(['labor', 'service', 'sales', 'office_lease']);
 });
 
-test.each([false, true])('personal drafts support creation, editing, approval and export with personal workspace=%s', async hasWorkspace => {
-  const personalOrg = hasWorkspace ? await OrganizationModel.create({ name: 'Personal drafts', isPersonal: true }) : null;
-  const personal = await user('user', personalOrg?.id);
-  const stranger = await user('user', personalOrg?.id);
+test('personal drafts support creation, editing, approval and export', async () => {
+  const personal = await user('user');
+  const stranger = await user('user');
   const catalog = await call(personal, 'get', '/templates');
   expect(catalog.status).toBe(200);
   expect(catalog.body.data.role).toBe('user');
@@ -312,7 +306,7 @@ test.each(['buyer', 'seller'])('personal %s can complete a housing contract and 
   expect(xml).toContain('Nguyễn Văn An');
   expect(xml).toContain('Trần Thị Bình');
   expect((await call(personal, 'patch', `/${draft.id}`).send({ ...changes(draft), document: draft.document })).status).toBe(409);
-  expect((await UserModel.findById(personal.id)).orgId ?? null).toBeNull();
+  expect(await organizationOf(personal.id)).toBeUndefined();
   expect(await OrganizationModel.countDocuments()).toBe(before);
 });
 
@@ -388,13 +382,13 @@ test('personal policyholder can edit, complete and export the insurance draft wi
   expect(exported.status).toBe(200);
   const zip = await JSZip.loadAsync(exported.body);
   expect(await zip.file('word/document.xml').async('string')).toContain('HỢP ĐỒNG BẢO HIỂM NHÂN THỌ');
-  expect((await UserModel.findById(personal.id)).orgId).toBeUndefined();
+  expect(await organizationOf(personal.id)).toBeUndefined();
   expect((await call(personal, 'post').send({ templateCode: 'life_insurance', title: 'Wrong perspective', ourParty: 'insurer', input: {} })).status).toBe(400);
 });
 
 test('workspace selection controls the template catalog, not the account membership alone', async () => {
   const { refresh } = require('../dist/services/identity/auth.service');
-  const session = await refresh(tokensForUser(staff).refreshToken, undefined, 'personal');
+  const session = await refresh(staff.testSession.refreshToken, undefined, 'personal');
   const catalog = await request(app).get('/api/v1/contract-drafts/templates').set('Authorization', `Bearer ${session.accessToken}`);
   expect(catalog.status).toBe(200);
   expect(catalog.body.data.templates.map(template => template.code).sort()).toEqual(['housing_purchase', 'labor', 'life_insurance']);
