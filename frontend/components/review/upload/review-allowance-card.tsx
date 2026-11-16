@@ -45,7 +45,10 @@ export function ReviewAllowanceCard({ orgId, role }: { orgId?: string; role?: st
             </p>
           )}
           {blocked && (canManagePlan
-            ? <Link href="/goi-dich-vu" className="mt-2 inline-block text-ui-meta font-semibold text-primary hover:underline">Xem gói dịch vụ</Link>
+            ? <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                {!inactive && <Link href="/subscription#mua-them-luot" className="text-ui-meta font-semibold text-primary hover:underline">Mua thêm lượt</Link>}
+                <Link href="/goi-dich-vu" className="text-ui-meta font-semibold text-primary hover:underline">Xem gói dịch vụ</Link>
+              </div>
             : <p className="mb-0 mt-2 text-ui-meta text-amber-950">Liên hệ Chủ tổ chức để kiểm tra hạn mức.</p>)}
         </>
       ) : (

@@ -27,12 +27,13 @@ const suggestions = [
   },
 ];
 
-export function ContractChat({ contractId, canAsk, contractTitle }: {
+export function ContractChat({ contractId, canAsk, contractTitle, canManagePlan = false }: {
   contractId: string;
   canAsk: boolean;
   contractTitle?: string;
+  canManagePlan?: boolean;
 }) {
-  const chat = useContractChat(contractId, canAsk);
+  const chat = useContractChat(contractId, canAsk, canManagePlan);
   const id = useId();
   const input = useRef<HTMLTextAreaElement>(null);
   const viewport = useRef<HTMLDivElement>(null);

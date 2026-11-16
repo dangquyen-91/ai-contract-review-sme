@@ -51,7 +51,10 @@ async function consumeStream<TEvent>(
   }
   if (!response.ok || !response.body) {
     const payload = await response.json().catch(() => null);
-    throw new ApiClientError(payload?.error?.message ?? "Không thể bắt đầu luồng AI.", { status: response.status });
+    throw new ApiClientError(payload?.error?.message ?? "Không thể bắt đầu luồng AI.", {
+      status: response.status,
+      serverCode: payload?.error?.code,
+    });
   }
 
   const reader = response.body.getReader();
@@ -65,7 +68,8 @@ async function consumeStream<TEvent>(
     // Heartbeats are SSE comments (": ping") and carry no event or data.
     if (!event || !data) return;
     const parsed = JSON.parse(data);
-    if (event === "error") throw new ApiClientError(parsed.message ?? "Luồng AI bị lỗi.", { status: parsed.status });
+    if (event === "error")
+      throw new ApiClientError(parsed.message ?? "Luồng AI bị lỗi.", { status: parsed.status, serverCode: parsed.code });
     if (event === "done") completed = true;
     onEvent({ event, data: parsed } as TEvent);
   };

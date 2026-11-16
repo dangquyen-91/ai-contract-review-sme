@@ -22,6 +22,7 @@ import { ContractDetailTabs } from "./contract-detail-tabs";
 import { ContractOverviewTab } from "./contract-overview-tab";
 import { VersionMismatchNotice } from "./version-mismatch-notice";
 import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
+import { canBuyTopUp } from "@/lib/subscription/quota-error";
 import type { ContractReviewResult, ContractVersionSummary, DashboardContract } from "@/types/contracts";
 
 const deletableRoles = ["administrator", "owner", "manager", "staff", "user"];
@@ -98,7 +99,7 @@ function ResultTabs({ result, contractId, role, canAsk, canUpload, versionCount 
           </div>
         ),
         terms: () => <TermsPanel contractId={contractId} />,
-        chat: () => <ContractChat key={contractId} contractId={contractId} contractTitle={result.contract.title} canAsk={canAsk} />,
+        chat: () => <ContractChat key={contractId} contractId={contractId} contractTitle={result.contract.title} canAsk={canAsk} canManagePlan={canBuyTopUp(role)} />,
         versions: () => <ContractVersionsPanel contractId={contractId} embedded canUpload={canUpload} />,
       }}
     />

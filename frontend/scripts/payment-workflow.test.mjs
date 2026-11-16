@@ -253,3 +253,28 @@ test('downgrade must be scheduled before a payment is created', async () => {
   await ctx.render().find(n => n.type === 'button').props.onClick();
   assert.equal(scheduled, 1); assert.equal(ctx.calls.length, 0);
 });
+
+test('top-up orders describe the units credited and stay unfinished until fulfilled', () => {
+  const topUp = { ...order, planCode: null, purpose: 'top_up', packCode: 'business_chat_300', topUpKind: 'chat', topUpUnits: 300, amount: 99000 };
+  assert.equal(state.topUpKindLabel(topUp), 'chat');
+  assert.equal(state.isUnfinishedPayment(topUp), true);
+  const done = state.paymentMessage({ ...topUp, status: 'paid', paidAt: '2026-10-19T09:50:00Z', fulfilledAt: '2026-10-19T09:50:01Z' });
+  assert.equal(done.success, true);
+  assert.match(done.detail, /300 lượt chat/);
+  assert.match(done.detail, /dùng ngay/);
+  assert.equal(state.isUnfinishedPayment({ ...topUp, fulfilledAt: '2026-10-19T09:50:01Z' }), false);
+});
+
+test('quota errors point owners to top-ups only when a paid plan is active', () => {
+  const isApiClientError = (error) => Boolean(error && error.isApi);
+  const quota = load('../lib/subscription/quota-error.ts', { '@/lib/api/client': { isApiClientError } });
+  assert.equal(quota.isQuotaExhausted({ isApi: true, serverCode: 'CHAT_QUOTA_EXHAUSTED' }), true);
+  assert.equal(quota.isQuotaExhausted({ isApi: true, serverCode: 'DRAFTING_QUOTA_EXHAUSTED' }), true);
+  assert.equal(quota.isQuotaExhausted({ isApi: true, serverCode: 'AI_PLAN_REQUIRED' }), false);
+  assert.equal(quota.isQuotaExhausted(new Error('CHAT_QUOTA_EXHAUSTED')), false);
+  assert.deepEqual({ ...quota.quotaRecovery({ status: 'active', plan: { price: 499000 } }) }, { href: '/subscription#mua-them-luot', label: 'Mua thêm lượt' });
+  assert.equal(quota.quotaRecovery({ status: 'active', plan: { price: 0 } }).href, '/goi-dich-vu');
+  assert.equal(quota.quotaRecovery({ status: 'expired', plan: null }).href, '/goi-dich-vu');
+  assert.equal(quota.canBuyTopUp('owner') && quota.canBuyTopUp('user'), true);
+  assert.equal(quota.canBuyTopUp('staff'), false);
+});

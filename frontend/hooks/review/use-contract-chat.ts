@@ -1,11 +1,14 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useContractChatMessages, useStreamChatMutation } from "@/hooks/contracts/use-contracts";
 import { isApiClientError } from "@/lib/api/client";
+import { isQuotaExhausted, TOP_UP_HREF } from "@/lib/subscription/quota-error";
 
-export function useContractChat(contractId: string, canAsk: boolean) {
+export function useContractChat(contractId: string, canAsk: boolean, canManagePlan = false) {
+  const router = useRouter();
   const history = useContractChatMessages(contractId);
   const stream = useStreamChatMutation();
   const sending = useRef(false);
@@ -30,8 +33,12 @@ export function useContractChat(contractId: string, canAsk: boolean) {
       });
       await history.refetch();
     } catch (error) {
-      toast.error("Chưa thể trả lời câu hỏi", {
+      const outOfCredits = isQuotaExhausted(error);
+      toast.error(outOfCredits ? "Đã hết lượt chat" : "Chưa thể trả lời câu hỏi", {
         description: isApiClientError(error) ? error.message : "Vui lòng thử lại sau.",
+        ...(outOfCredits && canManagePlan
+          ? { action: { label: "Thêm lượt", onClick: () => router.push(TOP_UP_HREF) } }
+          : {}),
       });
       setDraft(message);
     } finally {

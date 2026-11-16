@@ -50,6 +50,8 @@ export function openSseStream(res: Response): SseStream {
       send('error', {
         status: isAppError ? err.statusCode : 500,
         message: isAppError ? err.message : 'Internal server error',
+        // Lets clients react to known failures such as an exhausted quota.
+        ...(isAppError && err.code ? { code: err.code } : {}),
       });
     },
     end: () => {

@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Mic, MicOff, Sparkles, X, LoaderCircle } from "lucide-react";
 import { useReviewAllowance } from "@/hooks/review/use-review-allowance";
 import { useStudioVoice } from "@/hooks/contract-drafts/use-studio-voice";
+import { quotaRecovery } from "@/lib/subscription/quota-error";
 import type { TemplateStudioState } from "@/hooks/contract-drafts/use-template-studio";
 import type { StudioSelection, StudioReference } from "@/types/template-studio";
 import { StudioChatTools, StudioReferenceList } from "./studio-chat-tools";
@@ -15,11 +17,13 @@ import styles from "@/styles/template-studio.module.css";
 export function StudioChat({
   studio,
   accountId,
+  canManagePlan = false,
   selection,
   onClearSelection,
 }: {
   studio: TemplateStudioState;
   accountId?: string;
+  canManagePlan?: boolean;
   selection: StudioSelection;
   onClearSelection: () => void;
 }) {
@@ -254,6 +258,17 @@ export function StudioChat({
           <p className="mt-1 text-[10px] leading-4 text-amber-700">
             Cần gói đang hoạt động và đủ lượt soạn. Bạn vẫn chỉnh trực tiếp trên
             văn bản được.
+            {canManagePlan && (
+              <>
+                {" "}
+                <Link
+                  href={quotaRecovery(quota.data).href}
+                  className="font-semibold text-blue-600 hover:underline"
+                >
+                  {quotaRecovery(quota.data).label}
+                </Link>
+              </>
+            )}
           </p>
         )}
         {voice.supported && (
