@@ -5,7 +5,7 @@ import { env } from '../../config/env';
 import { AppError } from '../../errors/AppError';
 import { ContractModel } from '../../models/contract.model';
 import { PaymentAction, PaymentModel, Payment as PaymentData } from '../../models/payment.model';
-import { PlanCode, PlanModel } from '../../models/subscription.model';
+import { PlanCode, PlanModel, TopUpPackCode } from '../../models/subscription.model';
 import {
   activatePaidSubscription,
   lockSubscriptionOrganization,
@@ -17,6 +17,7 @@ import {
   contractReviewQuote,
   activateContractReviewPurchase,
 } from './contractReviewPurchase.service';
+import { activateTopUp, quoteTopUp } from './topUp.service';
 
 type Payment = HydratedDocument<PaymentData>;
 type Purchase =
@@ -27,7 +28,15 @@ type Purchase =
       contractId: string;
       versionId: string;
       expectedAmount: number;
+    }
+  | {
+      purpose: 'top_up';
+      action: 'purchase';
+      packCode: TopUpPackCode;
+      expectedAmount: number;
     };
+const isTopUp = (input: Purchase): input is Extract<Purchase, { purpose: 'top_up' }> =>
+  'purpose' in input && input.purpose === 'top_up';
 const isReviewPurchase = (
   input: Purchase,
 ): input is Extract<Purchase, { purpose: 'contract_review' }> =>
@@ -38,7 +47,10 @@ function view(order: Payment) {
   return {
     orderCode: order.orderCode,
     orgId: order.orgId,
-    planCode: order.planCode,
+    planCode: order.planCode ?? null,
+    packCode: order.packCode ?? null,
+    topUpKind: order.topUpKind ?? null,
+    topUpUnits: order.topUpUnits ?? null,
     purpose: order.purpose ?? 'subscription',
     contractId: order.contractId?.toString() ?? null,
     versionId: order.versionId?.toString() ?? null,
@@ -71,10 +83,18 @@ export async function createPayment(
   const reviewQuote = isReviewPurchase(input)
     ? await contractReviewQuote(userId, orgId, input.contractId)
     : null;
-  const plan = !isReviewPurchase(input)
-    ? await PlanModel.findOne({ code: input.planCode }).lean()
-    : null;
-  if (isReviewPurchase(input)) {
+  const topUp = isTopUp(input) ? await quoteTopUp(orgId, input.packCode) : null;
+  const plan =
+    !isReviewPurchase(input) && !isTopUp(input)
+      ? await PlanModel.findOne({ code: input.planCode }).lean()
+      : null;
+  if (isTopUp(input)) {
+    if (topUp!.pack.price !== input.expectedAmount)
+      throw AppError.conflict(
+        'Giá gói mua thêm lượt đã thay đổi. Hãy kiểm tra lại trước khi thanh toán.',
+        'TOP_UP_PRICE_CHANGED',
+      );
+  } else if (isReviewPurchase(input)) {
     if (
       !reviewQuote?.canPurchase ||
       reviewQuote.versionId !== input.versionId ||
@@ -85,9 +105,22 @@ export async function createPayment(
         'REVIEW_QUOTE_CHANGED',
       );
   } else if (!plan || plan.price <= 0) throw AppError.badRequest('Choose a paid plan');
-  const amount = reviewQuote?.amount ?? plan!.price;
-  const itemName = reviewQuote ? 'Rà soát hợp đồng LawScan' : plan!.name;
-  const purchase = reviewQuote
+  const amount = reviewQuote?.amount ?? topUp?.pack.price ?? plan!.price;
+  const itemName = reviewQuote
+    ? 'Rà soát hợp đồng LawScan'
+    : topUp
+      ? `LawScan ${topUp.pack.name}`
+      : plan!.name;
+  const purchase = topUp
+    ? {
+        purpose: 'top_up',
+        action: 'purchase',
+        packCode: topUp.pack.code,
+        topUpKind: topUp.pack.kind,
+        topUpUnits: topUp.pack.units,
+        subscriptionPeriodId: topUp.periodId,
+      }
+    : reviewQuote
     ? {
         purpose: 'contract_review',
         action: 'purchase',
@@ -99,7 +132,7 @@ export async function createPayment(
       }
     : input;
   const orderCode = randomInt(1_000_000_000_000, 10_000_000_000_000);
-  if (!isReviewPurchase(input))
+  if (!isReviewPurchase(input) && !isTopUp(input))
     await validatePaidSubscriptionPurchase({
       orgId,
       ...input,
@@ -183,12 +216,17 @@ export async function createPayment(
 }
 
 function repeat(order: Payment, input: Purchase) {
-  const matches = isReviewPurchase(input)
-    ? order.purpose === 'contract_review' &&
-      order.contractId?.toString() === input.contractId &&
-      order.versionId?.toString() === input.versionId &&
+  const matches = isTopUp(input)
+    ? order.purpose === 'top_up' &&
+      order.packCode === input.packCode &&
       order.amount === input.expectedAmount
-    : order.purpose !== 'contract_review' && order.planCode === input.planCode;
+    : isReviewPurchase(input)
+      ? order.purpose === 'contract_review' &&
+        order.contractId?.toString() === input.contractId &&
+        order.versionId?.toString() === input.versionId &&
+        order.amount === input.expectedAmount
+      : (order.purpose ?? 'subscription') === 'subscription' &&
+        order.planCode === input.planCode;
   if (!matches || order.action !== input.action) {
     throw AppError.conflict('Idempotency-Key was already used for another purchase');
   }
@@ -229,6 +267,26 @@ async function fulfill(order: Payment) {
       );
       return;
     }
+    if (order.purpose === 'top_up') {
+      await activateTopUp(
+        {
+          orgId: order.orgId.toString(),
+          packCode: order.packCode!,
+          amount: order.amount,
+          paymentReference: reference(order.orderCode),
+          periodId: order.subscriptionPeriodId?.toString(),
+        },
+        order.paidAt!,
+      );
+      await PaymentModel.updateOne(
+        { _id: order._id, fulfilledAt: null },
+        {
+          $set: { fulfilledAt: new Date(), isOpen: false },
+          $unset: { fulfillmentError: 1, providerError: 1 },
+        },
+      );
+      return;
+    }
     if (!order.planCode) throw AppError.conflict('Missing subscription plan');
     const period = await activatePaidSubscription(
       {
@@ -237,6 +295,7 @@ async function fulfill(order: Payment) {
         action: order.action,
         amount: order.amount,
         paymentReference: reference(order.orderCode),
+        orderedAt: order.createdAt,
       },
       order.paidAt!,
     );

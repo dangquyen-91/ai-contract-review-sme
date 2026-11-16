@@ -11,12 +11,13 @@ import {
   SubscriptionPeriodModel,
   UsageRunModel,
 } from '../../models/subscription.model';
-import { readUsageCounter } from './usagePolicy';
+import { readUsageCounter, unusedBonus } from './usagePolicy';
 import { REVIEW_PAGES_PER_UNIT } from './reviewCost';
 import { env } from '../../config/env';
 import { addSubscriptionMonth, vietnamCalendarMonth } from '../../utils/subscriptionPeriods';
 import { findBillingAccount } from './billingAccount.service';
 import { ContractReviewPurchaseModel } from '../../models/contractReviewPurchase.model';
+import { PaymentModel } from '../../models/payment.model';
 
 export const DEFAULT_PLANS = [
   {
@@ -66,6 +67,24 @@ export const DEFAULT_PLANS = [
 ] as const;
 
 const FREE_BUSINESS_MEMBER_LIMIT = 3;
+
+// A scheduled downgrade period can still be paid until one month after it was due.
+const downgradePaymentDeadline = (effectiveAt: Date) => addSubscriptionMonth(effectiveAt);
+
+// Settlement re-validates the order against live state. Changing the downgrade
+// schedule while a plan order is unpaid would make that payment unfulfillable.
+async function assertNoOpenPlanPayment(orgId: string, session: ClientSession) {
+  const open = await PaymentModel.exists({
+    orgId,
+    isOpen: true,
+    purpose: { $nin: ['contract_review', 'top_up'] },
+  }).session(session);
+  if (open)
+    throw AppError.conflict(
+      'Đang có đơn thanh toán gói chưa hoàn tất. Vui lòng hoàn tất hoặc hủy đơn đó trước khi thay đổi lịch hạ gói.',
+      'PLAN_PAYMENT_IN_PROGRESS',
+    );
+}
 
 export async function seedPlans() {
   for (const plan of DEFAULT_PLANS) {
@@ -118,7 +137,8 @@ export async function requireSubscriptionAccess(userId: string, orgId: string, o
     throw AppError.forbidden('Bạn không có quyền quản lý gói dịch vụ này.');
   }
   const [user, membership] = await Promise.all([
-    UserModel.exists({ _id: userId, isActive: true }),
+    // Platform roles never act inside an organization, even with a stale membership.
+    UserModel.exists({ _id: userId, isActive: true, platformRole: null }),
     findMembership(userId, orgId),
   ]);
   if (!user || !membership)
@@ -207,7 +227,13 @@ export async function resolveSubscription(orgId: string, session: ClientSession,
 
   const scheduled = subscription.scheduledDowngrade;
   // Paid downgrade activates only after its next period has actually been paid.
-  if (scheduled && scheduled.effectiveAt <= now && period?.plan.code === scheduled.planCode) {
+  // Once its payment window has closed the schedule can no longer be fulfilled,
+  // so drop it instead of leaving the account blocked by a stale seat limit.
+  if (
+    scheduled &&
+    ((scheduled.effectiveAt <= now && period?.plan.code === scheduled.planCode) ||
+      now >= downgradePaymentDeadline(scheduled.effectiveAt))
+  ) {
     subscription.scheduledDowngrade = undefined;
     await subscription.save({ session });
   }
@@ -309,6 +335,7 @@ export async function scheduleDowngrade(userId: string, orgId: string, planCode:
   await requireSubscriptionAccess(userId, orgId, true);
   return mongoose.connection.transaction(async (session) => {
     await lockSubscriptionOrganization(orgId, session);
+    await assertNoOpenPlanPayment(orgId, session);
     const { subscription, period } = await resolveSubscription(orgId, session);
     if (
       subscription.scheduledDowngrade &&
@@ -356,8 +383,9 @@ export async function cancelDowngrade(userId: string, orgId: string) {
   await requireSubscriptionAccess(userId, orgId, true);
   return mongoose.connection.transaction(async (session) => {
     await lockSubscriptionOrganization(orgId, session);
-    const sub = await SubscriptionModel.findOne({ orgId }).session(session);
-    if (!sub?.scheduledDowngrade) throw AppError.notFound('Chưa có lịch hạ gói.');
+    const { subscription: sub } = await resolveSubscription(orgId, session);
+    if (!sub.scheduledDowngrade) throw AppError.notFound('Chưa có lịch hạ gói.');
+    await assertNoOpenPlanPayment(orgId, session);
     const paid = await SubscriptionPeriodModel.exists({
       orgId,
       cancelledAt: null,
@@ -377,6 +405,9 @@ export interface PaidSubscriptionInput {
   amount: number;
   paymentReference: string;
   action: 'purchase' | 'renew' | 'upgrade' | 'downgrade';
+  // When the checkout was created. A payment that settles after the period it
+  // renews or upgrades has ended must still be honoured, not left unfulfillable.
+  orderedAt?: Date;
 }
 
 // The same validation runs before checkout and again after verified settlement.
@@ -422,13 +453,24 @@ async function applyPaidSubscription(
         'Số tiền thanh toán hoặc gói dịch vụ không phù hợp với tài khoản này.',
       );
     }
-    const { period: current, subscription } = await resolveSubscription(input.orgId, session, now);
-    const last = await SubscriptionPeriodModel.findOne({
+    // Validate against the state the owner saw at checkout, but never in the future.
+    const orderedAt = input.orderedAt && input.orderedAt < now ? input.orderedAt : now;
+    // Read before resolving: a downgrade ordered inside its payment window stays
+    // payable even if the window closes before settlement clears the schedule.
+    const scheduledAtOrder = (
+      await SubscriptionModel.findOne({ orgId: input.orgId }).session(session).lean()
+    )?.scheduledDowngrade;
+    const { period: current, subscription } = await resolveSubscription(
+      input.orgId,
+      session,
+      now,
+    );
+    const paidPeriods = {
       orgId: input.orgId,
       cancelledAt: null,
       'plan.price': { $gt: 0 },
-      endsAt: { $gt: now },
-    })
+    };
+    const last = await SubscriptionPeriodModel.findOne({ ...paidPeriods, endsAt: { $gt: now } })
       .sort({ endsAt: -1 })
       .session(session);
     let startsAt = now;
@@ -438,21 +480,37 @@ async function applyPaidSubscription(
       if (subscription.scheduledDowngrade)
         throw AppError.conflict('Vui lòng hoàn tất hoặc hủy lịch hạ gói trước.');
     } else if (input.action === 'renew') {
-      if (!current || current.plan.code !== plan.code || subscription.scheduledDowngrade) {
+      // The plan being renewed is the one whose paid coverage ends last.
+      const renewable = await SubscriptionPeriodModel.findOne({
+        ...paidPeriods,
+        endsAt: { $gt: orderedAt },
+      })
+        .sort({ endsAt: -1 })
+        .session(session);
+      if (!renewable || renewable.plan.code !== plan.code || subscription.scheduledDowngrade) {
         throw AppError.conflict(
           'Chỉ có thể gia hạn cùng gói đang hoạt động khi chưa có lịch hạ gói.',
         );
       }
-      startsAt = last!.endsAt;
+      // If coverage lapsed before settlement, start now rather than in the past.
+      startsAt = renewable.endsAt > now ? renewable.endsAt : now;
     } else if (input.action === 'upgrade') {
-      if (!current || plan.price <= current.plan.price)
+      const activeAtOrder = await SubscriptionPeriodModel.findOne({
+        ...paidPeriods,
+        startsAt: { $lte: orderedAt },
+        endsAt: { $gt: orderedAt },
+      })
+        .sort({ startsAt: -1 })
+        .session(session);
+      const base = current && current.plan.price > 0 ? current : (activeAtOrder ?? current);
+      if (!base || plan.price <= base.plan.price)
         throw AppError.conflict('Gói được chọn không phải là gói nâng cấp.');
     } else {
-      const scheduled = subscription.scheduledDowngrade;
+      const scheduled = subscription.scheduledDowngrade ?? scheduledAtOrder;
       if (
         !scheduled ||
         scheduled.planCode !== plan.code ||
-        now >= addSubscriptionMonth(scheduled.effectiveAt)
+        orderedAt >= downgradePaymentDeadline(scheduled.effectiveAt)
       ) {
         throw AppError.conflict('Vui lòng lên lịch hạ gói phù hợp trước khi thanh toán.');
       }
@@ -470,6 +528,15 @@ async function applyPaidSubscription(
     if (members > plan.memberLimit)
       throw AppError.conflict('Số thành viên hiện tại vượt giới hạn của gói được chọn.');
     if (validateOnly) return null;
+    // Purchased top-ups survive an upgrade: unused units move to the new period.
+    const carriedBonus =
+      input.action === 'upgrade' && current && current.plan.price > 0
+        ? {
+            analysisBonus: unusedBonus(current, 'analysis'),
+            chatBonus: unusedBonus(current, 'chat'),
+            draftingBonus: unusedBonus(current, 'drafting'),
+          }
+        : {};
     if (input.action === 'upgrade') {
       await SubscriptionPeriodModel.updateMany(
         { orgId: input.orgId, cancelledAt: null, endsAt: { $gt: now } },
@@ -489,6 +556,7 @@ async function applyPaidSubscription(
           plan,
           startsAt,
           endsAt: addSubscriptionMonth(startsAt),
+          ...carriedBonus,
         },
       ],
       { session },

@@ -1,11 +1,14 @@
-import type { PlanCode } from "./subscription";
+import type { PlanCode, UsageKind } from "./subscription";
 
 export type PaymentAction = "purchase" | "renew" | "upgrade" | "downgrade";
 export type PaymentOrder = {
   orderCode: number;
   orgId: string;
-  planCode?: PlanCode;
-  purpose?: "subscription" | "contract_review";
+  planCode?: PlanCode | null;
+  purpose?: "subscription" | "contract_review" | "top_up";
+  packCode?: string | null;
+  topUpKind?: UsageKind | null;
+  topUpUnits?: number | null;
   contractId?: string | null;
   versionId?: string | null;
   pageCount?: number | null;

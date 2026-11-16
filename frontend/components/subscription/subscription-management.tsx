@@ -7,8 +7,12 @@ import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/shared/confirm-action-dialog";
 import { useSubscriptionManagement } from "@/hooks/subscription/use-subscription-management";
 import { useSubscriptionPlans } from "@/hooks/subscription/use-subscription-plans";
-import type { SubscriptionPlan } from "@/types/subscription";
+import type { SubscriptionPlan, UsageCounter } from "@/types/subscription";
 import { PaymentHistory } from "./payment-history";
+import { TopUpPacks } from "./top-up-packs";
+
+const bonusNote = (counter?: UsageCounter) =>
+  counter?.bonus ? ` (gồm ${counter.bonus} lượt mua thêm)` : "";
 
 const date = (value: string) =>
   new Date(value).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
@@ -64,8 +68,10 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
               </p>
               <p className="text-muted-foreground">
                 Rà soát còn {current.analysis.available}/
-                {current.analysis.limit} lượt (1 lượt/5 trang) · Chat còn{" "}
-                {current.chat.available}/{current.chat.limit}
+                {current.analysis.limit} lượt{bonusNote(current.analysis)} (1
+                lượt/5 trang) · Chat còn {current.chat.available}/
+                {current.chat.limit}
+                {bonusNote(current.chat)}
                 {current.plan?.audience === "business" &&
                   ` · Thành viên ${current.members.count}/${current.members.limit}`}
               </p>
@@ -73,7 +79,8 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
                 <p className="text-muted-foreground">
                   Soạn AI / kiểm tra điều khoản còn{" "}
                   {current.drafting?.available ?? 0}/
-                  {current.drafting?.limit ?? 0} lượt ·{" "}
+                  {current.drafting?.limit ?? 0} lượt
+                  {bonusNote(current.drafting)} ·{" "}
                   {current.plan.audience === "personal"
                     ? "Hạn mức cá nhân"
                     : "Dùng chung trong tổ chức"}
@@ -200,6 +207,7 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
           />
         )}
       </section>
+      {current && <TopUpPacks orgId={orgId} current={current} />}
       <div className="mt-6">
         <PaymentHistory orgId={orgId} />
       </div>

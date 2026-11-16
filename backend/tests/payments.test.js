@@ -26,6 +26,7 @@ const { ContractReviewPurchaseModel } = require('../dist/models/contractReviewPu
 const { getSubscription } = require('../dist/services/billing/subscription.service');
 const { reserveUsage, finishUsage } = require('../dist/services/billing/usage.service');
 const {
+  SubscriptionModel,
   SubscriptionPeriodModel,
   initializeSubscriptionModels,
 } = require('../dist/models/subscription.model');
@@ -33,9 +34,13 @@ const {
   seedPlans,
   activatePaidSubscription,
   scheduleDowngrade,
+  cancelDowngrade,
 } = require('../dist/services/billing/subscription.service');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
-const { tokensForUser } = require('../dist/services/identity/auth.service');
+const { seedTopUpPacks, activateTopUp } = require('../dist/services/billing/topUp.service');
+const { UsageTopUpModel } = require('../dist/models/subscription.model');
+const { seedDefaultRoles } = require('../dist/services/identity/role.service');
+const { sessionFor } = require('../dist/services/identity/auth.service');
+const { MembershipModel } = require('../dist/models/membership.model');
 const signer = new PayOS({
   clientId: 'test',
   apiKey: 'test',
@@ -45,24 +50,28 @@ const signer = new PayOS({
 const remoteOrders = new Map();
 let app, repl;
 
+// Organization roles live in memberships; standalone personal accounts use their own ID as billing scope.
 async function user(org, role = 'owner') {
-  const roleDoc = await getRoleByCode(role);
-  return (
-    await UserModel.create({
-      name: 'Payment user',
-      email: `${randomUUID()}@example.com`,
-      passwordHash: 'unused',
-      emailVerifiedAt: new Date(),
-      orgId: org._id,
-      roleId: roleDoc._id,
-    })
-  ).populate('roleId');
+  const account = await UserModel.create({
+    name: 'Payment user',
+    email: `${randomUUID()}@example.com`,
+    passwordHash: 'unused',
+    emailVerifiedAt: new Date(),
+  });
+  if (org?._id && ['owner', 'staff'].includes(role))
+    await MembershipModel.create({ userId: account._id, orgId: org._id, role });
+  account.testToken = (await sessionFor(account)).accessToken;
+  return account;
 }
 async function workspace(personal = false) {
-  const org = await OrganizationModel.create({ name: 'Payment workspace', isPersonal: personal });
-  return { org, owner: await user(org, personal ? 'user' : 'owner') };
+  if (personal) {
+    const owner = await user(null, 'user');
+    return { org: { _id: owner._id, id: owner.id }, owner };
+  }
+  const org = await OrganizationModel.create({ name: 'Payment workspace' });
+  return { org, owner: await user(org, 'owner') };
 }
-const auth = (u) => `Bearer ${tokensForUser(u).accessToken}`;
+const auth = (u) => `Bearer ${u.testToken}`;
 const base = (w) => `/api/v1/organizations/${w.org.id}/payments`;
 const create = (w, planCode = 'business_starter', action = 'purchase', key = randomUUID()) =>
   request(app)
@@ -106,7 +115,7 @@ const webhook = (body) => request(app).post('/api/v1/payments/payos/webhook').se
 
 async function personalReview(pages = 8, used = 2) {
   const owner = await user({}, 'user');
-  const contract = await ContractModel.create({ orgId: owner.id, uploadedBy: owner.id, title: 'Personal contract', type: 'labor', ourParty: 'employee' });
+  const contract = await ContractModel.create({ ownerType: 'personal', orgId: owner.id, uploadedBy: owner.id, title: 'Personal contract', type: 'labor', ourParty: 'employee' });
   const version = await ContractVersionModel.create({ contractId: contract.id, versionNumber: 1, createdBy: owner.id, extractionStatus: 'completed', extractionQuality: { method: 'text_layer', pageCount: pages, ocrPageCount: 0, lowConfidence: false } });
   const subscription = await getSubscription(owner.id, owner.id);
   await SubscriptionPeriodModel.updateOne({ _id: subscription.periodId }, { $set: { analysisUsed: used } });
@@ -227,6 +236,7 @@ beforeAll(async () => {
   await initializeSubscriptionModels();
   await Promise.all([PaymentModel.init(), OrganizationModel.init(), UserModel.init()]);
   await seedPlans();
+  await seedTopUpPacks();
   app = createApp();
   jest.spyOn(provider, 'createPaymentLink').mockImplementation(async (input) => {
     const id = `link-${input.orderCode}`;
@@ -471,7 +481,7 @@ test('activation failure retains payment and sync can recover without double act
   expect(pending.paidAt).toBeTruthy();
   expect(pending.fulfilledAt).toBeFalsy();
   expect(pending.fulfillmentError).toBeTruthy();
-  await UserModel.deleteMany({ _id: { $in: extra.map((u) => u._id) } });
+  await MembershipModel.deleteMany({ userId: { $in: extra.map((u) => u._id) } });
   expect((await sync(w, code)).body.data.fulfilledAt).toBeTruthy();
   expect(await SubscriptionPeriodModel.countDocuments({ paymentReference: `payos:${code}` })).toBe(
     1,
@@ -540,4 +550,217 @@ test('uncertain provider creation keeps the order recoverable instead of allowin
   expect(retry.body.data.status).toBe('creating');
   expect(retry.body.data.providerError).toBeTruthy();
   expect((await create(w)).status).toBe(409);
+});
+
+const DAY = 24 * 60 * 60 * 1000;
+const businessPro = (w) =>
+  activatePaidSubscription({
+    orgId: w.org.id,
+    planCode: 'business_pro',
+    amount: 999000,
+    action: 'purchase',
+    paymentReference: randomUUID(),
+  });
+const cancelOrder = (w, code) =>
+  request(app).post(`${base(w)}/${code}/cancel`).set('Authorization', auth(w.owner));
+
+test('an unpaid plan order freezes the downgrade schedule so settlement cannot be stranded', async () => {
+  const w = await workspace();
+  await businessPro(w);
+  const renew = await create(w, 'business_pro', 'renew');
+  expect(renew.status).toBe(201);
+  await expect(scheduleDowngrade(w.owner.id, w.org.id, 'business_starter')).rejects.toMatchObject({
+    statusCode: 409,
+    code: 'PLAN_PAYMENT_IN_PROGRESS',
+  });
+  expect((await cancelOrder(w, renew.body.data.orderCode)).status).toBe(200);
+  await scheduleDowngrade(w.owner.id, w.org.id, 'business_starter');
+  const down = await create(w, 'business_starter', 'downgrade');
+  expect(down.status).toBe(201);
+  await expect(cancelDowngrade(w.owner.id, w.org.id)).rejects.toMatchObject({
+    statusCode: 409,
+    code: 'PLAN_PAYMENT_IN_PROGRESS',
+  });
+  paid(down.body.data.orderCode);
+  expect((await webhook(await event(down.body.data.orderCode))).status).toBe(200);
+  const order = await PaymentModel.findOne({ orderCode: down.body.data.orderCode });
+  expect(order.fulfilledAt).toBeTruthy();
+  expect(order.isOpen).toBe(false);
+});
+
+test('a renewal that settles after the current period lapsed starts a fresh period instead of being stranded', async () => {
+  const w = await workspace();
+  const old = await businessPro(w);
+  const renew = await create(w, 'business_pro', 'renew');
+  expect(renew.status).toBe(201);
+  // Checkout happened while Pro was active; the transfer is confirmed after it ended.
+  const lapsedAt = new Date(Date.now() - 5 * 60_000);
+  await SubscriptionPeriodModel.updateOne(
+    { _id: old._id },
+    { $set: { startsAt: new Date(lapsedAt.getTime() - 30 * DAY), endsAt: lapsedAt } },
+  );
+  await PaymentModel.collection.updateOne(
+    { orderCode: renew.body.data.orderCode },
+    { $set: { createdAt: new Date(lapsedAt.getTime() - 10 * 60_000) } },
+  );
+  paid(renew.body.data.orderCode);
+  expect((await webhook(await event(renew.body.data.orderCode))).status).toBe(200);
+  const order = await PaymentModel.findOne({ orderCode: renew.body.data.orderCode });
+  expect(order.fulfillmentError).toBeFalsy();
+  expect(order.isOpen).toBe(false);
+  const renewed = await SubscriptionPeriodModel.findOne({
+    paymentReference: `payos:${renew.body.data.orderCode}`,
+  });
+  expect(renewed.startsAt.getTime()).toBeGreaterThanOrEqual(order.paidAt.getTime());
+  expect(await getSubscription(w.owner.id, w.org.id)).toMatchObject({
+    status: 'active',
+    plan: { code: 'business_pro' },
+  });
+});
+
+test('an unpaid downgrade schedule stays payable for one month, then stops blocking the account', async () => {
+  const w = await workspace();
+  const old = await businessPro(w);
+  await scheduleDowngrade(w.owner.id, w.org.id, 'business_starter');
+  const lapse = async (effectiveAt) => {
+    await SubscriptionPeriodModel.updateOne(
+      { _id: old._id },
+      { $set: { startsAt: new Date(effectiveAt.getTime() - 30 * DAY), endsAt: effectiveAt } },
+    );
+    await SubscriptionModel.updateOne(
+      { orgId: w.org.id },
+      { $set: { 'scheduledDowngrade.effectiveAt': effectiveAt } },
+    );
+  };
+  await lapse(new Date(Date.now() - DAY));
+  const pending = await getSubscription(w.owner.id, w.org.id);
+  expect(pending.status).toBe('expired');
+  expect(pending.scheduledDowngrade).toMatchObject({ planCode: 'business_starter' });
+  expect((await create(w, 'business_starter', 'purchase')).status).toBe(409);
+
+  await lapse(new Date(Date.now() - 40 * DAY));
+  const released = await getSubscription(w.owner.id, w.org.id);
+  expect(released.scheduledDowngrade).toBeNull();
+  expect(released.members.limit).toBe(3);
+  expect((await SubscriptionModel.findOne({ orgId: w.org.id })).scheduledDowngrade).toBeFalsy();
+  expect((await create(w, 'business_starter', 'downgrade')).status).toBe(409);
+  expect((await create(w, 'business_starter', 'purchase')).status).toBe(201);
+});
+
+const topUp = (w, packCode, expectedAmount, key = randomUUID()) =>
+  request(app)
+    .post(base(w))
+    .set('Authorization', auth(w.owner))
+    .set('Idempotency-Key', key)
+    .send({ purpose: 'top_up', action: 'purchase', packCode, expectedAmount });
+const chatUsage = (w, contract) => ({
+  orgId: w.org.id,
+  userId: w.owner.id,
+  contractId: contract.id,
+  kind: 'chat',
+  idempotencyKey: randomUUID(),
+  payload: { message: 'hello' },
+});
+
+test('a paid plan that ran out mid-period can buy extra units that are usable immediately and credited once', async () => {
+  const w = await workspace();
+  const period = await activatePaidSubscription({
+    orgId: w.org.id,
+    planCode: 'business_starter',
+    amount: 499000,
+    action: 'purchase',
+    paymentReference: randomUUID(),
+  });
+  const contract = await ContractModel.create({
+    ownerType: 'organization',
+    orgId: w.org.id,
+    uploadedBy: w.owner.id,
+    title: 'Business contract',
+    type: 'service',
+  });
+  await SubscriptionPeriodModel.updateOne({ _id: period._id }, { $set: { chatUsed: 500 } });
+  await expect(reserveUsage(chatUsage(w, contract))).rejects.toMatchObject({
+    code: 'CHAT_QUOTA_EXHAUSTED',
+  });
+  const packs = await request(app).get('/api/v1/top-up-packs');
+  expect(packs.body.data.find((pack) => pack.code === 'business_chat_300')).toMatchObject({
+    kind: 'chat',
+    units: 300,
+    price: 99000,
+  });
+  const key = randomUUID();
+  const order = await topUp(w, 'business_chat_300', 99000, key);
+  expect(order.status).toBe(201);
+  expect(order.body.data).toMatchObject({ purpose: 'top_up', packCode: 'business_chat_300', amount: 99000, topUpUnits: 300 });
+  expect((await topUp(w, 'business_chat_300', 99000, key)).body.data.orderCode).toBe(order.body.data.orderCode);
+  expect((await getSubscription(w.owner.id, w.org.id)).chat.available).toBe(0);
+  const code = order.body.data.orderCode;
+  paid(code);
+  expect((await webhook(await event(code))).status).toBe(200);
+  expect((await webhook(await event(code))).status).toBe(200);
+  expect((await sync(w, code)).body.data.fulfilledAt).toBeTruthy();
+  expect((await getSubscription(w.owner.id, w.org.id)).chat).toMatchObject({
+    used: 500,
+    limit: 800,
+    planLimit: 500,
+    bonus: 300,
+    available: 300,
+  });
+  expect(await UsageTopUpModel.countDocuments({ paymentReference: `payos:${code}` })).toBe(1);
+  const { run } = await reserveUsage(chatUsage(w, contract));
+  await finishUsage(w.org.id, run.id, true, { reply: 'ok' });
+  expect((await getSubscription(w.owner.id, w.org.id)).chat.available).toBe(299);
+  // Top-up orders never count as plan orders that freeze the downgrade schedule.
+  expect((await SubscriptionModel.findOne({ orgId: w.org.id }))?.scheduledDowngrade).toBeFalsy();
+});
+
+test('extra units are sold only to active paid plans of the same family at the listed price', async () => {
+  const unpaid = await workspace();
+  expect((await topUp(unpaid, 'business_chat_300', 99000)).body.error).toMatchObject({ code: 'PAID_PLAN_REQUIRED' });
+  const free = await workspace(true);
+  expect((await topUp(free, 'personal_chat_100', 29000)).status).toBe(403);
+  const pro = await workspace(true);
+  const period = await activatePaidSubscription({
+    orgId: pro.org.id,
+    planCode: 'personal_pro',
+    amount: 99000,
+    action: 'purchase',
+    paymentReference: randomUUID(),
+  });
+  expect((await topUp(pro, 'business_chat_300', 99000)).status).toBe(400);
+  expect((await topUp(pro, 'personal_chat_100', 1000)).body.error).toMatchObject({ code: 'TOP_UP_PRICE_CHANGED' });
+  await SubscriptionPeriodModel.updateOne(
+    { _id: period._id },
+    { $set: { endsAt: new Date(Date.now() + 10 * 60_000) } },
+  );
+  expect((await topUp(pro, 'personal_chat_100', 29000)).body.error).toMatchObject({ code: 'PERIOD_ENDING' });
+  expect(await PaymentModel.countDocuments({ orgId: { $in: [unpaid.org.id, free.org.id, pro.org.id] } })).toBe(0);
+});
+
+test('upgrading keeps purchased units that were not used yet', async () => {
+  const w = await workspace();
+  const starter = await activatePaidSubscription({
+    orgId: w.org.id,
+    planCode: 'business_starter',
+    amount: 499000,
+    action: 'purchase',
+    paymentReference: randomUUID(),
+  });
+  await activateTopUp({ orgId: w.org.id, packCode: 'business_analysis_50', amount: 199000, paymentReference: randomUUID() });
+  // 200 plan units and 20 of the 50 purchased units are spent.
+  await SubscriptionPeriodModel.updateOne({ _id: starter._id }, { $set: { analysisUsed: 220 } });
+  const upgraded = await activatePaidSubscription({
+    orgId: w.org.id,
+    planCode: 'business_pro',
+    amount: 999000,
+    action: 'upgrade',
+    paymentReference: randomUUID(),
+  });
+  expect(upgraded).toMatchObject({ analysisBonus: 30, chatBonus: 0, draftingBonus: 0 });
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({
+    used: 0,
+    limit: 630,
+    bonus: 30,
+    available: 630,
+  });
 });

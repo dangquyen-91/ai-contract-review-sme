@@ -26,12 +26,26 @@ export function isUnfinishedPayment(order: PaymentOrder) {
   );
 }
 
+export function topUpKindLabel(order: Pick<PaymentOrder, "topUpKind">) {
+  return order.topUpKind === "analysis"
+    ? "rà soát"
+    : order.topUpKind === "chat"
+      ? "chat"
+      : "soạn AI";
+}
+
 export function paymentMessage(order: PaymentOrder) {
   if (order.fulfilledAt && order.purpose === "contract_review")
     return {
       title: "Thanh toán thành công",
       detail:
         "Bạn đã mua quyền rà soát phiên bản hợp đồng này. Lượt trong gói được giữ nguyên; nếu AI lỗi hoặc bị hủy, bạn có thể thử lại mà không trả thêm tiền.",
+      success: true,
+    };
+  if (order.fulfilledAt && order.purpose === "top_up")
+    return {
+      title: "Thanh toán thành công",
+      detail: `Đã cộng ${order.topUpUnits ?? ""} lượt ${topUpKindLabel(order)} vào kỳ hiện tại. Bạn có thể dùng ngay; lượt mua thêm hết hạn cùng kỳ.`,
       success: true,
     };
   if (order.fulfilledAt)

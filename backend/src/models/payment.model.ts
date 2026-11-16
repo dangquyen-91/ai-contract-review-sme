@@ -1,5 +1,5 @@
 import { Schema, model, InferSchemaType } from 'mongoose';
-import { PLAN_CODES } from './subscription.model';
+import { PLAN_CODES, TOP_UP_PACK_CODES, USAGE_KINDS } from './subscription.model';
 
 export const PAYMENT_ACTIONS = ['purchase', 'renew', 'upgrade', 'downgrade'] as const;
 export type PaymentAction = (typeof PAYMENT_ACTIONS)[number];
@@ -10,14 +10,27 @@ const schema = new Schema(
     orgId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     idempotencyKey: { type: String, required: true },
-    purpose: { type: String, enum: ['subscription', 'contract_review'], default: 'subscription' },
+    purpose: {
+      type: String,
+      enum: ['subscription', 'contract_review', 'top_up'],
+      default: 'subscription',
+    },
     planCode: {
       type: String,
       enum: PLAN_CODES,
       required: function (this: { purpose?: string }) {
-        return this.purpose !== 'contract_review';
+        return !this.purpose || this.purpose === 'subscription';
       },
     },
+    packCode: {
+      type: String,
+      enum: TOP_UP_PACK_CODES,
+      required: function (this: { purpose?: string }) {
+        return this.purpose === 'top_up';
+      },
+    },
+    topUpKind: { type: String, enum: USAGE_KINDS },
+    topUpUnits: Number,
     contractId: { type: Schema.Types.ObjectId, ref: 'Contract' },
     versionId: { type: Schema.Types.ObjectId, ref: 'ContractVersion' },
     pageCount: Number,

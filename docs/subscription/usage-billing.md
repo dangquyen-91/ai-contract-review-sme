@@ -16,6 +16,27 @@ Each successful AI generation or regeneration costs 1 drafting credit. Current d
 
 Plan prices, review-credit limits, chat limits and seat limits remain unchanged. The new catalog benefit is `draftingLimit`. `seedPlans()` backfills only missing drafting limits in existing plan records and subscription snapshots; it does not reset usage or overwrite configured limits. Existing `analysisUsed` values are not retroactively recalculated. These rules apply to new requests after deployment. Renewals and upgrades follow the existing payment activation rules.
 
+## Top-up credits
+
+An account on an active **paid** plan can buy extra credits for one usage kind when it runs out mid-period. Free personal accounts and unpaid organizations are sent to the plan catalog instead (personal accounts can still pay per contract review, see [personal-contract-payment.md](personal-contract-payment.md)).
+
+| Pack | Audience | Credits | Price |
+|---|---|---|---|
+| `personal_analysis_10` | personal | +10 review | 49,000đ |
+| `personal_chat_100` | personal | +100 chat | 29,000đ |
+| `personal_drafting_10` | personal | +10 drafting | 49,000đ |
+| `business_analysis_50` | business | +50 review | 199,000đ |
+| `business_chat_300` | business | +300 chat | 99,000đ |
+| `business_drafting_30` | business | +30 drafting | 149,000đ |
+
+Packs live in the `TopUpPack` collection. `seedTopUpPacks()` only inserts missing packs at API startup, so prices changed in the database are kept. `GET /top-up-packs` lists them; checkout is `POST /organizations/:id/payments` with `{ purpose: 'top_up', action: 'purchase', packCode, expectedAmount }` (owner only, same idempotency and single-open-order rules as plan payments).
+
+- Settlement adds the units to `SubscriptionPeriod.<kind>Bonus` of the paid period active at settlement, falling back to the period chosen at checkout. Each credit is recorded once in `UsageTopUp` by its payment reference, so repeated webhooks/syncs never double-credit.
+- Effective limit = plan limit + bonus. The counters returned by `GET /organizations/:id/subscription` expose `limit`, `planLimit` and `bonus`. Plan credits are spent first.
+- Bonus credits expire with their period and do not roll over to renewals.
+- Upgrading carries unused bonus credits (`min(bonus, available)` per kind) into the new period.
+- Checkout is refused when the current period ends within 30 minutes (`PERIOD_ENDING`); renewing is the right action then.
+
 ## Settlement and concurrency
 
 `UsageRun.units` records the reserved amount, along with `versionId` and `pageCount` for reviews, or `draftId` for drafting. Organization-level transaction locks serialize quota reservations. The full required amount must be available before AI/queue work starts; a 3-credit document cannot start with 2 credits remaining.

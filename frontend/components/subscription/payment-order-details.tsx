@@ -1,4 +1,5 @@
 import { formatMoney } from "@/lib/subscription/subscription-plans";
+import { topUpKindLabel } from "@/lib/subscription/payment-state";
 import type { PaymentOrder } from "@/types/payment";
 
 export function PaymentOrderDetails({
@@ -16,6 +17,15 @@ export function PaymentOrderDetails({
           <dd>
             Rà soát riêng · {order.pageCount} trang · không thay đổi gói hiện
             tại
+          </dd>
+        </div>
+      )}
+      {order.purpose === "top_up" && (
+        <div className="flex flex-wrap justify-between gap-2">
+          <dt>Nội dung</dt>
+          <dd>
+            Mua thêm {order.topUpUnits} lượt {topUpKindLabel(order)} · cộng vào
+            kỳ hiện tại
           </dd>
         </div>
       )}

@@ -5,6 +5,7 @@ import {
   isUnfinishedPayment,
   paymentMessage,
   safeCheckoutUrl,
+  topUpKindLabel,
 } from "@/lib/subscription/payment-state";
 import { formatMoney } from "@/lib/subscription/subscription-plans";
 import type { PaymentAction, PaymentOrder } from "@/types/payment";
@@ -97,11 +98,13 @@ export function PaymentOrderCard({
             <p className="mt-1 text-[11px] leading-5 text-[#8a98ad]">
               {order.purpose === "contract_review"
                 ? `Rà soát hợp đồng · ${order.pageCount} trang`
-                : order.planCode
+                : order.purpose === "top_up"
+                  ? `Mua thêm ${order.topUpUnits ?? ""} lượt ${topUpKindLabel(order)}`
+                  : order.planCode
                   ? planNames[order.planCode]
                   : "Gói dịch vụ"}{" "}
               <span className="mx-1.5 text-[#c3cddd]">·</span>{" "}
-              {order.purpose === "contract_review"
+              {order.purpose === "contract_review" || order.purpose === "top_up"
                 ? "Thanh toán riêng"
                 : actionNames[order.action]}
               {date && (

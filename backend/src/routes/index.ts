@@ -12,7 +12,7 @@ import contractDraftRoutes from './contractDraft.routes';
 import managedTemplateRoutes from './managedTemplate.routes';
 import reportsRoutes from './reports.routes';
 import dashboardRoutes from './dashboard.routes';
-import { listPlansHandler } from '../controllers/subscription.controller';
+import { listPlansHandler, listTopUpPacksHandler } from '../controllers/subscription.controller';
 
 const router = Router();
 
@@ -30,6 +30,7 @@ router.use('/admin/userManagement', userManagementRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/invitations', invitationRoutes);
 router.get('/plans', listPlansHandler);
+router.get('/top-up-packs', listTopUpPacksHandler);
 router.use('/contracts', contractRoutes);
 router.use('/contract-profiles', contractProfileRoutes);
 router.use('/reviews', reviewRoutes);
