@@ -9,6 +9,7 @@ import reviewRoutes from './review.routes';
 import invitationRoutes from './invitation.routes';
 import profileRoutes from './profile.routes';
 import contractDraftRoutes from './contractDraft.routes';
+import managedTemplateRoutes from './managedTemplate.routes';
 import reportsRoutes from './reports.routes';
 import dashboardRoutes from './dashboard.routes';
 import { listPlansHandler } from '../controllers/subscription.controller';
@@ -20,6 +21,7 @@ router.get('/health', (_req, res) => res.json({ success: true, data: { status: '
 router.use('/auth', authRoutes);
 router.use('/profile', profileRoutes);
 router.use('/contract-drafts', contractDraftRoutes);
+router.use('/manager/contract-templates', managedTemplateRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/admin/users', userManagementRoutes);

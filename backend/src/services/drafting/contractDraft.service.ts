@@ -1,4 +1,4 @@
-import { accountTemplate, accountTemplates } from './templatePolicy';
+import { publishedAccountTemplate, publishedAccountTemplates } from './managedTemplates.service';
 import { inputErrors } from './draftInputRules';
 import { migrateTemplateInput } from './draftTemplateMigration';
 import mongoose, { FilterQuery, InferSchemaType } from 'mongoose';
@@ -79,7 +79,7 @@ function requireDraftApprover(actor: AccessTokenPayload) {
 
 export async function templateCatalog(actor: AccessTokenPayload) {
   const organization = await requireDraftAccess(actor);
-  return { templates: accountTemplates(actor.role === 'user').map(({ sections: _sections, ...template }) => template), organization: { name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }, role: actor.role };
+  return { templates: (await publishedAccountTemplates(actor.role === 'user')).map(({ sections: _sections, ...template }) => template), organization: { name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }, role: actor.role };
 }
 export async function listDrafts(actor: AccessTokenPayload, page: number) {
   await requireDraftAccess(actor);
@@ -114,7 +114,7 @@ export async function getDraft(actor: AccessTokenPayload, id: string) {
 export async function createDraft(actor: AccessTokenPayload, input: DraftInput) {
   const organization = await requireDraftAccess(actor);
   const personal = actor.role === 'user';
-  const template = accountTemplate(input.templateCode, personal);
+  const template = await publishedAccountTemplate(input.templateCode, personal, input.templateId);
   const defaults = Object.fromEntries(template.fields.filter(field => field.defaultValue).map(field => [field.key, field.defaultValue!])) as Record<string, string>;
   const prefilled = personal
     ? input.templateCode === 'labor' ? { partnerName: organization.name } : { representative: organization.name }
@@ -177,10 +177,10 @@ export async function copyToLatestTemplate(actor: AccessTokenPayload, id: string
   const draft = await findDraft(actor, id);
   if (draft.revision !== revision) throw AppError.conflict('Bản nháp đã thay đổi. Vui lòng tải lại.');
   const code = draft.templateCode as TemplateCode;
-  const template = accountTemplate(code, actor.role === 'user');
+  const template = await publishedAccountTemplate(code, actor.role === 'user', (JSON.parse(draft.templateJson) as ContractTemplate).id);
   const oldInput = JSON.parse(draft.inputJson) as Record<string, string>;
   const input = migrateTemplateInput(template, oldInput);
-  return createDraft(actor, { templateCode: code, title: `${draft.title.slice(0, 180)} (mẫu v${template.version})`, ourParty: draft.ourParty, input, ...(draft.documentJson ? { editorMode: 'studio' as const } : {}) });
+  return createDraft(actor, { templateCode: code, templateId: template.id, title: `${draft.title.slice(0, 180)} (mẫu v${template.version})`, ourParty: draft.ourParty, input, ...(draft.documentJson ? { editorMode: 'studio' as const } : {}) });
 }
 export async function generateDraft(actor: AccessTokenPayload, id: string, revision: number) {
   await requireDraftAccess(actor);

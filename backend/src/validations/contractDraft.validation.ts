@@ -24,6 +24,7 @@ const inputSchema = z
 export const createDraftSchema = z
   .object({
     templateCode: z.enum(TEMPLATE_CODES),
+    templateId: z.string().regex(/^[a-f\d]{24}$/i).optional(),
     title: z.string().trim().min(2).max(200),
     ourParty: z.string().min(1).max(30),
     input: inputSchema,
