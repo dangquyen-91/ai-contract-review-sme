@@ -1,8 +1,10 @@
+import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest, context: RouteContext<"/api/contracts/[id]/share-summary">) {
-  const token = request.cookies.get("lawscan_access")?.value;
-  if (!token) return NextResponse.json({ success: false, error: { message: "Vui lòng đăng nhập." } }, { status: 401 });
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const token = session.accessToken;
   const { id } = await context.params;
   if (!/^[a-f\d]{24}$/i.test(id)) return NextResponse.json({ success: false, error: { message: "Mã hợp đồng không hợp lệ." } }, { status: 400 });
   const query = new URLSearchParams();

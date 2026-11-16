@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useAdminHealth, useLegalSources } from "@/hooks/use-legal-sources";
+import { useAdminHealth, useLegalSources } from "@/hooks/legal-sources/use-legal-sources";
 import { LegalSourceMetrics } from "./legal-source-metrics";
 
 export function AvailableOverview({
@@ -220,7 +220,7 @@ export function AvailableOverview({
           )}
           {showLink && (
             <Link
-              href="/dashboard/admin/legal-sources"
+              href="/management/legal-sources"
               className="mt-4 inline-flex min-h-11 items-center text-sm font-medium text-blue-700 hover:underline"
             >
               Mở kho pháp lý →
@@ -265,7 +265,7 @@ export function AvailableOverview({
         )}
         {compact && (
           <Link
-            href="/dashboard/admin/legal-sources"
+            href="/management/legal-sources"
             className="mt-3 inline-flex min-h-9 items-center text-sm font-semibold text-blue-700 hover:underline"
           >
             Xem phân tích và nguồn pháp lý →

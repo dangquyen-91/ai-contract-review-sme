@@ -5,10 +5,33 @@ import { RISK_LEVELS } from '../models/contractVersion.model';
 const codeSchema = z.string().trim().min(1).max(50);
 
 export const createContractSchema = z.object({
-  title: z.string().min(2).max(300),
-  type: codeSchema,
+  title: z.string().trim().min(2).max(300).optional(),
+  type: codeSchema.optional(),
   ourParty: codeSchema.optional(),
   industry: codeSchema.optional(),
+  allowDuplicate: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((value) => value === 'true'),
+});
+
+export const createContractVersionSchema = z.object({
+  note: z.string().trim().max(300).optional(),
+});
+
+export const attachVersionSchema = z.object({
+  sourceContractId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
+  note: z.string().trim().max(300).optional(),
+});
+
+export const versionParamSchema = z.object({
+  id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
+  versionId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid version id'),
+});
+
+export const confirmContractProfileSchema = z.object({
+  type: codeSchema,
+  ourParty: codeSchema.optional(),
 });
 
 export const CONTRACT_SORT_FIELDS = [
@@ -21,7 +44,7 @@ export const CONTRACT_SORT_FIELDS = [
 ] as const;
 
 export const listContractsQuerySchema = z.object({
-  page: z.coerce.number().int().positive().optional(),
+  page: z.coerce.number().int().min(1).max(10000).optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
   sortBy: z.enum(CONTRACT_SORT_FIELDS).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
@@ -29,19 +52,36 @@ export const listContractsQuerySchema = z.object({
   industry: codeSchema.optional(),
   status: z.enum(CONTRACT_STATUSES).optional(),
   riskLevel: z.enum(RISK_LEVELS).optional(),
-  search: z.string().optional(),
+  verificationStatus: z
+    .enum(['not_sent', 'requested', 'in_progress', 'approved', 'returned'])
+    .optional(),
+  search: z.string().trim().max(300).optional(),
 });
 
 export const contractIdParamSchema = z.object({
   id: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid contract id'),
 });
 
-export const contractTextQuerySchema = z.object({
+export const versionQuerySchema = z.object({
+  versionId: z
+    .string()
+    .regex(/^[a-f\d]{24}$/i, 'Invalid version id')
+    .optional(),
+});
+
+export const resultQuerySchema = versionQuerySchema.extend({
+  reviewId: z
+    .string()
+    .regex(/^[a-f\d]{24}$/i, 'Invalid review id')
+    .optional(),
+});
+
+export const contractTextQuerySchema = versionQuerySchema.extend({
   redacted: z.enum(['true', 'false']).optional(),
   redactionMode: z.enum(['token', 'partial']).optional(),
 });
 
-export const contractFileQuerySchema = z.object({
+export const contractFileQuerySchema = versionQuerySchema.extend({
   redacted: z.enum(['true', 'false']).optional(),
 });
 
@@ -51,6 +91,10 @@ export const shareSummaryQuerySchema = z.object({
 
 export const analysisFocusBodySchema = z.object({
   analysisFocus: z.string().trim().min(1).max(1000).optional(),
+  billing: z
+    .object({ versionId: z.string().regex(/^[a-f\d]{24}$/i), units: z.number().int().positive() })
+    .strict()
+    .optional(),
 });
 
 export const chatMessageBodySchema = z.object({

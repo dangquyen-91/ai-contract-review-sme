@@ -1,3 +1,4 @@
+import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 
 const resources = new Set(["members", "invitations", "subscription"]);
@@ -9,8 +10,9 @@ async function forward(request: NextRequest, context: ResourceContext, method: "
   if (!/^[a-f\d]{24}$/i.test(id) || !resources.has(resource) || (method === "POST" && resource !== "invitations")) {
     return NextResponse.json({ success: false, error: { message: "Đường dẫn không hợp lệ." } }, { status: 404 });
   }
-  const token = request.cookies.get("lawscan_access")?.value;
-  if (!token) return NextResponse.json({ success: false, error: { message: "Vui lòng đăng nhập." } }, { status: 401 });
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const token = session.accessToken;
   try {
     const query = method === "GET" && resource !== "subscription" ? `?${new URLSearchParams({ page: request.nextUrl.searchParams.get("page") ?? "1", limit: "20" })}` : "";
     const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/organizations/${id}/${resource}${query}`, {

@@ -3,11 +3,13 @@ import { AppError } from '../../errors/AppError';
 import { ClauseCategory } from '../../models/clauseTypeTaxonomy.model';
 import { ContractProfile, ContractProfileModel } from '../../models/contractProfile.model';
 import { IndustryModel } from '../../models/industry.model';
+import { OrganizationModel } from '../../models/organization.model';
 import { LegalSourceModel } from '../../models/legalSource.model';
 import { getTaxonomyByCodes } from '../analysis/clauseTypeTaxonomy.service';
 import type { SensitiveDataType } from '../ai/redaction.service';
 import { DEFAULT_INDUSTRIES, DEFAULT_PROFILES, DefaultProfile } from './contractProfile.data';
 import { LEGAL_SOURCE_CATALOG, LegalSourceCode } from '../legal/legalSourceCatalog.data';
+import { legalSourceAvailability } from '../legal/legalSourceAvailability';
 
 function assertProfileConsistency(profile: DefaultProfile) {
   const categories = new Set(profile.clauseCategories);
@@ -98,17 +100,24 @@ export interface ReviewContext {
 }
 
 export async function buildReviewContext(contract: {
-  type: string;
+  orgId?: { toString(): string } | null;
+  type?: string | null;
   ourParty?: string | null;
   industry?: string | null;
 }): Promise<ReviewContext> {
+  if (!contract.type) {
+    throw AppError.conflict('Confirm the contract type before analyzing it', 'CONTRACT_NOT_CONFIRMED');
+  }
   const profile = await resolveContractProfile(contract.type);
-  const rule = contract.industry
-    ? profile.industryRules.find((r) => r.industry === contract.industry)
+  const industryCode =
+    contract.industry ??
+    (contract.orgId
+      ? (await OrganizationModel.findById(contract.orgId.toString()).select('industry'))?.industry
+      : undefined);
+  const rule = industryCode
+    ? profile.industryRules.find((r) => r.industry === industryCode)
     : undefined;
-  const industry = contract.industry
-    ? await IndustryModel.findOne({ code: contract.industry })
-    : null;
+  const industry = industryCode ? await IndustryModel.findOne({ code: industryCode }) : null;
 
   return {
     profileCode: profile.code,
@@ -159,16 +168,19 @@ export async function listContractProfiles() {
     code,
     name: taxonomy.find((t) => t.code === code)?.name ?? code,
   });
-  const sources = await LegalSourceModel.find({
-    code: { $in: [...new Set(profiles.flatMap((p) => p.legalSourceCodes))] },
-  }).select('code title status ingestion.status ingestion.embeddedChunks');
+  const codes = [...new Set(profiles.flatMap((p) => p.legalSourceCodes))];
+  const [sources, availability] = await Promise.all([
+    LegalSourceModel.find({ code: { $in: codes } }).select('code title status ingestion.status ingestion.embeddedChunks'),
+    legalSourceAvailability(codes),
+  ]);
   const legalSource = (code: string) => {
     const source = sources.find((s) => s.code === code);
     return {
       code,
       name: source?.title ?? LEGAL_SOURCE_CATALOG[code as LegalSourceCode] ?? code,
       inKnowledgeBase: Boolean(source),
-      searchable: Boolean(source && source.status !== 'repealed' && (source.ingestion?.embeddedChunks ?? 0) > 0),
+      inForce: availability.get(code) === 'in_force',
+      searchable: Boolean(source && availability.get(code) === 'in_force' && (source.ingestion?.embeddedChunks ?? 0) > 0),
       ingestionStatus: source?.ingestion?.status,
     };
   };

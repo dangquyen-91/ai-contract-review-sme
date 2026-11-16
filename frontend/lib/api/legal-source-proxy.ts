@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/admin-session";
+import { getApiSession } from "@/lib/auth/api-session";
 
-type LegalSourceAction = "create" | "delete" | "detail" | "preview" | "parts" | "resume";
+type LegalSourceAction = "catalog" | "create" | "delete" | "detail" | "preview" | "parts" | "resume" | "update";
 
 export async function proxyLegalSource(request: Request, action: LegalSourceAction, id?: string) {
   try {
-    const session = await getAdminSession();
-    if (!session)
+    const session = await getApiSession();
+    if (session.error) return session.error;
+    if (session.user.role !== "manager")
       return NextResponse.json(
-        { success: false, error: { message: "Vui lòng đăng nhập lại." } },
-        { status: 401 },
-      );
-    if (session.role !== "administrator")
-      return NextResponse.json(
-        { success: false, error: { message: "Bạn không có quyền quản trị." } },
+        { success: false, error: { message: "Bạn không có quyền quản lý kho pháp lý." } },
         { status: 403 },
       );
     if (id !== undefined && !/^[a-f\d]{24}$/i.test(id))
@@ -24,15 +20,15 @@ export async function proxyLegalSource(request: Request, action: LegalSourceActi
         },
         { status: 400 },
       );
-    const needsId = ["delete", "detail", "parts", "resume"].includes(action);
+    const needsId = ["delete", "detail", "parts", "resume", "update"].includes(action);
     if (needsId && !id) return NextResponse.json({ success: false, error: { message: "Thiếu mã nguồn pháp lý." } }, { status: 400 });
-    const body = ["create", "preview", "parts"].includes(action) ? await request.formData() : undefined;
-    const suffix = action === "preview" ? "/preview" : id ? `/${id}${action === "parts" || action === "resume" ? `/${action}` : ""}` : "";
+    const body = ["create", "preview", "parts"].includes(action) ? await request.formData() : action === "update" ? await request.text() : undefined;
+    const suffix = action === "preview" || action === "catalog" ? `/${action}` : id ? `/${id}${action === "parts" || action === "resume" ? `/${action}` : ""}` : "";
     const upstream = await fetch(
       `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/kb/legal-sources${suffix}`,
       {
-        method: action === "detail" ? "GET" : action === "delete" ? "DELETE" : "POST",
-        headers: { Authorization: `Bearer ${session.accessToken}` },
+        method: action === "detail" || action === "catalog" ? "GET" : action === "delete" ? "DELETE" : action === "update" ? "PATCH" : "POST",
+        headers: { Authorization: `Bearer ${session.accessToken}`, ...(action === "update" ? { "Content-Type": "application/json" } : {}) },
         body,
         cache: "no-store",
         signal: AbortSignal.timeout(180000),

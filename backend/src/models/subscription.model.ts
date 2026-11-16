@@ -15,6 +15,7 @@ export const planFields = {
   price: { type: Number, required: true, min: 0 },
   currency: { type: String, enum: ['VND'], default: 'VND', required: true },
   analysisLimit: { type: Number, required: true, min: 0 },
+  draftingLimit: { type: Number, default: 0, min: 0 },
   chatLimit: { type: Number, required: true, min: 0 },
   memberLimit: { type: Number, required: true, min: 1 },
 } as const;
@@ -23,9 +24,19 @@ planSchema.index({ code: 1 }, { unique: true });
 export const PlanModel = model('Plan', planSchema);
 export type Plan = InferSchemaType<typeof planSchema>;
 
+export const SUBSCRIPTION_ACCOUNT_TYPES = ['organization', 'personal'] as const;
+
 const subscriptionSchema = new Schema(
   {
-    orgId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, unique: true },
+    accountType: { type: String, enum: SUBSCRIPTION_ACCOUNT_TYPES, required: true },
+    orgId: {
+      type: Schema.Types.ObjectId,
+      ref: function (this: { accountType?: string }) {
+        return this.accountType === 'personal' ? 'User' : 'Organization';
+      },
+      required: true,
+      unique: true,
+    },
     scheduledDowngrade: {
       type: new Schema(
         {
@@ -39,7 +50,7 @@ const subscriptionSchema = new Schema(
   },
   { timestamps: true },
 );
-export const OrganizationSubscriptionModel = model('OrganizationSubscription', subscriptionSchema);
+export const SubscriptionModel = model('Subscription', subscriptionSchema);
 
 const periodSchema = new Schema(
   {
@@ -54,6 +65,8 @@ const periodSchema = new Schema(
     paymentAction: { type: String, enum: ['purchase', 'renew', 'upgrade', 'downgrade'] },
     analysisUsed: { type: Number, default: 0, required: true },
     analysisReserved: { type: Number, default: 0, required: true },
+    draftingUsed: { type: Number, default: 0, required: true },
+    draftingReserved: { type: Number, default: 0, required: true },
     chatUsed: { type: Number, default: 0, required: true },
     chatReserved: { type: Number, default: 0, required: true },
   },
@@ -66,9 +79,20 @@ const usageRunSchema = new Schema(
   {
     orgId: { type: Schema.Types.ObjectId, ref: 'Organization', required: true, index: true },
     userId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    contractId: { type: Schema.Types.ObjectId, ref: 'Contract', required: true },
-    periodId: { type: Schema.Types.ObjectId, ref: 'SubscriptionPeriod', required: true },
-    kind: { type: String, enum: ['analysis', 'chat'], required: true },
+    contractId: { type: Schema.Types.ObjectId, ref: 'Contract' },
+    draftId: { type: Schema.Types.ObjectId, ref: 'ContractDraft' },
+    periodId: {
+      type: Schema.Types.ObjectId,
+      ref: 'SubscriptionPeriod',
+      required: function (this: { reviewPurchaseId?: unknown }) {
+        return !this.reviewPurchaseId;
+      },
+    },
+    reviewPurchaseId: { type: Schema.Types.ObjectId, ref: 'ContractReviewPurchase' },
+    kind: { type: String, enum: ['analysis', 'chat', 'drafting'], required: true },
+    units: { type: Number, default: 1, min: 1, required: true },
+    pageCount: { type: Number, min: 1 },
+    versionId: { type: Schema.Types.ObjectId, ref: 'ContractVersion' },
     idempotencyKey: { type: String, required: true },
     fingerprint: { type: String, required: true },
     status: {
@@ -84,6 +108,7 @@ const usageRunSchema = new Schema(
   { timestamps: true },
 );
 usageRunSchema.index({ orgId: 1, kind: 1, idempotencyKey: 1 }, { unique: true });
+usageRunSchema.index({ status: 1, updatedAt: 1, orgId: 1, kind: 1 }, { name: 'report_consumed_units' });
 usageRunSchema.index(
   { orgId: 1, contractId: 1 },
   {
@@ -96,7 +121,7 @@ export const UsageRunModel = model('UsageRun', usageRunSchema);
 export async function initializeSubscriptionModels() {
   await Promise.all([
     PlanModel.init(),
-    OrganizationSubscriptionModel.init(),
+    SubscriptionModel.init(),
     SubscriptionPeriodModel.init(),
     UsageRunModel.init(),
   ]);

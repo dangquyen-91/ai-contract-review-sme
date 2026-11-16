@@ -1,6 +1,6 @@
 "use client";
 import { Icon } from "@/components/ui/icon";
-import { useAuthForm } from "@/hooks/use-auth-form";
+import { useAuthForm } from "@/hooks/auth/use-auth-form";
 import { GoogleSignIn } from "./google-sign-in";
 import { AuthFormHeader, AuthFormFooter } from "./auth-form-header";
 import { AuthCredentialsFields } from "./auth-credentials-fields";

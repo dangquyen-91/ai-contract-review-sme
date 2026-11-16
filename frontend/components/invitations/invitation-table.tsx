@@ -3,13 +3,14 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import type { InvitationStatus, OrganizationInvitation } from "@/types/invitations";
-const roles: Record<string, string> = { owner: "Owner", manager: "Manager", staff: "Staff", reviewer: "Reviewer" };
+const roles: Record<string, string> = { owner: "Owner", manager: "Manager", staff: "Staff", expert: "Expert" };
 const statuses: Record<InvitationStatus, { label: string; variant: "warning" | "success" | "neutral" | "danger" }> = {
   pending: { label: "Đang chờ", variant: "warning" },
   accepted: { label: "Đã chấp nhận", variant: "success" },
   revoked: { label: "Đã thu hồi", variant: "neutral" },
   expired: { label: "Hết hạn", variant: "neutral" },
   delivery_failed: { label: "Gửi thất bại", variant: "danger" },
+  declined: { label: "Đã từ chối", variant: "neutral" },
 };
 
 const date = (value: string) => new Intl.DateTimeFormat("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(value));

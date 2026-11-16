@@ -1,11 +1,16 @@
 import { Router } from 'express';
 import authRoutes from './auth.routes';
+import userManagementRoutes from './userManagement.routes';
 import contractRoutes from './contract.routes';
 import contractProfileRoutes from './contractProfile.routes';
 import legalSourceRoutes from './legalSource.routes';
 import organizationRoutes from './organization.routes';
 import reviewRoutes from './review.routes';
 import invitationRoutes from './invitation.routes';
+import profileRoutes from './profile.routes';
+import contractDraftRoutes from './contractDraft.routes';
+import reportsRoutes from './reports.routes';
+import dashboardRoutes from './dashboard.routes';
 import { listPlansHandler } from '../controllers/subscription.controller';
 
 const router = Router();
@@ -13,6 +18,13 @@ const router = Router();
 router.get('/health', (_req, res) => res.json({ success: true, data: { status: 'ok' } }));
 
 router.use('/auth', authRoutes);
+router.use('/profile', profileRoutes);
+router.use('/contract-drafts', contractDraftRoutes);
+router.use('/reports', reportsRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/admin/users', userManagementRoutes);
+// Compatibility alias for existing clients.
+router.use('/admin/userManagement', userManagementRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/invitations', invitationRoutes);
 router.get('/plans', listPlansHandler);

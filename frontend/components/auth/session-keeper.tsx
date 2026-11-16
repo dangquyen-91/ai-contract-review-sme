@@ -1,6 +1,6 @@
 "use client";
 
-import { useSessionKeeper } from "@/hooks/use-session-keeper";
+import { useSessionKeeper } from "@/hooks/auth/use-session-keeper";
 
 export function SessionKeeper() {
   useSessionKeeper();

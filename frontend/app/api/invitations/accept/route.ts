@@ -1,15 +1,20 @@
+import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
-import { encodeSessionUser, userSessionCookie } from "@/lib/auth-session";
-import { rememberedCookieAge, tokenMaxAge } from "@/lib/token-expiry";
+import { encodeSessionUser, userSessionCookie } from "@/lib/auth/auth-session";
+import { rememberedCookieAge, tokenMaxAge } from "@/lib/auth/token-expiry";
 import type { AuthUser } from "@/types/auth";
+import { isSameOriginRequest } from "@/lib/api/request-origin";
 
 export async function POST(request: NextRequest) {
-  const accessToken = request.cookies.get("lawscan_access")?.value;
-  if (!accessToken) return NextResponse.json({ success: false, error: { message: "Vui lòng đăng nhập để chấp nhận lời mời." } }, { status: 401 });
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const accessToken = session.accessToken;
+  if (!isSameOriginRequest(request)) return NextResponse.json({ success: false }, { status: 403 });
   try {
-    const { token } = await request.json() as { token?: string };
-    if (!token || !/^[a-f\d]{64}$/.test(token)) return NextResponse.json({ success: false, error: { message: "Liên kết lời mời không hợp lệ." } }, { status: 400 });
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/invitations/accept`, {
+    const { token, invitationId } = await request.json() as { token?: string; invitationId?: string };
+    if (invitationId ? !/^[a-f\d]{24}$/i.test(invitationId) : !token || !/^[a-f\d]{64}$/.test(token)) return NextResponse.json({ success: false, error: { message: "Liên kết lời mời không hợp lệ." } }, { status: 400 });
+    const endpoint = invitationId ? `received/${invitationId}/accept` : "accept";
+    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/invitations/${endpoint}`, {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` }, body: JSON.stringify({ token }), cache: "no-store",
     });
     const payload = await upstream.json();

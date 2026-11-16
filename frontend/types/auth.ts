@@ -8,7 +8,7 @@ import type {
 export type AuthMode = "login" | "register";
 
 export type UserRole =
-  "administrator" | "manager" | "staff" | "owner" | "reviewer" | "user";
+  "administrator" | "manager" | "staff" | "owner" | "expert" | "user";
 export type LogoutResult = { loggedOut: true };
 
 export type AuthUser = {
@@ -18,6 +18,9 @@ export type AuthUser = {
   role: UserRole;
   orgId: string | null;
   hasCompletedOnboarding: boolean;
+  avatarUrl?: string | null;
+  workspace?: "personal" | "organization";
+  organizationMembership?: { orgId: string; role: "owner" | "staff" } | null;
 };
 
 export type LoginFormValues = z.infer<typeof loginFormSchema>;

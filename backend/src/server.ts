@@ -3,10 +3,12 @@ import { connectDB, disconnectDB } from './config/db';
 import { env } from './config/env';
 import { logger } from './config/logger';
 import { assertRedisReachable } from './config/queue';
+import { closeRedis } from './config/redis';
 import { seedDefaultRoles } from './services/identity/role.service';
 import {
   ensureLegalTextIndex,
   ensureLegalVectorIndex,
+  reconcileLegalEmbeddingModel,
 } from './services/legal/legalKnowledgeIngest.service';
 import { seedDefaultClauseTaxonomy } from './services/analysis/clauseTypeTaxonomy.service';
 import { seedDefaultContractProfiles } from './services/contract/contractProfile.service';
@@ -14,15 +16,15 @@ import { startBackgroundWorkers, stopBackgroundWork } from './services/workers.s
 import { OrganizationInvitationModel } from './models/organizationInvitation.model';
 import { initializeSubscriptionModels } from './models/subscription.model';
 import { seedPlans } from './services/billing/subscription.service';
-import { EmailVerificationModel } from './models/emailVerification.model';
 import { PaymentModel } from './models/payment.model';
+import { MembershipModel } from './models/membership.model';
 
 async function bootstrap() {
   await connectDB();
   await assertRedisReachable();
   await OrganizationInvitationModel.init();
-  await EmailVerificationModel.init();
   await PaymentModel.init();
+  await MembershipModel.init();
   await initializeSubscriptionModels();
   await seedPlans();
   await seedDefaultRoles();
@@ -30,6 +32,7 @@ async function bootstrap() {
   await seedDefaultContractProfiles();
   await ensureLegalVectorIndex();
   await ensureLegalTextIndex();
+  await reconcileLegalEmbeddingModel();
 
   if (env.START_WORKERS) {
     startBackgroundWorkers();
@@ -46,6 +49,7 @@ async function bootstrap() {
     logger.info(`${signal} received, shutting down gracefully`);
     server.close(async () => {
       await stopBackgroundWork();
+      await closeRedis();
       await disconnectDB();
       process.exit(0);
     });

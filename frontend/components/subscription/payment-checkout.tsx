@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { workspacePath } from "@/lib/workspace-path";
+import { workspacePath } from "@/lib/routing/workspace-path";
+import { billingAccountId } from "@/lib/subscription/billing-account";
 import { WorkspaceCheckout } from "./workspace-checkout";
 import type { AuthUser } from "@/types/auth";
 import type { SubscriptionPlan } from "@/types/subscription";
@@ -34,7 +35,8 @@ export function PaymentCheckout({
         </Link>
       </div>
     );
-  if (!user.orgId)
+  const accountId = billingAccountId(user);
+  if (!accountId)
     return (
       <div className="mt-6 grid gap-3">
         <p className="text-sm text-[#61708b]">
@@ -53,8 +55,8 @@ export function PaymentCheckout({
     );
   return (
     <WorkspaceCheckout
-      key={`${user.orgId}:${plan.code}`}
-      orgId={user.orgId}
+      key={`${accountId}:${plan.code}`}
+      orgId={accountId}
       plan={plan}
     />
   );

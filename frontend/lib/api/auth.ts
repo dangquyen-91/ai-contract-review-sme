@@ -2,6 +2,12 @@ import { apiRequest, refreshSession } from "@/lib/api/client";
 import type { AuthResult, AuthSession, EmailVerificationChallenge, LoginInput, LogoutResult, RegisterInput } from "@/types/auth";
 
 export const authApi = {
+  forgotPassword(email: string) {
+    return apiRequest<{ challengeId: string; expiresAt: string; resendAfterSeconds: number; message: string }>({ url: "/auth/forgot-password", timeout: 30_000, method: "POST", data: { email } });
+  },
+  resetPassword(input: { challengeId: string; code: string; password: string }) {
+    return apiRequest<{ reset: boolean }>({ url: "/auth/reset-password", timeout: 30_000, method: "POST", data: input });
+  },
   google(input: { credential: string; nonce: string; remember?: boolean; invitationToken?: string }) {
     return apiRequest<AuthSession>({ url: "/auth/google", method: "POST", data: input });
   },

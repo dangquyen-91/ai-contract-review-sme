@@ -16,18 +16,34 @@ export const businessTypeLabels: Record<string, string> = {
   office_lease: "Hợp đồng thuê văn phòng, mặt bằng",
 };
 
+export const personalTypeLabels: Record<string, string> = {
+  life_insurance: "Hợp đồng bảo hiểm nhân thọ",
+  housing_purchase: "Hợp đồng mua bán bất động sản",
+  labor: "Hợp đồng lao động",
+};
+
+export function reviewableTypeLabels(personal: boolean) {
+  return personal ? personalTypeLabels : businessTypeLabels;
+}
+
 export const contractStatusLabels: Record<ContractStatus, string> = {
   uploaded: "Đã tải lên",
   processing: "AI đang xử lý",
   reviewed: "Đã rà soát",
   archived: "Lưu trữ",
+  unsupported: "Chưa hỗ trợ",
 };
 
 export const contractRiskLabels: Record<ContractRiskLevel, string> = {
   high: "Rủi ro cao",
-  medium: "Trung bình",
+  medium: "Rủi ro trung bình",
   low: "Rủi ro thấp",
   none: "Chưa đánh giá",
+};
+
+export const reviewedRiskLabels: Record<ContractRiskLevel, string> = {
+  ...contractRiskLabels,
+  none: "Không phát hiện rủi ro",
 };
 
 export const contractStatusClasses: Record<ContractStatus, string> = {
@@ -35,6 +51,7 @@ export const contractStatusClasses: Record<ContractStatus, string> = {
   processing: "text-[#1557ae] bg-[#e7f0ff]",
   reviewed: "text-[#206c59] bg-[#e8f5f1]",
   archived: "text-[#6a7280] bg-[#eff1f3]",
+  unsupported: "text-[#875a00] bg-[#fff4dc]",
 };
 
 export const contractRiskClasses: Record<ContractRiskLevel, string> = {
@@ -45,7 +62,7 @@ export const contractRiskClasses: Record<ContractRiskLevel, string> = {
 };
 
 export const contractStatusTones: Record<ContractStatus, "neutral" | "info" | "success"> = {
-  uploaded: "neutral", processing: "info", reviewed: "success", archived: "neutral",
+  uploaded: "neutral", processing: "info", reviewed: "success", archived: "neutral", unsupported: "neutral",
 };
 
 export const contractRiskTones: Record<ContractRiskLevel, "danger" | "warning" | "success" | "neutral"> = {

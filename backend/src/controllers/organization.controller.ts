@@ -5,10 +5,17 @@ import {
   createOrganization,
   deleteOrganization,
   getOrganization,
+  listOrganizations,
   updateOrganization,
 } from '../services/organization/organization.service';
 import { asyncHandler } from '../utils/asyncHandler';
-import { ok } from '../utils/ApiResponse';
+import { ok, paginated } from '../utils/ApiResponse';
+import { listOrganizationsQuerySchema } from '../validations/organization.validation';
+import { vietnamAddressDirectory } from '../services/organization/vietnamAddress';
+
+export const organizationAddressOptionsHandler = asyncHandler(async (_req, res) => {
+  ok(res, vietnamAddressDirectory);
+});
 
 function toOrganizationResponse(organization: Awaited<ReturnType<typeof getOrganization>>) {
   return {
@@ -16,6 +23,8 @@ function toOrganizationResponse(organization: Awaited<ReturnType<typeof getOrgan
     name: organization.name,
     taxCode: organization.taxCode ?? null,
     address: organization.address ?? null,
+    addressDetails: organization.addressDetails ?? null,
+    industry: organization.industry ?? null,
     createdAt: organization.createdAt,
     updatedAt: organization.updatedAt,
   };
@@ -26,6 +35,12 @@ export const createOrganizationHandler = asyncHandler(async (req: Request, res: 
 
   const organization = await createOrganization(req.user.sub, req.body);
   ok(res, toOrganizationResponse(organization), 201);
+});
+
+export const listOrganizationsHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { page, limit, search, industry } = listOrganizationsQuerySchema.parse(req.query);
+  const { items, total } = await listOrganizations(page, limit, { search, industry });
+  paginated(res, items.map(toOrganizationResponse), { page, limit, total });
 });
 
 export const getOrganizationHandler = asyncHandler(async (req: Request, res: Response) => {

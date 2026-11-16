@@ -1,12 +1,15 @@
-export type InvitationRole = "manager" | "staff" | "reviewer";
-export type CreateInvitationInput = { email: string; role: InvitationRole };
-export type InvitationStatus = "pending" | "accepted" | "revoked" | "expired" | "delivery_failed";
+// Older invitation history can still contain former roles; new invitations are Staff only.
+export type InvitationRole = "manager" | "staff" | "expert";
+export type CreateInvitationInput = { email: string; role: "staff" };
+export type InvitationStatus = "pending" | "accepted" | "revoked" | "expired" | "delivery_failed" | "declined";
+
+export type ReceivedInvitation = { id: string; organizationName: string; role: "staff"; expiresAt: string };
 
 export type OrganizationMember = {
   id: string;
   name: string;
   email: string;
-  role: "owner" | InvitationRole;
+  role: "owner" | "staff";
   isActive: boolean;
 };
 

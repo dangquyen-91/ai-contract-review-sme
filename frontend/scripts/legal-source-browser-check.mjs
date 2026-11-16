@@ -42,7 +42,7 @@ const { LegalSourceMetrics } = load('components/legal-sources/legal-source-metri
 const { LegalSourceStatusFilters } = load('components/legal-sources/legal-source-status-filters.tsx');
 const { LegalSourceCharts } = load('components/legal-sources/legal-source-charts.tsx');
 const { LegalSourceAttentionList } = load('components/legal-sources/legal-source-attention-list.tsx');
-const { getLegalSourceAnalytics } = load('lib/legal-source-analytics.ts');
+const { getLegalSourceAnalytics } = load('lib/legal-sources/legal-source-analytics.ts');
 const fixtureSources = [
   { _id: 'fixture', title: 'Luật Đất đai và các quy định về quyền, nghĩa vụ của người sử dụng đất', documentNumber: '31/2024/QH15', citationLabel: '31/2024/QH15', sourceType: 'law', status: 'in_force', issuingBody: 'Quốc hội', chunkCount: 325 },
   { _id: 'error', title: 'Nghị định cần kiểm tra quá trình xử lý', citationLabel: 'ND-01', sourceType: 'decree', chunkCount: 10, ingestion: { status: 'failed', embeddedChunks: 5, totalChunks: 10, error: 'Không thể xử lý tài liệu. Vui lòng kiểm tra và thử lại.' } },
@@ -66,7 +66,7 @@ const artifactDir = await fs.mkdtemp(path.join(os.tmpdir(), 'legal-source-ui-'))
 const entry = path.join(artifactDir, 'entry.js');
 const loader = path.join(artifactDir, 'typescript-loader.cjs');
 await fs.writeFile(loader, `const ts = require(${JSON.stringify(require.resolve('typescript'))}); module.exports = function(source) { return ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText; };`);
-await fs.writeFile(entry, `import React from 'react'; import { createRoot } from 'react-dom/client'; import { LegalSourceCharts } from '@/components/legal-sources/legal-source-charts'; import { getLegalSourceAnalytics } from '@/lib/legal-source-analytics'; const chartRoot = createRoot(document.getElementById('charts-fixture')); window.renderCharts = sources => chartRoot.render(React.createElement(LegalSourceCharts, { analytics: getLegalSourceAnalytics(sources), total: sources.length, pending: false, unavailable: false, onSelectType: value => { window.chartAction = value; }, onSelectGroup: value => { window.chartAction = value; } })); window.renderCharts(${JSON.stringify(fixtureSources)});`);
+await fs.writeFile(entry, `import React from 'react'; import { createRoot } from 'react-dom/client'; import { LegalSourceCharts } from '@/components/legal-sources/legal-source-charts'; import { getLegalSourceAnalytics } from '@/lib/legal-sources/legal-source-analytics'; const chartRoot = createRoot(document.getElementById('charts-fixture')); window.renderCharts = sources => chartRoot.render(React.createElement(LegalSourceCharts, { analytics: getLegalSourceAnalytics(sources), total: sources.length, pending: false, unavailable: false, onSelectType: value => { window.chartAction = value; }, onSelectGroup: value => { window.chartAction = value; } })); window.renderCharts(${JSON.stringify(fixtureSources)});`);
 await fs.appendFile(entry, `
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { LegalSourceDetailDialog } from '@/components/legal-sources/legal-source-detail-dialog';

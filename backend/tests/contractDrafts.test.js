@@ -1,0 +1,564 @@
+process.env.NODE_ENV = 'test';
+process.env.MONGODB_URI = 'mongodb://127.0.0.1/unused';
+process.env.JWT_ACCESS_SECRET = 'drafts-test-access';
+process.env.JWT_REFRESH_SECRET = 'drafts-test-refresh';
+process.env.DATA_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+process.env.MONGOMS_DOWNLOAD_DIR = require('path').join(__dirname, '../node_modules/.cache/mongodb-memory-server');
+jest.mock('../dist/services/ai/llm.service', () => ({
+  isLlmConfigured: true,
+  generateJson: jest.fn(async prompt => ({
+    sections: JSON.parse(prompt.match(/TEMPLATE: (.*)\nDATA:/)[1]).map(section => ({ key: section.key, addition: 'Các bên phối hợp thực hiện và thông báo bằng văn bản khi phát sinh vướng mắc.' })),
+    notes: ['Kiểm tra nội dung trước khi ký.'],
+  })),
+}));
+jest.mock('../dist/services/contract/storage.service', () => ({
+  uploadContractFile: jest.fn(async () => ({ key: 'test/private/contract.docx', resourceType: 'raw', deliveryType: 'private', format: 'docx' })),
+  deleteContractFile: jest.fn(async () => {}),
+}));
+jest.mock('../dist/services/contract/documentPageCount.service', () => ({ countDocxPages: jest.fn().mockResolvedValue(6) }));
+const mongoose = require('mongoose');
+const { MongoMemoryReplSet } = require('mongodb-memory-server');
+const request = require('supertest');
+const JSZip = require('jszip');
+const { createApp } = require('../dist/app');
+const { logger } = require('../dist/config/logger');
+logger.silent = true;
+const { UserModel } = require('../dist/models/user.model');
+const { OrganizationModel } = require('../dist/models/organization.model');
+const { ContractDraftModel: Drafts } = require('../dist/models/contractDraft.model');
+const { ContractModel } = require('../dist/models/contract.model');
+const { ContractVersionModel } = require('../dist/models/contractVersion.model');
+const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
+const { tokensForUser } = require('../dist/services/identity/auth.service');
+const { CONTRACT_TEMPLATES } = require('../dist/services/drafting/templates');
+const { accountTemplate } = require('../dist/services/drafting/templatePolicy');
+const { renderDraftDocument } = require('../dist/services/drafting/generation.service');
+const { generateJson } = require('../dist/services/ai/llm.service');
+const { uploadContractFile } = require('../dist/services/contract/storage.service');
+const { createDraftDocx } = require('../dist/services/drafting/docx.service');
+const { seedPlans, activatePaidSubscription, getSubscription } = require('../dist/services/billing/subscription.service');
+const { PlanModel, UsageRunModel, SubscriptionPeriodModel, initializeSubscriptionModels } = require('../dist/models/subscription.model');
+let repl, app, org, owner, staff, otherStaff, otherOwner, sequence = 0;
+async function user(role, orgId) {
+  return (await UserModel.create({ name: `Draft ${role}`, email: `draft-${++sequence}@example.com`, roleId: (await getRoleByCode(role))._id, orgId, passwordHash: 'unused', emailVerifiedAt: new Date() })).populate('roleId');
+}
+const bearer = member => `Bearer ${tokensForUser(member).accessToken}`;
+const call = (member, method, suffix = '') => request(app)[method](`/api/v1/contract-drafts${suffix}`).set('Authorization', bearer(member));
+function values(code) {
+  const template = CONTRACT_TEMPLATES.find(item => item.code === code);
+  const input = Object.fromEntries(template.fields.filter(field => field.required).map(field => [field.key,
+    field.kind === 'items' ? JSON.stringify([{ name: 'Máy tính', unit: 'cái', quantity: '1', unitPrice: '30000000' }]) : field.kind === 'date' ? field.key === 'partnerBirthDate' ? '1990-01-01' : '2026-10-25' : field.kind === 'number' ? '30000000' : field.kind === 'select' ? field.options[0].value : field.key === 'partnerName' ? 'Nguyễn Văn Kiểm Thử' : field.key === 'partnerIdentifier' ? '012345678901' : field.key === 'partnerAddress' ? '123 Đường Riêng, Hà Nội' : 'Thông tin kiểm thử',
+  ]).concat(template.fields.some(field => field.key === 'endDate') ? [['endDate', '2027-10-25']] : []));
+  if (code === 'housing_purchase') input.transactionStage = 'purchase';
+  if (code === 'sales') Object.assign(input, {
+    vatRate: '0', vatAmount: '0', totalPrice: '30000000', advanceAmount: '0', advancePercent: '0',
+    remainingAmount: '30000000', storageFee: '0', penaltyPercent: '0', transportCostParty: 'A',
+    advanceDays: '0', remainingDays: '7', deliveryDays: '7', complaintDays: '30', replacementDays: '7',
+    warrantyMonths: '12', warrantyResponseDays: '3',
+  });
+  return input;
+}
+async function create(member = staff, code = 'service', input = values(code)) {
+  const response = await call(member, 'post').send({ templateCode: code, title: 'Hợp đồng kiểm thử', ourParty: accountTemplate(code, member.roleId.code === 'user').parties[0].code, input });
+  expect(response.status).toBe(201); return response.body.data;
+}
+const generate = (member, draft) => call(member, 'post', `/${draft.id}/generate`).send({ revision: draft.revision });
+const decide = (member, draft, action, note = '') => call(member, 'post', `/${draft.id}/decision`).send({ revision: draft.revision, action, note });
+const changes = draft => ({ revision: draft.revision, title: draft.title, ourParty: draft.ourParty, input: draft.input, content: draft.content });
+beforeAll(async () => {
+  repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
+  await mongoose.connect(repl.getUri()); await seedDefaultRoles();
+  org = await OrganizationModel.create({ name: 'Doanh nghiệp thử nghiệm', taxCode: '0101234567', address: 'Hà Nội' });
+  await initializeSubscriptionModels(); await seedPlans();
+  const plan = await PlanModel.findOne({ code: 'business_starter' });
+  await activatePaidSubscription({ orgId: org.id, planCode: plan.code, action: 'purchase', amount: plan.price, paymentReference: 'test-drafting-plan' });
+  owner = await user('owner', org.id); staff = await user('staff', org.id); otherStaff = await user('staff', org.id);
+  const second = await OrganizationModel.create({ name: 'Other company' }); otherOwner = await user('owner', second.id);
+  app = createApp();
+});
+afterAll(async () => { await mongoose.disconnect(); if (repl) await repl.stop(); });
+
+test('catalog admits personal users and business owner/staff, excluding other roles', async () => {
+  expect((await request(app).get('/api/v1/contract-drafts/templates')).status).toBe(401);
+  for (const role of ['manager', 'expert', 'administrator']) expect((await call(await user(role), 'get', '/templates')).status).toBe(403);
+  expect((await call(await user('user', org.id), 'get', '/templates')).status).toBe(403);
+  const personal = await OrganizationModel.create({ name: 'Personal', isPersonal: true });
+  expect((await call(await user('owner', personal.id), 'get', '/templates')).status).toBe(403);
+  const response = await call(staff, 'get', '/templates');
+  expect(response.status).toBe(200);
+  expect(response.body.data.templates.map(template => template.code)).toEqual(['labor', 'service', 'sales', 'office_lease']);
+});
+
+test.each([false, true])('personal drafts support creation, editing, approval and export with personal workspace=%s', async hasWorkspace => {
+  const personalOrg = hasWorkspace ? await OrganizationModel.create({ name: 'Personal drafts', isPersonal: true }) : null;
+  const personal = await user('user', personalOrg?.id);
+  const stranger = await user('user', personalOrg?.id);
+  const catalog = await call(personal, 'get', '/templates');
+  expect(catalog.status).toBe(200);
+  expect(catalog.body.data.role).toBe('user');
+  let draft = await create(personal, 'life_insurance');
+  const content = 'Nội dung hợp đồng đã được người dùng kiểm tra. '.repeat(12);
+  let response = await call(personal, 'patch', `/${draft.id}`).send({ ...changes(draft), content });
+  expect(response.status).toBe(200); draft = response.body.data;
+  expect((await call(stranger, 'get')).body.data.items).toEqual([]);
+  for (const actor of [stranger, owner, staff]) {
+    expect((await call(actor, 'get', `/${draft.id}`)).status).toBe(404);
+    expect((await call(actor, 'patch', `/${draft.id}`).send(changes(draft))).status).toBe(404);
+    expect((await decide(actor, draft, 'approve')).status).toBe(404);
+    expect((await call(actor, 'get', `/${draft.id}/export`)).status).toBe(404);
+    expect((await call(actor, 'get', `/${draft.id}/assistant`)).status).toBe(404);
+  }
+  expect((await decide(personal, draft, 'submit')).status).toBe(400);
+  expect((await call(personal, 'get', `/${draft.id}/export`)).status).toBe(409);
+  const generated = await generate(personal, draft);
+  expect(generated.status).toBe(200);
+  draft = generated.body.data;
+  expect((await Drafts.findById(draft.id)).generationStartedAt).toBeUndefined();
+  response = await decide(personal, draft, 'approve');
+  expect(response.status).toBe(200); draft = response.body.data;
+  expect(draft.status).toBe('approved');
+  expect((await call(personal, 'patch', `/${draft.id}`).send(changes(draft))).status).toBe(409);
+  expect((await call(personal, 'get', `/${draft.id}/export`)).status).toBe(200);
+  expect((await call(personal, 'get', `/${draft.id}/export?format=print`)).body.data.content).toBe(draft.content);
+  const copy = await call(personal, 'post', `/${draft.id}/copy-latest`).send({ revision: draft.revision });
+  expect(copy.status).toBe(201);
+  expect((await call(personal, 'patch', `/${copy.body.data.id}/pin`).send({ pinned: true })).status).toBe(200);
+  expect((await call(personal, 'delete', `/${copy.body.data.id}`).send({ revision: copy.body.data.revision })).status).toBe(200);
+});
+
+test('creation snapshots organization data; sensitive fields are encrypted and stale edits fail', async () => {
+  const draft = await create();
+  expect(draft.organization.name).toBe(org.name);
+  const raw = await Drafts.collection.findOne({ _id: new mongoose.Types.ObjectId(draft.id) });
+  expect(raw.inputJson).toMatch(/^enc:v1:/); expect(raw.organizationJson).toMatch(/^enc:v1:/);
+  const update = await call(staff, 'patch', `/${draft.id}`).send({ ...changes(draft), title: 'Updated title' });
+  expect(update.status).toBe(200); expect(update.body.data.revision).toBe(1);
+  expect((await call(staff, 'patch', `/${draft.id}`).send(changes(draft))).status).toBe(409);
+  expect((await call(otherStaff, 'get', `/${draft.id}`)).status).toBe(404);
+  expect((await call(otherOwner, 'get', `/${draft.id}`)).status).toBe(404);
+  expect((await call(owner, 'get', `/${draft.id}`)).status).toBe(200);
+});
+
+test.each(['labor', 'service', 'sales'])('%s generation retains the fixed frame and masks identity values before calling AI', async code => {
+  const before = (await getSubscription(staff.id, org.id)).drafting.used;
+  const draft = await create(staff, code);
+  const response = await generate(staff, draft);
+  expect(response.status).toBe(200);
+  expect((await getSubscription(staff.id, org.id)).drafting).toMatchObject({ used: before + 1, reserved: 0 });
+  expect(response.body.data.content).toContain('CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM');
+  expect(response.body.data.content).toContain('Nguyễn Văn Kiểm Thử');
+  expect(response.body.data.content).toContain('012345678901');
+  expect(response.body.data.content).not.toContain('[FIELD_');
+  expect(response.body.data.content).not.toContain('{{');
+  const prompt = generateJson.mock.calls.at(-1)[0];
+  expect(prompt).not.toContain('Nguyễn Văn Kiểm Thử');
+  expect(prompt).not.toContain('012345678901');
+  expect(prompt).not.toContain('123 Đường Riêng');
+  expect(prompt).not.toContain(org.name);
+  expect((await Drafts.collection.findOne({ _id: new mongoose.Types.ObjectId(draft.id) })).content).toMatch(/^enc:v1:/);
+});
+
+test('invalid or incomplete inputs never start AI, including dates, role and labor term rules', async () => {
+  const before = generateJson.mock.calls.length;
+  expect((await call(staff, 'post').send({ templateCode: 'service', title: 'Test', ourParty: 'employer', input: {} })).status).toBe(400);
+  expect((await call(staff, 'post').send({ templateCode: 'labor', title: 'Test', ourParty: 'employer', input: { injected: 'ignored?' } })).status).toBe(400);
+  for (const input of [{ ...values('labor'), endDate: '2030-01-01' }, { ...values('labor'), partnerBirthDate: '2020-01-01' }, { ...values('labor'), salary: '-1' }, { ...values('labor'), signingDate: '2026-02-30' }]) {
+    expect((await call(staff, 'post').send({ templateCode: 'labor', title: 'Test', ourParty: 'employer', input })).status).toBe(400);
+  }
+  const missing = await create(staff, 'service', {});
+  expect((await generate(staff, missing)).status).toBe(400);
+  expect(generateJson.mock.calls.length).toBe(before);
+});
+
+test('generation is locked against duplicate requests, releases on provider failure and validates AI structure', async () => {
+  const draft = await create();
+  let entered, release;
+  const started = new Promise(resolve => { entered = resolve; });
+  generateJson.mockImplementationOnce(() => new Promise(resolve => { release = resolve; entered(); }));
+  const first = generate(staff, draft).then(response => response);
+  await started;
+  expect((await generate(staff, draft)).status).toBe(409);
+  expect((await call(staff, 'patch', `/${draft.id}`).send(changes(draft))).status).toBe(409);
+  release({ sections: CONTRACT_TEMPLATES.find(item => item.code === 'service').sections.map(section => ({ key: section.key, addition: '' })), notes: [] });
+  expect((await first).status).toBe(200);
+  const failing = await create();
+  generateJson.mockRejectedValueOnce(new Error('Provider unavailable'));
+  expect((await generate(staff, failing)).status).toBe(500);
+  expect((await Drafts.findById(failing.id)).generationStartedAt).toBeUndefined();
+  generateJson.mockResolvedValueOnce({ sections: [], notes: [] });
+  expect((await generate(staff, failing)).status).toBe(502);
+  expect((await generate(staff, failing)).status).toBe(200);
+});
+
+test('staff finalizes and exports their own draft without Owner approval; completed content is immutable', async () => {
+  let draft = (await generate(staff, await create())).body.data;
+  expect((await call(staff, 'get', `/${draft.id}/export`)).status).toBe(409);
+  for (const actor of [otherStaff, otherOwner]) {
+    expect((await decide(actor, draft, 'approve')).status).toBe(404);
+    expect((await call(actor, 'post', `/${draft.id}/publish`).send({ revision: draft.revision })).status).toBe(404);
+  }
+  const response = await decide(staff, draft, 'approve');
+  expect(response.status).toBe(200);
+  draft = response.body.data;
+  expect(draft.status).toBe('approved');
+  expect((await decide(staff, draft, 'approve')).status).toBe(409);
+  expect((await call(staff, 'patch', `/${draft.id}`).send(changes(draft))).status).toBe(409);
+  const staffDownload = await call(staff, 'get', `/${draft.id}/export`);
+  expect(staffDownload.status).toBe(200);
+  expect(staffDownload.headers['content-type']).toContain('application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const staffPrint = await call(staff, 'get', `/${draft.id}/export?format=print`);
+  expect(staffPrint.status).toBe(200); expect(staffPrint.body.data.content).toBe(draft.content);
+  for (const member of [otherStaff, otherOwner]) {
+    expect((await call(member, 'get', `/${draft.id}/export`)).status).toBe(404);
+    expect((await call(member, 'get', `/${draft.id}/export?format=print`)).status).toBe(404);
+  }
+  const print = await call(owner, 'get', `/${draft.id}/export?format=print`);
+  expect(print.status).toBe(200); expect(print.body.data.content).toBe(draft.content);
+  const docx = await createDraftDocx(`${draft.content}\nA & B <C>`);
+  const zip = await JSZip.loadAsync(docx);
+  const document = await zip.file('word/document.xml').async('string');
+  expect(document).toContain('Nguyễn Văn Kiểm Thử'); expect(document).toContain('A &amp; B &lt;C&gt;');
+  expect(document).toContain('Times New Roman');
+  expect(document).toContain('<w:sz w:val="26"/>');
+  expect(document).toContain('<w:lang w:val="vi-VN"/>');
+  expect(document).toContain('<w:i/>');
+  const before = await ContractModel.countDocuments({ orgId: org.id });
+  const result = await call(staff, 'post', `/${draft.id}/publish`).send({ revision: draft.revision });
+  expect(result.status).toBe(200);
+  const again = await call(owner, 'post', `/${draft.id}/publish`).send({ revision: draft.revision });
+  expect(again.body.data.contractId).toBe(result.body.data.contractId);
+  expect(await ContractModel.countDocuments({ orgId: org.id })).toBe(before + 1);
+  expect(uploadContractFile).toHaveBeenCalledTimes(1);
+  const version = await ContractVersionModel.findOne({ contractId: result.body.data.contractId }).select('+extractedText');
+  expect(version.extractionStatus).toBe('completed'); expect(version.extractedText).toBe(draft.content);
+});
+
+test.each([
+  ['draft', 'submit'],
+  ['pending_approval', 'approve'],
+  ['pending_approval', 'submit'],
+])('staff can complete an existing %s draft using %s without waiting for Owner', async (status, action) => {
+  let draft = await create();
+  const saved = await call(staff, 'patch', `/${draft.id}`).send({
+    ...changes(draft),
+    content: renderDraftDocument('service', draft.input, org.name, draft.ourParty),
+  });
+  expect(saved.status).toBe(200);
+  draft = saved.body.data;
+  await Drafts.updateOne({ _id: draft.id }, { $set: { status } });
+  expect((await decide(otherStaff, draft, action)).status).toBe(404);
+  expect((await decide(staff, { ...draft, revision: draft.revision + 1 }, action)).status).toBe(409);
+  const response = await decide(staff, draft, action);
+  expect(response.status).toBe(200);
+  draft = response.body.data;
+  expect(draft.status).toBe('approved');
+  const stored = await Drafts.findById(draft.id);
+  expect(stored.approvedBy.toString()).toBe(staff.id);
+  expect(stored.approvedAt).toBeInstanceOf(Date);
+  expect((await call(staff, 'get', `/${draft.id}/export`)).status).toBe(200);
+});
+
+test('new template catalogs and direct creation enforce four business types and three personal types', async () => {
+  const personal = await user('user');
+  const catalog = await call(personal, 'get', '/templates');
+  expect(catalog.status).toBe(200);
+  expect(catalog.body.data.templates.map(template => template.code).sort()).toEqual(['housing_purchase', 'labor', 'life_insurance']);
+  expect(catalog.body.data.templates.find(template => template.code === 'labor').parties).toEqual([{ code: 'employee', name: 'Người lao động' }]);
+  for (const member of [owner, staff]) {
+    const response = await call(member, 'get', '/templates');
+    expect(response.body.data.templates.map(template => template.code).sort()).toEqual(['labor', 'office_lease', 'sales', 'service']);
+    for (const code of ['rental', 'housing_purchase', 'life_insurance']) {
+      expect((await call(member, 'post').send({ templateCode: code, title: 'Not allowed', ourParty: 'buyer', input: {} })).status).toBe(403);
+    }
+  }
+  for (const code of ['rental', 'service', 'sales', 'office_lease']) {
+    expect((await call(personal, 'post').send({ templateCode: code, title: 'Not allowed', ourParty: 'buyer', input: {} })).status).toBe(403);
+  }
+});
+
+test.each(['buyer', 'seller'])('personal %s can complete a housing contract and export Word without creating an organization', async ourParty => {
+  const personal = await user('user');
+  const stranger = await user('user');
+  const input = { ...values('housing_purchase'), reference: 'TN-001', representative: 'Nguyễn Văn An', partnerName: 'Trần Thị Bình', propertyAddress: '12 Nguyễn Huệ, TP. Hồ Chí Minh', price: '10000000', depositAmount: '0' };
+  const before = await OrganizationModel.countDocuments();
+  const response = await call(personal, 'post').send({ templateCode: 'housing_purchase', title: 'Hợp đồng mua bán nhà cá nhân', ourParty, input, editorMode: 'studio' });
+  expect(response.status).toBe(201);
+  let draft = response.body.data;
+  expect(draft.input.depositAmount).toBe('0');
+  expect(draft.content).not.toContain('Tên doanh nghiệp');
+  expect(draft.content).not.toContain('Chức vụ');
+  expect(draft.content).toContain(input.propertyAddress);
+  expect(draft.content).toContain('10.000.000');
+  expect(draft.content).toContain('BÊN A — ' + (ourParty === 'buyer' ? 'BÊN MUA / BÊN ĐẶT CỌC' : 'BÊN BÁN / BÊN NHẬN ĐẶT CỌC'));
+  expect((await decide(stranger, draft, 'approve')).status).toBe(404);
+  expect((await call(stranger, 'get', `/${draft.id}/export`)).status).toBe(404);
+  const completed = await decide(personal, draft, 'approve');
+  expect(completed.status).toBe(200);
+  draft = completed.body.data;
+  expect(draft.status).toBe('approved');
+  const printed = await call(personal, 'get', `/${draft.id}/export?format=print`);
+  expect(printed.status).toBe(200);
+  expect(printed.body.data.document).toEqual(draft.document);
+  const word = await call(personal, 'get', `/${draft.id}/export`).buffer(true).parse((res, done) => {
+    const chunks = [];
+    res.on('data', chunk => chunks.push(chunk));
+    res.on('end', () => done(null, Buffer.concat(chunks)));
+  });
+  expect(word.status).toBe(200);
+  const zip = await JSZip.loadAsync(word.body);
+  const xml = await zip.file('word/document.xml').async('string');
+  expect(xml).toContain('HỢP ĐỒNG ĐẶT CỌC VÀ MUA BÁN NHÀ / CĂN HỘ');
+  expect(xml).toContain(input.propertyAddress);
+  expect(xml).toContain('Nguyễn Văn An');
+  expect(xml).toContain('Trần Thị Bình');
+  expect((await call(personal, 'patch', `/${draft.id}`).send({ ...changes(draft), document: draft.document })).status).toBe(409);
+  expect((await UserModel.findById(personal.id)).orgId ?? null).toBeNull();
+  expect(await OrganizationModel.countDocuments()).toBe(before);
+});
+
+test('housing completion validates required fields, positive price, nonnegative deposit and transaction dates', async () => {
+  const personal = await user('user');
+  const partial = await call(personal, 'post').send({ templateCode: 'housing_purchase', title: 'Nháp mua bán nhà', ourParty: 'buyer', input: {}, editorMode: 'studio' });
+  expect(partial.status).toBe(201);
+  expect((await decide(personal, partial.body.data, 'approve')).status).toBe(400);
+  for (const update of [{ depositAmount: '-1' }, { price: '0' }, { endDate: '2026-10-24' }, { ourParty: 'policyholder' }]) {
+    const { ourParty, ...patch } = update;
+    const response = await call(personal, 'post').send({ templateCode: 'housing_purchase', title: 'Mua bán nhà', ourParty: ourParty ?? 'buyer', input: { ...values('housing_purchase'), ...patch }, editorMode: 'studio' });
+    expect(response.status).toBe(400);
+  }
+});
+
+test('personal labor fixes the employee perspective and never fills the employer with the personal account name', async () => {
+  const personal = await user('user');
+  const created = await call(personal, 'post').send({ templateCode: 'labor', title: 'Personal employment', ourParty: 'employee', input: {}, editorMode: 'studio' });
+  expect(created.status).toBe(201);
+  const draft = created.body.data;
+  expect(draft.ourParty).toBe('employee');
+  expect(draft.input.partnerName).toBe(personal.name);
+  expect(draft.input.companyName).toBeUndefined();
+  const employerNameField = draft.document.content.flatMap(node => node.content ?? [])
+    .find(node => node.type === 'templateField' && node.attrs.key === 'companyName');
+  expect(employerNameField.attrs.value).toBe('');
+  expect((await call(personal, 'post').send({ templateCode: 'labor', title: 'Wrong perspective', ourParty: 'employer', input: {} })).status).toBe(400);
+  expect((await call(owner, 'post').send({ templateCode: 'labor', title: 'Wrong perspective', ourParty: 'employee', input: {} })).status).toBe(400);
+  const saved = await call(personal, 'patch', `/${draft.id}`).send({ ...changes(draft), document: draft.document, ourParty: 'employer' });
+  expect(saved.status).toBe(400);
+  const complete = await call(personal, 'post').send({ templateCode: 'labor', title: 'Complete employment', ourParty: 'employee', input: values('labor'), editorMode: 'studio' });
+  expect(complete.status).toBe(201);
+  const approved = await decide(personal, complete.body.data, 'approve');
+  expect(approved.status).toBe(200);
+  expect((await call(personal, 'get', `/${approved.body.data.id}/export`)).status).toBe(200);
+});
+
+test.each(['lessee', 'lessor'])('business %s can complete office lease and transfer it to review with the right type and party', async ourParty => {
+  const created = await call(staff, 'post').send({ templateCode: 'office_lease', title: 'Office lease', ourParty, input: values('office_lease'), editorMode: 'studio' });
+  expect(created.status).toBe(201);
+  let draft = created.body.data;
+  expect(draft.template.code).toBe('office_lease');
+  expect(draft.content).toContain('VĂN PHÒNG / MẶT BẰNG');
+  const completed = await decide(staff, draft, 'approve');
+  expect(completed.status).toBe(200);
+  draft = completed.body.data;
+  const exported = await call(staff, 'get', `/${draft.id}/export`);
+  expect(exported.status).toBe(200);
+  const published = await call(staff, 'post', `/${draft.id}/publish`).send({ revision: draft.revision });
+  expect(published.status).toBe(200);
+  expect(await ContractModel.findById(published.body.data.contractId)).toMatchObject({ type: 'office_lease', ourParty });
+});
+
+test('personal policyholder can edit, complete and export the insurance draft without creating an organization', async () => {
+  const personal = await user('user');
+  const partial = await call(personal, 'post').send({ templateCode: 'life_insurance', title: 'Insurance draft', ourParty: 'policyholder', input: {}, editorMode: 'studio' });
+  expect(partial.status).toBe(201);
+  expect(partial.body.data.input.representative).toBe(personal.name);
+  expect((await decide(personal, partial.body.data, 'approve')).status).toBe(400);
+  const created = await call(personal, 'post').send({ templateCode: 'life_insurance', title: 'Insurance draft', ourParty: 'policyholder', input: values('life_insurance'), editorMode: 'studio' });
+  expect(created.status).toBe(201);
+  let draft = created.body.data;
+  expect(draft.content).toContain('DOANH NGHIỆP BẢO HIỂM');
+  expect(draft.content).toContain('Quyền lợi');
+  const saved = await call(personal, 'patch', `/${draft.id}`).send({ ...changes(draft), title: 'Updated insurance', document: draft.document });
+  expect(saved.status).toBe(200);
+  const completed = await decide(personal, saved.body.data, 'approve');
+  expect(completed.status).toBe(200);
+  draft = completed.body.data;
+  const exported = await call(personal, 'get', `/${draft.id}/export`).buffer(true).parse((res, done) => {
+    const chunks = []; res.on('data', chunk => chunks.push(chunk)); res.on('end', () => done(null, Buffer.concat(chunks)));
+  });
+  expect(exported.status).toBe(200);
+  const zip = await JSZip.loadAsync(exported.body);
+  expect(await zip.file('word/document.xml').async('string')).toContain('HỢP ĐỒNG BẢO HIỂM NHÂN THỌ');
+  expect((await UserModel.findById(personal.id)).orgId).toBeUndefined();
+  expect((await call(personal, 'post').send({ templateCode: 'life_insurance', title: 'Wrong perspective', ourParty: 'insurer', input: {} })).status).toBe(400);
+});
+
+test('workspace selection controls the template catalog, not the account membership alone', async () => {
+  const { refresh } = require('../dist/services/identity/auth.service');
+  const session = await refresh(tokensForUser(staff).refreshToken, undefined, 'personal');
+  const catalog = await request(app).get('/api/v1/contract-drafts/templates').set('Authorization', `Bearer ${session.accessToken}`);
+  expect(catalog.status).toBe(200);
+  expect(catalog.body.data.templates.map(template => template.code).sort()).toEqual(['housing_purchase', 'labor', 'life_insurance']);
+  const forbidden = await request(app).post('/api/v1/contract-drafts').set('Authorization', `Bearer ${session.accessToken}`)
+    .send({ templateCode: 'sales', title: 'Business draft in personal space', ourParty: 'seller', input: {} });
+  expect(forbidden.status).toBe(403);
+});
+
+test('saved legacy rental remains readable and exportable but cannot be copied into a new out-of-scope draft', async () => {
+  const personal = await user('user');
+  const rental = CONTRACT_TEMPLATES.find(template => template.code === 'rental');
+  const oldDraft = await Drafts.create({ orgId: null, createdBy: personal._id, title: 'Saved rental', templateCode: 'rental',
+    templateVersion: 1, templateJson: JSON.stringify(rental), inputJson: JSON.stringify(values('rental')), ourParty: 'tenant',
+    organizationJson: JSON.stringify({ name: personal.name, address: '', taxCode: '' }), content: 'Original saved rental content', status: 'approved' });
+  expect((await call(personal, 'get', `/${oldDraft.id}`)).body.data.content).toBe('Original saved rental content');
+  expect((await call(personal, 'get', `/${oldDraft.id}/export`)).status).toBe(200);
+  expect((await call(personal, 'post', `/${oldDraft.id}/copy-latest`).send({ revision: oldDraft.revision })).status).toBe(403);
+});
+
+test('changing form data invalidates generated content instead of retaining mismatched clauses', async () => {
+  const draft = (await generate(owner, await create(owner))).body.data;
+  const response = await call(owner, 'patch', `/${draft.id}`).send({ ...changes(draft), input: { ...draft.input, price: '99000000' } });
+  expect(response.status).toBe(200); expect(response.body.data.content).toBe(''); expect(response.body.data.generatedAt).toBeNull();
+});
+
+test('deterministic frame uses the organization role for buyer/client and indefinite labor', () => {
+  const input = { ...values('labor'), termType: 'indefinite', endDate: '' };
+  expect(renderDraftDocument('labor', input, org.name, 'employer')).toContain('Không xác định thời hạn');
+  const sales = renderDraftDocument('sales', values('sales'), org.name, 'buyer');
+  expect(sales.slice(sales.indexOf('BÊN B (BÊN MUA)'), sales.indexOf('ĐIỀU 1.'))).toContain('Thông tin kiểm thử');
+});
+
+test('drafts retain the original template snapshot after a catalog update', async () => {
+  const draft = await create(owner);
+  const template = CONTRACT_TEMPLATES.find(item => item.code === 'service');
+  const original = template.name;
+  try {
+    template.name = 'Future template title';
+    const result = await generate(owner, draft);
+    expect(result.status).toBe(200);
+    expect(result.body.data.template.name).toBe(original);
+    expect(result.body.data.content).toContain(original.toLocaleUpperCase('vi-VN'));
+    expect(result.body.data.content).not.toContain('FUTURE TEMPLATE');
+  } finally { template.name = original; }
+});
+
+test('current forms cover each field once and distinguish labor parties from companies', () => {
+  for (const template of CONTRACT_TEMPLATES) {
+    expect(template.version).toBe(template.code === 'labor' ? 5 : template.code === 'sales' ? 4 : template.code === 'service' ? 3 : template.code === 'rental' ? 1 : 2);
+    const grouped = template.formGroups.flatMap(group => group.fields);
+    expect(grouped.length).toBe(new Set(grouped).size);
+    expect(grouped.slice().sort()).toEqual(template.fields.map(field => field.key).sort());
+  }
+  const labor = CONTRACT_TEMPLATES.find(template => template.code === 'labor');
+  expect(labor.sections).toHaveLength(12);
+  expect(labor.fields.find(field => field.key === 'partnerName').label).toBe('Họ và tên người lao động');
+});
+
+test('labor v5 contains current legal references, required terms and guarded termination/confidentiality clauses', () => {
+  const labor = CONTRACT_TEMPLATES.find(template => template.code === 'labor');
+  const content = labor.sections.map(section => section.body).join('\n');
+  expect(labor.version).toBe(5);
+  expect(labor.legalBasis).toContain('74/2025/QH15');
+  expect(labor.legalBasis).not.toContain('38/2013/QH13');
+  for (const key of ['partnerGender', 'workplace', 'allowances', 'salaryReview', 'insurance', 'protection', 'training', 'weeklyRest']) {
+    expect(labor.fields.find(field => field.key === key)?.required).toBe(true);
+    if (key !== 'partnerGender') expect(content).toContain(`{{${key}}}`);
+  }
+  for (const marker of ['03 ngày làm việc', '60 ngày làm việc', 'sự đồng ý bằng văn bản', 'ngày làm việc kế tiếp', '12, 14 hoặc 16', '14 ngày làm việc', 'không quá 30 ngày', 'Điều 62', 'chứng từ hợp lệ', 'Điều 125', 'Điều 37']) expect(content).toContain(marker);
+  for (const obsolete of ['hoàn trả lại 100%', 'Trong thời hạn 02 (hai) năm', 'bằng 06 tháng lương', 'Trong thời hạn 07 ngày', 'không có bất kỳ sự phản đối']) expect(content).not.toContain(obsolete);
+  const indefinite = renderDraftDocument('labor', { ...values('labor'), termType: 'indefinite', endDate: '' }, org.name, 'employer');
+  expect(indefinite).toContain('Không xác định thời hạn');
+  expect(indefinite).not.toContain('[NgayKetThuc]');
+});
+
+test('copying an old snapshot creates a current draft without altering original content or approval', async () => {
+  const draft = await create(owner, 'labor');
+  const stored = await Drafts.findById(draft.id);
+  stored.templateVersion = 1;
+  stored.templateJson = JSON.stringify({ ...JSON.parse(stored.templateJson), version: 1 });
+  stored.content = 'Bản hợp đồng gốc đã duyệt'; stored.status = 'approved';
+  await stored.save();
+  expect((await call(otherOwner, 'post', `/${draft.id}/copy-latest`).send({ revision: 0 })).status).toBe(404);
+  expect((await call(owner, 'post', `/${draft.id}/copy-latest`).send({ revision: 1 })).status).toBe(409);
+  const response = await call(owner, 'post', `/${draft.id}/copy-latest`).send({ revision: 0 });
+  expect(response.status).toBe(201);
+  expect(response.body.data.id).not.toBe(draft.id);
+  expect(response.body.data.templateVersion).toBe(5);
+  expect(response.body.data.input.partnerName).toBe(draft.input.partnerName);
+  expect(response.body.data.content).toBe(''); expect(response.body.data.status).toBe('draft');
+  const original = await Drafts.findById(draft.id);
+  expect(original.templateVersion).toBe(1); expect(original.status).toBe('approved');
+  expect(original.content).toBe('Bản hợp đồng gốc đã duyệt');
+});
+
+test('copying housing v1 preserves stage prose without using it as a v2 select value', async () => {
+  const personal = await user('user');
+  const draft = await create(personal, 'housing_purchase');
+  const original = await Drafts.findById(draft.id);
+  const oldStage = 'Đặt cọc sau khi kiểm tra giấy chứng nhận, công chứng trong 30 ngày.';
+  original.templateVersion = 1;
+  original.templateJson = JSON.stringify({ ...JSON.parse(original.templateJson), version: 1 });
+  original.inputJson = JSON.stringify({ ...draft.input, transactionStage: oldStage, transactionConditions: undefined });
+  original.content = 'Giữ nguyên nội dung đã ký';
+  await original.save();
+  const response = await call(personal, 'post', `/${draft.id}/copy-latest`).send({ revision: draft.revision });
+  expect(response.status).toBe(201);
+  expect(response.body.data.templateVersion).toBe(2);
+  expect(response.body.data.input).toMatchObject({ transactionStage: 'deposit', transactionConditions: oldStage });
+  const untouched = await Drafts.findById(draft.id);
+  expect(untouched.content).toBe('Giữ nguyên nội dung đã ký');
+  expect(JSON.parse(untouched.inputJson).transactionStage).toBe(oldStage);
+});
+
+test('invalid labor party details and nonsense are blocked before AI, while incomplete editing remains allowed', () => {
+  const { inputErrors } = require('../dist/services/drafting/draftInputRules');
+  for (const update of [{ partnerName: 'Công ty Khách Hàng' }, { representative: 'Staff' }, { workingTime: 'ghhghhhgh' }]) {
+    const input = { ...values('labor'), ...update };
+    expect(inputErrors('labor', input, false)).toEqual([]);
+    expect(inputErrors('labor', input, true).length).toBeGreaterThan(0);
+  }
+});
+
+test('AI reported input issues do not produce a contract or leave a generation lock', async () => {
+  const before = (await getSubscription(owner.id, org.id)).drafting.used;
+  const draft = await create(owner);
+  generateJson.mockResolvedValueOnce({ sections: [], notes: [], issues: [{ field: 'scope', message: 'Nội dung chưa rõ nghĩa.' }] });
+  const result = await generate(owner, draft);
+  expect(result.status).toBe(400);
+  expect(JSON.stringify(result.body)).toContain('Nội dung chưa rõ nghĩa.');
+  const stored = await Drafts.findById(draft.id);
+  expect(stored.content).toBe(''); expect(stored.generationStartedAt).toBeUndefined();
+  expect((await getSubscription(owner.id, org.id)).drafting).toMatchObject({ used: before, reserved: 0 });
+});
+
+test('unpaid and exhausted organizations can save drafts but cannot call AI', async () => {
+  const before = generateJson.mock.calls.length;
+  const unpaid = await create(otherOwner);
+  expect((await generate(otherOwner, unpaid)).status).toBe(403);
+  const draft = await create(owner);
+  const period = await SubscriptionPeriodModel.findOne({ orgId: org.id });
+  const previous = period.draftingUsed;
+  await SubscriptionPeriodModel.updateOne({ _id: period.id }, { $set: { draftingUsed: period.plan.draftingLimit } });
+  try {
+    expect((await generate(owner, draft)).status).toBe(403);
+    expect(generateJson.mock.calls.length).toBe(before);
+    expect((await Drafts.findById(draft.id)).generationStartedAt).toBeUndefined();
+  } finally { await SubscriptionPeriodModel.updateOne({ _id: period.id }, { $set: { draftingUsed: previous } }); }
+});
+
+test('line item decimals round per row, validate totals and export real tables with signature columns', async () => {
+  const { validateLineItems } = require('../dist/services/drafting/line-items');
+  const { inputErrors } = require('../dist/services/drafting/draftInputRules');
+  const items = JSON.stringify([{ name: 'Sản phẩm A & B', unit: 'kg', quantity: '1.125', unitPrice: '1000.25' }, { name: 'Sản phẩm B', unit: 'cái', quantity: '2', unitPrice: '10000000' }]);
+  expect(validateLineItems(items, true)).toMatchObject({ errors: [], total: '20001125.28' });
+  expect(validateLineItems(JSON.stringify([{ name: '', unit: '', quantity: '-1', unitPrice: '5' }]), true).errors.length).toBeGreaterThan(0);
+  const input = { ...values('sales'), lineItems: items, price: '20001125.28', totalPrice: '20001125.28', remainingAmount: '20001125.28' };
+  expect(inputErrors('sales', input, true)).toEqual([]);
+  expect(inputErrors('sales', { ...input, price: '1' }, true).join()).toContain('khớp');
+  const content = renderDraftDocument('sales', input, org.name, 'seller');
+  expect(content).toContain('ĐIỀU 15.'); expect(content).toContain('20.001.125,28');
+  const zip = await JSZip.loadAsync(await createDraftDocx(content));
+  const doc = await zip.file('word/document.xml').async('string');
+  expect(doc.match(/<w:tbl>/g)).toHaveLength(3);
+  expect(doc).toContain('<w:tblHeader/>'); expect(doc).toContain('Sản phẩm A &amp; B');
+  expect(doc).toContain('BÊN MUA (BÊN B)'); expect(doc).not.toContain('| STT');
+});

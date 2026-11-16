@@ -6,6 +6,7 @@ dotenv.config();
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().default(4000),
+  PERSONAL_REVIEW_PRICE_PER_UNIT: z.coerce.number().int().min(1000).max(1000000).default(10000),
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
   DNS_SERVERS: z
     .string()
@@ -52,6 +53,7 @@ const envSchema = z.object({
   LEGAL_EMBED_REQUESTS_PER_MINUTE: z.coerce.number().int().min(1).default(100),
 
   OCR_WORKERS: z.coerce.number().int().min(1).max(8).default(2),
+  LIBREOFFICE_PATH: z.string().trim().min(1).default(process.platform === 'win32' ? 'C:\\Program Files\\LibreOffice\\program\\soffice.exe' : 'soffice'),
 
   REDIS_URL: z.string().min(1).default('redis://localhost:6379'),
   START_WORKERS: z

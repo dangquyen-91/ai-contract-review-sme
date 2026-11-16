@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { FilePlus2, RefreshCw, Trash2 } from "lucide-react";
+import { FilePlus2, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function LegalSourceDetailActions({ busy, fetching, onAppend, onRefresh }: {
-  busy: boolean; fetching: boolean; onAppend: () => void; onRefresh: () => Promise<unknown>;
+export function LegalSourceDetailActions({ busy, fetching, onAppend, onEdit, onRefresh }: {
+  busy: boolean; fetching: boolean; onAppend: () => void; onEdit: () => void; onRefresh: () => Promise<unknown>;
 }) {
   const [refreshing, setRefreshing] = useState(false);
   async function refresh() {
@@ -14,6 +14,7 @@ export function LegalSourceDetailActions({ busy, fetching, onAppend, onRefresh }
   }
   return <div className="flex flex-col gap-3 sm:flex-row">
     <Button onClick={onAppend} disabled={busy}><FilePlus2 aria-hidden="true" />Bổ sung tài liệu</Button>
+    <Button variant="outline" onClick={onEdit} disabled={busy}><Pencil aria-hidden="true" />Sửa thông tin</Button>
     <Button variant="outline" className="min-w-32" loading={refreshing} disabled={fetching || busy} onClick={() => void refresh()}>
       {!refreshing && <RefreshCw aria-hidden="true" />}Làm mới
     </Button>

@@ -1,0 +1,9 @@
+@page {
+  size: A4;
+  margin: 20mm 20mm 20mm 30mm;
+}
+
+.document p {
+  orphans: 3;
+  widows: 3;
+}

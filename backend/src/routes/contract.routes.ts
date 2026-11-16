@@ -10,12 +10,20 @@ import { aiLimiter } from '../middlewares/rateLimit.middleware';
 import { validate } from '../middlewares/validate.middleware';
 import { contractFileUpload } from '../middlewares/upload.middleware';
 import {
+  confirmContractProfileHandler,
+  contractReviewQuoteHandler,
   createContractHandler,
+  createContractVersionHandler,
   deleteContractHandler,
   getContractFileHandler,
   getContractHandler,
   getContractTextHandler,
   listContractsHandler,
+  listContractVersionsHandler,
+  getVersionMatchHandler,
+  attachVersionHandler,
+  detachVersionHandler,
+  retryClassificationHandler,
 } from '../controllers/contract.controller';
 import { listClausesHandler } from '../controllers/clause.controller';
 import { getShareSummaryHandler } from '../controllers/shareSummary.controller';
@@ -33,12 +41,18 @@ import {
 import { listReviewsHandler, startReviewHandler } from '../controllers/review.controller';
 import {
   analysisFocusBodySchema,
+  confirmContractProfileSchema,
   chatMessageBodySchema,
   contractIdParamSchema,
   contractTextQuerySchema,
   contractFileQuerySchema,
   shareSummaryQuerySchema,
   createContractSchema,
+  createContractVersionSchema,
+  attachVersionSchema,
+  versionParamSchema,
+  versionQuerySchema,
+  resultQuerySchema,
   findingParamSchema,
   listContractsQuerySchema,
   updateProposedRevisionBodySchema,
@@ -56,9 +70,48 @@ router.post(
   contractFileUpload.single('file'),
   validate({ body: createContractSchema }),
   createContractHandler,
+  createContractVersionHandler,
 );
 
 router.get('/:id', validate({ params: contractIdParamSchema }), getContractHandler);
+router.get('/:id/review-payment', validate({ params: contractIdParamSchema }), contractReviewQuoteHandler);
+
+router.get('/:id/versions', validate({ params: contractIdParamSchema }), listContractVersionsHandler);
+router.get('/:id/version-match', validate({ params: contractIdParamSchema }), getVersionMatchHandler);
+router.post(
+  '/:id/versions',
+  requireRole(...CONTRACT_UPLOAD_ROLES),
+  contractFileUpload.single('file'),
+  validate({ params: contractIdParamSchema, body: createContractVersionSchema }),
+  createContractVersionHandler,
+);
+router.post(
+  '/:id/versions/attach',
+  requireRole(...CONTRACT_UPLOAD_ROLES),
+  validate({ params: contractIdParamSchema, body: attachVersionSchema }),
+  attachVersionHandler,
+);
+router.post(
+  '/:id/versions/:versionId/detach',
+  requireRole(...CONTRACT_UPLOAD_ROLES),
+  validate({ params: versionParamSchema }),
+  detachVersionHandler,
+);
+
+router.patch(
+  '/:id/profile',
+  requireRole(...CONTRACT_REVIEW_ROLES),
+  validate({ params: contractIdParamSchema, body: confirmContractProfileSchema }),
+  confirmContractProfileHandler,
+);
+
+router.post(
+  '/:id/classify',
+  requireRole(...CONTRACT_REVIEW_ROLES),
+  aiLimiter,
+  validate({ params: contractIdParamSchema }),
+  retryClassificationHandler,
+);
 
 router.get(
   '/:id/text',
@@ -80,11 +133,23 @@ router.post(
 
 router.get('/:id/reviews', validate({ params: contractIdParamSchema }), listReviewsHandler);
 
-router.get('/:id/clauses', validate({ params: contractIdParamSchema }), listClausesHandler);
+router.get(
+  '/:id/clauses',
+  validate({ params: contractIdParamSchema, query: resultQuerySchema }),
+  listClausesHandler,
+);
 
-router.get('/:id/risks', validate({ params: contractIdParamSchema }), listRiskFindingsHandler);
+router.get(
+  '/:id/risks',
+  validate({ params: contractIdParamSchema, query: resultQuerySchema }),
+  listRiskFindingsHandler,
+);
 
-router.get('/:id/key-terms', validate({ params: contractIdParamSchema }), listKeyTermsHandler);
+router.get(
+  '/:id/key-terms',
+  validate({ params: contractIdParamSchema, query: versionQuerySchema }),
+  listKeyTermsHandler,
+);
 
 router.patch(
   '/:id/risks/:findingId',
@@ -100,7 +165,11 @@ router.delete(
   removeProposedRevisionHandler,
 );
 
-router.get('/:id/chat', validate({ params: contractIdParamSchema }), listChatMessagesHandler);
+router.get(
+  '/:id/chat',
+  validate({ params: contractIdParamSchema, query: versionQuerySchema }),
+  listChatMessagesHandler,
+);
 
 router.post(
   '/:id/chat',

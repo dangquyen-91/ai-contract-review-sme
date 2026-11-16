@@ -16,26 +16,37 @@ jest.mock('../dist/services/organization/invitationEmail.service', () => ({
 jest.mock('../dist/services/review/reviewWorker.service', () => ({
   enqueueReview: jest.fn().mockResolvedValue(undefined),
   isReviewJobAlive: jest.fn().mockResolvedValue(true),
+  removeIdleReviewJob: jest.fn().mockResolvedValue(true),
+  finishUnsuccessfulReview: (...args) => jest.requireActual('../dist/services/review/reviewWorker.service').finishUnsuccessfulReview(...args),
 }));
 jest.mock('../dist/services/analysis/clause.service', () => ({
   segmentClauses: jest.fn().mockResolvedValue([]),
-  listClauses: jest.fn(),
+  listClauses: jest.fn(jest.requireActual('../dist/services/analysis/clause.service').listClauses),
 }));
 jest.mock('../dist/services/analysis/summary.service', () => ({
   generateContractSummary: jest.fn().mockResolvedValue({}),
 }));
 jest.mock('../dist/services/analysis/risk.service', () => ({
   detectRisks: jest.fn().mockResolvedValue([]),
-  listRiskFindings: jest.fn(),
+  listRiskFindings: jest.fn(jest.requireActual('../dist/services/analysis/risk.service').listRiskFindings),
   updateProposedRevision: jest.fn(),
   removeProposedRevision: jest.fn(),
 }));
 jest.mock('../dist/services/ai/llm.service', () => ({
+  generateJson: jest.fn(),
   generateText: jest.fn().mockResolvedValue('Test AI reply'),
   generateTextStream: jest.fn(async function* () {
     yield 'Test ';
     yield 'AI reply';
   }),
+}));
+jest.mock('../dist/services/contract/storage.service', () => ({
+  uploadContractFile: jest.fn().mockResolvedValue({ key: 'fixture-personal-file', resourceType: 'raw', deliveryType: 'authenticated', format: 'pdf' }),
+  deleteContractFile: jest.fn().mockResolvedValue(undefined),
+}));
+jest.mock('../dist/services/contract/extractionWorker.service', () => ({
+  enqueueExtraction: jest.fn().mockResolvedValue({}),
+  waitForExtraction: jest.fn().mockResolvedValue(undefined),
 }));
 
 const mongoose = require('mongoose');
@@ -62,6 +73,7 @@ const {
 } = require('../dist/models/subscription.model');
 const {
   seedPlans,
+  migratePersonalDraftingBenefits,
   getSubscription,
   resolveSubscription,
   lockSubscriptionOrganization,
@@ -94,7 +106,7 @@ async function user(role = 'user', orgId) {
     })
   ).populate('roleId');
 }
-async function workspace(personal = false) {
+async function workspace(personal = false, pages = 5) {
   const org = await OrganizationModel.create({ name: 'Workspace', isPersonal: personal });
   const owner = await user(personal ? 'user' : 'owner', org._id);
   const contract = await ContractModel.create({
@@ -109,12 +121,187 @@ async function workspace(personal = false) {
     versionNumber: 1,
     createdBy: owner._id,
     extractionStatus: 'completed',
+    extractionQuality: { method: 'text_layer', pageCount: pages, ocrPageCount: 0, lowConfidence: false },
     extractedText: 'A valid contract for analysis',
     segmentationStatus: 'completed',
   });
   return { org, owner, contract };
 }
 const bearer = (u) => `Bearer ${tokensForUser(u).accessToken}`;
+
+test('standalone users upload, classify, list and review personal contracts within their own billing scope', async () => {
+  const personal = await user();
+  const other = await user();
+  const organizationCount = await OrganizationModel.countDocuments();
+  const uploaded = await request(app).post('/api/v1/contracts')
+    .set('Authorization', bearer(personal)).set('Prefer', 'respond-async')
+    .attach('file', Buffer.from('%PDF-1.4 fixture'), 'Hợp Đồng Lao Động.pdf');
+  expect(uploaded.status).toBe(202);
+  const id = uploaded.body.data._id;
+  expect(id).toBeTruthy();
+  expect(uploaded.body.data.orgId).toBe(personal.id);
+  expect(uploaded.body.data.title).toBe('Hợp Đồng Lao Động');
+  expect(uploaded.body.data.currentVersion.fileName).toBe('Hợp Đồng Lao Động.pdf');
+  await ContractVersionModel.updateOne({ contractId: id }, { $set: {
+    extractionStatus: 'completed', extractedText: 'Hợp đồng lao động của người lao động kiểm thử.',
+    extractionQuality: { method: 'text_layer', pageCount: 5, ocrPageCount: 0, lowConfidence: false },
+  } });
+  const llm = require('../dist/services/ai/llm.service');
+  llm.generateJson.mockResolvedValueOnce({ type: 'labor', confidence: 0.99, parties: [] });
+  const { classifyContract } = require('../dist/services/contract/contractClassification.service');
+  expect(await classifyContract(id)).toBe('supported');
+  expect((await ContractModel.findById(id)).classification.ourParty).toBe('employee');
+  const confirmed = await request(app).patch(`/api/v1/contracts/${id}/profile`).set('Authorization', bearer(personal)).send({ type: 'labor', ourParty: 'employee' });
+  expect(confirmed.status).toBe(200);
+  const list = await request(app).get('/api/v1/contracts').set('Authorization', bearer(personal));
+  expect(list.status).toBe(200);
+  expect(list.body.data.map(row => row._id)).toContain(id);
+  expect((await request(app).get('/api/v1/contracts').set('Authorization', bearer(other))).body.data).toEqual([]);
+  for (const endpoint of ['', '/text', '/reviews', '/clauses', '/risks', '/key-terms', '/chat'])
+    expect((await request(app).get(`/api/v1/contracts/${id}${endpoint}`).set('Authorization', bearer(other))).status).toBe(404);
+  const started = await request(app).post(`/api/v1/contracts/${id}/reviews`).set('Authorization', bearer(personal)).set('Idempotency-Key', randomUUID()).send({});
+  expect(started.status).toBe(202);
+  expect((await getSubscription(personal.id, personal.id)).analysis.reserved).toBe(1);
+  const review = await ReviewModel.findOne({ contractId: id });
+  expect((await request(app).get(`/api/v1/reviews/${review.id}`).set('Authorization', bearer(other))).status).toBe(404);
+  expect((await request(app).post(`/api/v1/reviews/${review.id}/cancel`).set('Authorization', bearer(personal))).status).toBe(200);
+  expect((await getSubscription(personal.id, personal.id)).analysis.available).toBe(3);
+  expect((await UserModel.findById(personal.id)).orgId).toBeFalsy();
+  expect(await OrganizationModel.countDocuments()).toBe(organizationCount);
+});
+
+test('standalone users receive their own Free period without being assigned an organization', async () => {
+  const personal = await user();
+  const organizations = await OrganizationModel.countDocuments();
+  const path = `/api/v1/organizations/${personal.id}/subscription`;
+  const response = await request(app).get(path).set('Authorization', bearer(personal));
+  expect(response.status).toBe(200);
+  expect(response.body.data).toMatchObject({ status: 'active', plan: { code: 'personal_free' }, members: { count: 1, limit: 1 }, analysis: { limit: 3, available: 3 } });
+  expect(response.body.data.contractReviewPricing).toEqual({ unitPrice: require('../dist/config/env').env.PERSONAL_REVIEW_PRICE_PER_UNIT, pagesPerUnit: 5 });
+  const period = await SubscriptionPeriodModel.findById(response.body.data.periodId);
+  period.analysisUsed = 1;
+  await period.save();
+  const again = await request(app).get(path).set('Authorization', bearer(personal));
+  expect(again.body.data).toMatchObject({ periodId: response.body.data.periodId, analysis: { used: 1, available: 2 } });
+  expect((await UserModel.findById(personal.id)).orgId).toBeFalsy();
+  expect(await OrganizationModel.countDocuments()).toBe(organizations);
+});
+
+test('personal billing is isolated from other accounts and organization members', async () => {
+  const first = await user();
+  const second = await user();
+  const business = await workspace();
+  for (const viewer of [second, business.owner]) {
+    expect((await request(app).get(`/api/v1/organizations/${first.id}/subscription`).set('Authorization', bearer(viewer))).status).toBe(403);
+    expect((await request(app).get(`/api/v1/organizations/${first.id}/payments`).set('Authorization', bearer(viewer))).status).toBe(403);
+  }
+  expect((await request(app).get(`/api/v1/organizations/${business.owner.id}/subscription`).set('Authorization', bearer(business.owner))).status).toBe(200);
+});
+
+test('joining preserves personal Pro, private contracts and independent organization quotas', async () => {
+  const personal = await user();
+  const w = await workspace();
+  await pay(w, 'business_starter');
+  const paid = await activatePaidSubscription({ orgId: personal.id, planCode: 'personal_pro', action: 'purchase', amount: 99000, paymentReference: randomUUID() });
+  const contract = await ContractModel.create({ title: 'Private', type: 'labor', ourParty: 'employee', orgId: personal._id, uploadedBy: personal._id });
+  await invitations.createInvitation(w.owner.id, w.org.id, { email: personal.email, role: 'staff' });
+  const member = await invitations.acceptInvitation(personal.id, sendInvitationEmail.mock.calls.at(-1)[0].token);
+  const { refresh } = require('../dist/services/identity/auth.service');
+  const { toPublicUser } = require('../dist/services/identity/publicUser');
+  const personalSession = await refresh(tokensForUser(member).refreshToken, undefined, 'personal');
+  expect(toPublicUser(personalSession.user, personalSession.workspace)).toMatchObject({ role: 'user', orgId: null, workspace: 'personal', organizationMembership: { orgId: w.org.id, role: 'staff' } });
+  expect((await refresh(personalSession.refreshToken)).workspace).toBe('personal');
+  const auth = `Bearer ${personalSession.accessToken}`;
+  const privateList = await request(app).get('/api/v1/contracts').set('Authorization', auth);
+  expect(privateList.status).toBe(200);
+  expect(privateList.body.data.map(row => row._id)).toEqual([contract.id]);
+  expect((await request(app).get(`/api/v1/contracts/${w.contract.id}`).set('Authorization', auth)).status).toBe(404);
+  const orgSession = await refresh(personalSession.refreshToken, undefined, 'organization');
+  expect((await request(app).get(`/api/v1/contracts/${contract.id}`).set('Authorization', `Bearer ${orgSession.accessToken}`)).status).toBe(404);
+  const before = await getSubscription(member.id, member.id);
+  expect(before).toMatchObject({ periodId: paid.id, plan: { code: 'personal_pro' }, members: { count: 1 } });
+  const base = { userId: member.id, kind: 'chat', payload: { message: 'test' } };
+  await withUsage({ ...base, orgId: member.id, contractId: contract.id, idempotencyKey: randomUUID() }, async () => ({ reply: 'personal' }));
+  expect((await getSubscription(member.id, member.id)).chat.used).toBe(1);
+  expect((await getSubscription(member.id, w.org.id)).chat.used).toBe(0);
+  await withUsage({ ...base, orgId: w.org.id, contractId: w.contract.id, idempotencyKey: randomUUID() }, async () => ({ reply: 'business' }));
+  expect((await getSubscription(member.id, w.org.id)).chat.used).toBe(1);
+  expect((await getSubscription(member.id, member.id)).chat.used).toBe(1);
+  await SubscriptionPeriodModel.updateOne({ _id: paid._id }, { $set: { chatUsed: paid.plan.chatLimit } });
+  await expect(reserveUsage({ ...base, orgId: member.id, contractId: contract.id, idempotencyKey: randomUUID() })).rejects.toMatchObject({ statusCode: 403 });
+  expect((await getSubscription(member.id, w.org.id)).chat.used).toBe(1);
+  const draft = await request(app).post('/api/v1/contract-drafts').set('Authorization', auth).send({ templateCode: 'rental', title: 'Private rental', ourParty: 'tenant', input: {}, editorMode: 'studio' });
+  expect(draft.status).toBe(201);
+  expect((await request(app).get(`/api/v1/contract-drafts/${draft.body.data.id}`).set('Authorization', `Bearer ${orgSession.accessToken}`)).status).toBe(404);
+  expect((await ContractModel.findById(contract.id)).orgId.toString()).toBe(personal.id);
+  expect((await UserModel.findById(member.id)).orgId.toString()).toBe(w.org.id);
+});
+
+test('removal revokes organization context while personal subscription survives', async () => {
+  const w = await workspace();
+  const staff = await user('staff', w.org._id);
+  const { refresh } = require('../dist/services/identity/auth.service');
+  const scoped = await refresh(tokensForUser(staff).refreshToken, undefined, 'organization');
+  const personal = await getSubscription(staff.id, staff.id);
+  await invitations.removeMember(w.owner.id, w.org.id, staff.id);
+  expect((await request(app).get('/api/v1/contracts').set('Authorization', `Bearer ${scoped.accessToken}`)).status).toBe(401);
+  const recovered = await refresh(scoped.refreshToken);
+  expect(recovered.user.orgId).toBeFalsy();
+  expect((await request(app).get('/api/v1/contracts').set('Authorization', `Bearer ${recovered.accessToken}`)).status).toBe(200);
+  expect((await getSubscription(staff.id, staff.id)).periodId).toBe(personal.periodId);
+  await expect(refresh(recovered.refreshToken, undefined, 'organization')).rejects.toMatchObject({ statusCode: 403 });
+});
+
+test('staff can receive a previously purchased personal plan after joining; management roles cannot switch to personal', async () => {
+  const w = await workspace();
+  const staff = await user('staff', w.org._id);
+  await activatePaidSubscription({ orgId: staff.id, planCode: 'personal_pro', action: 'purchase', amount: 99000, paymentReference: randomUUID() });
+  expect((await getSubscription(staff.id, staff.id)).plan.code).toBe('personal_pro');
+  const { refresh } = require('../dist/services/identity/auth.service');
+  for (const role of ['administrator', 'manager', 'expert']) {
+    const admin = await user(role);
+    await expect(refresh(tokensForUser(admin).refreshToken, undefined, 'personal')).rejects.toMatchObject({ statusCode: 403 });
+  }
+});
+
+test('standalone personal Pro supports downgrade and cancellation without changing membership', async () => {
+  const personal = await user();
+  await activatePaidSubscription({ orgId: personal.id, planCode: 'personal_pro', action: 'purchase', amount: 99000, paymentReference: randomUUID() });
+  expect((await getSubscription(personal.id, personal.id)).plan.code).toBe('personal_pro');
+  await scheduleDowngrade(personal.id, personal.id, 'personal_free');
+  expect((await getSubscription(personal.id, personal.id)).scheduledDowngrade.planCode).toBe('personal_free');
+  await cancelDowngrade(personal.id, personal.id);
+  expect((await getSubscription(personal.id, personal.id)).scheduledDowngrade).toBeNull();
+  await expect(activatePaidSubscription({ orgId: personal.id, planCode: 'business_starter', action: 'upgrade', amount: 499000, paymentReference: randomUUID() })).rejects.toMatchObject({ statusCode: 400 });
+  expect((await UserModel.findById(personal.id)).orgId).toBeFalsy();
+});
+
+test.each(['administrator', 'manager', 'expert'])('legacy %s orgId does not grant organization or contract permissions', async (role) => {
+  const w = await workspace();
+  const systemUser = await user(role, w.org._id);
+  const token = bearer(systemUser);
+  for (const path of ['/api/v1/contracts', `/api/v1/organizations/${w.org.id}`, `/api/v1/organizations/${w.org.id}/subscription`])
+    expect((await request(app).get(path).set('Authorization', token)).status).toBe(403);
+  expect((await request(app).delete(`/api/v1/contracts/${w.contract.id}`).set('Authorization', token)).status).toBe(403);
+  expect((await request(app).post(`/api/v1/contracts/${w.contract.id}/reviews`).set('Authorization', token).send({})).status).toBe(403);
+  expect((await request(app).post('/api/v1/organizations').set('Authorization', token).send({})).status).toBe(403);
+  expect((await request(app).get('/api/v1/admin/users').set('Authorization', token)).status).toBe(role === 'administrator' ? 200 : 403);
+});
+
+test('Admin creates a system Manager without membership and cannot promote Staff to Manager inside an organization', async () => {
+  const admin = await user('administrator');
+  const created = await request(app).post('/api/v1/admin/users').set('Authorization', bearer(admin))
+    .send({ name: 'System Manager', email: `manager-${randomUUID()}@example.com`, password: 'ManagerTest123!', role: 'manager', isActive: true });
+  expect(created.status).toBe(201);
+  expect(created.body.data).toMatchObject({ role: 'manager', organization: null });
+  const w = await workspace();
+  const staff = await user('staff', w.org._id);
+  expect((await request(app).patch(`/api/v1/admin/users/${staff.id}`).set('Authorization', bearer(admin)).send({ role: 'manager' })).status).toBe(400);
+  expect((await UserModel.findById(staff.id)).roleId.toString()).toBe((await getRoleByCode('staff')).id);
+  const manager = await user('manager');
+  expect((await request(app).get('/api/v1/organizations').set('Authorization', bearer(manager))).status).toBe(200);
+  expect((await request(app).get('/api/v1/kb/legal-sources').set('Authorization', bearer(manager))).status).toBe(200);
+});
 const usage = (w, kind = 'analysis', key = randomUUID()) => ({
   orgId: w.org.id,
   userId: w.owner.id,
@@ -187,6 +374,124 @@ test('calendar reset is exactly Vietnam midnight and calendar months clamp end-o
   expect(addSubscriptionMonth(new Date('2028-01-30T17:00:00Z')).toISOString()).toBe(
     '2028-02-28T17:00:00.000Z',
   );
+});
+
+test('review units round up at five-page boundaries and unknown or partially extracted documents cannot be charged', () => {
+  const { reviewCost, requireReviewCost } = require('../dist/services/billing/reviewCost');
+  for (const [pageCount, units] of [[1, 1], [5, 1], [6, 2], [10, 2], [11, 3], [12, 3], [15, 3], [16, 4], [100, 20]]) expect(requireReviewCost({ extractionStatus: 'completed', extractionQuality: { pageCount } }).units).toBe(units);
+  for (const pageCount of [undefined, null, 0, -1, 1.5, NaN]) expect(reviewCost({ extractionStatus: 'completed', extractionQuality: { pageCount } }).ready).toBe(false);
+  expect(reviewCost({ extractionStatus: 'processing', extractionQuality: { pageCount: 12 } }).ready).toBe(false);
+  expect(() => requireReviewCost({ extractionStatus: 'completed', extractionQuality: { pageCount: 110, truncatedAtPage: 100 } })).toThrow();
+});
+
+test.each([true, false])('weighted review usage for personal=%s reserves and commits all units once', async personal => {
+  const w = await workspace(personal, 12);
+  if (!personal) await pay(w, 'business_starter');
+  const input = usage(w);
+  const reserved = await reserveUsage(input);
+  expect(reserved.run.units).toBe(3); expect(reserved.run.pageCount).toBe(12);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 0, reserved: 3 });
+  await finishUsage(w.org.id, reserved.run.id, true, { ok: true });
+  await finishUsage(w.org.id, reserved.run.id, true);
+  const replay = await reserveUsage(input);
+  expect(replay.replayed).toBe(true);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 3, reserved: 0 });
+});
+
+test('insufficient units, changed quotes and unknown pages never reserve a review', async () => {
+  const w = await workspace(true, 16);
+  await expect(reserveUsage(usage(w))).rejects.toMatchObject({ statusCode: 403, code: 'ANALYSIS_QUOTA_EXHAUSTED', message: expect.stringContaining('Không đủ lượt rà soát AI') });
+  await ContractVersionModel.updateOne({ contractId: w.contract.id }, { $set: { 'extractionQuality.pageCount': 12 } });
+  await expect(reserveUsage({ ...usage(w), confirmedUnits: 1 })).rejects.toMatchObject({ code: 'REVIEW_QUOTE_CHANGED' });
+  await ContractVersionModel.updateOne({ contractId: w.contract.id }, { $unset: { extractionQuality: 1 } });
+  await expect(reserveUsage(usage(w))).rejects.toMatchObject({ code: 'REVIEW_PAGE_COUNT_UNAVAILABLE' });
+  expect(await UsageRunModel.countDocuments({ orgId: w.org.id })).toBe(0);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 0, reserved: 0 });
+});
+
+test('review API exposes the page quote, rejects a changed confirmation and refunds all units on queue failure', async () => {
+  const w = await workspace(true, 12);
+  const detail = await request(app).get(`/api/v1/contracts/${w.contract.id}`).set('Authorization', bearer(w.owner));
+  expect(detail.status).toBe(200);
+  const billing = detail.body.data.reviewBilling;
+  expect(billing).toMatchObject({ ready: true, pageCount: 12, units: 3, pagesPerUnit: 5 });
+  const analyze = (key, units) => request(app).post(`/api/v1/contracts/${w.contract.id}/reviews`).set('Authorization', bearer(w.owner)).set('Idempotency-Key', key).send({ billing: { versionId: billing.versionId, units } });
+  expect((await analyze(randomUUID(), 1)).status).toBe(409);
+  const key = randomUUID();
+  expect((await analyze(key, 3)).status).toBe(202);
+  expect((await analyze(key, 3)).body.data.replayed).toBe(true);
+  const review = await ReviewModel.findOne({ contractId: w.contract.id });
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis.reserved).toBe(3);
+  await finishUsage(w.org.id, String(review.usageRunId), false);
+  await ReviewModel.updateOne({ _id: review.id }, { $set: { status: 'failed' }, $unset: { activeLock: 1 } });
+  enqueueReview.mockRejectedValueOnce(new Error('Queue unavailable'));
+  expect((await analyze(randomUUID(), 3)).status).toBe(500);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 0, reserved: 0, available: 3 });
+});
+
+test('failed commits and expired workers return all page-based units, including historical one-unit runs', async () => {
+  const w = await workspace(true, 12);
+  const first = await reserveUsage(usage(w));
+  await expect(finishUsage(w.org.id, first.run.id, true, {}, async () => { throw new Error('Result save failed'); })).rejects.toThrow('Result save failed');
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 0, reserved: 3 });
+  await finishUsage(w.org.id, first.run.id, false);
+  const stale = await reserveUsage(usage(w));
+  await UsageRunModel.updateOne({ _id: stale.run.id }, { $set: { leaseExpiresAt: new Date(0) } });
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 0, reserved: 0, available: 3 });
+  await ContractVersionModel.updateOne({ contractId: w.contract.id }, { $set: { 'extractionQuality.pageCount': 5 } });
+  const legacy = await reserveUsage(usage(w));
+  await UsageRunModel.collection.updateOne({ _id: legacy.run._id }, { $unset: { units: 1 }, $set: { leaseExpiresAt: new Date(0) } });
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis.reserved).toBe(0);
+});
+
+test('concurrent three-unit reviews of different contracts cannot overdraw the organization', async () => {
+  const w = await workspace(false, 12);
+  const period = await pay(w, 'business_starter');
+  await SubscriptionPeriodModel.updateOne({ _id: period.id }, { $set: { analysisUsed: 195 } });
+  const contract = await ContractModel.create({ title: 'Second', type: 'service', orgId: w.org.id, uploadedBy: w.owner.id });
+  await ContractVersionModel.create({ contractId: contract.id, versionNumber: 1, createdBy: w.owner.id, extractionStatus: 'completed', extractionQuality: { method: 'text_layer', pageCount: 12, ocrPageCount: 0, lowConfidence: false } });
+  const results = await Promise.allSettled([reserveUsage(usage(w)), reserveUsage({ ...usage(w), contractId: contract.id })]);
+  expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+  const winner = results.find(result => result.status === 'fulfilled').value;
+  await finishUsage(w.org.id, winner.run.id, false);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 195, reserved: 0, available: 5 });
+});
+
+test('catalog migration adds drafting benefits to old periods without resetting usage or configured limits', async () => {
+  const w = await workspace(); const period = await pay(w, 'business_starter');
+  await SubscriptionPeriodModel.collection.updateOne({ _id: period._id }, { $unset: { 'plan.draftingLimit': 1 }, $set: { analysisUsed: 17, 'plan.analysisLimit': 210 } });
+  await seedPlans();
+  let current = await getSubscription(w.owner.id, w.org.id);
+  expect(current.plan.draftingLimit).toBe(50); expect(current.analysis.used).toBe(17); expect(current.analysis.limit).toBe(210);
+  await SubscriptionPeriodModel.updateOne({ _id: period._id }, { $set: { 'plan.draftingLimit': 7 } });
+  await seedPlans(); current = await getSubscription(w.owner.id, w.org.id);
+  expect(current.plan.draftingLimit).toBe(7);
+});
+
+test('personal drafting migration grants 3/30 once and preserves usage, custom limits and closed periods', async () => {
+  const personal = await user();
+  const now = new Date('2026-11-02T00:00:00Z');
+  const free = await PlanModel.findOne({ code: 'personal_free' }).lean();
+  const pro = await PlanModel.findOne({ code: 'personal_pro' }).lean();
+  await PlanModel.updateMany({ code: { $in: ['personal_free', 'personal_pro'] } }, { $set: { draftingLimit: 0 } });
+  const make = (plan, extra = {}) => ({ orgId: personal.id, key: randomUUID(), plan: { ...plan, draftingLimit: 0 },
+    startsAt: new Date('2026-11-01'), endsAt: new Date('2026-12-01'), draftingUsed: 1, draftingReserved: 1,
+    analysisUsed: 2, chatUsed: 4, ...extra });
+  const [active, future, custom, expired, cancelled] = await SubscriptionPeriodModel.create([
+    make(free), make(pro, { startsAt: new Date('2026-12-01'), endsAt: new Date('2027-01-01') }),
+    make(free, { plan: { ...free, draftingLimit: 9 } }),
+    make(free, { startsAt: new Date('2026-10-01'), endsAt: new Date('2026-11-01') }),
+    make(pro, { cancelledAt: now }),
+  ]);
+  expect(await migratePersonalDraftingBenefits(now)).toEqual({ plans: 2, periods: 2 });
+  expect((await PlanModel.findOne({ code: 'personal_free' })).draftingLimit).toBe(3);
+  expect((await PlanModel.findOne({ code: 'personal_pro' })).draftingLimit).toBe(30);
+  expect((await SubscriptionPeriodModel.findById(active.id)).toObject()).toMatchObject({ plan: { draftingLimit: 3 }, draftingUsed: 1, draftingReserved: 1, analysisUsed: 2, chatUsed: 4 });
+  expect((await SubscriptionPeriodModel.findById(future.id)).plan.draftingLimit).toBe(30);
+  expect((await SubscriptionPeriodModel.findById(custom.id)).plan.draftingLimit).toBe(9);
+  expect((await SubscriptionPeriodModel.findById(expired.id)).plan.draftingLimit).toBe(0);
+  expect((await SubscriptionPeriodModel.findById(cancelled.id)).plan.draftingLimit).toBe(0);
+  expect(await migratePersonalDraftingBenefits(now)).toEqual({ plans: 0, periods: 0 });
 });
 
 test('free usage resets at calendar boundary without rollover', async () => {

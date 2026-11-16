@@ -2,30 +2,40 @@ import { Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { ClauseModel } from '../../models/clause.model';
 import { ContractModel } from '../../models/contract.model';
-import { ContractVersionModel, RISK_LEVELS } from '../../models/contractVersion.model';
+import { ContractVersionModel, RISK_LEVELS, RULE_CHECK_STATUSES } from '../../models/contractVersion.model';
 import { RiskFindingModel } from '../../models/riskFinding.model';
 import { RiskCitationModel } from '../../models/riskCitation.model';
 import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model';
 import { LegalSourceModel } from '../../models/legalSource.model';
 import {
-  detectContractRisks,
+  assessContractLevel,
+  detectClauseBatchRisks,
   LegalExcerptInput,
   LlmFinding,
   LlmProposedRevision,
 } from './riskDetection.service';
-import { searchLegalChunks, LegalChunkMatch, verifyLegalBasis } from '../legal/legalRetrieval.service';
+import { searchLegalChunks, LegalRetrievalStatus, LegalSearchScope, verifyLegalBasis } from '../legal/legalRetrieval.service';
 import {
   claimStage,
   getCurrentVersion,
   getCurrentVersionWithText,
   setContractStatus,
   settledStatus,
+  resolveResultReview,
 } from '../contract/contractVersion.service';
 import { getTaxonomyByCodes } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from '../contract/contractProfile.service';
 import { createRedactor, Redactor } from '../ai/redaction.service';
+import { LegalSourceReference, provenanceOf, sourceReferenceOf } from '../legal/legalSourceAvailability';
 import { ExtractedKeyTerm, extractKeyTerms } from './keyTermExtraction.service';
-import { evaluateLegalRules, resolveRuleCitations } from '../legal/legalRules.service';
+import {
+  evaluateLegalRules,
+  hasLegalRules,
+  resolveRuleCitations,
+  ruleAvailabilityFor,
+  RuleFinding,
+  skippedLegalRules,
+} from '../legal/legalRules.service';
 import { ReviewContext } from '../contract/contractProfile.service';
 import { logger } from '../../config/logger';
 
@@ -40,7 +50,11 @@ const MISSING_CLAUSE_SEVERITY: (typeof RISK_LEVELS)[number] = 'medium';
 
 const LEGAL_EXCERPTS_PER_CLAUSE = 3;
 
-const MAX_LEGAL_EXCERPTS = 15;
+const MAX_BATCH_CLAUSES = 10;
+
+const MAX_BATCH_CHARS = 15000;
+
+const BATCH_CONCURRENCY = 3;
 
 interface LegalExcerptMeta {
   chunkId: string;
@@ -54,51 +68,85 @@ interface PopulatedClauseType {
   description: string;
 }
 
-async function buildLegalExcerpts(
+async function buildClauseExcerpts(
   clauses: { text: string }[],
   redactor: Redactor,
   legalSourceCodes: string[],
   signal?: AbortSignal,
-): Promise<{ excerpts: LegalExcerptInput[]; metaByNumber: Map<number, LegalExcerptMeta> }> {
-  const perClauseMatches = await searchLegalChunks(
+): Promise<{
+  excerptsByClause: LegalExcerptInput[][];
+  metaByNumber: Map<number, LegalExcerptMeta>;
+  retrievalStatus: LegalRetrievalStatus;
+  searchScope?: LegalSearchScope;
+  missingSources?: string[];
+}> {
+  const {
+    matches: perClauseMatches,
+    status: retrievalStatus,
+    scope: searchScope,
+    missingSources,
+  } = await searchLegalChunks(
     clauses.map((c) => redactor.mask(c.text)),
     LEGAL_EXCERPTS_PER_CLAUSE,
     { legalSourceCodes, signal },
   );
 
-  const candidates = perClauseMatches
-    .flatMap((matches) => matches.map((match, rank) => ({ match, rank })))
-    .sort((a, b) => a.rank - b.rank || b.match.score - a.match.score);
-
-  const matchByChunkId = new Map<string, LegalChunkMatch>();
-  for (const { match } of candidates) {
-    if (matchByChunkId.size >= MAX_LEGAL_EXCERPTS) break;
-    if (!matchByChunkId.has(match.chunkId)) matchByChunkId.set(match.chunkId, match);
-  }
-
-  const excerpts: LegalExcerptInput[] = [];
+  const numberByChunkId = new Map<string, number>();
   const metaByNumber = new Map<number, LegalExcerptMeta>();
-  let number = 1;
-  for (const match of matchByChunkId.values()) {
-    excerpts.push({
-      number,
-      citationLabel: match.citationLabel,
-      articleRef: match.articleRef,
-      text: match.chunkText,
-    });
-    metaByNumber.set(number, { chunkId: match.chunkId, score: match.score });
-    number++;
-  }
+  const excerptsByClause = clauses.map((_, i) =>
+    (perClauseMatches[i] ?? []).map((match) => {
+      let number = numberByChunkId.get(match.chunkId);
+      if (number === undefined) {
+        number = numberByChunkId.size + 1;
+        numberByChunkId.set(match.chunkId, number);
+        metaByNumber.set(number, { chunkId: match.chunkId, score: match.score });
+      }
+      return { number, citationLabel: match.citationLabel, articleRef: match.articleRef, text: match.chunkText };
+    }),
+  );
 
-  return { excerpts, metaByNumber };
+  return { excerptsByClause, metaByNumber, retrievalStatus, searchScope, missingSources };
 }
+
+function toBatches<T extends { text: string }>(items: T[]): T[][] {
+  const batches: T[][] = [];
+  let current: T[] = [];
+  let chars = 0;
+  for (const item of items) {
+    if (current.length > 0 && (current.length >= MAX_BATCH_CLAUSES || chars + item.text.length > MAX_BATCH_CHARS)) {
+      batches.push(current);
+      current = [];
+      chars = 0;
+    }
+    current.push(item);
+    chars += item.text.length;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, task: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        results[i] = await task(items[i]);
+      }
+    }),
+  );
+  return results;
+}
+
+const ruleRiskCode = (finding: RuleFinding) => finding.rule.riskCode ?? 'UNLAWFUL_TERM';
 
 async function extractKeyTermsSafely(
   context: ReviewContext,
   clauses: { index: number; text: string }[],
   redactor: Redactor,
   signal?: AbortSignal,
-): Promise<ExtractedKeyTerm[]> {
+): Promise<ExtractedKeyTerm[] | null> {
   try {
     return await extractKeyTerms(context, clauses, redactor, signal);
   } catch (err) {
@@ -107,8 +155,48 @@ async function extractKeyTermsSafely(
       profile: context.profileCode,
       error: err instanceof Error ? err.message : String(err),
     });
-    return [];
+    return null;
   }
+}
+
+interface ChunkSnapshot {
+  citationLabel: string;
+  sourceTitle: string;
+  articleRef?: string;
+  chunkText: string;
+  legalSourceId?: string;
+  documentNumber?: string;
+  origin?: LegalSourceReference['origin'];
+}
+
+async function loadChunkSnapshots(chunkIds: string[]): Promise<Map<string, ChunkSnapshot>> {
+  const ids = [...new Set(chunkIds)];
+  if (ids.length === 0) return new Map();
+  const chunks = await LegalKnowledgeChunkModel.find({ _id: { $in: ids } }).select(
+    'legalSourceId articleRef chunkText',
+  );
+  const sourceIds = [...new Set(chunks.map((c) => c.legalSourceId.toString()))];
+  const sources = await LegalSourceModel.find({ _id: { $in: sourceIds } }).select('title citationLabel documentNumber origin');
+  const sourceById = new Map(sources.map((s) => [s._id.toString(), s]));
+
+  return new Map(
+    chunks.map((chunk) => {
+      const source = sourceById.get(chunk.legalSourceId.toString());
+      const { provenance: _provenance, ...reference } = sourceReferenceOf(source);
+      void _provenance;
+      return [
+        chunk._id.toString(),
+        {
+          citationLabel: source?.citationLabel ?? 'Unknown',
+          sourceTitle: source?.title ?? 'Unknown',
+          articleRef: chunk.articleRef ?? undefined,
+          chunkText: chunk.chunkText,
+          ...reference,
+          legalSourceId: chunk.legalSourceId.toString(),
+        },
+      ];
+    }),
+  );
 }
 
 async function attachCitations<T extends { _id: unknown; toObject: () => Record<string, unknown> }>(
@@ -139,29 +227,41 @@ async function attachCitations<T extends { _id: unknown; toObject: () => Record<
     return findings.map((f) => ({ ...withClause(f), citations: [] }));
   }
 
-  const chunkIds = [...new Set(citations.map((c) => c.legalKnowledgeChunkId.toString()))];
-  const chunks = await LegalKnowledgeChunkModel.find({ _id: { $in: chunkIds } });
-  const sourceIds = [...new Set(chunks.map((c) => c.legalSourceId.toString()))];
-  const sources = await LegalSourceModel.find({ _id: { $in: sourceIds } });
-
-  const chunkById = new Map(chunks.map((c) => [c._id.toString(), c]));
-  const sourceById = new Map(sources.map((s) => [s._id.toString(), s]));
+  const current = await loadChunkSnapshots(citations.map((c) => c.legalKnowledgeChunkId.toString()));
 
   const citationsByFindingId = new Map<string, Record<string, unknown>[]>();
   for (const citation of citations) {
-    const chunk = chunkById.get(citation.legalKnowledgeChunkId.toString());
-    if (!chunk) continue;
-    const source = sourceById.get(chunk.legalSourceId.toString());
+    const chunkId = citation.legalKnowledgeChunkId.toString();
+    const live = current.get(chunkId);
+    const stored = citation.origin?.publisher
+      ? sourceReferenceOf({
+          _id: citation.legalSourceId,
+          documentNumber: citation.documentNumber,
+          origin: citation.origin,
+        })
+      : undefined;
+    const snapshot: ChunkSnapshot | undefined = citation.chunkText
+      ? {
+          citationLabel: citation.citationLabel ?? 'Unknown',
+          sourceTitle: citation.sourceTitle ?? 'Unknown',
+          articleRef: citation.articleRef ?? undefined,
+          chunkText: citation.chunkText,
+          legalSourceId: stored?.legalSourceId ?? live?.legalSourceId,
+          documentNumber: stored?.documentNumber ?? citation.documentNumber ?? live?.documentNumber,
+          origin: stored?.origin ?? live?.origin,
+        }
+      : live;
+    if (!snapshot) continue;
 
     const key = citation.riskFindingId.toString();
     const list = citationsByFindingId.get(key) ?? [];
     list.push({
-      legalKnowledgeChunkId: chunk._id.toString(),
-      citationLabel: source?.citationLabel ?? 'Unknown',
-      sourceTitle: source?.title ?? 'Unknown',
-      articleRef: chunk.articleRef,
-      chunkText: chunk.chunkText,
+      legalKnowledgeChunkId: chunkId,
+      ...snapshot,
+      provenance: provenanceOf(snapshot.origin),
+      originRecordedAtReview: Boolean(stored),
       relevanceScore: citation.relevanceScore,
+      inKnowledgeBase: Boolean(live),
     });
     citationsByFindingId.set(key, list);
   }
@@ -207,6 +307,7 @@ function sortFindings<T extends { severity: (typeof RISK_LEVELS)[number]; create
 export async function detectRisks(
   orgId: string,
   contractId: string,
+  reviewId: string,
   analysisFocus?: string,
   onProgress?: (stage: RiskDetectionStage) => void,
   signal?: AbortSignal,
@@ -234,7 +335,7 @@ export async function detectRisks(
   await setContractStatus(contractId, orgId, 'processing');
 
   try {
-    const clauses = await ClauseModel.find({ contractVersionId: version._id })
+    const clauses = await ClauseModel.find({ contractVersionId: version._id, reviewId })
       .sort({ index: 1 })
       .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
     if (clauses.length === 0) {
@@ -251,30 +352,89 @@ export async function detectRisks(
     );
 
     onProgress?.('retrieving_legal_sources');
-    const [{ excerpts, metaByNumber }, keyTerms] = await Promise.all([
-      buildLegalExcerpts(clauses, redactor, reviewContext.legalSourceCodes, signal),
+    const [{ excerptsByClause, metaByNumber, retrievalStatus, searchScope, missingSources }, keyTerms, ruleAvailability] =
+      await Promise.all([
+      buildClauseExcerpts(clauses, redactor, reviewContext.legalSourceCodes, signal),
       extractKeyTermsSafely(
         reviewContext,
         clauses.map((c) => ({ index: c.index, text: c.text })),
         redactor,
         signal,
       ),
+      ruleAvailabilityFor(reviewContext.profileCode),
     ]);
-    const ruleFindings = evaluateLegalRules(reviewContext, keyTerms);
+    const skippedRules = skippedLegalRules(reviewContext.profileCode, ruleAvailability);
+    const legalCoverage = {
+      searchScope,
+      missingSources: missingSources?.length ? missingSources : undefined,
+      skippedRules: skippedRules.length ? skippedRules : undefined,
+    };
+    const ruleCheckStatus: (typeof RULE_CHECK_STATUSES)[number] = !hasLegalRules(reviewContext.profileCode)
+      ? 'not_applicable'
+      : keyTerms
+        ? 'ok'
+        : 'skipped';
+    const ruleFindings = evaluateLegalRules(reviewContext, keyTerms ?? [], ruleAvailability);
     const ruleChunkIds = await resolveRuleCitations(ruleFindings);
+
+    const analysisFocus = version.analysisFocus ?? undefined;
+    const clauseInputs = clauses.map((c) => ({ index: c.index, category: c.clauseTypeId.code, text: c.text }));
+    const ruleInputs = ruleFindings.map((r) => ({
+      ruleCode: r.rule.code,
+      clauseIndex: r.clauseIndex,
+      title: r.title,
+      problem: r.problem,
+    }));
 
     signal?.throwIfAborted();
     onProgress?.('analyzing_clauses');
-    const { overallAssessment, findings: llmFindings, ruleRevisions } = await detectContractRisks(
+    const batchResults = await mapWithConcurrency(
+      toBatches(clauseInputs.map((c, i) => ({ ...c, excerpts: excerptsByClause[i] }))),
+      BATCH_CONCURRENCY,
+      (batch) => {
+        const indexes = new Set(batch.map((c) => c.index));
+        return detectClauseBatchRisks(
+          reviewContext,
+          batch,
+          ruleInputs.filter((r) => r.clauseIndex !== undefined && indexes.has(r.clauseIndex)),
+          analysisFocus,
+          redactor,
+          signal,
+        );
+      },
+    );
+    const ruleClauseIndexes = new Set(ruleFindings.map((r) => r.clauseIndex).filter((i) => i !== undefined));
+    const clauseFindings = batchResults
+      .flatMap((r) => r.findings)
+      .filter((f) => f.clauseIndex === undefined || !ruleClauseIndexes.has(f.clauseIndex));
+
+    signal?.throwIfAborted();
+    const contractLevel = await assessContractLevel(
       reviewContext,
-      clauses.map((c) => ({ index: c.index, category: c.clauseTypeId.code, text: c.text })),
-      excerpts,
+      clauseInputs,
       missingTaxonomy.map((t) => ({ code: t.code, name: t.name, description: t.description })),
-      ruleFindings.map((r) => ({ ruleCode: r.rule.code, clauseIndex: r.clauseIndex, title: r.title, problem: r.problem })),
-      version.analysisFocus ?? undefined,
+      ruleInputs.filter((r) => r.clauseIndex === undefined),
+      [
+        ...ruleFindings.map((r) => ({
+          clauseIndex: r.clauseIndex,
+          riskCode: ruleRiskCode(r),
+          severity: r.severity,
+          title: r.title,
+        })),
+        ...clauseFindings.map((f) => ({
+          clauseIndex: f.clauseIndex,
+          riskCode: f.riskCode,
+          severity: f.severity,
+          title: f.title,
+        })),
+      ],
+      analysisFocus,
       redactor,
       signal,
     );
+    const { overallAssessment, coveredMissingCodes: llmCoveredMissingCodes } = contractLevel;
+    const llmFindings = [...clauseFindings, ...contractLevel.findings];
+    const ruleRevisions = [...batchResults.flatMap((r) => r.ruleRevisions), ...contractLevel.ruleRevisions];
 
     const clauseByIndex = new Map(clauses.map((c) => [c.index, c]));
 
@@ -302,7 +462,13 @@ export async function detectRisks(
     const toLegalBasis = (finding: LlmFinding) => legalBasisByFinding.get(finding) ?? [];
 
     const pending: { doc: Record<string, unknown>; chunkIds: string[] }[] = [];
-    const coveredMissingCodes = new Set<string>();
+    const coveredMissingCodes = new Set<string>(llmCoveredMissingCodes);
+    if (llmCoveredMissingCodes.length > 0) {
+      logger.info('Mandatory clause types covered by misclassified clauses', {
+        contractId,
+        codes: llmCoveredMissingCodes,
+      });
+    }
 
     const revisionByRule = new Map(ruleRevisions.map((r) => [r.ruleCode, r]));
     for (const finding of ruleFindings) {
@@ -312,6 +478,7 @@ export async function detectRisks(
       pending.push({
         doc: {
           contractVersionId: version._id,
+          reviewId,
           orgId,
           clauseId: clause?._id ?? null,
           findingType: 'clause_risk' as const,
@@ -329,6 +496,7 @@ export async function detectRisks(
           ],
           proposedRevision: resolveProposedRevision(revisionByRule.get(finding.rule.code), clause?.text),
           detectedBy: 'rule' as const,
+          riskCode: ruleRiskCode(finding),
           ruleCode: finding.rule.code,
           ruleVersion: finding.rule.version,
         },
@@ -339,7 +507,9 @@ export async function detectRisks(
     for (const finding of llmFindings) {
       const base = {
         contractVersionId: version._id,
+        reviewId,
         orgId,
+        riskCode: finding.riskCode,
         severity: finding.severity,
         title: finding.title,
         problem: finding.problem,
@@ -388,6 +558,7 @@ export async function detectRisks(
       pending.push({
         doc: {
           contractVersionId: version._id,
+          reviewId,
           orgId,
           expectedClauseTypeId: taxonomy._id,
           findingType: 'missing_clause' as const,
@@ -396,7 +567,8 @@ export async function detectRisks(
           problem: [
             `Hợp đồng loại này thường cần có điều khoản về "${taxonomy.name}" (${taxonomy.description}), nhưng không tìm thấy điều khoản nào thuộc loại này trong hợp đồng.`,
           ],
-          detectedBy: 'rule' as const,
+          detectedBy: 'checklist' as const,
+          riskCode: 'MISSING_CLAUSE' as const,
         },
         chunkIds: [],
       });
@@ -412,7 +584,9 @@ export async function detectRisks(
     onProgress?.('saving_findings');
     const oldFindingIds = await RiskFindingModel.find({
       contractVersionId: version._id,
+      reviewId,
     }).distinct('_id');
+    const snapshots = await loadChunkSnapshots(pending.flatMap((p) => p.chunkIds));
 
     const inserted = pending.length > 0 ? await RiskFindingModel.insertMany(pending.map((p) => p.doc)) : [];
 
@@ -425,6 +599,7 @@ export async function detectRisks(
         riskFindingId: finding._id,
         legalKnowledgeChunkId: chunkId,
         relevanceScore: scoreByChunkId.get(chunkId) ?? 1,
+        ...snapshots.get(chunkId),
       })),
     );
     if (citationDocs.length > 0) {
@@ -442,7 +617,10 @@ export async function detectRisks(
           overallRiskLevel,
           overallAssessment,
           riskDetectionStatus: 'completed',
-          keyTerms: keyTerms.map((t) => ({
+          legalRetrievalStatus: retrievalStatus,
+          ruleCheckStatus,
+          legalCoverage,
+          keyTerms: (keyTerms ?? []).map((t) => ({
             key: t.key,
             numberValue: t.numberValue,
             booleanValue: t.booleanValue,
@@ -469,21 +647,29 @@ export async function detectRisks(
     throw err;
   }
 
-  const savedFindings = await RiskFindingModel.find({ contractVersionId: version._id }).populate(
+  const savedFindings = await RiskFindingModel.find({ contractVersionId: version._id, reviewId }).populate(
     'expectedClauseTypeId',
   );
   return attachCitations(sortFindings(savedFindings));
 }
 
-export async function listRiskFindings(orgId: string, contractId: string) {
+export async function listRiskFindings(
+  orgId: string,
+  contractId: string,
+  versionId?: string,
+  reviewId?: string,
+) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
   if (!contract) {
     throw AppError.notFound('Contract not found');
   }
-  const version = await getCurrentVersion(contractId);
-  const findings = await RiskFindingModel.find({ contractVersionId: version._id }).populate(
-    'expectedClauseTypeId',
-  );
+  const scope = await resolveResultReview(contractId, versionId, reviewId);
+  if (!scope.reviewId) return [];
+  return listReviewFindings(scope.reviewId.toString());
+}
+
+export async function listReviewFindings(reviewId: string) {
+  const findings = await RiskFindingModel.find({ reviewId }).populate('expectedClauseTypeId');
   return attachCitations(sortFindings(findings));
 }
 

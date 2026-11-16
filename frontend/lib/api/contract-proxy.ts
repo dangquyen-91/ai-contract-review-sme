@@ -1,3 +1,4 @@
+import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 
 const objectIdPattern = /^[a-f\d]{24}$/i;
@@ -8,19 +9,24 @@ export async function proxyContractRequest(
   path: string,
   options: { method?: "GET" | "POST" | "PATCH" | "DELETE"; findingId?: string } = {},
 ) {
-  const accessToken = request.cookies.get("lawscan_access")?.value;
-  if (!accessToken) {
-    return NextResponse.json({ success: false, error: { message: "Phiên đăng nhập đã hết hạn." } }, { status: 401 });
-  }
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const accessToken = session.accessToken;
   if (!objectIdPattern.test(contractId) || (options.findingId && !objectIdPattern.test(options.findingId))) {
     return NextResponse.json({ success: false, error: { message: "Mã không hợp lệ." } }, { status: 400 });
   }
 
+  const method = options.method ?? "GET";
+  const versionId = method === "GET" ? request.nextUrl?.searchParams.get("versionId") : null;
+  if (versionId && !objectIdPattern.test(versionId)) {
+    return NextResponse.json({ success: false, error: { message: "Mã phiên bản không hợp lệ." } }, { status: 400 });
+  }
+  const target = versionId ? `${path}${path.includes("?") ? "&" : "?"}versionId=${versionId}` : path;
+
   try {
-    const method = options.method ?? "GET";
     const idempotencyKey = request.headers.get("Idempotency-Key");
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${contractId}${path}`,
+      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${contractId}${target}`,
       {
         method,
         headers: {
@@ -48,10 +54,9 @@ export async function proxyContractRequest(
 
 export async function proxyContractStream(request: NextRequest, contractId: string, path: string) {
   const idempotencyKey = request.headers.get("Idempotency-Key");
-  const accessToken = request.cookies.get("lawscan_access")?.value;
-  if (!accessToken) {
-    return NextResponse.json({ success: false, error: { message: "Phiên đăng nhập đã hết hạn." } }, { status: 401 });
-  }
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const accessToken = session.accessToken;
   if (!objectIdPattern.test(contractId)) {
     return NextResponse.json({ success: false, error: { message: "Mã hợp đồng không hợp lệ." } }, { status: 400 });
   }

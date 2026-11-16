@@ -62,7 +62,7 @@ export const sections = {
       [
         "Phạm Thu Hà",
         "ha@novaretail.vn",
-        "Reviewer",
+        "Expert",
         "Nova Retail",
         "Hoạt động",
       ],

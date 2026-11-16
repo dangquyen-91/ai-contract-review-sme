@@ -39,6 +39,12 @@ function validatePasswordConfirmation(
 }
 
 export const registerFormSchema = z.object(registerFields).superRefine(validatePasswordConfirmation);
+export const forgotPasswordFormSchema = z.object({ email });
+export const resetPasswordFormSchema = z.object({
+  code: z.string().regex(/^\d{6}$/, "Vui lòng nhập mã xác minh gồm 6 số."),
+  password,
+  confirmPassword: registerFields.confirmPassword,
+}).superRefine(validatePasswordConfirmation);
 
 export const loginFormSchema = z.object({
   email,

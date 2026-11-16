@@ -3,15 +3,20 @@ import { AppError } from '../../errors/AppError';
 import { OrganizationModel } from '../../models/organization.model';
 import { OrganizationInvitationModel } from '../../models/organizationInvitation.model';
 import { UserModel } from '../../models/user.model';
-import { Role } from '../../models/role.model';
+import { countMembers, findMembership } from '../identity/account.service';
 import {
-  OrganizationSubscriptionModel,
+  SubscriptionModel,
   PlanModel,
   PlanCode,
   SubscriptionPeriodModel,
   UsageRunModel,
 } from '../../models/subscription.model';
+import { readUsageCounter } from './usagePolicy';
+import { REVIEW_PAGES_PER_UNIT } from './reviewCost';
+import { env } from '../../config/env';
 import { addSubscriptionMonth, vietnamCalendarMonth } from '../../utils/subscriptionPeriods';
+import { findBillingAccount } from './billingAccount.service';
+import { ContractReviewPurchaseModel } from '../../models/contractReviewPurchase.model';
 
 export const DEFAULT_PLANS = [
   {
@@ -21,6 +26,7 @@ export const DEFAULT_PLANS = [
     price: 0,
     currency: 'VND',
     analysisLimit: 3,
+    draftingLimit: 3,
     chatLimit: 10,
     memberLimit: 1,
   },
@@ -31,6 +37,7 @@ export const DEFAULT_PLANS = [
     price: 99000,
     currency: 'VND',
     analysisLimit: 30,
+    draftingLimit: 30,
     chatLimit: 200,
     memberLimit: 1,
   },
@@ -41,6 +48,7 @@ export const DEFAULT_PLANS = [
     price: 499000,
     currency: 'VND',
     analysisLimit: 200,
+    draftingLimit: 50,
     chatLimit: 500,
     memberLimit: 5,
   },
@@ -51,6 +59,7 @@ export const DEFAULT_PLANS = [
     price: 999000,
     currency: 'VND',
     analysisLimit: 600,
+    draftingLimit: 150,
     chatLimit: 1500,
     memberLimit: 15,
   },
@@ -61,30 +70,65 @@ const FREE_BUSINESS_MEMBER_LIMIT = 3;
 export async function seedPlans() {
   for (const plan of DEFAULT_PLANS) {
     await PlanModel.updateOne({ code: plan.code }, { $setOnInsert: plan }, { upsert: true });
+    // Add the new benefit without overwriting configured prices, limits or historical usage.
+    await PlanModel.updateOne(
+      { code: plan.code, draftingLimit: { $exists: false } },
+      { $set: { draftingLimit: plan.draftingLimit } },
+    );
+    await SubscriptionPeriodModel.updateMany(
+      { 'plan.code': plan.code, 'plan.draftingLimit': { $exists: false } },
+      { $set: { 'plan.draftingLimit': plan.draftingLimit } },
+    );
   }
+  await migratePersonalDraftingBenefits();
+}
+
+// Grant the new personal benefit once, without resetting usage, replacing
+// positive custom limits, or rewriting expired/cancelled period snapshots.
+export async function migratePersonalDraftingBenefits(now = new Date()) {
+  let plans = 0;
+  let periods = 0;
+  for (const plan of DEFAULT_PLANS.filter(item => item.audience === 'personal')) {
+    const updatedPlan = await PlanModel.updateOne(
+      { code: plan.code, $or: [{ draftingLimit: 0 }, { draftingLimit: { $exists: false } }] },
+      { $set: { draftingLimit: plan.draftingLimit } },
+    );
+    const updatedPeriods = await SubscriptionPeriodModel.updateMany(
+      { 'plan.code': plan.code, endsAt: { $gt: now }, cancelledAt: null,
+        $or: [{ 'plan.draftingLimit': 0 }, { 'plan.draftingLimit': { $exists: false } }] },
+      { $set: { 'plan.draftingLimit': plan.draftingLimit } },
+    );
+    plans += updatedPlan.modifiedCount;
+    periods += updatedPeriods.modifiedCount;
+  }
+  return { plans, periods };
 }
 
 export const listPlans = () => PlanModel.find().sort({ price: 1 }).select('-__v').lean();
 
 // Shared organization lock: payments, downgrade changes and invitation acceptance serialize here.
 export async function lockSubscriptionOrganization(orgId: string, session: ClientSession) {
-  const organization = await OrganizationModel.findByIdAndUpdate(
-    orgId,
-    { $inc: { __v: 1 } },
-    { new: true, session },
-  );
-  if (!organization) throw AppError.notFound('Organization not found');
-  return organization;
+  return findBillingAccount(orgId, session, true);
 }
 
 export async function requireSubscriptionAccess(userId: string, orgId: string, ownerOnly = false) {
-  const user = await UserModel.findOne({ _id: userId, orgId, isActive: true }).populate('roleId');
-  if (!user) throw AppError.forbidden('You do not belong to this organization');
+  if (userId === orgId) {
+    const account = await findBillingAccount(orgId);
+    if (account.userId === userId) return account;
+    throw AppError.forbidden('Bạn không có quyền quản lý gói dịch vụ này.');
+  }
+  const [user, membership] = await Promise.all([
+    UserModel.exists({ _id: userId, isActive: true }),
+    findMembership(userId, orgId),
+  ]);
+  if (!user || !membership)
+    throw AppError.forbidden('Bạn không thuộc tổ chức này hoặc tài khoản đã bị vô hiệu hóa.');
   const organization = await OrganizationModel.findById(orgId);
-  if (!organization) throw AppError.notFound('Organization not found');
-  const role = (user.roleId as unknown as Role).code;
-  if (ownerOnly && role !== 'owner' && !(organization.isPersonal && role === 'user')) {
-    throw AppError.forbidden('Only the owner can manage the subscription');
+  if (!organization) throw AppError.notFound('Không tìm thấy tổ chức.');
+  if (ownerOnly && membership.role !== 'owner') {
+    throw AppError.forbidden(
+      'Chỉ chủ tổ chức hoặc chủ tài khoản cá nhân được quản lý gói dịch vụ.',
+    );
   }
   return organization;
 }
@@ -97,20 +141,30 @@ export async function resolveSubscription(orgId: string, session: ClientSession,
     leaseExpiresAt: { $lte: now },
   }).session(session);
   for (const run of expiredRuns) {
-    await SubscriptionPeriodModel.updateOne(
-      { _id: run.periodId },
-      { $inc: { [`${run.kind}Reserved`]: -1 } },
-      { session },
-    );
+    if (run.reviewPurchaseId)
+      await ContractReviewPurchaseModel.updateOne(
+        {
+          _id: run.reviewPurchaseId,
+          status: 'reserved',
+          runId: run._id,
+        },
+        { $set: { status: 'available' }, $unset: { runId: '' } },
+        { session },
+      );
+    else
+      await SubscriptionPeriodModel.updateOne(
+        { _id: run.periodId },
+        { $inc: { [`${run.kind}Reserved`]: -(run.units ?? 1) } },
+        { session },
+      );
     run.status = 'failed';
-    run.error = 'Worker lease expired; quota released';
+    run.error = 'Tác vụ đã hết thời gian xử lý; các lượt đã giữ được hoàn lại.';
     await run.save({ session });
   }
-  const organization = await OrganizationModel.findById(orgId).session(session);
-  if (!organization) throw AppError.notFound('Organization not found');
-  const subscription = await OrganizationSubscriptionModel.findOneAndUpdate(
+  const organization = await findBillingAccount(orgId, session);
+  const subscription = await SubscriptionModel.findOneAndUpdate(
     { orgId },
-    { $setOnInsert: { orgId } },
+    { $setOnInsert: { orgId, accountType: organization.isPersonal ? 'personal' : 'organization' } },
     { upsert: true, new: true, session },
   );
   const audience = organization.isPersonal ? 'personal' : 'business';
@@ -127,10 +181,18 @@ export async function resolveSubscription(orgId: string, session: ClientSession,
 
   if (!period && organization.isPersonal) {
     const free = await PlanModel.findOne({ code: 'personal_free' }).session(session).lean();
-    if (!free) throw AppError.internal('Subscription plans have not been initialized');
+    if (!free)
+      throw AppError.internal(
+        'Các gói dịch vụ chưa được khởi tạo. Vui lòng liên hệ quản trị viên.',
+      );
     const dates = vietnamCalendarMonth(now);
-    const personalUser = await UserModel.findOne({ orgId }).select('_id').session(session);
-    if (!personalUser) throw AppError.conflict('Personal workspace has no account');
+    const personalUser = await UserModel.findOne(
+      { _id: organization.userId },
+    )
+      .select('_id')
+      .session(session);
+    if (!personalUser)
+      throw AppError.conflict('Không tìm thấy tài khoản của không gian cá nhân này.');
     // Free credits belong to the account: recreating a workspace must not reset them.
     const key = `free:${personalUser.id}:${dates.startsAt.toISOString()}`;
     period = await SubscriptionPeriodModel.findOneAndUpdate(
@@ -167,7 +229,9 @@ export async function getSubscription(userId: string, orgId: string) {
   return mongoose.connection.transaction(async (session) => {
     await lockSubscriptionOrganization(orgId, session);
     const state = await resolveSubscription(orgId, session);
-    const memberCount = await UserModel.countDocuments({ orgId }).session(session);
+    const memberCount = state.organization.userId
+      ? 1
+      : await countMembers(orgId, session);
     const pendingInvitations = await OrganizationInvitationModel.countDocuments({
       orgId,
       status: 'pending',
@@ -202,22 +266,13 @@ export async function getSubscription(userId: string, orgId: string) {
         limit: state.memberLimit,
         available: Math.max(0, state.memberLimit - memberCount - pendingInvitations),
       },
-      analysis: {
-        used: period?.analysisUsed ?? 0,
-        reserved: period?.analysisReserved ?? 0,
-        limit: period?.plan.analysisLimit ?? 0,
-        available: period
-          ? Math.max(0, period.plan.analysisLimit - period.analysisUsed - period.analysisReserved)
-          : 0,
-      },
-      chat: {
-        used: period?.chatUsed ?? 0,
-        reserved: period?.chatReserved ?? 0,
-        limit: period?.plan.chatLimit ?? 0,
-        available: period
-          ? Math.max(0, period.plan.chatLimit - period.chatUsed - period.chatReserved)
-          : 0,
-      },
+      analysis: readUsageCounter(period, 'analysis'),
+      chat: readUsageCounter(period, 'chat'),
+      drafting: readUsageCounter(period, 'drafting'),
+      reviewPagesPerUnit: REVIEW_PAGES_PER_UNIT,
+      ...(state.organization.isPersonal ? {
+        contractReviewPricing: { unitPrice: env.PERSONAL_REVIEW_PRICE_PER_UNIT, pagesPerUnit: REVIEW_PAGES_PER_UNIT },
+      } : {}),
     };
   });
 }
@@ -225,23 +280,29 @@ export async function getSubscription(userId: string, orgId: string) {
 // Caller must hold the organization lock inside the same transaction as joining.
 export async function assertMemberCapacity(orgId: string, session: ClientSession) {
   const state = await resolveSubscription(orgId, session);
-  const count = await UserModel.countDocuments({ orgId }).session(session);
+  const count = await countMembers(orgId, session);
   if (count >= state.memberLimit)
-    throw new AppError('Member limit reached. Upgrade the organization plan or free a seat.', 403);
+    throw AppError.forbidden(
+      'Đã đạt giới hạn thành viên. Vui lòng nâng cấp gói hoặc xóa bớt thành viên.',
+      'MEMBER_LIMIT_REACHED',
+    );
 }
 
 // Call after locking the organization; pending invitations reserve seats until accepted,
 // revoked, expired, or marked delivery_failed.
 export async function assertInvitationCapacity(orgId: string, session: ClientSession) {
   const state = await resolveSubscription(orgId, session);
-  const members = await UserModel.countDocuments({ orgId }).session(session);
+  const members = await countMembers(orgId, session);
   const pending = await OrganizationInvitationModel.countDocuments({
     orgId,
     status: 'pending',
     expiresAt: { $gt: new Date() },
   }).session(session);
   if (members + pending >= state.memberLimit)
-    throw new AppError('Member limit reached. Upgrade the organization plan or free a seat.', 403);
+    throw AppError.forbidden(
+      'Đã đạt giới hạn thành viên. Vui lòng nâng cấp gói hoặc xóa bớt thành viên.',
+      'MEMBER_LIMIT_REACHED',
+    );
 }
 
 export async function scheduleDowngrade(userId: string, orgId: string, planCode: PlanCode) {
@@ -259,9 +320,7 @@ export async function scheduleDowngrade(userId: string, orgId: string, planCode:
         'plan.price': { $gt: 0 },
       }).session(session))
     ) {
-      throw AppError.conflict(
-        'The scheduled downgrade has already been paid and cannot be replaced',
-      );
+      throw AppError.conflict('Lịch hạ gói đã được thanh toán nên không thể thay thế.');
     }
     const target = await PlanModel.findOne({ code: planCode }).session(session);
     if (
@@ -271,12 +330,14 @@ export async function scheduleDowngrade(userId: string, orgId: string, planCode:
       target.price >= period.plan.price
     ) {
       throw AppError.badRequest(
-        'Choose a lower plan in the same plan family while your paid plan is active',
+        'Vui lòng chọn gói thấp hơn, cùng loại cá nhân hoặc doanh nghiệp, khi gói trả phí hiện tại còn hiệu lực.',
       );
     }
-    const count = await UserModel.countDocuments({ orgId }).session(session);
+    const count = await countMembers(orgId, session);
     if (count > target.memberLimit)
-      throw AppError.conflict('Reduce organization members before scheduling this downgrade');
+      throw AppError.conflict(
+        'Vui lòng giảm số thành viên cho phù hợp với gói mới trước khi lên lịch hạ gói.',
+      );
     const lastPaidPeriod = await SubscriptionPeriodModel.findOne({
       orgId,
       cancelledAt: null,
@@ -295,8 +356,8 @@ export async function cancelDowngrade(userId: string, orgId: string) {
   await requireSubscriptionAccess(userId, orgId, true);
   return mongoose.connection.transaction(async (session) => {
     await lockSubscriptionOrganization(orgId, session);
-    const sub = await OrganizationSubscriptionModel.findOne({ orgId }).session(session);
-    if (!sub?.scheduledDowngrade) throw AppError.notFound('No downgrade is scheduled');
+    const sub = await SubscriptionModel.findOne({ orgId }).session(session);
+    if (!sub?.scheduledDowngrade) throw AppError.notFound('Chưa có lịch hạ gói.');
     const paid = await SubscriptionPeriodModel.exists({
       orgId,
       cancelledAt: null,
@@ -304,8 +365,7 @@ export async function cancelDowngrade(userId: string, orgId: string) {
       'plan.code': sub.scheduledDowngrade.planCode,
       'plan.price': { $gt: 0 },
     }).session(session);
-    if (paid)
-      throw AppError.conflict('The downgrade has already been paid; it cannot be cancelled here');
+    if (paid) throw AppError.conflict('Kỳ hạ gói đã được thanh toán nên không thể hủy tại đây.');
     sub.scheduledDowngrade = undefined;
     await sub.save({ session });
   });
@@ -334,7 +394,7 @@ async function applyPaidSubscription(
   now = new Date(),
   validateOnly = false,
 ) {
-  if (!input.paymentReference.trim()) throw AppError.badRequest('Payment reference is required');
+  if (!input.paymentReference.trim()) throw AppError.badRequest('Thiếu mã tham chiếu thanh toán.');
   return mongoose.connection.transaction(async (session) => {
     const organization = await lockSubscriptionOrganization(input.orgId, session);
     const existing = await SubscriptionPeriodModel.findOne({
@@ -347,7 +407,7 @@ async function applyPaidSubscription(
         existing.plan.price !== input.amount ||
         existing.paymentAction !== input.action
       ) {
-        throw AppError.conflict('Payment reference was already applied to another purchase');
+        throw AppError.conflict('Mã tham chiếu thanh toán đã được dùng cho giao dịch khác.');
       }
       return existing;
     }
@@ -358,7 +418,9 @@ async function applyPaidSubscription(
       plan.price !== input.amount ||
       plan.audience !== (organization.isPersonal ? 'personal' : 'business')
     ) {
-      throw AppError.badRequest('Payment amount or plan does not match this organization');
+      throw AppError.badRequest(
+        'Số tiền thanh toán hoặc gói dịch vụ không phù hợp với tài khoản này.',
+      );
     }
     const { period: current, subscription } = await resolveSubscription(input.orgId, session, now);
     const last = await SubscriptionPeriodModel.findOne({
@@ -371,19 +433,20 @@ async function applyPaidSubscription(
       .session(session);
     let startsAt = now;
     if (input.action === 'purchase') {
-      if (last) throw AppError.conflict('An active or prepaid subscription already exists');
+      if (last)
+        throw AppError.conflict('Đã có gói đang hoạt động hoặc kỳ gói đã thanh toán trước.');
       if (subscription.scheduledDowngrade)
-        throw AppError.conflict('Complete or cancel the scheduled downgrade first');
+        throw AppError.conflict('Vui lòng hoàn tất hoặc hủy lịch hạ gói trước.');
     } else if (input.action === 'renew') {
       if (!current || current.plan.code !== plan.code || subscription.scheduledDowngrade) {
         throw AppError.conflict(
-          'Renewal requires the same active plan without a scheduled downgrade',
+          'Chỉ có thể gia hạn cùng gói đang hoạt động khi chưa có lịch hạ gói.',
         );
       }
       startsAt = last!.endsAt;
     } else if (input.action === 'upgrade') {
       if (!current || plan.price <= current.plan.price)
-        throw AppError.conflict('This is not an upgrade');
+        throw AppError.conflict('Gói được chọn không phải là gói nâng cấp.');
     } else {
       const scheduled = subscription.scheduledDowngrade;
       if (
@@ -391,7 +454,7 @@ async function applyPaidSubscription(
         scheduled.planCode !== plan.code ||
         now >= addSubscriptionMonth(scheduled.effectiveAt)
       ) {
-        throw AppError.conflict('A matching, payable downgrade must be scheduled first');
+        throw AppError.conflict('Vui lòng lên lịch hạ gói phù hợp trước khi thanh toán.');
       }
       const alreadyPaid = await SubscriptionPeriodModel.exists({
         orgId: input.orgId,
@@ -400,12 +463,12 @@ async function applyPaidSubscription(
         'plan.code': plan.code,
         'plan.price': { $gt: 0 },
       }).session(session);
-      if (alreadyPaid) throw AppError.conflict('The scheduled downgrade period is already paid');
+      if (alreadyPaid) throw AppError.conflict('Kỳ hạ gói đã được thanh toán.');
       startsAt = scheduled.effectiveAt > now ? scheduled.effectiveAt : now;
     }
-    const members = await UserModel.countDocuments({ orgId: input.orgId }).session(session);
+    const members = await countMembers(input.orgId, session);
     if (members > plan.memberLimit)
-      throw AppError.conflict('Organization exceeds the target member limit');
+      throw AppError.conflict('Số thành viên hiện tại vượt giới hạn của gói được chọn.');
     if (validateOnly) return null;
     if (input.action === 'upgrade') {
       await SubscriptionPeriodModel.updateMany(

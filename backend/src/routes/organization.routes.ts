@@ -22,7 +22,9 @@ import {
   createOrganizationHandler,
   deleteOrganizationHandler,
   getOrganizationHandler,
+  listOrganizationsHandler,
   updateOrganizationHandler,
+  organizationAddressOptionsHandler,
 } from '../controllers/organization.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 import { requireRole } from '../middlewares/rbac.middleware';
@@ -43,6 +45,7 @@ import {
 } from '../validations/invitation.validation';
 import {
   createOrganizationSchema,
+  listOrganizationsQuerySchema,
   organizationIdParamSchema,
   updateOrganizationSchema,
 } from '../validations/organization.validation';
@@ -50,6 +53,7 @@ import {
 const router = Router();
 
 router.use(requireAuth);
+router.get('/address-options', organizationAddressOptionsHandler);
 const paymentLimiter = rateLimit({
   windowMs: 60_000,
   limit: 20,
@@ -134,20 +138,26 @@ router.delete(
 );
 router.post(
   '/',
-  requireRole('owner', 'manager', 'staff', 'reviewer', 'user'),
+  requireRole('user'),
   validate({ body: createOrganizationSchema }),
   createOrganizationHandler,
+);
+router.get(
+  '/',
+  requireRole('manager'),
+  validate({ query: listOrganizationsQuerySchema }),
+  listOrganizationsHandler,
 );
 router.get('/:id', validate({ params: organizationIdParamSchema }), getOrganizationHandler);
 router.patch(
   '/:id',
-  requireRole('administrator', 'owner'),
+  requireRole('owner'),
   validate({ params: organizationIdParamSchema, body: updateOrganizationSchema }),
   updateOrganizationHandler,
 );
 router.delete(
   '/:id',
-  requireRole('administrator', 'owner'),
+  requireRole('owner'),
   validate({ params: organizationIdParamSchema }),
   deleteOrganizationHandler,
 );

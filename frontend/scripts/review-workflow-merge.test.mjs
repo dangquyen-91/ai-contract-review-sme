@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 
-function setup({ failResult = false, personal = false, initialType = 'service', failReview } = {}) {
+function setup({ failResult = false, workspaceReady = true, failReview } = {}) {
   const values = [];
   let cursor = 0;
   const calls = [];
@@ -49,7 +49,7 @@ function setup({ failResult = false, personal = false, initialType = 'service', 
       },
     })[name] ?? {},
   });
-  function render() { cursor = 0; return exports.useReviewWorkflow({ access: { upload: true, review: true }, initialType, personal, reviewPath: '/dashboard/user/review' }); }
+  function render() { cursor = 0; return exports.useReviewWorkflow({ access: { upload: true, review: true }, workspaceReady }); }
   return { calls, render };
 }
 
@@ -65,25 +65,32 @@ test('Merged workflow retries a failed result download without starting AI again
   assert.equal(ctx.render().workflowComplete, true);
 });
 
-test('Merged workflow preserves explicit resume and writes the correct role review route', async () => {
+test('Merged workflow preserves explicit resume and writes the canonical contract route', async () => {
   const ctx = setup();
   await ctx.render().reviewExisting({ _id: 'contract-1', title: 'Test', status: 'uploaded' }, false, true);
   assert.equal(ctx.calls.find((call) => call.kind === 'run').args.resumeOnly, true);
-  assert.equal(ctx.calls.find((call) => call.kind === 'url').url, '/dashboard/user/review?contract=contract-1&reviewMode=resume');
+  assert.equal(ctx.calls.find((call) => call.kind === 'url').url, '/contract/contract-1?reviewMode=resume');
   assert.equal(ctx.render().reviewProgress.status, 'completed');
   assert.equal(ctx.render().timelineScrollRequest, 0);
 });
 
-test('Merged upload preserves the dev employee policy for personal labor contracts', async () => {
-  const ctx = setup({ personal: true, initialType: 'labor' });
-  ctx.render().setOurParty('employer');
+test('Merged upload sends only the file and waits for explicit review after classification', async () => {
+  const ctx = setup();
   const file = new Blob(['test'], { type: 'application/pdf' });
   file.name = 'test.pdf';
   assert.equal(await ctx.render().selectFile(file), true);
-  assert.equal(ctx.calls.find((call) => call.kind === 'upload').data.get('ourParty'), 'employee');
+  assert.deepEqual([...ctx.calls.find((call) => call.kind === 'upload').data.keys()], ['file']);
+  assert.equal(ctx.calls.filter(call => call.kind === 'run').length, 0);
   assert.equal(ctx.render().timelineScrollRequest, 0);
   await ctx.render().reviewUploadedContract('');
   assert.equal(ctx.render().timelineScrollRequest, 1);
+});
+
+test('personal accounts without an organization retain the UI but cannot submit organization uploads', async () => {
+  const ctx = setup({ workspaceReady: false });
+  const file = new Blob(['test'], { type: 'application/pdf' }); file.name = 'test.pdf';
+  assert.equal(await ctx.render().selectFile(file), false);
+  assert.equal(ctx.calls.length, 0);
 });
 
 test('Quota rejection keeps the uploaded contract and prevents tracking retries, but permits a later explicit review', async () => {

@@ -3,6 +3,7 @@ import mongoose, { HydratedDocument } from 'mongoose';
 import type { PaymentLink, Webhook } from '@payos/node';
 import { env } from '../../config/env';
 import { AppError } from '../../errors/AppError';
+import { ContractModel } from '../../models/contract.model';
 import { PaymentAction, PaymentModel, Payment as PaymentData } from '../../models/payment.model';
 import { PlanCode, PlanModel } from '../../models/subscription.model';
 import {
@@ -12,9 +13,25 @@ import {
   validatePaidSubscriptionPurchase,
 } from './subscription.service';
 import * as provider from './payos.service';
+import {
+  contractReviewQuote,
+  activateContractReviewPurchase,
+} from './contractReviewPurchase.service';
 
 type Payment = HydratedDocument<PaymentData>;
-type Purchase = { planCode: PlanCode; action: PaymentAction };
+type Purchase =
+  | { planCode: PlanCode; action: PaymentAction }
+  | {
+      purpose: 'contract_review';
+      action: 'purchase';
+      contractId: string;
+      versionId: string;
+      expectedAmount: number;
+    };
+const isReviewPurchase = (
+  input: Purchase,
+): input is Extract<Purchase, { purpose: 'contract_review' }> =>
+  'purpose' in input && input.purpose === 'contract_review';
 const reference = (orderCode: number) => `payos:${orderCode}`;
 
 function view(order: Payment) {
@@ -22,6 +39,11 @@ function view(order: Payment) {
     orderCode: order.orderCode,
     orgId: order.orgId,
     planCode: order.planCode,
+    purpose: order.purpose ?? 'subscription',
+    contractId: order.contractId?.toString() ?? null,
+    versionId: order.versionId?.toString() ?? null,
+    pageCount: order.pageCount ?? null,
+    reviewUnits: order.reviewUnits ?? null,
     action: order.action,
     amount: order.amount,
     currency: order.currency,
@@ -46,17 +68,55 @@ export async function createPayment(
   provider.getPayOS();
   const previous = await PaymentModel.findOne({ orgId, idempotencyKey });
   if (previous) return repeat(previous, input);
-  const plan = await PlanModel.findOne({ code: input.planCode }).lean();
-  if (!plan || plan.price <= 0) throw AppError.badRequest('Choose a paid plan');
+  const reviewQuote = isReviewPurchase(input)
+    ? await contractReviewQuote(userId, orgId, input.contractId)
+    : null;
+  const plan = !isReviewPurchase(input)
+    ? await PlanModel.findOne({ code: input.planCode }).lean()
+    : null;
+  if (isReviewPurchase(input)) {
+    if (
+      !reviewQuote?.canPurchase ||
+      reviewQuote.versionId !== input.versionId ||
+      reviewQuote.amount !== input.expectedAmount
+    )
+      throw AppError.conflict(
+        'Phí hoặc phiên bản hợp đồng đã thay đổi. Hãy kiểm tra lại trước khi thanh toán.',
+        'REVIEW_QUOTE_CHANGED',
+      );
+  } else if (!plan || plan.price <= 0) throw AppError.badRequest('Choose a paid plan');
+  const amount = reviewQuote?.amount ?? plan!.price;
+  const itemName = reviewQuote ? 'Rà soát hợp đồng LawScan' : plan!.name;
+  const purchase = reviewQuote
+    ? {
+        purpose: 'contract_review',
+        action: 'purchase',
+        contractId: reviewQuote.contractId,
+        versionId: reviewQuote.versionId,
+        pageCount: reviewQuote.pageCount,
+        reviewUnits: reviewQuote.units,
+        unitPrice: reviewQuote.unitPrice,
+      }
+    : input;
   const orderCode = randomInt(1_000_000_000_000, 10_000_000_000_000);
-  await validatePaidSubscriptionPurchase({
-    orgId,
-    ...input,
-    amount: plan.price,
-    paymentReference: reference(orderCode),
-  });
+  if (!isReviewPurchase(input))
+    await validatePaidSubscriptionPurchase({
+      orgId,
+      ...input,
+      amount,
+      paymentReference: reference(orderCode),
+    });
   const { order, created } = await mongoose.connection.transaction(async (session) => {
     await lockSubscriptionOrganization(orgId, session);
+    if (
+      reviewQuote &&
+      !(await ContractModel.exists({
+        _id: reviewQuote.contractId,
+        orgId,
+        uploadedBy: userId,
+      }).session(session))
+    )
+      throw AppError.notFound('Hợp đồng không còn tồn tại.');
     const existing = await PaymentModel.findOne({ orgId, idempotencyKey }).session(session);
     if (existing) return { order: existing, created: false };
     if (await PaymentModel.exists({ orgId, isOpen: true }).session(session)) {
@@ -69,8 +129,8 @@ export async function createPayment(
           createdBy: userId,
           idempotencyKey,
           orderCode,
-          ...input,
-          amount: plan.price,
+          ...purchase,
+          amount,
           expiresAt: new Date(Date.now() + 15 * 60_000),
         },
       ],
@@ -84,7 +144,7 @@ export async function createPayment(
       orderCode,
       amount: order.amount,
       description: `LS ${orderCode}`,
-      items: [{ name: plan.name, quantity: 1, price: order.amount }],
+      items: [{ name: itemName, quantity: 1, price: order.amount }],
       returnUrl: env.PAYOS_RETURN_URL,
       cancelUrl: env.PAYOS_CANCEL_URL,
       expiredAt: Math.floor(order.expiresAt.getTime() / 1000),
@@ -123,7 +183,13 @@ export async function createPayment(
 }
 
 function repeat(order: Payment, input: Purchase) {
-  if (order.planCode !== input.planCode || order.action !== input.action) {
+  const matches = isReviewPurchase(input)
+    ? order.purpose === 'contract_review' &&
+      order.contractId?.toString() === input.contractId &&
+      order.versionId?.toString() === input.versionId &&
+      order.amount === input.expectedAmount
+    : order.purpose !== 'contract_review' && order.planCode === input.planCode;
+  if (!matches || order.action !== input.action) {
     throw AppError.conflict('Idempotency-Key was already used for another purchase');
   }
   return view(order);
@@ -152,6 +218,18 @@ export async function listPayments(userId: string, orgId: string, page: number) 
 async function fulfill(order: Payment) {
   if (order.fulfilledAt) return;
   try {
+    if (order.purpose === 'contract_review') {
+      await activateContractReviewPurchase(order);
+      await PaymentModel.updateOne(
+        { _id: order._id, fulfilledAt: null },
+        {
+          $set: { fulfilledAt: new Date(), isOpen: false },
+          $unset: { fulfillmentError: 1, providerError: 1 },
+        },
+      );
+      return;
+    }
+    if (!order.planCode) throw AppError.conflict('Missing subscription plan');
     const period = await activatePaidSubscription(
       {
         orgId: order.orgId.toString(),

@@ -1,0 +1,250 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { toast } from "sonner";
+import { useContractReviewResult, useReviewContractMutation, useUploadContractMutation, useUploadContractVersionMutation } from "@/hooks/contracts/use-contracts";
+import { contractsApi } from "@/lib/api/contracts";
+import { isApiClientError } from "@/lib/api/client";
+import { isReviewCancelled, readReviewSession } from "@/lib/review/review-session";
+import { serverCodeMessage } from "@/lib/review/review-error-codes";
+import { reviewBlockReason, reviewBlockedMessage, type ReviewBlockReason } from "@/lib/review/review-failure";
+import type { ContractReviewRun, DashboardContract, DuplicateFileMatch, ReviewBillingConfirmation } from "@/types/contracts";
+
+type ReviewStage = "idle" | "uploading" | "reviewing" | "done";
+type Access = { upload: boolean; review: boolean };
+
+export type UploadTarget = {
+  versionOf?: { id: string; title: string };
+  note?: string;
+  allowDuplicate?: boolean;
+};
+
+export type DuplicateUpload = { file: File; match: DuplicateFileMatch };
+
+export function reviewErrorMessage(error: unknown) {
+  const blocked = reviewBlockReason(error);
+  if (blocked) return reviewBlockedMessage(blocked);
+  if (isApiClientError(error) && error.serverCode) {
+    const known = serverCodeMessage(error.serverCode);
+    if (known) return known;
+  }
+  if (isApiClientError(error) && error.status === 409) {
+    return "Hợp đồng đang được phân tích ở một phiên khác. Vui lòng thử lại sau khi quá trình đó hoàn tất.";
+  }
+  return error instanceof Error ? error.message : "Vui lòng thử lại sau.";
+}
+
+function failedRun(error: unknown) {
+  return error instanceof Error && error.name === "ReviewRunError" ? (error as Error & { review: ContractReviewRun }).review : null;
+}
+
+export function useReviewWorkflow({ access, workspaceReady = true, personal = false }: { access: Access; workspaceReady?: boolean; personal?: boolean }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [title, setTitle] = useState("");
+  const [uploadedContract, setUploadedContract] = useState<{ id: string; title: string } | null>(null);
+  const [workflowComplete, setWorkflowComplete] = useState(false);
+  const [timelineScrollRequest, setTimelineScrollRequest] = useState(0);
+  const [selectedContractId, setSelectedContractId] = useState("");
+  const [reviewProgress, setReviewProgress] = useState<ContractReviewRun | null>(null);
+  const reviewResultRef = useRef<HTMLDivElement>(null);
+  const reviewTimelineRef = useRef<HTMLDivElement>(null);
+  const activeReviewRequest = useRef<string | null>(null);
+  const [pendingReviewId, setPendingReviewId] = useState<string | null>(null);
+  const [pendingReviewFocus, setPendingReviewFocus] = useState("");
+  const [retryKind, setRetryKind] = useState<"load" | "run">("run");
+  const [reviewError, setReviewError] = useState("");
+  const [reviewBlocked, setReviewBlocked] = useState<ReviewBlockReason | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [duplicateUpload, setDuplicateUpload] = useState<DuplicateUpload | null>(null);
+  const uploadContractMutation = useUploadContractMutation();
+  const uploadVersionMutation = useUploadContractVersionMutation();
+  const reviewContractMutation = useReviewContractMutation();
+  const resultQuery = useContractReviewResult(selectedContractId);
+  const reviewResult = workflowComplete ? resultQuery.data ?? null : null;
+  const uploading = uploadContractMutation.isPending || uploadVersionMutation.isPending;
+  const stage: ReviewStage = uploading ? "uploading" : reviewContractMutation.isPending ? "reviewing" : workflowComplete ? "done" : "idle";
+  const isReviewing = stage === "reviewing" || resultQuery.isLoadingResult;
+
+  async function selectFile(nextFile?: File, target: UploadTarget = {}): Promise<boolean> {
+    if (!nextFile || !access.upload || uploading || isReviewing) return false;
+    if (!workspaceReady) {
+      toast.error("Chưa thể tải hợp đồng", { description: "Chưa tải được thông tin tài khoản. Vui lòng tải lại trang và thử lại." });
+      return false;
+    }
+    const validTypes = new Set(["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg"]);
+    if (!validTypes.has(nextFile.type)) {
+      toast.error("Định dạng chưa được hỗ trợ", { description: "Vui lòng chọn PDF, DOCX, PNG hoặc JPG." });
+      return false;
+    }
+    if (nextFile.size > 20 * 1024 * 1024) { toast.error("Tệp vượt quá 20 MB"); return false; }
+    const uploadTitle = target.versionOf?.title ?? (nextFile.name.replace(/\.[^.]+$/, "").trim() || "Hợp đồng mới");
+    setDuplicateUpload(null);
+    setFile(nextFile);
+    setTitle(uploadTitle);
+    setSelectedContractId("");
+    setReviewProgress(null);
+    setPendingReviewId(null);
+    setPendingReviewFocus("");
+    setReviewError("");
+    setReviewBlocked(null);
+    setWorkflowComplete(false);
+    const formData = new FormData();
+    formData.set("file", nextFile);
+    if (target.allowDuplicate) formData.set("allowDuplicate", "true");
+    const note = target.note?.trim();
+    if (target.versionOf && note) formData.set("note", note);
+    try {
+      const contract = target.versionOf
+        ? await uploadVersionMutation.mutateAsync({ contractId: target.versionOf.id, formData })
+        : await uploadContractMutation.mutateAsync(formData);
+      const contractId = contract.id ?? contract._id;
+      setFile(null);
+      setTitle("");
+      if (target.versionOf) {
+        const versionNumber = contract.currentVersion?.versionNumber;
+        toast.success(versionNumber ? `Đã tải phiên bản ${versionNumber}` : "Đã tải phiên bản mới", { description: contract.title });
+      }
+      if (access.review && contractId) setUploadedContract({ id: contractId, title: contract.title });
+      else if (!target.versionOf) toast.success("Đã tải hợp đồng lên");
+      return true;
+    } catch (error) {
+      if (isApiClientError(error) && error.serverCode === "DUPLICATE_CONTRACT" && error.meta?.contractId) {
+        setFile(null);
+        setTitle("");
+        setDuplicateUpload({ file: nextFile, match: error.meta as DuplicateFileMatch });
+        return false;
+      }
+      toast.error(target.versionOf ? "Chưa thể tải phiên bản mới" : "Chưa thể tải hợp đồng lên", { description: reviewErrorMessage(error) });
+      return false;
+    }
+  }
+
+  function dismissDuplicateUpload() {
+    setDuplicateUpload(null);
+  }
+
+  async function uploadDuplicateAnyway() {
+    const pending = duplicateUpload;
+    if (!pending) return;
+    setDuplicateUpload(null);
+    await selectFile(pending.file, { allowDuplicate: true });
+  }
+
+  function notifyFailedRun(error: unknown) {
+    const run = failedRun(error);
+    if (!run) return false;
+    setReviewError((error as Error).message);
+    if (run.status === "cancelled") toast.success("Đã dừng rà soát", { description: "Lượt rà soát đã được hoàn lại." });
+    else toast.error("AI chưa hoàn tất rà soát", { description: (error as Error).message });
+    return true;
+  }
+
+  async function cancelReview() {
+    const reviewId = reviewProgress?._id;
+    if (!reviewId || cancelling || (reviewProgress.status !== "queued" && reviewProgress.status !== "running")) return;
+    setCancelling(true);
+    try {
+      setReviewProgress(await contractsApi.cancelReviewRun(reviewId));
+    } catch (error) {
+      toast.error("Chưa dừng được rà soát", { description: reviewErrorMessage(error) });
+    } finally {
+      setCancelling(false);
+    }
+  }
+
+  async function runReview(contractId: string, focus = "", resumeOnly = false, billing?: ReviewBillingConfirmation) {
+    setSelectedContractId(contractId);
+    setRetryKind("run");
+    setReviewError("");
+    setReviewBlocked(null);
+    setReviewProgress(null);
+    activeReviewRequest.current = contractId;
+    window.history.replaceState(window.history.state, "", `/contract/${encodeURIComponent(contractId)}?reviewMode=resume`);
+    try { await reviewContractMutation.mutateAsync({ contractId, analysisFocus: focus.trim() || undefined, resumeOnly, billing, onProgress: (review) => {
+      setReviewProgress(review);
+      if (review.status === "completed") setRetryKind("load");
+    } }); }
+    catch (error) { setReviewBlocked(reviewBlockReason(error)); throw error; }
+    setPendingReviewId(null);
+    setPendingReviewFocus("");
+    setWorkflowComplete(true);
+  }
+
+  async function reviewUploadedContract(focus: string, billing?: ReviewBillingConfirmation, target?: { id: string; title: string }) {
+    const contract = target ?? uploadedContract;
+    if (!contract) return;
+    const contractId = contract.id;
+    setTitle(contract.title);
+    setUploadedContract(null);
+    setTimelineScrollRequest((request) => request + 1);
+    try { await runReview(contractId, focus, false, billing); }
+    catch (error) {
+      if (isReviewCancelled(error)) return;
+      setPendingReviewId(contractId);
+      setPendingReviewFocus(focus);
+      if (notifyFailedRun(error)) return;
+      const blocked = reviewBlockReason(error);
+      setReviewError(blocked ? reviewBlockedMessage(blocked) : "Hợp đồng đã tải lên thành công. Chưa hoàn tất phân tích; bạn không cần tải lại tài liệu.");
+      toast.error(blocked ? "Chưa bắt đầu rà soát" : "Đã tải lên, nhưng AI chưa hoàn tất", { description: reviewErrorMessage(error) });
+    }
+  }
+
+  async function reviewExisting(contract: DashboardContract, rerun = false, resumeOnly = false) {
+    const contractId = contract.id ?? contract._id;
+    if (!contractId || contract.status === "archived" || isReviewing) return false;
+    if (!contract.type && contract.classification) {
+      setUploadedContract({ id: contractId, title: contract.title });
+      return true;
+    }
+    const kind = contract.status === "reviewed" && !rerun && !readReviewSession(contractId) ? "load" : "run";
+    if (personal && kind === "run" && !resumeOnly && !readReviewSession(contractId) && contract.status !== "processing") {
+      setUploadedContract({ id: contractId, title: contract.title });
+      return true;
+    }
+    activeReviewRequest.current = contractId;
+    setRetryKind(kind);
+    setPendingReviewId(null);
+    setPendingReviewFocus("");
+    setReviewError("");
+    setReviewBlocked(null);
+    setTitle(contract.title);
+    setReviewProgress(null);
+    setSelectedContractId(contractId);
+    setWorkflowComplete(false);
+    try {
+      if (kind === "load") {
+        await resultQuery.load(contractId);
+        setWorkflowComplete(true);
+      } else if (access.review) await runReview(contractId, "", resumeOnly);
+    } catch (error) {
+      if (isReviewCancelled(error)) return false;
+      setPendingReviewId(contractId);
+      if (notifyFailedRun(error)) return true;
+      const blocked = kind === "run" ? reviewBlockReason(error) : null;
+      setReviewError(blocked ? reviewBlockedMessage(blocked) : kind === "load" ? "Chưa tải được kết quả đã lưu. Hãy thử tải lại kết quả hoặc quay về danh sách." : "Chưa hoàn tất phân tích hợp đồng. Tài liệu vẫn được giữ trong tổ chức.");
+      toast.error(blocked ? "Chưa bắt đầu rà soát" : "Chưa thể rà soát hợp đồng", { description: reviewErrorMessage(error) });
+    }
+    return true;
+  }
+
+  async function retryReview() {
+    if (!pendingReviewId || isReviewing || reviewBlocked) return;
+    setWorkflowComplete(false);
+    try {
+      if (retryKind === "load") {
+        await resultQuery.load(pendingReviewId);
+        setWorkflowComplete(true);
+        setPendingReviewId(null);
+        setReviewError("");
+      } else await runReview(pendingReviewId, pendingReviewFocus);
+    } catch (error) {
+      if (isReviewCancelled(error)) return;
+      if (notifyFailedRun(error)) return;
+      const blocked = retryKind === "run" ? reviewBlockReason(error) : null;
+      setReviewError(blocked ? reviewBlockedMessage(blocked) : retryKind === "load" ? "Chưa tải được kết quả. Bạn có thể thử lại hoặc quay về danh sách." : "Phân tích chưa hoàn tất. Tài liệu vẫn được giữ; bạn có thể thử lại sau.");
+      toast.error(blocked ? "Chưa bắt đầu rà soát" : "AI chưa thể hoàn tất rà soát", { description: reviewErrorMessage(error) });
+    }
+  }
+
+  return { selectedContractId, duplicateUpload, dismissDuplicateUpload, uploadDuplicateAnyway, file, title, setTitle, uploadedContract, setUploadedContract, cancelReview, cancelling, reviewResult, reviewProgress, reviewResultRef, reviewTimelineRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, runReview, reviewUploadedContract, reviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing: reviewContractMutation.isPending, loadingResult: resultQuery.isLoadingResult, reconnecting: reviewContractMutation.reconnecting };
+}

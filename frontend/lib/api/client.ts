@@ -5,17 +5,27 @@ import type { RefreshTokenResult } from "@/types/auth";
 export class ApiClientError extends Error {
   readonly status?: number;
   readonly code?: string;
+  readonly serverCode?: string;
   readonly details?: ApiFieldErrors;
+  readonly meta?: Record<string, unknown>;
 
   constructor(
     message: string,
-    options: { status?: number; code?: string; details?: ApiFieldErrors } = {},
+    options: {
+      status?: number;
+      code?: string;
+      serverCode?: string;
+      details?: ApiFieldErrors;
+      meta?: Record<string, unknown>;
+    } = {},
   ) {
     super(message);
     this.name = "ApiClientError";
     this.status = options.status;
     this.code = options.code;
+    this.serverCode = options.serverCode;
     this.details = options.details;
+    this.meta = options.meta;
   }
 }
 
@@ -33,6 +43,7 @@ type RetryableRequestConfig = InternalAxiosRequestConfig & { _retry?: boolean };
 let refreshPromise: Promise<RefreshTokenResult> | null = null;
 
 function isAuthRequest(url?: string) {
+  if (url?.endsWith("/auth/forgot-password") || url?.endsWith("/auth/reset-password")) return true;
   if (url?.endsWith("/auth/google")) return true;
   return ["/auth/login", "/auth/register", "/auth/verify-email", "/auth/resend-verification", "/auth/refresh", "/auth/logout", "/auth/onboarding", "/invitations/accept", "/invitations/preview"].some((path) => url?.endsWith(path));
 }
@@ -62,12 +73,16 @@ function normalizeApiError(error: unknown): ApiClientError {
     message = "Máy chủ phản hồi quá lâu. Vui lòng thử lại.";
   } else if (!error.response) {
     message = "Không thể kết nối máy chủ LawScan. Vui lòng thử lại.";
+  } else if (error.response.status === 429) {
+    message = "Bạn thao tác quá nhanh. Vui lòng thử lại sau ít phút.";
   }
 
   return new ApiClientError(message, {
     status: error.response?.status,
     code: error.code,
+    serverCode: responseError?.code,
     details: responseError?.details,
+    meta: responseError?.meta,
   });
 }
 
@@ -82,7 +97,6 @@ apiClient.interceptors.response.use(
           await refreshSession();
           return await apiClient(config);
         } catch {
-          // Return the original unauthorized error after refresh fails.
         }
       }
     }

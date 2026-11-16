@@ -2,9 +2,12 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { usePaymentResult } from "@/hooks/use-payment-result";
-import { paymentMessage, safeCheckoutUrl } from "@/lib/payment-state";
-import { workspacePath } from "@/lib/workspace-path";
+import { usePaymentResult } from "@/hooks/subscription/use-payment-result";
+import {
+  paymentMessage,
+  safeCheckoutUrl,
+} from "@/lib/subscription/payment-state";
+import { workspacePath } from "@/lib/routing/workspace-path";
 import { PaymentOrderDetails } from "./payment-order-details";
 import type { AuthUser } from "@/types/auth";
 
@@ -79,6 +82,15 @@ export function PaymentOrderStatus({
             )}
             <PaymentOrderDetails order={order} email={user.email} />
             <div className="mt-6 flex flex-wrap gap-3">
+              {order.purpose === "contract_review" &&
+                order.fulfilledAt &&
+                order.contractId && (
+                  <Button asChild>
+                    <Link href={`/contract/${order.contractId}`}>
+                      Mở hợp đồng để rà soát
+                    </Link>
+                  </Button>
+                )}
               {!order.fulfilledAt && (
                 <Button disabled={pending} onClick={check}>
                   {pending ? "Đang kiểm tra…" : "Kiểm tra lại trạng thái"}

@@ -4,7 +4,7 @@ import { env } from '../config/env';
 import { AppError } from '../errors/AppError';
 import { RoleCode } from '../models/role.model';
 import { UserModel } from '../models/user.model';
-import { Role } from '../models/role.model';
+import { loadAccess, PERSONAL_ROLES } from '../services/identity/account.service';
 
 export type UserRole = RoleCode;
 
@@ -13,6 +13,7 @@ export interface AccessTokenPayload {
   role: UserRole;
   orgId?: string;
   permissionsVersion?: number;
+  workspace?: 'personal' | 'organization';
 }
 
 export type OrganizationAccessTokenPayload = AccessTokenPayload & { orgId: string };
@@ -42,13 +43,11 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     return next(AppError.unauthorized('Invalid or expired token'));
   }
   try {
-    const user = await UserModel.findOne({ _id: payload.sub, isActive: true }).populate('roleId');
-    if (!user || !user.roleId)
-      return next(AppError.unauthorized('User is inactive or no longer exists'));
+    const user = await UserModel.findOne({ _id: payload.sub, isActive: true });
+    if (!user) return next(AppError.unauthorized('User is inactive or no longer exists'));
     if (!user.emailVerifiedAt)
       return next(AppError.forbidden('Verify your email by signing in again'));
-    const role = (user.roleId as unknown as Role).code;
-    const orgId = user.orgId?.toString();
+    const { role, orgId } = await loadAccess(user);
     // Stale tokens must not keep old organization access or silently switch context.
     if (
       payload.role !== role ||
@@ -57,7 +56,13 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     ) {
       return next(AppError.unauthorized('Account permissions changed. Refresh your access token.'));
     }
-    req.user = { sub: user.id, role, orgId };
+    if (payload.workspace === 'personal') {
+      if (!PERSONAL_ROLES.includes(role))
+        return next(AppError.forbidden('Vai trò này không có không gian cá nhân.'));
+      req.user = { sub: user.id, role: 'user', workspace: 'personal' };
+    } else {
+      req.user = { sub: user.id, role, orgId, workspace: payload.workspace };
+    }
     return next();
   } catch (error) {
     return next(error);
@@ -67,5 +72,15 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
 export function getOrganizationUser(req: Request): OrganizationAccessTokenPayload {
   if (!req.user) throw AppError.unauthorized();
   if (!req.user.orgId) throw AppError.forbidden('Organization setup required');
+  if (!['owner', 'staff'].includes(req.user.role)) throw AppError.forbidden('Chỉ Owner và Staff thuộc không gian tổ chức.');
   return req.user as OrganizationAccessTokenPayload;
+}
+
+// Contract storage and billing share a scope key. Standalone personal accounts
+// use their own ID, without changing membership or the authenticated token.
+export function getContractUser(req: Request): OrganizationAccessTokenPayload {
+  if (!req.user) throw AppError.unauthorized();
+  if (req.user.orgId && ['owner', 'staff'].includes(req.user.role)) return req.user as OrganizationAccessTokenPayload;
+  if (req.user.role !== 'user') throw AppError.forbidden('Organization setup required');
+  return { ...req.user, orgId: req.user.sub };
 }

@@ -1,6 +1,6 @@
 import { apiClient, apiRequest } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
-import type { ContractShareSummary } from "@/types/contracts";
+import type { ContractShareSummary, ContractVersionSummary, ReviewBillingConfirmation, VersionMatchResult } from "@/types/contracts";
 import { readContractStream } from "@/lib/api/contract-stream";
 import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyTerms, ContractListResult, ContractProfile, ContractReviewResult, ContractReviewRun, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
@@ -58,7 +58,7 @@ export const contractsApi = {
 
   getReview(contractId: string, signal?: AbortSignal) {
     return apiRequest<ContractReviewResult>({
-      url: `/contracts/${contractId}/review`,
+      url: `/contracts/${contractId}/review-result`,
       method: "GET",
       timeout: 30_000,
       signal,
@@ -75,11 +75,41 @@ export const contractsApi = {
     });
   },
 
-  startReview(contractId: string, idempotencyKey: string, analysisFocus?: string, signal?: AbortSignal) {
-    return apiRequest<ContractReviewRun>({
-      url: `/contracts/${contractId}/review`,
+  listVersions(contractId: string, signal?: AbortSignal) {
+    return apiRequest<ContractVersionSummary[]>({ url: `/contracts/${contractId}/versions`, signal });
+  },
+
+  versionMatch(contractId: string, signal?: AbortSignal) {
+    return apiRequest<VersionMatchResult>({ url: `/contracts/${contractId}/version-match`, signal });
+  },
+
+  attachVersion(targetContractId: string, sourceContractId: string, note?: string) {
+    return apiRequest<DashboardContract>({
+      url: `/contracts/${targetContractId}/versions/attach`,
       method: "POST",
-      data: analysisFocus ? { analysisFocus } : {},
+      data: { sourceContractId, ...(note ? { note } : {}) },
+    });
+  },
+
+  detachVersion(contractId: string, versionId: string) {
+    return apiRequest<DashboardContract>({ url: `/contracts/${contractId}/versions/${versionId}/detach`, method: "POST", data: {} });
+  },
+
+  uploadVersion(contractId: string, formData: FormData) {
+    return apiRequest<DashboardContract>({
+      url: `/contracts/${contractId}/versions`,
+      method: "POST",
+      data: formData,
+      headers: { Prefer: "respond-async" },
+      timeout: 60_000,
+    });
+  },
+
+  startReview(contractId: string, idempotencyKey: string, analysisFocus?: string, signal?: AbortSignal, billing?: ReviewBillingConfirmation) {
+    return apiRequest<ContractReviewRun>({
+      url: `/contracts/${contractId}/reviews`,
+      method: "POST",
+      data: { ...(analysisFocus ? { analysisFocus } : {}), ...(billing ? { billing } : {}) },
       headers: { "Idempotency-Key": idempotencyKey },
       signal,
     });
@@ -87,6 +117,28 @@ export const contractsApi = {
 
   getReviewRun(reviewId: string, signal?: AbortSignal) {
     return apiRequest<ContractReviewRun>({ url: `/reviews/${reviewId}`, signal });
+  },
+
+  cancelReviewRun(reviewId: string) {
+    return apiRequest<ContractReviewRun>({ url: `/reviews/${reviewId}/cancel`, method: "POST", data: {} });
+  },
+
+  retryReviewRun(reviewId: string, idempotencyKey: string, signal?: AbortSignal, billing?: ReviewBillingConfirmation) {
+    return apiRequest<ContractReviewRun>({
+      url: `/reviews/${reviewId}/retry`,
+      method: "POST",
+      data: billing ? { billing } : {},
+      headers: { "Idempotency-Key": idempotencyKey },
+      signal,
+    });
+  },
+
+  confirmProfile(contractId: string, profile: { type: string; ourParty?: string }) {
+    return apiRequest<DashboardContract>({ url: `/contracts/${contractId}/profile`, method: "PATCH", data: profile });
+  },
+
+  retryClassification(contractId: string) {
+    return apiRequest<DashboardContract>({ url: `/contracts/${contractId}/classify`, method: "POST", data: {} });
   },
 
   listReviewRuns(contractId: string, signal?: AbortSignal) {

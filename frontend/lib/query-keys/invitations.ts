@@ -1,4 +1,5 @@
 export const invitationKeys = {
+  received: ["received-invitations"] as const,
   membersBase: (orgId: string) => ["org-members", orgId] as const,
   members: (orgId: string, page: number) => ["org-members", orgId, page] as const,
   invitationsBase: (orgId: string) => ["org-invitations", orgId] as const,

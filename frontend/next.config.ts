@@ -1,7 +1,38 @@
 import type { NextConfig } from "next";
-
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Excel export runs on demand in the browser. Avoid bundling ExcelJS's
+  // Node-only streaming/filesystem dependencies into the server's async graph.
+  serverExternalPackages: ["exceljs"],
+  experimental: {
+    // On Windows this workspace spends tens of seconds compacting the disk
+    // cache. Keep Turbopack's in-memory cache and avoid that extra filesystem IO.
+    turbopackFileSystemCacheForDev: process.platform !== "win32",
+  },
+  async redirects() {
+    return [
+      { source: "/dashboard/contracts/new", destination: "/review", permanent: true },
+      { source: "/dashboard/review", destination: "/review", permanent: true },
+      { source: "/dashboard/contracts/:path*", destination: "/contract/:path*", permanent: true },
+      { source: "/management/users", destination: "/admin/users", permanent: true },
+      { source: "/dashboard/admin/users", destination: "/admin/users", permanent: true },
+      { source: "/dashboard/admin/management", destination: "/admin/users", permanent: true },
+      { source: "/dashboard/admin/userManagement", destination: "/admin/users", permanent: true },
+      { source: "/dashboard/admin/:path*", destination: "/admin/:path*", permanent: true },
+      { source: "/dashboard/manager/legal-sources/:path*", destination: "/management/legal-sources/:path*", permanent: true },
+      { source: "/dashboard/manager/organizations", destination: "/management/organizations", permanent: true },
+      { source: "/dashboard/:role(owner|staff|expert|manager|user)/contract", destination: "/contract", permanent: true },
+      { source: "/dashboard/:role(owner|staff|expert|manager|user)/review", destination: "/review", permanent: true },
+      { source: "/dashboard/members", destination: "/members", permanent: true },
+      { source: "/dashboard/settings", destination: "/settings", permanent: true },
+      { source: "/dashboard/subscription", destination: "/subscription", permanent: true },
+      { source: "/dashboard/owner/members", destination: "/members", permanent: true },
+      { source: "/dashboard/owner/administration", destination: "/settings", permanent: true },
+      { source: "/dashboard/user/subscription", destination: "/subscription", permanent: true },
+      { source: "/dashboard/manager", destination: "/management", permanent: true },
+      { source: "/dashboard/:role(owner|staff|expert|user)", destination: "/dashboard", permanent: true },
+      { source: "/admin/management", destination: "/admin/users", permanent: true },
+      { source: "/admin/userManagement", destination: "/admin/users", permanent: true },
+    ];
+  },
 };
-
 export default nextConfig;

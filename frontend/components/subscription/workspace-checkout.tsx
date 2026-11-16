@@ -2,8 +2,8 @@
 
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { usePaymentCheckout } from "@/hooks/use-payment-checkout";
-import { formatMoney } from "@/lib/subscription-plans";
+import { usePaymentCheckout } from "@/hooks/subscription/use-payment-checkout";
+import { formatMoney } from "@/lib/subscription/subscription-plans";
 import type { PaymentAction } from "@/types/payment";
 import type { SubscriptionPlan } from "@/types/subscription";
 

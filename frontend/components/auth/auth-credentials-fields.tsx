@@ -75,10 +75,13 @@ export function AuthCredentialsFields({
         confirmPassword={confirmPassword}
       />
       {!isRegister && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
         <label className="w-fit flex items-center gap-[9px] text-[#68778d] text-[length:10px] cursor-pointer [&_input]:w-[15px] [&_input]:h-[15px] [&_input]:accent-[#0868ed] [&_input]:m-0">
           <input type="checkbox" {...register("remember")} />
           <span>Ghi nhớ đăng nhập trên thiết bị này</span>
         </label>
+        <Link href={`/quen-mat-khau${inviteQuery}`} className="text-xs font-semibold text-[#0868ed] hover:underline">Quên mật khẩu?</Link>
+        </div>
       )}
     </>
   );

@@ -17,3 +17,8 @@ export function assertBusinessReviewContract(type: string) {
     throw AppError.badRequest('Business accounts can only review sales, labor, service, and office lease contracts');
   }
 }
+
+export function assertAccountReviewPolicy(isPersonal: boolean, type: string, ourParty?: string | null) {
+  if (isPersonal) assertPersonalReviewContract(type, ourParty);
+  else assertBusinessReviewContract(type);
+}

@@ -20,6 +20,11 @@ logger.silent = true;
 const { PaymentModel } = require('../dist/models/payment.model');
 const { OrganizationModel } = require('../dist/models/organization.model');
 const { UserModel } = require('../dist/models/user.model');
+const { ContractModel } = require('../dist/models/contract.model');
+const { ContractVersionModel } = require('../dist/models/contractVersion.model');
+const { ContractReviewPurchaseModel } = require('../dist/models/contractReviewPurchase.model');
+const { getSubscription } = require('../dist/services/billing/subscription.service');
+const { reserveUsage, finishUsage } = require('../dist/services/billing/usage.service');
 const {
   SubscriptionPeriodModel,
   initializeSubscriptionModels,
@@ -98,6 +103,122 @@ async function event(code) {
   };
 }
 const webhook = (body) => request(app).post('/api/v1/payments/payos/webhook').send(body);
+
+async function personalReview(pages = 8, used = 2) {
+  const owner = await user({}, 'user');
+  const contract = await ContractModel.create({ orgId: owner.id, uploadedBy: owner.id, title: 'Personal contract', type: 'labor', ourParty: 'employee' });
+  const version = await ContractVersionModel.create({ contractId: contract.id, versionNumber: 1, createdBy: owner.id, extractionStatus: 'completed', extractionQuality: { method: 'text_layer', pageCount: pages, ocrPageCount: 0, lowConfidence: false } });
+  const subscription = await getSubscription(owner.id, owner.id);
+  await SubscriptionPeriodModel.updateOne({ _id: subscription.periodId }, { $set: { analysisUsed: used } });
+  return { owner, org: { id: owner.id }, contract, version };
+}
+const reviewQuote = w => request(app).get(`/api/v1/contracts/${w.contract.id}/review-payment`).set('Authorization', auth(w.owner));
+const purchaseReview = (w, expectedAmount = 20000, key = randomUUID(), versionId = w.version.id) => request(app).post(base(w))
+  .set('Authorization', auth(w.owner)).set('Idempotency-Key', key)
+  .send({ purpose: 'contract_review', action: 'purchase', contractId: w.contract.id, versionId, expectedAmount });
+const reviewUsage = (w, key = randomUUID()) => ({ orgId: w.org.id, userId: w.owner.id, contractId: w.contract.id, versionId: w.version.id, kind: 'analysis', idempotencyKey: key, payload: { versionId: w.version.id } });
+async function paidReview(w) {
+  const response = await purchaseReview(w);
+  expect(response.status).toBe(201);
+  paid(response.body.data.orderCode);
+  expect((await sync(w, response.body.data.orderCode)).status).toBe(200);
+  return response.body.data.orderCode;
+}
+
+test('contract review quotes use real five-page units, preserve remaining Free units, and reject forged prices or adequate quotas', async () => {
+  const w = await personalReview();
+  const quote = await reviewQuote(w);
+  expect(quote.status).toBe(200);
+  expect(quote.body.data).toMatchObject({ pageCount: 8, units: 2, unitPrice: 10000, amount: 20000, availableUnits: 1, canPurchase: true });
+  expect((await purchaseReview(w, 1)).status).toBe(409);
+  expect(await PaymentModel.countDocuments({ orgId: w.org.id })).toBe(0);
+  const enough = await personalReview(5, 0);
+  expect((await reviewQuote(enough)).body.data.canPurchase).toBe(false);
+  expect((await purchaseReview(enough, 10000)).status).toBe(409);
+  const other = await user({}, 'user');
+  expect((await request(app).get(`/api/v1/contracts/${w.contract.id}/review-payment`).set('Authorization', auth(other))).status).toBe(404);
+});
+
+test('contract checkout and provider settlement are idempotent and never activate a subscription', async () => {
+  const w = await personalReview(), key = randomUUID();
+  const response = await purchaseReview(w, 20000, key);
+  expect(response.status).toBe(201);
+  expect(response.body.data).toMatchObject({ purpose: 'contract_review', contractId: w.contract.id, versionId: w.version.id, pageCount: 8, reviewUnits: 2, amount: 20000, fulfilledAt: null });
+  expect(await ContractReviewPurchaseModel.countDocuments({ orgId: w.org.id })).toBe(0);
+  expect((await purchaseReview(w, 20000, key)).body.data.orderCode).toBe(response.body.data.orderCode);
+  expect((await purchaseReview(w, 30000, key)).status).toBe(409);
+  const code = response.body.data.orderCode;
+  paid(code);
+  expect((await webhook(await event(code))).status).toBe(200);
+  expect((await sync(w, code)).status).toBe(200);
+  expect(await ContractReviewPurchaseModel.countDocuments({ orgId: w.org.id })).toBe(1);
+  expect((await reviewQuote(w)).body.data.purchaseStatus).toBe('available');
+  expect((await getSubscription(w.owner.id, w.org.id))).toMatchObject({ plan: { code: 'personal_free' }, analysis: { used: 2, available: 1 } });
+});
+
+test('paid contract reviews refund on failure, serialize concurrent requests and consume once without spending Free units', async () => {
+  const w = await personalReview();
+  await paidReview(w);
+  const failed = await reserveUsage(reviewUsage(w));
+  expect(failed.run.reviewPurchaseId).toBeTruthy();
+  expect(failed.run.periodId).toBeFalsy();
+  await finishUsage(w.org.id, failed.run.id, false);
+  expect((await reviewQuote(w)).body.data.purchaseStatus).toBe('available');
+  const inputs = [reviewUsage(w), reviewUsage(w)];
+  const results = await Promise.allSettled(inputs.map(input => reserveUsage(input)));
+  expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+  const index = results.findIndex(result => result.status === 'fulfilled');
+  const run = results[index].value.run;
+  await finishUsage(w.org.id, run.id, true, { reviewed: true });
+  expect((await reserveUsage(inputs[index])).replayed).toBe(true);
+  expect((await reviewQuote(w)).body.data.purchaseStatus).toBe('consumed');
+  await expect(reserveUsage(reviewUsage(w))).rejects.toMatchObject({ statusCode: 409 });
+  expect((await purchaseReview(w)).status).toBe(409);
+  expect((await getSubscription(w.owner.id, w.org.id)).analysis).toMatchObject({ used: 2, reserved: 0, available: 1 });
+});
+
+test('an expired paid-review lease restores only the matching entitlement and cannot spend it on a new file version', async () => {
+  const w = await personalReview();
+  await paidReview(w);
+  const { run } = await reserveUsage(reviewUsage(w));
+  const { UsageRunModel } = require('../dist/models/subscription.model');
+  await UsageRunModel.updateOne({ _id: run.id }, { $set: { leaseExpiresAt: new Date(Date.now() - 1000) } });
+  await getSubscription(w.owner.id, w.org.id);
+  expect((await reviewQuote(w)).body.data.purchaseStatus).toBe('available');
+  const newVersion = await ContractVersionModel.create({ contractId: w.contract.id, versionNumber: 2, createdBy: w.owner.id, extractionStatus: 'completed', extractionQuality: { method: 'text_layer', pageCount: 8, ocrPageCount: 0, lowConfidence: false } });
+  expect((await purchaseReview(w)).status).toBe(409);
+  await expect(reserveUsage({ ...reviewUsage(w), versionId: newVersion.id })).rejects.toMatchObject({ statusCode: 403 });
+  expect((await ContractReviewPurchaseModel.findOne({ orgId: w.org.id })).status).toBe('available');
+});
+
+test('contract deletion is blocked during checkout or while purchased review remains unused', async () => {
+  const w = await personalReview();
+  const response = await purchaseReview(w);
+  expect(response.status).toBe(201);
+  expect((await request(app).delete(`/api/v1/contracts/${w.contract.id}`).set('Authorization', auth(w.owner))).status).toBe(409);
+  paid(response.body.data.orderCode);
+  await sync(w, response.body.data.orderCode);
+  expect((await request(app).delete(`/api/v1/contracts/${w.contract.id}`).set('Authorization', auth(w.owner))).status).toBe(409);
+});
+
+test('standalone personal checkout activates Pro only after provider confirmation and retains account isolation', async () => {
+  const personal = await user({}, 'user');
+  const w = { org: { id: personal.id }, owner: personal };
+  const response = await create(w, 'personal_pro');
+  expect(response.status).toBe(201);
+  expect(response.body.data.fulfilledAt).toBeNull();
+  expect(await SubscriptionPeriodModel.countDocuments({ orgId: personal.id, 'plan.code': 'personal_pro' })).toBe(0);
+  const other = await user({}, 'user');
+  const code = response.body.data.orderCode;
+  expect((await request(app).get(`${base(w)}/${code}`).set('Authorization', auth(other))).status).toBe(403);
+  paid(code);
+  expect((await sync(w, code)).status).toBe(200);
+  expect((await sync(w, code)).status).toBe(200);
+  expect(await SubscriptionPeriodModel.countDocuments({ orgId: personal.id, 'plan.code': 'personal_pro' })).toBe(1);
+  expect((await request(app).get(`/api/v1/organizations/${personal.id}/subscription`).set('Authorization', auth(personal))).body.data.plan.code).toBe('personal_pro');
+  expect((await UserModel.findById(personal.id)).orgId).toBeFalsy();
+  expect(await OrganizationModel.findById(personal.id)).toBeNull();
+});
 
 beforeAll(async () => {
   repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });

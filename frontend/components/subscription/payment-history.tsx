@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
-import { usePaymentHistoryWorkflow } from "@/hooks/use-payment-history-workflow";
+import { usePaymentHistoryWorkflow } from "@/hooks/subscription/use-payment-history-workflow";
 import { PaymentOrderCard } from "./payment-order-card";
 
 export function PaymentHistory({ orgId }: { orgId: string }) {

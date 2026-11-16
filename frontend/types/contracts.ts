@@ -1,19 +1,78 @@
-export type ContractStatus = "uploaded" | "processing" | "reviewed" | "archived";
+export type ContractStatus = "uploaded" | "processing" | "reviewed" | "archived" | "unsupported";
+export type ReviewBillingConfirmation = { versionId: string; units: number };
 export type ContractRiskLevel = "high" | "medium" | "low" | "none";
+export type LegalRetrievalStatus = "ok" | "degraded" | "no_sources" | "unavailable";
+export type RuleCheckStatus = "ok" | "skipped" | "not_applicable";
+export type RiskCode =
+  | "UNLAWFUL_TERM"
+  | "MISSING_MANDATORY_FORM"
+  | "UNILATERAL_TERMINATION"
+  | "AUTO_RENEWAL"
+  | "EXCESSIVE_PENALTY"
+  | "LIABILITY_LIMITATION"
+  | "ONE_SIDED_INDEMNITY"
+  | "UNFAVORABLE_PAYMENT"
+  | "ONE_SIDED_OBLIGATION"
+  | "BROAD_EXCLUSION"
+  | "IP_DATA_RISK"
+  | "UNFAVORABLE_DISPUTE_FORUM"
+  | "VAGUE_SCOPE"
+  | "AMBIGUOUS_TERM"
+  | "MISSING_CLAUSE"
+  | "MISSING_PROTECTION"
+  | "OTHER";
+
+export type ClassificationOutcome = "supported" | "unsupported_type" | "not_contract" | "not_allowed_for_account";
+
+export type ContractClassification = {
+  status: "pending" | "running" | "completed" | "failed";
+  outcome?: ClassificationOutcome;
+  detectedLabel?: string;
+  type?: string;
+  ourParty?: string;
+  confidence?: number;
+  parties?: { name: string; partyCode?: string }[];
+  source?: "ai" | "user";
+  error?: string;
+  startedAt?: string;
+  finishedAt?: string;
+  confirmedAt?: string;
+};
 
 export type DashboardContract = {
+  orgId?: string;
+  ownerType?: "organization" | "personal";
+  latestReviewId?: string | null;
+  expertVerification?: {
+    _id: string;
+    reviewId: string;
+    status: "requested" | "in_progress" | "approved" | "returned";
+    attempt: number;
+    requestedAt: string;
+    assignedAt?: string;
+    completedAt?: string;
+  } | null;
+  reviewBilling?: { versionId: string; pageCount: number | null; pagesPerUnit: number; units: number | null; ready: boolean; reason: string | null; purchaseStatus?: "available" | "reserved" | "consumed" | null };
   id?: string;
   _id?: string;
   title: string;
-  type: string;
+  type?: string;
+  ourParty?: string;
+  industry?: string;
+  classification?: ContractClassification;
   status: ContractStatus;
   overallRiskLevel: ContractRiskLevel;
   currentVersion?: {
+    _id?: string;
+    id?: string;
     updatedAt?: string;
     overallRiskLevel?: ContractRiskLevel;
     overallAssessment?: string[];
     summaryPoints?: string[];
     extractionStatus?: "pending" | "processing" | "completed" | "failed" | "unsupported";
+    extractionError?: string;
+    extractionErrorCode?: string;
+    extractionProgress?: { processedPages: number; totalPages: number };
     segmentationStatus?: "pending" | "processing" | "completed" | "failed";
     segmentationError?: string;
     segmentationStartedAt?: string;
@@ -23,9 +82,14 @@ export type DashboardContract = {
     riskDetectionStatus?: "pending" | "processing" | "completed" | "failed";
     riskDetectionError?: string;
     riskDetectionStartedAt?: string;
+    legalRetrievalStatus?: LegalRetrievalStatus;
+    ruleCheckStatus?: RuleCheckStatus;
     analysisFocus?: string;
     fileName?: string;
     mimeType?: string;
+    versionNumber?: number;
+    note?: string;
+    createdAt?: string;
   };
   fileName?: string;
   updatedAt: string;
@@ -33,6 +97,48 @@ export type DashboardContract = {
 };
 
 export type ContractListResult = { items: DashboardContract[]; total: number };
+
+export type ContractVersionSummary = {
+  id: string;
+  versionNumber: number;
+  isCurrent: boolean;
+  note: string | null;
+  fileName: string | null;
+  mimeType: string | null;
+  uploadedBy: { id: string; name: string } | null;
+  uploadedAt: string;
+  extractionStatus: "pending" | "processing" | "completed" | "failed" | "unsupported";
+  pageCount: number | null;
+  similarityToPrevious?: number | null;
+  latestReview: {
+    id: string;
+    status: ContractReviewRun["status"];
+    finishedAt: string | null;
+    overallRiskLevel: ContractRiskLevel | null;
+    findingCounts: { high: number; medium: number; low: number } | null;
+    verificationStatus: "requested" | "in_progress" | "approved" | "returned" | null;
+  } | null;
+};
+
+export type VersionMatch = {
+  contractId: string;
+  title: string;
+  similarity: number;
+  matchedVersionNumber: number;
+  currentVersionNumber: number;
+  nextVersionNumber: number;
+  sameType: boolean | null;
+  sameParties: boolean | null;
+};
+
+export type VersionMatchResult = { ready: boolean; eligible: boolean; match: VersionMatch | null };
+
+export type DuplicateFileMatch = {
+  contractId: string;
+  title: string;
+  versionNumber: number;
+  uploadedAt: string;
+};
 
 export type ContractShareSummary = {
   text: string;
@@ -61,6 +167,14 @@ export type ContractClause = {
   endOffset: number;
 };
 
+export type FindingVerification = {
+  verdict: "confirmed" | "adjusted" | "rejected" | "added";
+  originalSeverity?: "high" | "medium" | "low";
+  reason?: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+};
+
 export type RiskFinding = {
   _id?: string;
   id?: string;
@@ -75,7 +189,10 @@ export type RiskFinding = {
   recommendations: string[];
   proposedRevision?: { originalText?: string; revisedText: string; reason?: string; isEdited: boolean };
   status?: "open" | "acknowledged" | "dismissed" | "resolved";
-  detectedBy?: "rule" | "llm" | "hybrid";
+  detectedBy?: "rule" | "llm" | "hybrid" | "checklist" | "expert";
+  verification?: FindingVerification | null;
+  riskCode?: RiskCode;
+  ruleCode?: string;
   citations: {
     legalKnowledgeChunkId: string;
     citationLabel: string;
@@ -83,6 +200,7 @@ export type RiskFinding = {
     articleRef?: string;
     chunkText: string;
     relevanceScore: number;
+    inKnowledgeBase?: boolean;
   }[];
   clause?: {
     index: number;
@@ -100,10 +218,31 @@ export type ContractReviewResult = {
   clauses: Pick<ContractClause, "id" | "_id" | "index" | "startOffset" | "endOffset">[];
 };
 
+export type ReviewErrorCode =
+  | "AI_OVERLOADED"
+  | "EXTRACTION_TIMEOUT"
+  | "EXTRACTION_FAILED"
+  | "CONTRACT_DELETED"
+  | "CREDIT_EXPIRED"
+  | "CANCELLED"
+  | "UNKNOWN";
+
 export type ContractReviewRun = {
   _id: string;
+  versionId?: string;
   contractId: string;
-  status: "queued" | "running" | "completed" | "failed";
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
+  errorCode?: ReviewErrorCode;
+  cancelRequested?: boolean;
+  result?: {
+    partial?: boolean;
+    summaryPoints?: string[];
+    clauseCount?: number;
+    findingCounts?: { high: number; medium: number; low: number };
+    legalRetrievalStatus?: LegalRetrievalStatus;
+    ruleCheckStatus?: RuleCheckStatus;
+  };
+  aiModel?: string;
   currentStage?: "waiting_for_extraction" | "segmentation" | "summary" | "risk_detection";
   stageDetail?: string;
   stages?: {
@@ -129,6 +268,7 @@ export type ContractKeyTerms = {
   terms: {
     key: string;
     label: string;
+    unit?: string | null;
     value: number | boolean | null;
     inferredFromSilence: boolean;
     clause: { index: number; title: string | null } | null;
@@ -141,6 +281,7 @@ export type ContractChatMessage = {
   contractVersionId: string;
   role: "user" | "assistant";
   content: string;
+  legalSources?: { legalKnowledgeChunkId: string; citationLabel: string; sourceTitle: string; articleRef?: string }[];
   createdAt: string;
   updatedAt: string;
 };

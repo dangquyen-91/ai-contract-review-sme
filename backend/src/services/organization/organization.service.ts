@@ -3,8 +3,10 @@ import mongoose from 'mongoose';
 import { OrganizationInvitationModel } from '../../models/organizationInvitation.model';
 import { ContractModel } from '../../models/contract.model';
 import { OrganizationModel } from '../../models/organization.model';
+import { IndustryModel } from '../../models/industry.model';
 import { UserModel } from '../../models/user.model';
-import { getRoleByCode } from '../identity/role.service';
+import { MembershipModel } from '../../models/membership.model';
+import { countMembers } from '../identity/account.service';
 import {
   CreateOrganizationInput,
   UpdateOrganizationInput,
@@ -15,45 +17,47 @@ function ensureOrganizationAccess(organizationId: string, userOrganizationId: st
 }
 
 export async function createOrganization(userId: string, input: CreateOrganizationInput) {
-  const user = await UserModel.findById(userId).select('orgId roleId');
-  if (!user) throw AppError.notFound('User not found');
-
-  const ownerRole = await getRoleByCode('owner');
-  if (user.orgId) {
-    const personal = await OrganizationModel.findOne({ _id: user.orgId, isPersonal: true });
-    if (!personal) throw AppError.conflict('User already belongs to an organization');
-    const organization = await OrganizationModel.findOneAndUpdate(
-      { _id: personal._id, isPersonal: true },
-      { $set: { ...input, isPersonal: false } },
-      { new: true, runValidators: true },
-    );
-    if (!organization) throw AppError.conflict('Organization has already been configured');
-    await UserModel.updateOne(
-      { _id: userId, orgId: personal._id },
-      { $set: { roleId: ownerRole._id } },
-    );
-    return organization;
+  if (input.industry && !(await IndustryModel.exists({ code: input.industry }))) {
+    throw AppError.badRequest('Ngành kinh doanh không hợp lệ. Vui lòng chọn lại.');
   }
-
-  const organization = await OrganizationModel.create(input);
-  const updatedUser = await UserModel.findOneAndUpdate(
-    { _id: userId, orgId: null },
-    {
-      $set: {
-        orgId: organization._id,
-        roleId: ownerRole._id,
-        hasCompletedOnboarding: true,
-      },
-    },
-    { new: true },
-  );
-
-  if (!updatedUser) {
-    await OrganizationModel.deleteOne({ _id: organization._id });
-    throw AppError.conflict('User already belongs to an organization');
+  try {
+    return await mongoose.connection.transaction(async (session) => {
+      const user = await UserModel.findOneAndUpdate(
+        { _id: userId, isActive: true, platformRole: null },
+        { $set: { hasCompletedOnboarding: true }, $inc: { permissionsVersion: 1 } },
+        { new: true, session },
+      );
+      if (!user) throw AppError.notFound('User not found');
+      if (await MembershipModel.exists({ userId }).session(session)) {
+        throw AppError.conflict('User already belongs to an organization');
+      }
+      const [organization] = await OrganizationModel.create([input], { session });
+      await MembershipModel.create([{ userId, orgId: organization._id, role: 'owner' }], { session });
+      return organization;
+    });
+  } catch (error) {
+    if ((error as { code?: number }).code === 11000) {
+      throw AppError.conflict('User already belongs to an organization');
+    }
+    throw error;
   }
+}
 
-  return organization;
+export async function listOrganizations(page: number, limit: number, filters: { search?: string; industry?: string } = {}) {
+  const query: mongoose.FilterQuery<InstanceType<typeof OrganizationModel>> = {};
+  if (filters.search) {
+    const search = new RegExp(filters.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    query.$or = [{ name: search }, { taxCode: search }];
+  }
+  if (filters.industry) query.industry = filters.industry;
+  const [items, total] = await Promise.all([
+    OrganizationModel.find(query)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+    OrganizationModel.countDocuments(query),
+  ]);
+  return { items, total };
 }
 
 export async function getOrganization(organizationId: string, userOrganizationId: string) {
@@ -69,6 +73,10 @@ export async function updateOrganization(
   input: UpdateOrganizationInput,
 ) {
   ensureOrganizationAccess(organizationId, userOrganizationId);
+
+  if (input.industry && !(await IndustryModel.exists({ code: input.industry }))) {
+    throw AppError.badRequest(`Unknown industry: ${input.industry}`);
+  }
   const organization = await OrganizationModel.findByIdAndUpdate(
     organizationId,
     { $set: input },
@@ -94,15 +102,19 @@ export async function deleteOrganization(
     );
     if (!organization) throw AppError.notFound('Organization not found');
     const hasContracts = await ContractModel.exists({ orgId: organizationId }).session(session);
-    const memberCount = await UserModel.countDocuments({ orgId: organizationId }).session(session);
+    const memberCount = await countMembers(organizationId, session);
     if (hasContracts) throw AppError.conflict('Organization still has contracts');
     if (memberCount > 1) throw AppError.conflict('Organization still has other members');
-    const detachedUser = await UserModel.findOneAndUpdate(
-      { _id: userId, orgId: organizationId },
-      { $unset: { orgId: 1 } },
+    const detached = await MembershipModel.deleteOne(
+      { userId, orgId: organizationId, role: 'owner' },
       { session },
     );
-    if (!detachedUser) throw AppError.forbidden();
+    if (!detached.deletedCount) throw AppError.forbidden();
+    await UserModel.updateOne(
+      { _id: userId },
+      { $set: { hasCompletedOnboarding: true }, $inc: { permissionsVersion: 1 } },
+      { session },
+    );
     await OrganizationInvitationModel.updateMany(
       { orgId: organizationId, status: 'pending' },
       { $set: { status: 'revoked' } },

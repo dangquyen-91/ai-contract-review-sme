@@ -45,7 +45,7 @@ test('Original DOCX shows every page and scrolls clause links inside the preview
     });
     return exports;
   }
-  const { OriginalContractPreview } = load('../components/review/original-contract-preview.tsx', {
+  const { OriginalContractPreview } = load('../components/review/document/original-contract-preview.tsx', {
     react: React, 'react/jsx-runtime': jsx,
     '@/components/ui/button': { Button: 'button' },
     '@/hooks/use-contracts': { useContractFile: () => file },

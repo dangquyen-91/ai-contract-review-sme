@@ -9,6 +9,8 @@ export type ApiErrorResponse = {
   success: false;
   error: {
     message: string;
+    code?: string;
     details?: ApiFieldErrors;
+    meta?: Record<string, unknown>;
   };
 };

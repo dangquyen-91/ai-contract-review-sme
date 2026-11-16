@@ -1,10 +1,12 @@
+import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
-  const accessToken = request.cookies.get("lawscan_access")?.value;
-  if (!accessToken) return NextResponse.json({ success: false, error: { message: "Phiên đăng nhập đã hết hạn." } }, { status: 401 });
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const accessToken = session.accessToken;
   const params = new URLSearchParams();
-  for (const key of ["page", "limit", "status", "riskLevel", "search", "sortBy", "sortOrder"]) {
+  for (const key of ["page", "limit", "status", "riskLevel", "verificationStatus", "search", "sortBy", "sortOrder"]) {
     const value = request.nextUrl.searchParams.get(key);
     if (value) params.set(key, value);
   }
@@ -19,13 +21,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const accessToken = request.cookies.get("lawscan_access")?.value;
-  if (!accessToken) {
-    return NextResponse.json(
-      { success: false, error: { message: "Phiên đăng nhập đã hết hạn." } },
-      { status: 401 },
-    );
-  }
+  const session = await getApiSession();
+  if (session.error) return session.error;
+  const accessToken = session.accessToken;
 
   try {
     const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts`, {
