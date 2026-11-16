@@ -1,5 +1,19 @@
 # Soạn hợp đồng trực tiếp trên mẫu
 
+## Manager quản lý mẫu
+
+Manager vào **Mẫu hợp đồng** tại `/management/contract-templates` để tạo mẫu từ một trong sáu loại được hỗ trợ, chỉnh tên, mô tả, căn cứ luật, ô điền và điều khoản. Một loại có thể có nhiều mẫu. Phạm vi vẫn là bốn loại doanh nghiệp và ba loại cá nhân (cùng dùng loại lao động).
+
+- Mẫu nền trong code khởi tạo danh mục DB lần đầu. Sau đó danh mục tạo hợp đồng đọc bản đã phát hành trong `ManagedTemplate`; khởi động lại không ghi đè bản Manager sửa hoặc khôi phục mẫu đã ngừng.
+- **Lưu nháp** giữ bản sửa riêng, không đổi nội dung đang cung cấp cho người dùng. **Phát hành** tạo phiên bản và lưu bản chụp trong `ManagedTemplateVersion` bằng transaction.
+- Các ô nền bắt buộc, kiểu dữ liệu và giá trị nghiệp vụ được bảo vệ. Ô bổ sung phải được chèn vào điều khoản. Giá trị mặc định và cấu trúc hiển thị được kiểm tra trước khi lưu/phát hành.
+- Các thao tác sửa, phát hành, ngừng, xóa đều kiểm tra `revision`, tránh ghi đè thay đổi từ phiên làm việc khác. Khi xung đột có thể tải lại mẫu để lấy bản mới.
+- Chỉ mẫu chưa từng phát hành mới được xóa. Mẫu đã phát hành có thể ngừng sử dụng hoặc phát hành lại thành phiên bản mới. Hợp đồng đã tạo giữ nguyên bản chụp mẫu, kể cả khi mẫu nguồn đã ngừng.
+- API Manager: `/api/v1/manager/contract-templates` (GET/POST), `/:id` (GET/PATCH/DELETE), `/:id/publish` và `/:id/retire` (POST). Backend và proxy frontend đều chỉ cho vai trò `manager`; frontend chặn yêu cầu thay đổi từ origin khác.
+- Khi tạo hợp đồng, frontend gửi thêm `templateId` để chọn đúng mẫu trong cùng loại. Client cũ không gửi ID dùng mẫu nền của loại đó, nhưng vẫn bị chặn nếu mẫu nền đã ngừng sử dụng.
+
+Kiểm thử: backend `tests/managedTemplates.test.js`; frontend `node --test scripts/managed-templates.test.mjs`; kiểm tra giao diện `node scripts/contract-drafts-browser-check.mjs --managed-templates` sau khi build backend/frontend. Các kiểm thử dùng DB và dữ liệu tạm, không gọi AI hoặc thanh toán thật.
+
 Phạm vi mẫu hiện hành: doanh nghiệp có Lao động, Dịch vụ, Mua bán hàng hóa, Thuê văn phòng/mặt bằng; cá nhân có Lao động (người lao động), Đặt cọc/mua bán nhà ở, Bảo hiểm nhân thọ. Mẫu thuê nhà cũ chỉ giữ để đọc, sửa và xuất bản nháp đã lưu, không tạo mới trong danh mục này.
 
 Mẫu lao động phiên bản 5 giữ bố cục tham khảo với 12 điều khoản, bổ sung các thông tin bắt buộc và điều chỉnh nội dung chuyển việc, nghỉ phép, đào tạo, chấm dứt, bảo mật theo căn cứ được rà soát. Không còn mặc định cấm cạnh tranh hai năm hoặc bồi thường sáu tháng lương. Người lao động cá nhân phải nhập riêng thông tin người sử dụng lao động.
