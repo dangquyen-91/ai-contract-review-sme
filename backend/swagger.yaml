@@ -4835,6 +4835,7 @@ paths:
                             attempt: { type: integer }
                             senderId: { type: string }
                             senderType: { type: string, enum: [requester, expert] }
+                            senderName: { type: string, nullable: true }
                             clientMessageId: { type: string, format: uuid }
                             content: { type: string }
                             createdAt: { type: string, format: date-time }

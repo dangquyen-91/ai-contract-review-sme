@@ -66,6 +66,9 @@ test('requester and assigned Expert exchange messages; content is encrypted at r
   const history = await get('staff');
   expect(history.headers['cache-control']).toBe('no-store');
   expect(history.body.data.items.map(m => m.senderType)).toEqual(['requester', 'expert']);
+  expect(history.body.data.items.map(m => m.senderName)).toEqual(['staff', 'expert']);
+  expect(response.body.data.message.senderName).toBe('expert');
+  expect(JSON.stringify(history.body.data.items)).not.toMatch(/test\.local|passwordHash/);
   expect(history.body.data.canSend).toBe(true);
   const raw = await ExpertChatMessageModel.collection.findOne({ senderId: ids.expert });
   expect(raw.content).toMatch(/^enc:v1:/);

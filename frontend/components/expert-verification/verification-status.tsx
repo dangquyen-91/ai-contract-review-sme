@@ -7,6 +7,7 @@ import type { ExpertVerification } from "@/types/expert-verification";
 
 import { verificationDate, verificationStatuses } from "@/lib/review/verification-display";
 import { VerificationRequestDialog } from "./verification-request-dialog";
+import { RequesterChatLauncher } from "@/components/expert-consultation/requester-chat-launcher";
 
 export function VerificationStatus({ title, verification, refreshing, error, onRefresh, onResend }: {
   title: string;
@@ -33,7 +34,10 @@ export function VerificationStatus({ title, verification, refreshing, error, onR
           </p>
           <p className="mb-0 mt-1 text-ui-meta">Đã gửi {verificationDate(verification.requestedAt)}{open ? " · Trạng thái tự cập nhật" : ""}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setDetailsOpen(true)}>Xem yêu cầu</Button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <RequesterChatLauncher verification={verification} title={title} />
+          <Button variant="outline" size="sm" onClick={() => setDetailsOpen(true)}>Xem yêu cầu</Button>
+        </div>
       </section>
       {detailsOpen && (
         <VerificationRequestDialog title={title} verification={verification} refreshing={refreshing} error={error} onClose={() => setDetailsOpen(false)} onRefresh={onRefresh} onResend={onResend} />

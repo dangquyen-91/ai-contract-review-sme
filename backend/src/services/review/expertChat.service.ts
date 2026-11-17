@@ -5,6 +5,7 @@ import { ContractModel } from '../../models/contract.model';
 import { ExpertReviewModel } from '../../models/expertReview.model';
 import { ExpertWorkRecordModel } from '../../models/expertWorkRecord.model';
 import { ExpertChatMessage, ExpertChatMessageModel } from '../../models/expertChatMessage.model';
+import { UserModel } from '../../models/user.model';
 import { ExpertChatQuery, SendExpertMessage } from '../../validations/expertChat.validation';
 
 async function conversation(
@@ -57,12 +58,13 @@ async function conversation(
   };
 }
 
-function messageView(message: HydratedDocument<ExpertChatMessage>) {
+function messageView(message: HydratedDocument<ExpertChatMessage>, senderName?: string) {
   return {
     id: message.id,
     attempt: message.attempt,
     senderId: String(message.senderId),
     senderType: message.senderType,
+    senderName: senderName ?? null,
     clientMessageId: message.clientMessageId,
     content: message.content,
     createdAt: message.createdAt,
@@ -95,11 +97,13 @@ export async function listExpertMessages(
   const hasMore = messages.length > query.limit;
   const page = messages.slice(0, query.limit);
   if (!query.after) page.reverse();
+  const senders = await UserModel.find({ _id: { $in: page.map((message) => message.senderId) } }).select('name').lean();
+  const names = new Map(senders.map((sender) => [String(sender._id), sender.name]));
   return {
     attempt: access.attempt,
     status: access.status,
     canSend: access.canSend,
-    items: page.map(messageView),
+    items: page.map((message) => messageView(message, names.get(String(message.senderId)))),
     hasMore,
     nextBefore: page[0]?.id ?? null,
     nextAfter: page[page.length - 1]?.id ?? null,
@@ -114,6 +118,7 @@ export async function sendExpertMessage(
   await ExpertChatMessageModel.init();
   return mongoose.connection.transaction(async (db) => {
     const access = await conversation(actor, reviewId, input.attempt, db);
+    const sender = await UserModel.findById(actor.sub).select('name').session(db);
     const key = {
       expertReviewId: access.current._id,
       attempt: input.attempt,
@@ -127,7 +132,7 @@ export async function sendExpertMessage(
           'Mã tin nhắn đã được dùng cho nội dung khác.',
           'MESSAGE_ID_CONFLICT',
         );
-      return { message: messageView(previous), replayed: true };
+      return { message: messageView(previous, sender?.name), replayed: true };
     }
     if (!access.canSend)
       throw AppError.conflict(
@@ -163,6 +168,6 @@ export async function sendExpertMessage(
       ],
       { session: db },
     );
-    return { message: messageView(message), replayed: false };
+    return { message: messageView(message, sender?.name), replayed: false };
   });
 }

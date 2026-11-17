@@ -12,6 +12,7 @@ import { VerificationFindingsPane } from "./verification-findings-pane";
 import { VerificationProgress } from "./verification-progress";
 import { VerificationBackButton } from "./verification-back-button";
 import { VerificationViewControls } from "./verification-view-controls";
+import { ExpertChatLauncher } from "@/components/expert-consultation/expert-chat-launcher";
 
 export function VerificationWorkspace({ reviewId, expertId, attempt }: { reviewId: string; expertId: string; attempt?: number }) {
   const controller = useVerificationController(reviewId, expertId, attempt);
@@ -29,6 +30,11 @@ export function VerificationWorkspace({ reviewId, expertId, attempt }: { reviewI
   return (
     <section className="space-y-4 text-card-foreground">
       <VerificationWorkspaceHeader controller={controller} />
+      {(typeof workspace.verification.expertId === "object" ? workspace.verification.expertId?._id : workspace.verification.expertId) === expertId && (
+        <div className="flex justify-end">
+          <ExpertChatLauncher key={`${reviewId}:${workspace.verification.attempt}`} reviewId={reviewId} attempt={workspace.verification.attempt} title={workspace.contract.title} participant="expert" />
+        </div>
+      )}
       <VerificationProgress controller={controller} />
       {query.isError && <p role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-ui text-amber-950">Chưa cập nhật được workspace. Các thao tác chỉnh sửa đang tạm khóa; hãy làm mới để tiếp tục.</p>}
       {command.error && !dialog && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-ui text-rose-950">{verificationErrorMessage(command.error)}</p>}

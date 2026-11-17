@@ -38,7 +38,9 @@ Without a cursor, returns the latest page. Every page is ordered oldest first.
 Success envelope: `{ success: true, data: { attempt, status, canSend, items,
 hasMore, nextBefore, nextAfter } }`. Each item contains `id`, `attempt`,
 `senderId`, `senderType` (`requester` or `expert`), `clientMessageId`, `content`,
-and `createdAt`. Responses use `Cache-Control: no-store`.
+and `createdAt`. `senderName` contains the sender's current display name (or null
+when unavailable); no email or other profile fields are included. Responses use
+`Cache-Control: no-store`.
 
 FE can poll with `after=nextAfter`, append/deduplicate by `id`, and retain its
 last cursor when an empty page returns null. If `hasMore` is true during polling,
@@ -84,3 +86,30 @@ npx jest --runInBand tests/expert-chat.test.cjs
 
 Tests use an isolated MongoDB memory replica set, real authentication middleware,
 and HTTP requests through the review router. They do not alter the configured DB.
+
+## Frontend integration
+
+- Requester: open contract results, find the verification status, and select
+  **Trao đổi với chuyên gia**. Only the original sender sees this action.
+- Expert: open an assigned verification workspace and select
+  **Trao đổi với người gửi**. The archived workspace opens that attempt's history.
+- Both use `components/expert-consultation/` with shared message/composer components,
+  TanStack infinite query and mutation hooks in `hooks/expert-consultation/`,
+  separate API functions/types/schemas/query keys, and existing shadcn controls.
+- Browser requests go through the authenticated Next route
+  `/api/reviews/:reviewId/verification/messages`. The proxy checks role and POST
+  origin, forwards the session token, and disables caching.
+- Open conversations poll every five seconds while the dialog is visible. Older
+  history loads through bounded cursor pages. Closed attempts are read-only.
+- The composer retains content and UUID after a failed send for a safe manual retry.
+
+Run from `frontend`:
+
+```powershell
+npm run test:expert-consultation
+npm run test:expert-verification
+npm run test:expert-consultation:browser
+```
+
+The browser check bundles the real chat components with isolated API fixtures and
+runs Chrome headless at desktop/mobile sizes. It does not use real accounts or DB.
