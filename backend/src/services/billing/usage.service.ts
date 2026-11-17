@@ -6,7 +6,7 @@ import { assertUsageAvailable, type UsageKind } from './usagePolicy';
 import { assertUsageAccess, assertNoActiveReview, calculateUsageCost } from './usageAccess.service';
 import { lockSubscriptionOrganization, resolveSubscription } from './subscription.service';
 import { ContractReviewPurchaseModel } from '../../models/contractReviewPurchase.model';
-import { findChatAllowance } from './contractReviewPurchase.service';
+import { findCarriedPurchase, findChatAllowance } from './contractReviewPurchase.service';
 
 export interface UsageInput {
   orgId: string;
@@ -66,7 +66,7 @@ export async function reserveUsage(input: UsageInput, now = new Date(), leaseMs 
     if (existing) return { run: existing, replayed: true };
     const cost = await calculateUsageCost(input, session);
     await assertNoActiveReview(input, session);
-    const purchase =
+    let purchase =
       input.kind === 'analysis'
         ? await ContractReviewPurchaseModel.findOne({
             orgId: input.orgId,
@@ -75,14 +75,37 @@ export async function reserveUsage(input: UsageInput, now = new Date(), leaseMs 
             versionId: cost.versionId,
           }).session(session)
         : null;
-    if (purchase) {
+    if (input.kind === 'analysis' && !purchase) {
+      // A paid review left unused on an earlier version covers this one when it fits.
+      const carried = await findCarriedPurchase(
+        input.orgId,
+        input.userId,
+        input.contractId!,
+        cost.versionId!,
+        session,
+      );
+      if (carried) purchase = carried;
+    }
+    // A purchase already spent on an earlier review no longer applies: a re-review
+    // uses the plan quota like any other request.
+    if (purchase && purchase.status !== 'consumed') {
       if (purchase.status !== 'available')
-        throw AppError.conflict(
-          purchase.status === 'consumed'
-            ? 'Hợp đồng đã được rà soát bằng lần thanh toán này. Hãy mở kết quả đã lưu.'
-            : 'Lần rà soát đã thanh toán đang được xử lý.',
-          purchase.status === 'consumed' ? 'PAID_REVIEW_COMPLETED' : 'REVIEW_RUNNING',
+        throw AppError.conflict('Lần rà soát đã thanh toán đang được xử lý.', 'REVIEW_RUNNING');
+      // Paid units cover part of the review; the rest comes from the plan quota.
+      const planUnits = Math.max(0, cost.units - purchase.units);
+      if (planUnits > 0) {
+        if (!period)
+          throw AppError.forbidden('Cần gói dịch vụ AI đang hoạt động để thực hiện thao tác này.', 'AI_PLAN_REQUIRED');
+        assertUsageAvailable(period, 'analysis', planUnits);
+        await SubscriptionPeriodModel.updateOne(
+          { _id: period._id },
+          { $inc: { analysisReserved: planUnits } },
+          { session },
         );
+      }
+      // A purchase left on an earlier version moves to the version being reviewed.
+      if (String(purchase.versionId) !== String(cost.versionId))
+        purchase.set({ versionId: cost.versionId, pageCount: cost.pageCount });
       const [run] = await UsageRunModel.create(
         [
           {
@@ -91,6 +114,7 @@ export async function reserveUsage(input: UsageInput, now = new Date(), leaseMs 
             contractId: input.contractId,
             ...cost,
             reviewPurchaseId: purchase._id,
+            ...(planUnits > 0 ? { periodId: period!._id, planUnits } : {}),
             kind: input.kind,
             idempotencyKey: input.idempotencyKey,
             fingerprint,
@@ -222,7 +246,19 @@ export async function finishUsage(
         },
         { session },
       );
-    else if (run.reviewPurchaseId)
+    else if (run.reviewPurchaseId) {
+      // Plan units that topped up a paid review are settled like any plan usage.
+      if (run.planUnits && run.periodId)
+        await SubscriptionPeriodModel.updateOne(
+          { _id: run.periodId },
+          {
+            $inc: {
+              analysisReserved: -run.planUnits,
+              ...(success ? { analysisUsed: run.planUnits } : {}),
+            },
+          },
+          { session },
+        );
       await ContractReviewPurchaseModel.updateOne(
         {
           _id: run.reviewPurchaseId,
@@ -235,7 +271,7 @@ export async function finishUsage(
         },
         { session },
       );
-    else
+    } else
       await SubscriptionPeriodModel.updateOne(
         { _id: run.periodId },
         {

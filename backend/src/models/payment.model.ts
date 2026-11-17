@@ -35,6 +35,8 @@ const schema = new Schema(
     versionId: { type: Schema.Types.ObjectId, ref: 'ContractVersion' },
     pageCount: Number,
     reviewUnits: Number,
+    // Unused paid review of an earlier version that this order tops up.
+    carryPurchaseId: { type: Schema.Types.ObjectId, ref: 'ContractReviewPurchase' },
     unitPrice: Number,
     action: { type: String, enum: PAYMENT_ACTIONS, required: true },
     amount: { type: Number, required: true, min: 1 },
@@ -51,6 +53,8 @@ const schema = new Schema(
     checkoutUrl: String,
     qrCode: String,
     expiresAt: { type: Date, required: true },
+    // Moment the plan price was quoted; settlement re-validates against it.
+    quotedAt: Date,
     paidAt: Date,
     fulfilledAt: Date,
     subscriptionPeriodId: { type: Schema.Types.ObjectId, ref: 'SubscriptionPeriod' },
@@ -63,4 +67,15 @@ schema.index({ orgId: 1, idempotencyKey: 1 }, { unique: true });
 schema.index({ status: 1, currency: 1, paidAt: 1, orgId: 1 }, { name: 'report_paid_receipts' });
 schema.index({ orgId: 1 }, { unique: true, partialFilterExpression: { isOpen: true } });
 export const PaymentModel = model('Payment', schema);
+
+/**
+ * An unpaid order whose payOS link was confirmed can be replaced by a new checkout
+ * (it is cancelled with payOS first). Paid, partially paid or unconfirmed orders
+ * must be resolved before another checkout.
+ */
+export const isReplaceableOrder = (order: {
+  paidAt?: Date | null;
+  paymentLinkId?: string | null;
+  providerError?: string | null;
+}) => !order.paidAt && Boolean(order.paymentLinkId) && !order.providerError;
 export type Payment = InferSchemaType<typeof schema>;

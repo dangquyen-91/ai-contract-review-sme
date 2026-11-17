@@ -4,13 +4,18 @@ import type { PaymentLink, Webhook } from '@payos/node';
 import { env } from '../../config/env';
 import { AppError } from '../../errors/AppError';
 import { ContractModel } from '../../models/contract.model';
-import { PaymentAction, PaymentModel, Payment as PaymentData } from '../../models/payment.model';
+import {
+  PaymentAction,
+  PaymentModel,
+  Payment as PaymentData,
+  isReplaceableOrder,
+} from '../../models/payment.model';
 import { PlanCode, PlanModel, TopUpPackCode } from '../../models/subscription.model';
 import {
   activatePaidSubscription,
   lockSubscriptionOrganization,
+  quotePlanCheckout,
   requireSubscriptionAccess,
-  validatePaidSubscriptionPurchase,
 } from './subscription.service';
 import * as provider from './payos.service';
 import {
@@ -88,6 +93,30 @@ export async function createPayment(
     !isReviewPurchase(input) && !isTopUp(input)
       ? await PlanModel.findOne({ code: input.planCode }).lean()
       : null;
+  // The server decides the plan action and price; the client's action must agree.
+  const planQuote =
+    !isReviewPurchase(input) && !isTopUp(input)
+      ? await quotePlanCheckout(userId, orgId, input.planCode)
+      : null;
+  if (planQuote) {
+    if (planQuote.needsSchedule)
+      throw AppError.conflict(
+        'Gói thấp hơn được chọn bằng cách đặt lịch hạ gói, rồi thanh toán khi gia hạn.',
+        'DOWNGRADE_NOT_SCHEDULED',
+      );
+    if (planQuote.action !== (input as { action: PaymentAction }).action)
+      throw AppError.conflict(
+        'Thông tin gói đã thay đổi. Vui lòng tải lại trang trước khi thanh toán.',
+        'PLAN_QUOTE_CHANGED',
+      );
+    if (planQuote.blockReason)
+      throw new AppError(
+        planQuote.blockReason,
+        planQuote.blockStatus ?? 409,
+        true,
+        planQuote.blockCode ?? undefined,
+      );
+  }
   if (isTopUp(input)) {
     if (topUp!.pack.price !== input.expectedAmount)
       throw AppError.conflict(
@@ -105,7 +134,7 @@ export async function createPayment(
         'REVIEW_QUOTE_CHANGED',
       );
   } else if (!plan || plan.price <= 0) throw AppError.badRequest('Choose a paid plan');
-  const amount = reviewQuote?.amount ?? topUp?.pack.price ?? plan!.price;
+  const amount = reviewQuote?.amount ?? topUp?.pack.price ?? planQuote!.amount!;
   const itemName = reviewQuote
     ? 'Rà soát hợp đồng LawScan'
     : topUp
@@ -127,18 +156,14 @@ export async function createPayment(
         contractId: reviewQuote.contractId,
         versionId: reviewQuote.versionId,
         pageCount: reviewQuote.pageCount,
-        reviewUnits: reviewQuote.units,
+        // Units this purchase will hold once paid: earlier paid units plus the shortfall.
+        reviewUnits: reviewQuote.paidUnits + reviewQuote.shortfallUnits,
         unitPrice: reviewQuote.unitPrice,
+        ...(reviewQuote.carryPurchaseId ? { carryPurchaseId: reviewQuote.carryPurchaseId } : {}),
       }
     : input;
   const orderCode = randomInt(1_000_000_000_000, 10_000_000_000_000);
-  if (!isReviewPurchase(input) && !isTopUp(input))
-    await validatePaidSubscriptionPurchase({
-      orgId,
-      ...input,
-      amount,
-      paymentReference: reference(orderCode),
-    });
+  await releaseAbandonedOrder(orgId);
   const { order, created } = await mongoose.connection.transaction(async (session) => {
     await lockSubscriptionOrganization(orgId, session);
     if (
@@ -164,6 +189,7 @@ export async function createPayment(
           orderCode,
           ...purchase,
           amount,
+          ...(planQuote ? { quotedAt: planQuote.quotedAt } : {}),
           expiresAt: new Date(Date.now() + 15 * 60_000),
         },
       ],
@@ -213,6 +239,29 @@ export async function createPayment(
     );
     throw new AppError(`Payment creation was not confirmed. Synchronize order ${orderCode}.`, 502);
   }
+}
+
+/**
+ * A new checkout replaces an unpaid order whose payment link was confirmed, e.g. a
+ * payOS tab the owner closed. payOS is asked to cancel it first; if it was paid in
+ * the meantime it is settled instead and the new checkout stops, so nothing is
+ * charged twice. Orders in an uncertain state (link creation unconfirmed, partial
+ * payment) keep blocking until they are synchronized or cancelled explicitly.
+ */
+async function releaseAbandonedOrder(orgId: string) {
+  const open = await PaymentModel.findOne({ orgId, isOpen: true });
+  if (!open || !isReplaceableOrder(open)) return;
+  try {
+    await reconcile(open, await provider.cancelPaymentLink(open.orderCode));
+  } catch {
+    return; // Leave it open; the transaction below reports the unfinished order.
+  }
+  const settled = await PaymentModel.findById(open._id);
+  if (settled?.paidAt)
+    throw AppError.conflict(
+      `Đơn #${open.orderCode} vừa được thanh toán. Kiểm tra lại gói và lịch sử thanh toán trước khi tạo đơn mới.`,
+      'PREVIOUS_ORDER_PAID',
+    );
 }
 
 function repeat(order: Payment, input: Purchase) {
@@ -295,7 +344,7 @@ async function fulfill(order: Payment) {
         action: order.action,
         amount: order.amount,
         paymentReference: reference(order.orderCode),
-        orderedAt: order.createdAt,
+        orderedAt: order.quotedAt ?? order.createdAt,
       },
       order.paidAt!,
     );

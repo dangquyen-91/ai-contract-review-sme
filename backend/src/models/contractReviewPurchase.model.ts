@@ -22,6 +22,8 @@ const schema = new Schema(
     chatAllowance: { type: Number, default: 0, min: 0 },
     chatUsed: { type: Number, default: 0, min: 0 },
     chatReserved: { type: Number, default: 0, min: 0 },
+    // Orders that topped this purchase up when it moved to a longer new version.
+    extraOrderCodes: { type: [Number], default: undefined },
   },
   { timestamps: true },
 );

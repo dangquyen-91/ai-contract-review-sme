@@ -65,7 +65,7 @@ test('payment action follows active plan, full-price upgrades and scheduled down
   const active = { ...current, status: 'active', plan };
   assert.equal(state.paymentAction(active, plan), 'renew');
   assert.equal(state.paymentAction(active, { ...plan, code: 'business_pro', price: 999000 }), 'upgrade');
-  assert.equal(state.paymentAction({ ...active, plan: { ...plan, price: 999000 }, scheduledDowngrade: { planCode: plan.code } }, plan), 'downgrade');
+  assert.equal(state.paymentAction({ ...active, plan: { ...plan, price: 999000 }, scheduledDowngrade: { planCode: plan.code } }, plan), 'renew');
 });
 
 test('password, Google and OTP destinations preserve payment context and prioritize invitations', () => {
@@ -111,7 +111,7 @@ test('contract-payment payload forwards only server-checked version and expected
   assert.deepEqual(JSON.parse(JSON.stringify(calls[0].data)), { purpose: 'contract_review', action: 'purchase', contractId: quote.contractId, versionId: quote.versionId, expectedAmount: 20000 });
   assert.equal(calls[0].headers['Idempotency-Key'], 'review-payment-key');
   assert.equal(state.paymentMessage({ ...order, purpose: 'contract_review', fulfilledAt: 'now' }).success, true);
-  assert.match(state.paymentMessage({ ...order, purpose: 'contract_review', fulfilledAt: 'now' }).detail, /Lượt trong gói được giữ nguyên/);
+  assert.match(state.paymentMessage({ ...order, purpose: 'contract_review', fulfilledAt: 'now' }).detail, /các lượt được hoàn lại/);
 });
 
 test('payment proxy rejects missing sessions, cross-origin POST and invalid identifiers before upstream', async () => {
@@ -155,7 +155,10 @@ function find(node, predicate) {
   if (typeof node.type === 'function') return find(node.type(node.props), predicate);
   return [...(predicate(node) ? [node] : []), ...find(node.props?.children, predicate)];
 }
-function checkoutHarness({ subscription = current, items = [], create = async () => order, schedule = async () => {}, account = user, targetPlan = plan } = {}) {
+function checkoutHarness({ subscription = current, items = [], create = async () => order, schedule = async () => {}, account = user, targetPlan = plan, quote } = {}) {
+  // Stands in for the server quote: action from the shared rule, list price, no credit.
+  const action = state.paymentAction(subscription, targetPlan);
+  const serverQuote = quote ?? { planCode: targetPlan.code, action, needsSchedule: action === 'downgrade', listPrice: targetPlan.price, credit: 0, amount: action === 'downgrade' ? null : targetPlan.price, blockReason: null, blockCode: null };
   let cursor = 0;
   const slots = [], navigation = [], calls = [];
   const history = { data: { items }, isPending: false, refetch: async () => {} };
@@ -171,6 +174,7 @@ function checkoutHarness({ subscription = current, items = [], create = async ()
     '@/components/ui/icon': { Icon: props => jsx.jsx('svg', props) },
     '@/hooks/subscription/use-subscription-management': { useSubscriptionManagement: () => ({ subscription: { data: subscription, isPending: false }, schedule: { mutateAsync: schedule } }) },
     '@/hooks/subscription/use-payments': { usePaymentHistory: () => history },
+    '@/hooks/subscription/use-plan-quote': { usePlanQuote: () => ({ data: serverQuote, isPending: false, refetch: async () => {} }) },
     '@/lib/api/payments': { paymentsApi: { create: async (...args) => { calls.push(args); return create(...args); } } },
     '@/lib/subscription/payment-state': state,
     '@/lib/routing/workspace-path': { workspacePath: () => '/chon-to-chuc' },
@@ -234,8 +238,12 @@ test('uncertain checkout retries reuse the key and do not claim success or navig
   assert.ok(ctx.render().some(n => n.props?.role === 'alert' && text(n).includes('Network lost')));
 });
 
-test('an existing unfinished order blocks a new purchase and staff have no checkout action', () => {
-  assert.equal(checkoutHarness({ items: [order] }).render().filter(n => n.type === 'button').length, 0);
+test('only an uncertain unfinished order blocks a new purchase; an abandoned payOS link is replaced; staff have no checkout action', () => {
+  for (const uncertain of [{ ...order, status: 'paid', paidAt: 'now' }, { ...order, status: 'creating', checkoutUrl: null, providerError: 'Payment creation was not confirmed.' }])
+    assert.equal(checkoutHarness({ items: [uncertain] }).render().filter(n => n.type === 'button').length, 0);
+  const abandoned = checkoutHarness({ items: [order] }).render();
+  assert.equal(abandoned.filter(n => n.type === 'button').length, 1);
+  assert.match(text(abandoned), new RegExp(`Đơn #${order.orderCode} chưa thanh toán sẽ được hủy`));
   const ctx = checkoutHarness({ account: { ...user, role: 'staff' } });
   assert.equal(ctx.render().filter(n => n.type === 'button').length, 0);
   assert.equal(ctx.calls.length, 0);
@@ -277,24 +285,4 @@ test('quota errors point owners to top-ups only when a paid plan is active', () 
   assert.equal(quota.quotaRecovery({ status: 'expired', plan: null }).href, '/goi-dich-vu');
   assert.equal(quota.canBuyTopUp('owner') && quota.canBuyTopUp('user'), true);
   assert.equal(quota.canBuyTopUp('staff'), false);
-});
-
-test('upgrade impact lists the current period, prepaid periods lost and carried top-ups', () => {
-  const plan = (price) => ({ code: 'business_pro', price });
-  const counter = (bonus = 0) => ({ used: 0, reserved: 0, limit: 0, available: 0, bonus });
-  const current = {
-    status: 'active', endsAt: '2026-12-01T00:00:00Z', plan: plan(499000),
-    analysis: counter(30), chat: counter(), drafting: counter(5),
-    futurePeriods: [
-      { plan: plan(499000), startsAt: '2026-12-01T00:00:00Z', endsAt: '2027-01-01T00:00:00Z' },
-      { plan: plan(499000), startsAt: '2027-01-01T00:00:00Z', endsAt: '2027-02-01T00:00:00Z' },
-    ],
-  };
-  assert.deepEqual({ ...state.upgradeImpact(current) }, {
-    currentEndsAt: '2026-12-01T00:00:00Z', prepaidCount: 2, prepaidUntil: '2027-02-01T00:00:00Z', bonusUnits: 35,
-  });
-  const fresh = state.upgradeImpact({ ...current, futurePeriods: undefined, analysis: counter(), drafting: counter() });
-  assert.equal(fresh.prepaidCount, 0);
-  assert.equal(fresh.prepaidUntil, null);
-  assert.equal(fresh.bonusUnits, 0);
 });

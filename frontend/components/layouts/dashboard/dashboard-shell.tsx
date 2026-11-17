@@ -12,6 +12,7 @@ import { useDashboardWorkspace } from "@/hooks/dashboard/use-dashboard-workspace
 import { useDashboardSession } from "@/hooks/dashboard/use-dashboard-session";
 import type { DashboardData } from "@/types/dashboard";
 import { ReceivedInvitations } from "@/components/invitations/received-invitations";
+import { RenewalReminder } from "@/components/subscription/renewal-reminder";
 import { toast } from "sonner";
 
 export type DashboardWorkspaceContext = {
@@ -37,6 +38,8 @@ type WorkspaceProps = {
   footer?: ReactNode;
   layout?: "standard" | "editor";
   blockNavigation?: boolean;
+  // Billing scope of the workspace; enables the renewal reminder for plan managers.
+  billingAccountId?: string;
   children: ReactNode;
 };
 
@@ -97,6 +100,7 @@ function DashboardDataView({ view, children }: DataProps) {
       name={data.user?.name ?? "Tài khoản LawScan"}
       roleLabel={roleLabel}
       contractCount={data.totalContracts}
+      billingAccountId={data.contractScopeId}
     >
       {children({ data, access, roleLabel })}
     </DashboardFrame>
@@ -121,6 +125,7 @@ function DashboardFrame({
   children,
   layout = "standard",
   blockNavigation = false,
+  billingAccountId,
 }: WorkspaceProps) {
   const { logout, loggingOut } = useDashboardSession();
   const navigation = getDashboardNavigation(role);
@@ -191,6 +196,9 @@ function DashboardFrame({
           className={`${editor ? "flex min-h-0 w-full flex-1 flex-col overflow-hidden" : "w-[min(1420px,100%)] [margin-inline:auto] pt-[38px] pb-16 px-[clamp(24px,4vw,52px)] [@media_(max-width:_820px)]:pt-[30px] [@media_(max-width:_820px)]:pb-12 [@media_(max-width:_820px)]:px-[18px]"} ${mainClassName}`}
         >
           {role === "user" && <ReceivedInvitations />}
+          {!editor && billingAccountId && (role === "owner" || role === "user") && (
+            <RenewalReminder accountId={billingAccountId} />
+          )}
           {children}
         </main>
         {footer}

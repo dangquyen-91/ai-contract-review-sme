@@ -5,6 +5,8 @@ export const PLAN_CODES = [
   'personal_pro',
   'business_starter',
   'business_pro',
+  // Granted once per organization owner; never sold or listed in the catalog.
+  'business_trial',
 ] as const;
 export type PlanCode = (typeof PLAN_CODES)[number];
 
@@ -63,6 +65,8 @@ const periodSchema = new Schema(
     // Internal settlement reference only. No public API grants paid periods.
     paymentReference: { type: String, unique: true, sparse: true },
     paymentAction: { type: String, enum: ['purchase', 'renew', 'upgrade', 'downgrade'] },
+    // What was actually charged; an upgrade is discounted by the unused paid time.
+    paidAmount: { type: Number, min: 0 },
     analysisUsed: { type: Number, default: 0, required: true },
     analysisReserved: { type: Number, default: 0, required: true },
     draftingUsed: { type: Number, default: 0, required: true },
@@ -136,6 +140,8 @@ const usageRunSchema = new Schema(
     reviewPurchaseId: { type: Schema.Types.ObjectId, ref: 'ContractReviewPurchase' },
     kind: { type: String, enum: ['analysis', 'chat', 'drafting'], required: true },
     units: { type: Number, default: 1, min: 1, required: true },
+    // Part of a paid review's units taken from the plan quota (reviewPurchaseId + periodId).
+    planUnits: { type: Number, default: 0, min: 0 },
     pageCount: { type: Number, min: 1 },
     versionId: { type: Schema.Types.ObjectId, ref: 'ContractVersion' },
     idempotencyKey: { type: String, required: true },

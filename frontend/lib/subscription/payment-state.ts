@@ -8,7 +8,8 @@ export function paymentAction(
   current: OrganizationSubscription,
   target: SubscriptionPlan,
 ): PaymentAction {
-  if (current.scheduledDowngrade?.planCode === target.code) return "downgrade";
+  // The plan chosen for the next period is paid as the renewal.
+  if (current.scheduledDowngrade?.planCode === target.code) return "renew";
   if (current.status !== "active" || !current.plan || current.plan.price === 0)
     return "purchase";
   if (target.price > current.plan.price) return "upgrade";
@@ -17,18 +18,21 @@ export function paymentAction(
 }
 
 /**
- * What an upgrade replaces: it starts a fresh full-price period immediately and
- * cancels the current period and every prepaid future period without refund.
+ * An unpaid order with a confirmed payOS link is cancelled by the server when a new
+ * checkout starts, so it does not block one. Anything else unfinished does.
  */
-export function upgradeImpact(current: OrganizationSubscription) {
-  const prepaid = (current.futurePeriods ?? []).filter((period) => period.plan.price > 0);
-  return {
-    currentEndsAt: current.status === "active" ? current.endsAt : null,
-    prepaidCount: prepaid.length,
-    prepaidUntil: prepaid.length ? prepaid[prepaid.length - 1].endsAt : null,
-    bonusUnits:
-      (current.analysis.bonus ?? 0) + (current.chat.bonus ?? 0) + (current.drafting.bonus ?? 0),
-  };
+export function isReplaceablePayment(order: PaymentOrder) {
+  return (
+    !order.fulfilledAt &&
+    !order.paidAt &&
+    !order.providerError &&
+    order.status === "pending" &&
+    Boolean(order.checkoutUrl)
+  );
+}
+
+export function blocksNewCheckout(order: PaymentOrder) {
+  return isUnfinishedPayment(order) && !isReplaceablePayment(order);
 }
 
 export function isUnfinishedPayment(order: PaymentOrder) {
@@ -54,7 +58,7 @@ export function paymentMessage(order: PaymentOrder) {
     return {
       title: "Thanh toán thành công",
       detail:
-        "Bạn đã mua quyền rà soát phiên bản hợp đồng này. Lượt trong gói được giữ nguyên; nếu AI lỗi hoặc bị hủy, bạn có thể thử lại mà không trả thêm tiền.",
+        "Bạn đã mua phần lượt còn thiếu để rà soát phiên bản hợp đồng này. Nếu AI lỗi hoặc bị hủy, các lượt được hoàn lại và bạn có thể thử lại mà không trả thêm tiền.",
       success: true,
     };
   if (order.fulfilledAt && order.purpose === "top_up")

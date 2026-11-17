@@ -6,7 +6,11 @@ import { Button } from "@/components/ui/button";
 import { useTopUpPacks } from "@/hooks/subscription/use-subscription-plans";
 import { usePaymentHistory } from "@/hooks/subscription/use-payments";
 import { paymentsApi } from "@/lib/api/payments";
-import { isUnfinishedPayment, safeCheckoutUrl } from "@/lib/subscription/payment-state";
+import {
+  blocksNewCheckout,
+  isReplaceablePayment,
+  safeCheckoutUrl,
+} from "@/lib/subscription/payment-state";
 import { formatMoney, formatPlanNumber } from "@/lib/subscription/subscription-plans";
 import type { OrganizationSubscription, TopUpPack, UsageKind } from "@/types/subscription";
 
@@ -35,7 +39,8 @@ export function TopUpPacks({
   const paidPlan = current.status === "active" && Boolean(current.plan && current.plan.price > 0);
   const audience = current.plan?.audience;
   const available = packs.data?.filter((pack) => pack.audience === audience) ?? [];
-  const open = history.data?.items.find(isUnfinishedPayment);
+  const open = history.data?.items.find(blocksNewCheckout);
+  const replaces = history.data?.items.find(isReplaceablePayment);
 
   async function buy(pack: TopUpPack) {
     if (lock.current || open) return;
@@ -118,6 +123,11 @@ export function TopUpPacks({
               </li>
             ))}
           </ul>
+          {!open && replaces && (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Đơn #{replaces.orderCode} chưa thanh toán sẽ được hủy khi bạn mua gói mới.
+            </p>
+          )}
           {open && (
             <p className="mt-3 text-sm">
               Đang có đơn #{open.orderCode} chưa hoàn tất.{" "}

@@ -14,10 +14,11 @@ import {
 } from '../validations/payment.validation';
 import {
   getSubscriptionHandler,
+  planQuoteHandler,
   scheduleDowngradeHandler,
   cancelDowngradeHandler,
 } from '../controllers/subscription.controller';
-import { downgradeSchema } from '../validations/subscription.validation';
+import { downgradeSchema, planQuoteSchema } from '../validations/subscription.validation';
 import {
   createOrganizationHandler,
   deleteOrganizationHandler,
@@ -93,6 +94,11 @@ router.get(
   '/:id/subscription',
   validate({ params: organizationIdParamSchema }),
   getSubscriptionHandler,
+);
+router.get(
+  '/:id/subscription/quote',
+  validate({ params: organizationIdParamSchema, query: planQuoteSchema }),
+  planQuoteHandler,
 );
 router.get('/:id/usage', validate({ params: organizationIdParamSchema }), getSubscriptionHandler);
 router.post(

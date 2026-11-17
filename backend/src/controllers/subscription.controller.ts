@@ -12,6 +12,9 @@ export const listTopUpPacksHandler = asyncHandler(async (_req, res) => {
 export const getSubscriptionHandler = asyncHandler(async (req, res) => {
   ok(res, await service.getSubscription(req.user!.sub, req.params.id));
 });
+export const planQuoteHandler = asyncHandler(async (req, res) => {
+  ok(res, await service.quotePlanCheckout(req.user!.sub, req.params.id, req.query.planCode as never));
+});
 export const scheduleDowngradeHandler = asyncHandler(async (req, res) => {
   ok(res, await service.scheduleDowngrade(req.user!.sub, req.params.id, req.body.planCode));
 });

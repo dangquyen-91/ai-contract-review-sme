@@ -31,6 +31,14 @@ export type ContractReviewQuote = {
   amount: number; unitPrice: number; currency: "VND"; availableUnits: number; canPurchase: boolean;
   purchaseStatus: "available" | "reserved" | "consumed" | null; openOrderCode: number | null;
   // Chat questions about this contract included with a new purchase, and what earlier purchases have left.
+  // An abandoned unpaid order that a new checkout will cancel.
+  replacesOrderCode?: number | null;
   includedChat?: number;
+  // Units already paid for an earlier version of this contract; `amount` covers only the rest.
+  paidUnits?: number;
+  // Remaining plan units this review will use, and the units left to pay.
+  planUnits?: number;
+  shortfallUnits?: number;
+  carryPurchaseId?: string | null;
   contractChat?: { allowance: number; used: number; reserved: number; available: number };
 };

@@ -81,7 +81,10 @@ const {
   activatePaidSubscription,
   scheduleDowngrade,
   cancelDowngrade,
+  quotePlanCheckout,
 } = require('../dist/services/billing/subscription.service');
+const DAY = 24 * 60 * 60 * 1000;
+const daysBefore = (date, days) => new Date(date.getTime() - days * DAY);
 const { reserveUsage, finishUsage, withUsage } = require('../dist/services/billing/usage.service');
 const { vietnamCalendarMonth, addSubscriptionMonth } = require('../dist/utils/subscriptionPeriods');
 const invitations = require('../dist/services/organization/invitation.service');
@@ -580,29 +583,40 @@ test('renewal adds a future period without resetting current quota; duplicate se
   const w = await workspace();
   const current = await pay(w, 'business_starter');
   await SubscriptionPeriodModel.updateOne({ _id: current._id }, { $set: { analysisUsed: 17 } });
+  // Renewal opens 7 days before the period ends; only one period is paid ahead.
+  await expect(pay(w, 'business_starter', 'renew', randomUUID(), daysBefore(current.endsAt, 8))).rejects.toMatchObject({ code: 'RENEWAL_NOT_OPEN' });
   const ref = randomUUID();
-  const renewal = await pay(w, 'business_starter', 'renew', ref);
-  const again = await pay(w, 'business_starter', 'renew', ref);
+  const renewal = await pay(w, 'business_starter', 'renew', ref, daysBefore(current.endsAt, 3));
+  const again = await pay(w, 'business_starter', 'renew', ref, daysBefore(current.endsAt, 3));
   expect(again.id).toBe(renewal.id);
   expect(renewal.startsAt).toEqual(current.endsAt);
+  await expect(pay(w, 'business_starter', 'renew', randomUUID(), daysBefore(current.endsAt, 2))).rejects.toMatchObject({ code: 'ALREADY_RENEWED' });
   expect((await getSubscription(w.owner.id, w.org.id)).analysis.used).toBe(17);
   const next = await stateAt(w, renewal.startsAt);
   expect(next.period.id).toBe(renewal.id);
   expect(next.period.analysisUsed).toBe(0);
 });
 
-test('upgrade charges full price and starts fresh immediately, cancelling old prepaid benefits', async () => {
+test('upgrade credits the unused paid time, including a period paid ahead, and starts a fresh period', async () => {
   const w = await workspace();
   const old = await pay(w, 'business_starter');
-  const prepaid = await pay(w, 'business_starter', 'renew');
+  const prepaid = await pay(w, 'business_starter', 'renew', randomUUID(), daysBefore(old.endsAt, 3));
   await SubscriptionPeriodModel.updateOne({ _id: old._id }, { $set: { analysisUsed: 99 } });
-  const upgraded = await pay(w, 'business_pro', 'upgrade');
-  expect(upgraded.plan.price).toBe(999000);
-  expect(upgraded.analysisUsed).toBe(0);
+  const at = new Date(old.startsAt.getTime() + 15 * DAY);
+  const unused = (old.endsAt - at) / (old.endsAt - old.startsAt);
+  const quote = await quotePlanCheckout(w.owner.id, w.org.id, 'business_pro', at);
+  expect(quote).toMatchObject({ action: 'upgrade', listPrice: 999000, credit: Math.floor(499000 * unused + 499000), blockReason: null });
+  expect(quote.amount).toBe(999000 - quote.credit);
+  const upgraded = await activatePaidSubscription(
+    { orgId: w.org.id, planCode: 'business_pro', action: 'upgrade', amount: quote.amount, paymentReference: randomUUID(), orderedAt: at },
+    at,
+  );
+  expect(upgraded).toMatchObject({ paidAmount: quote.amount, analysisUsed: 0, plan: { price: 999000 } });
   expect(upgraded.endsAt).toEqual(addSubscriptionMonth(upgraded.startsAt));
   expect((await SubscriptionPeriodModel.findById(old.id)).cancelledAt).toBeTruthy();
   expect((await SubscriptionPeriodModel.findById(prepaid.id)).cancelledAt).toBeTruthy();
-  expect((await getSubscription(w.owner.id, w.org.id)).plan.code).toBe('business_pro');
+  // The full list price is no longer accepted for an upgrade.
+  await expect(pay(w, 'business_pro', 'upgrade')).rejects.toMatchObject({ statusCode: 409 });
 });
 
 test('wrong price, wrong family and reused payment reference are rejected', async () => {
@@ -649,7 +663,9 @@ test('paid downgrade waits for boundary and cannot be cancelled once funded', as
   const w = await workspace();
   const old = await pay(w, 'business_pro');
   await scheduleDowngrade(w.owner.id, w.org.id, 'business_starter');
-  const lower = await pay(w, 'business_starter', 'downgrade');
+  // The lower plan is paid as the renewal; the current plan can no longer be renewed.
+  await expect(pay(w, 'business_pro', 'renew', randomUUID(), daysBefore(old.endsAt, 3))).rejects.toMatchObject({ code: 'RENEWAL_PLAN_MISMATCH' });
+  const lower = await pay(w, 'business_starter', 'renew', randomUUID(), daysBefore(old.endsAt, 3));
   expect(lower.startsAt).toEqual(old.endsAt);
   expect((await getSubscription(w.owner.id, w.org.id)).plan.code).toBe('business_pro');
   await expect(cancelDowngrade(w.owner.id, w.org.id)).rejects.toMatchObject({ statusCode: 409 });
