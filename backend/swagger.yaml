@@ -4783,6 +4783,90 @@ paths:
                 items:
                   $ref: '#/components/schemas/ExpertReview'
 
+  /reviews/{reviewId}/verification/messages:
+    parameters:
+      - in: path
+        name: reviewId
+        required: true
+        schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+    get:
+      tags: [Reviews]
+      summary: Read expert consultation messages
+      description: Only the original requester in the owning workspace and the assigned Expert can read. Historical attempts retain their original participants. Messages are returned oldest first; without a cursor the latest page is returned. Use after for polling. No implicit administrator, manager or organization-owner access.
+      parameters:
+        - in: query
+          name: attempt
+          schema: { type: integer, minimum: 1 }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 30 }
+        - in: query
+          name: before
+          description: Load older messages; cannot be combined with after.
+          schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+        - in: query
+          name: after
+          description: Load newer messages; cannot be combined with before.
+          schema: { type: string, pattern: '^[a-fA-F0-9]{24}$' }
+      responses:
+        '200':
+          description: Conversation metadata and a bounded message page. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      attempt: { type: integer }
+                      status: { type: string, enum: [requested, in_progress, approved, returned] }
+                      canSend: { type: boolean }
+                      hasMore: { type: boolean }
+                      nextBefore: { type: string, nullable: true }
+                      nextAfter: { type: string, nullable: true }
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            id: { type: string }
+                            attempt: { type: integer }
+                            senderId: { type: string }
+                            senderType: { type: string, enum: [requester, expert] }
+                            clientMessageId: { type: string, format: uuid }
+                            content: { type: string }
+                            createdAt: { type: string, format: date-time }
+        '400': { description: Invalid query or review ID }
+        '401': { description: Missing, invalid or stale authentication }
+        '403': { description: Role not permitted }
+        '404': { description: Conversation unavailable or inaccessible }
+    post:
+      tags: [Reviews]
+      summary: Send a message to the requester or assigned Expert
+      description: Only available during in_progress verification. Content is encrypted at rest. Reuse clientMessageId and identical content to retry safely. This operation does not consume AI credits. Sender fields are derived from authentication.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [attempt, clientMessageId, content]
+              properties:
+                attempt: { type: integer, minimum: 1 }
+                clientMessageId: { type: string, format: uuid }
+                content: { type: string, minLength: 1, maxLength: 2000, description: 'Trimmed plain text; enc:v1: is a reserved storage prefix.' }
+      responses:
+        '201': { description: 'Saved message in data.message; data.replayed is false.' }
+        '200': { description: 'Previously saved message in data.message; data.replayed is true.' }
+        '400': { description: Invalid body or review ID }
+        '401': { description: Missing, invalid or stale authentication }
+        '403': { description: Role not permitted }
+        '404': { description: Conversation unavailable or inaccessible }
+        '409': { description: 'EXPERT_CHAT_CLOSED or MESSAGE_ID_CONFLICT' }
+
   /reviews/{reviewId}/verification:
     parameters:
       - in: path
