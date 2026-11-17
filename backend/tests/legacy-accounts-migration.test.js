@@ -82,6 +82,9 @@ async function seedLegacyData() {
   ]);
   data.draft = id();
   await ContractDraftModel.collection.insertOne({ _id: data.draft, orgId: personalOrg, createdBy: data.personal, title: 'Draft' });
+  // A business draft saved while ownerType was missing from the schema.
+  data.businessDraft = id();
+  await ContractDraftModel.collection.insertOne({ _id: data.businessDraft, orgId: business, createdBy: data.staff, title: 'Business draft' });
   data.payment = id();
   await PaymentModel.collection.insertOne({
     _id: data.payment, orgId: personalOrg, orderCode: 9300000000001, idempotencyKey: 'legacy-key',
@@ -121,6 +124,7 @@ test('dry run reports every change and conflict without writing anything', async
     personalWorkspaces: 1,
     personalAccounts: 1,
     contractOwnerTypes: { personal: 1, organization: 1 },
+    draftOwnerTypes: { personal: 1, organization: 1 },
     revokedInvitations: 1,
   });
   expect(skippedEmails(report)).toEqual(['second-owner@legacy.test', 'shared-a@legacy.test', 'shared-b@legacy.test']);
@@ -151,7 +155,8 @@ test('apply restores organization roles, system roles and personal workspaces, t
   // The personal workspace moves to the user's own scope, keeping the paid plan and usage.
   const personal = String(legacy.personal);
   expect(await ContractModel.findById(legacy.personalContract).lean()).toMatchObject({ orgId: legacy.personal, ownerType: 'personal' });
-  expect((await ContractDraftModel.collection.findOne({ _id: legacy.draft })).orgId).toBeNull();
+  expect(await ContractDraftModel.collection.findOne({ _id: legacy.draft })).toMatchObject({ orgId: null, ownerType: 'personal' });
+  expect((await ContractDraftModel.collection.findOne({ _id: legacy.businessDraft })).ownerType).toBe('organization');
   expect((await PaymentModel.findById(legacy.payment)).orgId.toString()).toBe(personal);
   expect(await SubscriptionModel.findOne({ orgId: legacy.personal }).lean()).toMatchObject({ accountType: 'personal' });
   expect(await getSubscription(personal, personal)).toMatchObject({
@@ -168,7 +173,7 @@ test('apply restores organization roles, system roles and personal workspaces, t
   const again = await migrateLegacyAccounts({ apply: true });
   expect(again).toMatchObject({
     memberships: 0, platformRoles: 0, personalWorkspaces: 0, personalAccounts: 0,
-    contractOwnerTypes: { personal: 0, organization: 0 }, revokedInvitations: 0,
+    contractOwnerTypes: { personal: 0, organization: 0 }, draftOwnerTypes: { personal: 0, organization: 0 }, revokedInvitations: 0,
   });
   // Conflicts stay visible on every run until someone resolves them.
   expect(skippedEmails(again)).toEqual(['second-owner@legacy.test', 'shared-a@legacy.test', 'shared-b@legacy.test']);

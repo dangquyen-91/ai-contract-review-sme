@@ -46,6 +46,7 @@ export interface LegacyMigrationReport {
   personalWorkspaces: number;
   personalAccounts: number;
   contractOwnerTypes: { personal: number; organization: number };
+  draftOwnerTypes: { personal: number; organization: number };
   revokedInvitations: number;
   skipped: Outcome[];
 }
@@ -102,6 +103,7 @@ export async function migrateLegacyAccounts({
     personalWorkspaces: 0,
     personalAccounts: 0,
     contractOwnerTypes: { personal: 0, organization: 0 },
+    draftOwnerTypes: { personal: 0, organization: 0 },
     revokedInvitations: 0,
     skipped: [],
   };
@@ -208,6 +210,20 @@ export async function migrateLegacyAccounts({
     (apply ? 0 : await contracts.countDocuments({ ...missing, orgId: { $in: personalOrgIds } }));
   report.contractOwnerTypes.organization =
     (await contracts.countDocuments(missing)) - report.contractOwnerTypes.personal;
+  // Drafts saved while ownerType was missing from the schema: personal drafts have no orgId.
+  const drafts = raw(ContractDraftModel);
+  const personalDrafts = { ownerType: { $exists: false }, orgId: null };
+  const organizationDrafts = { ownerType: { $exists: false }, orgId: { $ne: null } };
+  // In a dry run, drafts of personal workspaces still carry the workspace orgId.
+  const pendingPersonal = apply
+    ? 0
+    : await drafts.countDocuments({ ownerType: { $exists: false }, orgId: { $in: personalOrgIds } });
+  report.draftOwnerTypes.personal = (await drafts.countDocuments(personalDrafts)) + pendingPersonal;
+  report.draftOwnerTypes.organization = (await drafts.countDocuments(organizationDrafts)) - pendingPersonal;
+  if (apply) {
+    await drafts.updateMany(personalDrafts, { $set: { ownerType: 'personal' } });
+    await drafts.updateMany(organizationDrafts, { $set: { ownerType: 'organization' } });
+  }
   const invitations = raw(OrganizationInvitationModel);
   const strayInvitations = { status: 'pending', role: { $ne: 'staff' } };
   report.revokedInvitations = await invitations.countDocuments(strayInvitations);

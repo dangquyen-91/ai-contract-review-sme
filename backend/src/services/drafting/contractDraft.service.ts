@@ -123,7 +123,7 @@ export async function createDraft(actor: AccessTokenPayload, input: DraftInput) 
   validateInput(input.templateCode, values, input.ourParty, false, template);
   const document = input.editorMode === 'studio' ? buildStudioTemplate(template, values, organization.name, input.ourParty) : null;
   const draft = await ContractDraftModel.create({
-    orgId: actor.orgId ?? null, createdBy: actor.sub, title: input.title,
+    ownerType: actor.orgId ? 'organization' : 'personal', orgId: actor.orgId ?? null, createdBy: actor.sub, title: input.title,
     templateCode: input.templateCode, templateVersion: template.version, ourParty: input.ourParty,
     templateJson: JSON.stringify(template),
     inputJson: JSON.stringify(values), organizationJson: JSON.stringify({ name: organization.name, taxCode: organization.taxCode ?? '', address: organization.address ?? '' }),

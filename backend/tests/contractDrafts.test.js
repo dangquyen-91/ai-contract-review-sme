@@ -556,3 +556,11 @@ test('line item decimals round per row, validate totals and export real tables w
   expect(doc).toContain('<w:tblHeader/>'); expect(doc).toContain('Sản phẩm A &amp; B');
   expect(doc).toContain('BÊN MUA (BÊN B)'); expect(doc).not.toContain('| STT');
 });
+
+test('drafts record whether they belong to a personal account or an organization', async () => {
+  const organizationDraft = await create(staff);
+  expect((await Drafts.findById(organizationDraft.id)).ownerType).toBe('organization');
+  const personal = await user('user');
+  const personalDraft = await create(personal, 'life_insurance');
+  expect(await Drafts.findById(personalDraft.id).lean()).toMatchObject({ orgId: null, ownerType: 'personal' });
+});
