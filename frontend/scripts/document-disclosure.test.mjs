@@ -18,8 +18,10 @@ const id = '0123456789abcdef01234567';
 const raw = 'CCCD: 079203001234';
 function proxySetup(token = 'session', failedPath) {
   const calls = [];
-  const { GET } = load('../app/api/contracts/[id]/review/route.ts', {
+  // /review re-exports the canonical /review-result route; load that one directly.
+  const { GET } = load('../app/api/contracts/[id]/review-result/route.ts', {
     'next/server': { NextResponse: { json: (body, options) => Response.json(body, options) } },
+    '@/lib/auth/api-session': { getApiSession: async () => token ? { accessToken: token } : { error: Response.json({ success: false }, { status: 401 }) } },
   }, {
     process: { env: { API_BASE_URL: 'http://backend.test' } },
     fetch: async (url) => {
@@ -67,7 +69,7 @@ function setup(mimeType = 'application/pdf', findings) {
     },
     useRef: () => ({ current: null }), useId: () => 'review', useMemo: (fn) => fn(), useEffect: () => {}, useLayoutEffect: () => {},
   };
-  const hooks = load('../hooks/use-contracts.ts', {
+  const hooks = load('../hooks/contracts/use-contracts.ts', {
     '@/lib/query-keys/contracts': load('../lib/query-keys/contracts.ts'),
     react,
     '@tanstack/react-query': { useQuery: (options) => {
@@ -77,30 +79,48 @@ function setup(mimeType = 'application/pdf', findings) {
         : { ...fullState, refetch: () => { retries++; } };
     } },
   });
-  const { RedactedDocument } = load('../components/review/redacted-document.tsx', {
+  const { RedactedDocument } = load('../components/review/document/redacted-document.tsx', {
     'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
   });
-  const { RiskFindingCard } = load('../components/review/risk-finding-card.tsx', {
+  const verificationFindings = load('../lib/review/verification-findings.ts');
+  const { RiskFindingCard } = load('../components/review/results/risk-finding-card.tsx', {
     'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
+    '@/config/risk-display': load('../config/risk-display.ts'),
+    '@/components/expert-verification/finding-verification-info': { FindingVerificationBadge: () => null, FindingVerificationInfo: () => null },
   });
-  const { ReviewResultHeader } = load('../components/review/review-result-header.tsx', {
+  const { ReviewResultHeader } = load('../components/review/results/review-result-header.tsx', {
     'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
+    '@/components/expert-verification/review-verification': { ReviewVerification: () => null },
+    '@/lib/review/verification-findings': verificationFindings,
   });
-  const { RiskDetails } = load('../components/review/risk-details.tsx', {
+  const { RiskDetails } = load('../components/review/results/risk-details.tsx', {
     react, 'react/jsx-runtime': jsx,
-    '@/hooks/use-contracts': { useUpdateProposedRevisionMutation: () => ({}), useRemoveProposedRevisionMutation: () => ({}) },
+    '@/hooks/contracts/use-contracts': { useUpdateProposedRevisionMutation: () => ({}), useRemoveProposedRevisionMutation: () => ({}) },
   });
-  const { ReviewResults } = load('../components/review/review-results.tsx', {
-    react, 'react/jsx-runtime': jsx, '@/hooks/use-contracts': hooks,
+  // ReviewResults delegates the findings list and the document text to sub-components.
+  const { ReviewAnalysisPane } = load('../components/review/results/review-analysis-pane.tsx', {
+    react, 'react/jsx-runtime': jsx,
+    '@/components/review/results/risk-details': { RiskDetails },
+    '@/components/review/results/risk-finding-card': { RiskFindingCard },
+    '@/lib/review/analysis-coverage': load('../lib/review/analysis-coverage.ts'),
+    '@/lib/review/verification-findings': verificationFindings,
+    '@/styles/review/review-workspace.module.css': { default: {} },
+  });
+  const documentText = load('../components/review/document/contract-document-text.tsx', { react, 'react/jsx-runtime': jsx });
+  // The results view is exported as ReviewWorkbench.
+  const { ReviewWorkbench: ReviewResults } = load('../components/review/results/review-results.tsx', {
+    '@/components/review/results/review-analysis-pane': { ReviewAnalysisPane },
+    '@/components/review/document/contract-document-text': documentText,
+    react, 'react/jsx-runtime': jsx, '@/hooks/contracts/use-contracts': hooks,
     '@/styles/review/review-workspace.module.css': { default: {} }, '@/components/ui/icon': { Icon: () => null },
-    '@/components/review/redacted-document': { RedactedDocument },
-    '@/components/review/contract-chat': { ContractChat: () => null },
-    '@/components/review/risk-details': { RiskDetails },
-    '@/components/review/risk-finding-card': { RiskFindingCard },
-    '@/components/review/review-result-header': { ReviewResultHeader },
-    '@/components/review/key-terms': { KeyTerms: () => null },
-    '@/components/review/original-contract-preview': { OriginalContractPreview: (props) => props.redacted ? jsx.jsx('div', { 'data-redacted-docx': true, ...props }) : jsx.jsx('iframe', { title: 'Original', ...props }) },
-    '@/components/review/document-disclosure-dialog': { DocumentDisclosureDialog: ({ mode, onConfirm, onCancel }) => jsx.jsxs('dialog', { children: [
+    '@/components/review/document/redacted-document': { RedactedDocument },
+    '@/components/review/results/contract-chat': { ContractChat: () => null },
+    '@/components/review/results/risk-details': { RiskDetails },
+    '@/components/review/results/risk-finding-card': { RiskFindingCard },
+    '@/components/review/results/review-result-header': { ReviewResultHeader },
+    '@/components/review/results/key-terms': { KeyTerms: () => null },
+    '@/components/review/document/original-contract-preview': { OriginalContractPreview: (props) => props.redacted ? jsx.jsx('div', { 'data-redacted-docx': true, ...props }) : jsx.jsx('iframe', { title: 'Original', ...props }) },
+    '@/components/review/document/document-disclosure-dialog': { DocumentDisclosureDialog: ({ mode, onConfirm, onCancel }) => jsx.jsxs('dialog', { children: [
       jsx.jsx('button', { onClick: onConfirm, children: `Confirm ${mode}` }), jsx.jsx('button', { onClick: onCancel, children: 'Cancel' }),
     ] }) },
   });

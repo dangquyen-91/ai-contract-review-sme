@@ -27,6 +27,11 @@ class ApiClientError extends Error {
 }
 
 const contractId = 'a'.repeat(24);
+// Proxies verify the session server-side; the test session carries the cookie's token.
+const proxyDeps = {
+  'next/server': { NextResponse },
+  '@/lib/auth/api-session': { getApiSession: async () => ({ accessToken: 'test-token' }) },
+};
 const quotaMessage = 'chat quota exhausted. Upgrade your plan or wait for the next period.';
 const keyPattern = /^[A-Za-z0-9_-]{8,128}$/;
 
@@ -38,7 +43,7 @@ function request(url, options) {
 
 test('streaming chat reaches quota validation with a unique valid key per question', async () => {
   const keys = [];
-  const proxy = load('../lib/api/contract-proxy.ts', { 'next/server': { NextResponse } }, {
+  const proxy = load('../lib/api/contract-proxy.ts', proxyDeps, {
     fetch: async (_url, options) => {
       const key = options.headers['Idempotency-Key'];
       assert.match(key, keyPattern);
@@ -66,7 +71,7 @@ test('streaming chat reaches quota validation with a unique valid key per questi
 
 test('regular chat forwards the generated key and preserves quota errors', async () => {
   const keys = [];
-  const proxy = load('../lib/api/contract-proxy.ts', { 'next/server': { NextResponse } }, {
+  const proxy = load('../lib/api/contract-proxy.ts', proxyDeps, {
     fetch: async (_url, options) => {
       assert.match(options.headers['Idempotency-Key'], keyPattern);
       keys.push(options.headers['Idempotency-Key']);

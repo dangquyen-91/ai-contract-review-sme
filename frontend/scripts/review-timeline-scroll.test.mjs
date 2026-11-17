@@ -9,7 +9,7 @@ function harness(reducedMotion = false) {
   const ref = { current: { scrollIntoView: (options) => calls.push(options) } };
   let previous, cleanup, frameId = 0;
   const exports = {};
-  const code = ts.transpileModule(fs.readFileSync(new URL('../hooks/use-review-timeline-scroll.ts', import.meta.url), 'utf8'), {
+  const code = ts.transpileModule(fs.readFileSync(new URL('../hooks/review/use-review-timeline-scroll.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   vm.runInNewContext(code, {

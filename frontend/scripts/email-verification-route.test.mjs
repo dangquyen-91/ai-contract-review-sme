@@ -16,9 +16,9 @@ function load(file, deps = {}, globals = {}) {
   return exports;
 }
 
-const storage = load('../lib/email-verification-session.ts');
-const navigation = load('../lib/auth-return.ts', {
-  './workspace-path': { workspacePath: () => '/dashboard/user' },
+const storage = load('../lib/auth/email-verification-session.ts');
+const navigation = load('../lib/auth/auth-return.ts', {
+  '@/lib/routing/workspace-path': { workspacePath: () => '/dashboard/user' },
   '@/types/subscription': { planCodes: ['personal_pro'] },
 });
 const challenge = {
@@ -59,15 +59,15 @@ test('reload restores the challenge and elapsed resend cooldown, including expir
 test('submitting either auth form navigates to the OTP route when verification is required', async () => {
   for (const mode of ['login', 'register']) {
     const pushed = [];
-    const renderForm = load('../hooks/use-auth-form.ts', {
+    const renderForm = load('../hooks/auth/use-auth-form.ts', {
       '@hookform/resolvers/zod': { zodResolver: () => null },
       'next/navigation': { useRouter: () => ({ push: (href) => pushed.push(href) }) },
       react: { useState: (value) => [value, () => {}] },
       'react-hook-form': { useWatch: () => '', useForm: () => ({ control: {}, handleSubmit: (submit) => submit }) },
       sonner: { toast: {} },
-      '@/hooks/use-auth': { useAuthMutation: () => ({ mutateAsync: async () => challenge }) },
+      '@/hooks/auth/use-auth': { useAuthMutation: () => ({ mutateAsync: async () => challenge }) },
       '@/lib/api/client': { isApiClientError: () => false },
-      '@/lib/auth-return': navigation, '@/schemas/auth.schema': {},
+      '@/lib/auth/auth-return': navigation, '@/schemas/auth.schema': {},
     }).useAuthForm;
     const form = renderForm({ mode, invitationToken, invitedEmail: challenge.email, returnTo });
     await form.onSubmit({ mode, email: challenge.email, password: 'example' });
@@ -79,9 +79,11 @@ function routeHarness() {
   let result = { success: true, data: challenge };
   const api = load('../app/api/auth/[action]/route.ts', {
     'next/server': { NextRequest, NextResponse }, 'node:crypto': {},
-    '@/lib/auth-session': { userSessionCookie: 'lawscan_user', encodeSessionUser: () => 'user' },
-    '@/lib/token-expiry': { tokenMaxAge: () => 900, rememberedCookieAge: () => ({}) },
-    '@/lib/request-origin': {}, '@/lib/email-verification-session': storage,
+    '@/lib/auth/auth-session': { userSessionCookie: 'lawscan_user', encodeSessionUser: () => 'user' },
+    '@/lib/auth/token-expiry': { tokenMaxAge: () => 900, rememberedCookieAge: () => ({}) },
+    '@/lib/api/request-origin': {}, '@/lib/auth/email-verification-session': storage,
+    // Only the GET workspace action reads the session; these POST flows never do.
+    '@/lib/auth/api-session': { getApiSession: async () => ({ error: NextResponse.json({}, { status: 401 }) }) },
   }, { fetch: async () => ({ ok: true, status: 200, json: async () => result }) });
   return {
     setResult: (data) => { result = { success: true, data }; },
@@ -118,7 +120,7 @@ test('OTP route renders the saved challenge and redirects missing or invalid ses
     '@/components/auth/auth-brand-panel': { AuthBrandPanel: () => null },
     '@/components/auth/auth-shell': { AuthShell: () => null },
     '@/components/auth/email-verification-content': { EmailVerificationContent: Content },
-    '@/lib/auth-return': navigation, '@/lib/email-verification-session': storage,
+    '@/lib/auth/auth-return': navigation, '@/lib/auth/email-verification-session': storage,
   }).default;
   const searchParams = Promise.resolve({ mode: 'register', invitationToken, returnTo });
   const view = await page({ searchParams });

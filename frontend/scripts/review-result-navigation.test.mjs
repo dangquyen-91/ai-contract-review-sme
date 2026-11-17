@@ -22,7 +22,7 @@ function harness({ bounds = { top: 100, bottom: 500 }, reduced = false, interact
     },
   };
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL('../hooks/use-review-result-navigation.ts', import.meta.url), 'utf8'), {
+  const source = ts.transpileModule(fs.readFileSync(new URL('../hooks/review/use-review-result-navigation.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const timelineRef = { current: { getBoundingClientRect: () => bounds } };

@@ -22,7 +22,7 @@ test('deletion invalidates filtered lists and clears the deleted user detail onl
   const calls = [];
   let fail = false;
   const keys = load('../lib/query-keys/user-management.ts', {}).userManagementKeys;
-  const { useDeleteManagedUser } = load('../hooks/use-user-management.ts', {
+  const { useDeleteManagedUser } = load('../hooks/users/use-user-management.ts', {
     '@tanstack/react-query': {
       useQueryClient: () => ({
         cancelQueries: async options => calls.push(['cancel', ...options.queryKey]),

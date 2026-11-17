@@ -20,10 +20,10 @@ function setup({ failResult = false, workspaceReady = true, failReview } = {}) {
   };
   const exports = {};
   const failure = {};
-  vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL('../lib/review-failure.ts', import.meta.url), 'utf8'), {
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync(new URL('../lib/review/review-failure.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText, { exports: failure, require: () => ({ isApiClientError: (error) => typeof error?.status === 'number' }) });
-  const source = ts.transpileModule(fs.readFileSync(new URL('../hooks/use-review-workflow.ts', import.meta.url), 'utf8'), {
+  const source = ts.transpileModule(fs.readFileSync(new URL('../hooks/review/use-review-workflow.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   vm.runInNewContext(source, {
@@ -33,11 +33,14 @@ function setup({ failResult = false, workspaceReady = true, failReview } = {}) {
       react,
       sonner: { toast: { success: () => {}, error: () => {} } },
       '@/lib/api/client': { isApiClientError: (error) => typeof error?.status === 'number' },
-      '@/lib/review-failure': failure,
-      '@/lib/review-session': { readReviewSession: () => null, isReviewCancelled: (error) => error.name === 'AbortError' },
-      '@/hooks/use-contracts': {
+      '@/lib/review/review-failure': failure,
+      '@/lib/review/review-error-codes': { serverCodeMessage: () => undefined },
+      '@/lib/review/review-session': { readReviewSession: () => null, isReviewCancelled: (error) => error.name === 'AbortError' },
+      '@/hooks/contracts/use-contracts': {
         useContractProfiles: () => ({ data: [] }),
         useUploadContractMutation: () => ({ isPending: false, mutateAsync: async (data) => { calls.push({ kind: 'upload', data }); return { _id: 'contract-1', title: 'Test' }; } }),
+        // Saving an upload as a new version is not exercised by these flows.
+        useUploadContractVersionMutation: () => ({ isPending: false, mutateAsync: async () => assert.fail('Unexpected version upload') }),
         useReviewContractMutation: () => ({ isPending: false, reconnecting: false, mutateAsync: async (args) => {
           calls.push({ kind: 'run', args });
           if (failReview) { const error = failReview; failReview = undefined; throw error; }

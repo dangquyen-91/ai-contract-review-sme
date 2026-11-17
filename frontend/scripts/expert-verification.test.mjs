@@ -96,8 +96,8 @@ test('request form starts with consent unchecked and submit disabled', () => {
   const { RequestVerificationDialog } = load('../components/expert-verification/request-verification-dialog.tsx', {
     'lucide-react': { ShieldCheck: () => null },
     '@/components/ui/dialog': dialog,
-    '@/components/ui/button': { Button: ({ children, loading, ...props }) => React.createElement('button', props, children) },
-    '@/components/ui/checkbox': { Checkbox: ({ checked, onCheckedChange, ...props }) => React.createElement('input', { ...props, type: 'checkbox', checked, readOnly: true }) },
+    '@/components/ui/button': { Button: ({ children, ...props }) => { delete props.loading; return React.createElement('button', props, children); } },
+    '@/components/ui/checkbox': { Checkbox: ({ checked, ...props }) => { delete props.onCheckedChange; return React.createElement('input', { ...props, type: 'checkbox', checked, readOnly: true }); } },
   });
   const html = renderToStaticMarkup(React.createElement(RequestVerificationDialog, {
     title: 'Contract', findingCount: 3, pending: false, submitDisabled: false, error: '', onClose() {}, onSubmit: async () => {},
@@ -115,7 +115,7 @@ test('verification detail dialog reflects server states without implying approva
   const { VerificationRequestDialog } = load('../components/expert-verification/verification-request-dialog.tsx', {
     'lucide-react': { Check: () => null, Clock3: () => null, CornerUpLeft: () => null, RefreshCw: () => null },
     '@/components/ui/dialog': dialog,
-    '@/components/ui/button': { Button: ({ children, loading, ...props }) => React.createElement('button', props, children) },
+    '@/components/ui/button': { Button: ({ children, ...props }) => { delete props.loading; return React.createElement('button', props, children); } },
     '@/lib/review/verification-display': display,
   });
   function render(status) {
