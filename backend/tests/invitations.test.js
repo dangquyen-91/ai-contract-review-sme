@@ -18,7 +18,6 @@ jest.mock('../dist/services/email/email.service', () => ({
   sendEmail: jest.fn().mockResolvedValue(undefined),
 }));
 const { sendEmail } = require('../dist/services/email/email.service');
-const { EmailVerificationModel } = require('../dist/models/emailVerification.model');
 const mongoose = require('mongoose');
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
 const request = require('supertest');
@@ -109,7 +108,6 @@ beforeAll(async () => {
   await seedDefaultRoles();
   await initializeSubscriptionModels();
   await seedPlans();
-  await EmailVerificationModel.init();
   await Promise.all([UserModel.init(), Invitations.init(), OrganizationModel.init()]);
   org = await OrganizationModel.create({ name: 'Test company' });
   owner = await makeUser('owner', org._id);
