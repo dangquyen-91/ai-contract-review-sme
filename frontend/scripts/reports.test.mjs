@@ -104,11 +104,14 @@ test('comparison CSV preserves backend differences, actual period dates, grouped
   assert.ok(reportCsv(empty).includes('Chưa có dữ liệu'));
 });
 
-test('role reports use feature permissions and each role has a working report destination', () => {
+test('role reports use feature permissions and each non-personal role has a working report destination', () => {
   const { getDashboardNavigation } = load('../config/dashboard-navigation.ts');
   const { permissions } = load('../config/permissions.ts');
   const { roleReportConfig } = load('../config/report-profiles.ts');
-  for (const role of ['administrator', 'owner', 'staff', 'user', 'manager', 'expert']) {
+  // Personal accounts see their figures on the overview instead of a report page.
+  assert.equal(permissions.reports('user'), false);
+  assert.equal(getDashboardNavigation('user').some(item => item.key === 'reports'), false);
+  for (const role of ['administrator', 'owner', 'staff', 'manager', 'expert']) {
     const entries = getDashboardNavigation(role).filter(item => item.key === 'reports');
     assert.equal(entries.length, 1);
     assert.equal(entries[0].href, roleReportConfig[role].href);

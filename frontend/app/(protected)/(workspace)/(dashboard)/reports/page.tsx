@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { requirePermission } from "@/lib/auth/access";
+import { requireSession } from "@/lib/auth/session";
 import { ReportsOverview } from "@/components/reports/reports-overview";
 import { RoleInsights } from "@/components/overview/role-insights";
-import { PersonalReports } from "@/components/reports/personal-reports";
 
 export const metadata: Metadata = {
   title: "Báo cáo công việc | LawScan",
@@ -10,8 +11,9 @@ export const metadata: Metadata = {
 };
 
 export default async function OrganizationReportsPage() {
+  // Saved links from personal accounts land on their overview, which has the same figures.
+  if ((await requireSession()).user.role === "user") redirect("/dashboard");
   const { user } = await requirePermission("reports");
-  if (user.role === "user") return <PersonalReports accountId={user.id} />;
   if (user.role === "owner")
     return (
       <ReportsOverview organizationOnly scopeId={user.orgId ?? undefined} />
