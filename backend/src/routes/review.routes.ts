@@ -24,6 +24,8 @@ import {
 } from '../controllers/verification.controller';
 import { reviewIdParamSchema } from '../validations/review.validation';
 import { analysisFocusBodySchema } from '../validations/contract.validation';
+import { listExpertMessagesHandler, sendExpertMessageHandler } from '../controllers/expertChat.controller';
+import { expertChatQuerySchema, sendExpertMessageSchema } from '../validations/expertChat.validation';
 import {
   addFindingBodySchema,
   approveVerificationBodySchema,
@@ -39,6 +41,20 @@ import {
 const router = Router();
 
 router.use(requireAuth);
+
+router.get(
+  '/:reviewId/verification/messages',
+  requireRole('owner', 'staff', 'user', 'expert'),
+  validate({ params: reviewIdParamSchema, query: expertChatQuerySchema }),
+  listExpertMessagesHandler,
+);
+
+router.post(
+  '/:reviewId/verification/messages',
+  requireRole('owner', 'staff', 'user', 'expert'),
+  validate({ params: reviewIdParamSchema, body: sendExpertMessageSchema }),
+  sendExpertMessageHandler,
+);
 
 router.get('/my-verifications', requireRole('expert'), validate({ query: expertWorkQuerySchema }), listExpertWorkHandler);
 

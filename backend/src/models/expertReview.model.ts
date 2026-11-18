@@ -11,6 +11,7 @@ const expertReviewSchema = new Schema(
     orgId: { type: Types.ObjectId, ref: 'Organization', required: true },
     status: { type: String, enum: EXPERT_REVIEW_STATUSES, required: true },
     attempt: { type: Number, required: true, default: 1 },
+    chatSequence: { type: Number, default: 0 },
     requestedBy: { type: Types.ObjectId, ref: 'User', required: true },
     requestNote: { type: String },
     requestedAt: { type: Date, required: true },
