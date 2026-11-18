@@ -9,6 +9,7 @@ import { RiskCitationModel } from '../../models/riskCitation.model';
 import { ChatMessageModel } from '../../models/chatMessage.model';
 import { ReviewModel } from '../../models/review.model';
 import { ExpertReviewModel } from '../../models/expertReview.model';
+import { ExpertChatMessageModel } from '../../models/expertChatMessage.model';
 import { ExpertActionModel } from '../../models/expertAction.model';
 import { CreateContractInput, ListContractsQuery } from '../../validations/contract.validation';
 import { logger } from '../../config/logger';
@@ -467,6 +468,7 @@ export async function deleteContract(orgId: string, id: string) {
     await RiskFindingModel.deleteMany({ contractVersionId: { $in: versionIds } }).session(session);
     const expertReviewIds = await ExpertReviewModel.find({ contractId: id }).distinct('_id').session(session);
     await ExpertActionModel.deleteMany({ expertReviewId: { $in: expertReviewIds } }).session(session);
+    await ExpertChatMessageModel.deleteMany({ contractId: id }).session(session);
     await ExpertReviewModel.deleteMany({ contractId: id }).session(session);
     await ReviewModel.deleteMany({ contractId: id }).session(session);
     await ClauseModel.deleteMany({ contractVersionId: { $in: versionIds } }).session(session);

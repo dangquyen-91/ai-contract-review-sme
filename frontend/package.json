@@ -3,6 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:expert-consultation": "node --test scripts/expert-consultation.test.mjs",
+    "test:expert-consultation:browser": "node scripts/expert-consultation-browser-check.mjs",
     "test:dashboard": "node --test scripts/dashboard-insights.test.mjs scripts/reports.test.mjs scripts/no-organization-dashboard.test.mjs",
     "test:dashboard:browser": "node scripts/dashboard-browser-check.mjs",
     "test:validation": "node --test scripts/validation-boundaries.test.mjs scripts/password-recovery.test.mjs scripts/profile.test.mjs scripts/legal-source-workflow.test.mjs",
