@@ -5,9 +5,11 @@ import type {
 } from "@/types/reports";
 import { Button } from "@/components/ui/button";
 import { ReportExportActions } from "./report-export-actions";
+import { RefreshCw, SlidersHorizontal } from "lucide-react";
+import styles from "./reports.module.css";
 
 const control =
-  "min-h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800";
+  "min-h-11 w-full min-w-0 rounded-lg border border-slate-200 bg-slate-50/60 px-3 text-sm text-slate-800 transition-colors hover:border-blue-300 focus:border-blue-400";
 const field = "grid min-w-0 gap-2 text-xs font-medium text-slate-600";
 
 export function ReportFilters({
@@ -40,8 +42,37 @@ export function ReportFilters({
     <form
       onSubmit={apply}
       aria-label="Bộ lọc báo cáo"
-      className="mb-6 rounded-2xl border border-slate-200 bg-white p-5"
+      className={`${styles.panel} ${styles.filters}`}
     >
+      <div className={styles.filterHeader}>
+        <h2 className={styles.filterTitle}>
+          <SlidersHorizontal
+            aria-hidden="true"
+            size={16}
+            className="text-blue-600"
+          />
+          Tùy chỉnh báo cáo
+        </h2>
+        <div className={styles.presets} aria-label="Chọn nhanh kỳ báo cáo">
+          {(
+            [
+              ["week", "Tuần"],
+              ["month", "Tháng"],
+              ["quarter", "Quý"],
+              ["year", "Năm"],
+            ] as const
+          ).map(([period, label]) => (
+            <button
+              key={period}
+              type="button"
+              aria-pressed={value.period === period}
+              onClick={() => set({ period })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <label className={field}>
           Kỳ báo cáo
@@ -102,9 +133,7 @@ export function ReportFilters({
                 set({ organizationId: event.target.value || undefined })
               }
             >
-              <option value="">
-                Toàn hệ thống, gồm tài khoản cá nhân
-              </option>
+              <option value="">Toàn hệ thống, gồm tài khoản cá nhân</option>
               {report?.organizations.map((org) => (
                 <option key={org.id} value={org.id}>
                   {org.name}
@@ -154,7 +183,7 @@ export function ReportFilters({
           </label>
         )}
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
+      <div className="mt-5 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
         <Button type="submit" disabled={fetching}>
           Áp dụng bộ lọc
         </Button>
@@ -164,6 +193,10 @@ export function ReportFilters({
           disabled={fetching}
           onClick={onRefresh}
         >
+          <RefreshCw
+            aria-hidden="true"
+            className={`size-3.5 ${fetching ? "animate-spin motion-reduce:animate-none" : ""}`}
+          />
           {fetching ? "Đang cập nhật…" : "Làm mới"}
         </Button>
         <ReportExportActions
@@ -174,7 +207,7 @@ export function ReportFilters({
           onCsv={onDownload}
           csvLabel="Tải CSV"
         />
-        <p className="text-xs leading-5 text-slate-500">
+        <p className="basis-full text-[11px] leading-5 text-slate-400">
           Tuần bắt đầu từ thứ Hai. Kỳ đang diễn ra được so sánh đến thời điểm
           tương ứng.
         </p>

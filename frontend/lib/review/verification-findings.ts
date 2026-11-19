@@ -7,8 +7,7 @@ export function activeRiskFindings<T extends Pick<RiskFinding, "verification">>(
 
 export const verificationSnapshotFields = [
   { key: "title", label: "Tiêu đề" },
-  { key: "severity", label: "Mức rủi ro" },
-  { key: "riskCode", label: "Loại rủi ro" },
+  { key: "checkGroup", label: "Nhóm vấn đề" },
   { key: "problem", label: "Vấn đề" },
   { key: "consequences", label: "Hậu quả" },
   { key: "recommendations", label: "Khuyến nghị" },

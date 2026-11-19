@@ -1,8 +1,6 @@
-import { riskCodeLabels } from "@/config/risk-display";
+import { issueDisplay } from "@/config/issue-display";
 import { verificationSnapshotChanges } from "@/lib/review/verification-findings";
 import type { VerificationAction, VerificationFindingInput } from "@/types/verification-workspace";
-
-const severities = { high: "Cao", medium: "Trung bình", low: "Thấp" };
 
 function SnapshotValue({ field, snapshot }: { field: keyof VerificationFindingInput; snapshot?: Partial<VerificationFindingInput> | null }) {
   const value = snapshot?.[field];
@@ -10,8 +8,7 @@ function SnapshotValue({ field, snapshot }: { field: keyof VerificationFindingIn
   if (Array.isArray(value)) return value.length
     ? <ul className="mb-0 mt-1 list-disc space-y-1 pl-4">{value.map((point, index) => <li key={index} className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{point}</li>)}</ul>
     : <p className="mb-0 mt-1 text-muted-foreground">Không có nội dung.</p>;
-  const label = field === "severity" ? severities[value as keyof typeof severities] ?? value
-    : field === "riskCode" ? riskCodeLabels[value as keyof typeof riskCodeLabels] ?? value : value;
+  const label = field === "checkGroup" ? issueDisplay[value as keyof typeof issueDisplay]?.label ?? value : value;
   return <p className="mb-0 mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{label}</p>;
 }
 

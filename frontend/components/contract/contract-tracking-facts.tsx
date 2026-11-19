@@ -50,11 +50,10 @@ function Caption({ children, tone = "muted" }: { children: ReactNode; tone?: "mu
 }
 
 export function AiResultFact({ contract }: { contract: DashboardContract }) {
-  const risk = contract.currentVersion?.overallRiskLevel ?? contract.overallRiskLevel ?? "none";
   return (
     <Fact label="Kết quả AI">
       {contract.status === "reviewed" && <>
-        <RiskBadge risk={risk} />
+        <RiskBadge contract={contract} />
         <Caption>Đã rà soát xong</Caption>
       </>}
       {contract.status === "processing" && <>

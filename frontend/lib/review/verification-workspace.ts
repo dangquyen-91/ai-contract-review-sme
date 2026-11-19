@@ -8,8 +8,8 @@ export function canEditVerification(verification: ExpertVerification, expertId: 
 
 export function changedFindingFields(finding: VerifiedFinding, input: VerificationFindingInput) {
   const changes: Partial<VerificationFindingInput> = {};
-  for (const key of ["severity", "riskCode", "title", "problem", "consequences", "recommendations"] as const) {
-    const previous = key === "riskCode" ? finding[key] ?? "OTHER" : finding[key];
+  for (const key of ["checkGroup", "title", "problem", "consequences", "recommendations"] as const) {
+    const previous = finding[key];
     if (JSON.stringify(previous) !== JSON.stringify(input[key])) Object.assign(changes, { [key]: input[key] });
   }
   return changes;

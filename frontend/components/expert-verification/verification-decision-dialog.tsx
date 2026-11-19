@@ -7,10 +7,10 @@ import { VerificationCompletionSummary } from "./verification-completion-summary
 import type { VerifiedFinding } from "@/types/verification-workspace";
 
 const copy = {
-  approve: { title: "Hoàn tất kiểm tra?", description: "Xác nhận đã xử lý tất cả các rủi ro. Kết quả sẽ được gửi lại cho người yêu cầu và không còn chỉnh sửa trong phiên này.", action: "Hoàn tất kiểm tra", note: "Ghi chú kết luận (không bắt buộc)" },
+  approve: { title: "Hoàn tất kiểm tra?", description: "Xác nhận đã xử lý tất cả các vấn đề. Kết quả sẽ được gửi lại cho người yêu cầu và không còn chỉnh sửa trong phiên này.", action: "Hoàn tất kiểm tra", note: "Ghi chú kết luận (không bắt buộc)" },
   return: { title: "Trả lại yêu cầu", description: "Giải thích thông tin cần bổ sung để người gửi có thể xử lý và gửi lại.", action: "Trả lại yêu cầu", note: "Lý do trả lại" },
-  reject: { title: "Bác bỏ rủi ro", description: "Rủi ro vẫn được giữ trong lịch sử và được đánh dấu đã bác bỏ.", action: "Bác bỏ rủi ro", note: "Lý do bác bỏ" },
-  remove: { title: "Xóa rủi ro đã bổ sung?", description: "Chỉ xóa được rủi ro do chuyên gia thêm. Thao tác được lưu trong lịch sử xác minh.", action: "Xóa rủi ro", note: "" },
+  reject: { title: "Bác bỏ vấn đề", description: "Vấn đề vẫn được giữ trong lịch sử và được đánh dấu đã bác bỏ.", action: "Bác bỏ vấn đề", note: "Lý do bác bỏ" },
+  remove: { title: "Xóa vấn đề đã bổ sung?", description: "Chỉ xóa được vấn đề do chuyên gia thêm. Thao tác được lưu trong lịch sử xác minh.", action: "Xóa vấn đề", note: "" },
 };
 
 export function VerificationDecisionDialog({ mode, pending, error, onClose, onSubmit, findings = [], onReview }: {

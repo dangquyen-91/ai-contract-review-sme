@@ -1,5 +1,6 @@
 import type { ContractReviewResult, ContractReviewRun } from "@/types/contracts";
 import type { ReviewBlockReason } from "@/lib/review/review-failure";
+import { playbookProgressLabel } from "./review-progress";
 
 export type StepState = "pending" | "running" | "completed" | "failed";
 export type TimelineInput = {
@@ -42,7 +43,8 @@ export function buildReviewTimeline(input: TimelineInput) {
   const downloading = Boolean(loadingResult || (reviewing && review?.status === "completed"));
   const download: StepState = result ? "completed" : downloading ? "running" : error && failureKind === "load" ? "failed" : "pending";
   const interrupted = Boolean(input.reconnecting || review?.status === "failed" || review?.status === "cancelled" || (error && !reviewing && !loadingResult) || (review?.status === "running" && !reviewing));
-  const retrying = review?.status === "running" && review.stageDetail === "retrying after an error";
+  const retrying = review?.status === "running" && ["Đang thử lại sau lỗi", "retrying after an error"].includes(review.stageDetail ?? "");
+  const playbookDetail = review?.status === "running" ? playbookProgressLabel(review.stageDetail) : undefined;
   const pages = review?.currentStage === "waiting_for_extraction" ? review.stageDetail?.match(/^(\d+)\/(\d+) pages$/) : null;
   let message = "Bắt đầu rà soát để theo dõi tiến trình.";
   if (uploading) message = "Đang tải tệp lên hệ thống…";
@@ -56,6 +58,7 @@ export function buildReviewTimeline(input: TimelineInput) {
   else if (review?.cancelRequested) message = "Đang dừng rà soát…";
   else if (review?.status === "queued") message = "Đang chờ đến lượt xử lý…";
   else if (retrying) message = "Hệ thống đang thử lại bước xử lý gặp lỗi…";
+  else if (playbookDetail) message = playbookDetail;
   else if (reading === "running") message = "Đang đọc nội dung tài liệu…";
   else if (segmentation === "running") message = "Đang phân tách điều khoản…";
   else if (summary === "running" && risk === "running") message = "Đang tóm tắt và đánh giá rủi ro song song…";

@@ -1,7 +1,7 @@
 import { useMemo, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import type { useContractText } from "@/hooks/contracts/use-contracts";
-import type { ContractReviewResult } from "@/types/contracts";
+import type { ContractQuote, ContractReviewResult } from "@/types/contracts";
 
 type ClausePosition = ContractReviewResult["clauses"][number];
 type LocatedClause = ClausePosition & { start: number; end: number };
@@ -32,12 +32,22 @@ export function FullDocument({ query, children }: { query: ReturnType<typeof use
   return children;
 }
 
-export function ContractDocumentText({ clauses, text, activeClause }: {
+export function ContractDocumentText({ clauses, text, activeClause, activeSource }: {
   clauses: ContractReviewResult["clauses"];
   text: string;
   activeClause: number | null;
+  activeSource?: ContractQuote;
 }) {
   const located = useMemo(() => locateClauses(clauses, text), [clauses, text]);
+  function clauseContent(clause: LocatedClause) {
+    const content = text.slice(clause.start, clause.end);
+    if (activeSource?.clauseIndex !== clause.index || !activeSource.quote) return content;
+    const offset = activeSource.startOffset;
+    const start = offset != null && offset >= clause.start && text.slice(offset, offset + activeSource.quote.length) === activeSource.quote
+      ? offset - clause.start : content.indexOf(activeSource.quote);
+    if (start < 0 || start + activeSource.quote.length > content.length) return content;
+    return <>{content.slice(0, start)}<mark data-source-quote tabIndex={-1} className="rounded-sm bg-amber-200 text-inherit focus:outline-none">{content.slice(start, start + activeSource.quote.length)}</mark>{content.slice(start + activeSource.quote.length)}</>;
+  }
   const contractParts = located.flatMap((clause, index) => {
     const previousEnd = located[index - 1]?.end ?? 0;
     const parts = [];
@@ -50,7 +60,7 @@ export function ContractDocumentText({ clauses, text, activeClause }: {
         className={`whitespace-pre-wrap [scroll-margin-block:35px] rounded-[3px] focus:[outline:none] ${activeClause === clause.index ? "[background:#fff0bf] shadow-[0_0_0_4px_#fff0bf]" : ""}`}
         data-clause-index={clause.index}
         tabIndex={-1}
-      >{text.slice(clause.start, clause.end)}</span>,
+      >{clauseContent(clause)}</span>,
     );
     return parts;
   });

@@ -9,6 +9,7 @@ import { ReportRiskDistribution } from "./report-risk-distribution";
 import type { ReportChartSeries } from "./report-series-chart";
 import { ChartLoading } from "./chart-loading";
 import { operationalReportFeatures } from "@/config/report-profiles";
+import styles from "./reports.module.css";
 
 const ReportSeriesChart = dynamic(
   () =>
@@ -119,18 +120,22 @@ export function ReportCharts({ report }: { report: OperationalReport }) {
       />
       <ReportSeriesChart
         title="Thời gian xử lý trung bình"
+        wide={!features.issues}
         chartType="line"
         description="Trung bình có trọng số theo số lượt có thời gian hợp lệ; không gồm thời gian chờ."
         rows={rows}
         series={pair("averageDurationMs")}
         formatValue={formatReportDuration}
       />
-      {features.risks && <ReportRiskDistribution report={report} />}
+      {features.issues && <ReportRiskDistribution report={report} />}
       {features.workspaceRanking && (
-        <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 xl:col-span-2">
-          <h2 className="font-semibold">
-            10 không gian có nhiều lượt rà soát nhất
-          </h2>
+        <section className={`${styles.panel} ${styles.chart} xl:col-span-2`}>
+          <div className={styles.chartHeader}>
+            <h3 className={styles.chartTitle}>
+              10 không gian có nhiều lượt rà soát nhất
+            </h3>
+            <span className={styles.chartBadge}>XẾP HẠNG</span>
+          </div>
           <p className="mt-2 text-xs text-slate-500">
             Theo tổng lượt thành công và thất bại trong kỳ này.
           </p>
@@ -138,15 +143,32 @@ export function ReportCharts({ report }: { report: OperationalReport }) {
             <p className="py-10 text-sm text-slate-500">Chưa có dữ liệu</p>
           )}
           <ol className="mt-4 divide-y divide-slate-100">
-            {report.usage.map((row) => (
-              <li
-                key={row.id}
-                className="flex min-w-0 justify-between gap-3 py-3 text-sm"
-              >
-                <span className="truncate" title={row.name}>
-                  {row.name}
+            {report.usage.map((row, index) => (
+              <li key={row.id} className={`${styles.rankRow} text-sm`}>
+                <span className={styles.rankNumber}>
+                  {String(index + 1).padStart(2, "0")}
                 </span>
-                <strong>{row.total}</strong>
+                <div className="min-w-0">
+                  <p
+                    className="truncate text-xs font-medium text-slate-600"
+                    title={row.name}
+                  >
+                    {row.name}
+                  </p>
+                  <div className={styles.rankTrack} aria-hidden="true">
+                    <span
+                      style={{
+                        width: `${(row.total / Math.max(1, ...report.usage.map((item) => item.total))) * 100}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+                <strong className="text-base font-semibold tabular-nums text-slate-700">
+                  {row.total.toLocaleString("vi-VN")}{" "}
+                  <span className="text-[10px] font-normal text-slate-400">
+                    lượt
+                  </span>
+                </strong>
               </li>
             ))}
           </ol>

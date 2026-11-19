@@ -1,6 +1,7 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 import type { ContractClause, UpstreamPayload } from "@/types/contracts";
+import { clauseLabel } from "@/lib/review/clause-label";
 
 const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
@@ -36,8 +37,11 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/cont
       delete version.extractedText;
       contract.currentVersion = version;
     }
-    // Only positions cross the browser boundary here. Document text is loaded on demand.
-    const clauses = (payloads[1].data as ContractClause[]).map(({ id, _id, index, startOffset, endOffset }) => ({ id, _id, index, startOffset, endOffset }));
+    // Keep document text private; expose only positions and a safe article label.
+    const clauses = (payloads[1].data as ContractClause[]).map((clause) => ({
+      id: clause.id, _id: clause._id, index: clause.index,
+      label: clauseLabel(clause), startOffset: clause.startOffset, endOffset: clause.endOffset,
+    }));
     return NextResponse.json({ success: true, data: {
       contract, clauses, findings: payloads[2].data,
     } }, { headers: { "Cache-Control": "private, no-store" } });

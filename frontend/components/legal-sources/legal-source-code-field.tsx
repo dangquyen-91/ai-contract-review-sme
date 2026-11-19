@@ -9,14 +9,14 @@ function codeHint(code: string, catalog?: LegalSourceCatalogEntry[]) {
   if (!catalog) return { warning: false, text: "Mã duy nhất gồm chữ thường, số và dấu gạch dưới." };
   if (!code) return { warning: false, text: "Chọn mã trong danh mục để văn bản được dùng khi rà soát hợp đồng." };
   const entry = catalog.find((item) => item.code === code);
-  if (!entry) return { warning: true, text: "Mã ngoài danh mục: nguồn không gắn với loại hợp đồng nào, chỉ được tra cứu khi kho chưa có văn bản chính của hợp đồng đang rà soát." };
+  if (!entry) return { warning: true, text: "Mã ngoài danh mục: nguồn này chưa gắn với loại hợp đồng hoặc phép kiểm đã cấu hình." };
   if (entry.legalSource) return { warning: true, text: `Mã này đã có nguồn “${entry.legalSource.title}” trong kho.` };
   const profiles = entry.usedByProfiles.map((profile) => profile.name).join(", ");
   const usage = [
     profiles && `Dùng khi rà soát: ${profiles}.`,
-    entry.ruleCodes.length > 0 && `Là căn cứ của ${entry.ruleCodes.length} quy tắc pháp lý cố định.`,
+    (entry.checkCodes?.length ?? 0) > 0 && `Là căn cứ của ${entry.checkCodes.length} phép kiểm rà soát.`,
   ].filter(Boolean).join(" ");
-  return { warning: false, text: `${entry.label}. ${usage || "Chưa gắn với loại hợp đồng hay quy tắc nào."}` };
+  return { warning: false, text: `${entry.label}. ${usage || "Chưa gắn với loại hợp đồng hay phép kiểm nào."}` };
 }
 
 export function LegalSourceCodeField({ defaultCode = "" }: { defaultCode?: string }) {

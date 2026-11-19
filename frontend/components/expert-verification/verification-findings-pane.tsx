@@ -1,10 +1,10 @@
 "use client";
 
-import { Plus } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { verificationFindingId, type VerificationController } from "@/hooks/expert-verification/use-verification-controller";
 import { VerificationFindingCard } from "./verification-finding-card";
+import styles from "@/styles/review/review-design.module.css";
 
 export function VerificationFindingsPane({ controller }: { controller: VerificationController }) {
   const { workspace, pane, filter, setFilter, disabled, pendingCount, processed, openDialog, execute, locate, findingSelection, lastSaved, saved, showLastSaved } = controller;
@@ -22,15 +22,15 @@ export function VerificationFindingsPane({ controller }: { controller: Verificat
   if (!workspace) return null;
   const visible = workspace.findings.filter((finding) => filter === "all" || (filter === "pending" ? !finding.verification : Boolean(finding.verification)));
   return (
-    <section aria-label="Các rủi ro cần xác minh" className={`${pane === "findings" ? "flex" : "hidden"} min-h-0 min-w-0 flex-col rounded-xl border border-border bg-card ${controller.viewMode === "document" ? "lg:hidden" : "lg:flex"}`}>
-      <header className="shrink-0 space-y-3 border-b border-border p-4">
+    <section aria-label="Các mục cần xác minh" className={`${styles.scope} ${pane === "findings" ? "flex" : "hidden"} min-h-0 min-w-0 flex-col rounded-lg border border-[#e4e6df] bg-white ${controller.viewMode === "document" ? "lg:hidden" : "lg:flex"}`}>
+      <header className="shrink-0 space-y-3 border-b border-[#e4e6df] p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="m-0 text-ui-section font-semibold">Điểm cần kiểm tra</h2>
-          {!workspace.historical && <Button variant="outline" size="sm" disabled={disabled} onClick={() => openDialog({ mode: "add" })}><Plus aria-hidden="true" />Bổ sung rủi ro</Button>}
+          <h2 className={styles.sectionHeading}>Điểm cần kiểm tra</h2>
+          {!workspace.historical && <Button variant="outline" size="sm" className="rounded-md border-[#d8ddd1] text-xs text-[#484d45] shadow-none" disabled={disabled} onClick={() => openDialog({ mode: "add" })}><span aria-hidden="true">+</span>Bổ sung vấn đề</Button>}
         </div>
-        <div role="group" aria-label="Lọc kết quả xác minh" className="flex flex-wrap gap-1">
+        <div role="group" aria-label="Lọc kết quả xác minh" className={styles.filterBar}>
           {([{ key: "pending", label: `Chưa xử lý (${pendingCount})` }, { key: "all", label: `Tất cả (${workspace.findings.length})` }, { key: "processed", label: `Đã xử lý (${processed})` }] as const).map((item) => (
-            <Button key={item.key} variant={filter === item.key ? "secondary" : "ghost"} size="sm" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}>{item.label}</Button>
+            <button key={item.key} type="button" className={styles.filterButton} aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}>{item.label}</button>
           ))}
         </div>
         {lastSaved && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-ui-meta text-emerald-950">
@@ -38,8 +38,8 @@ export function VerificationFindingsPane({ controller }: { controller: Verificat
           {!lastSaved.removed && lastSaved.id && <Button variant="link" size="sm" className="h-auto p-0" onClick={showLastSaved}>Xem mục vừa lưu</Button>}
         </div>}
       </header>
-      <div ref={list} className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
-        {!visible.length && <p role="status" className="p-4 text-ui text-muted-foreground">{filter === "pending" && pendingCount === 0 ? !controller.editable ? "Không còn rủi ro chưa xử lý. Chọn Tất cả để xem kết quả." : "Không còn rủi ro chưa xử lý. Kiểm tra lại kết quả trước khi hoàn tất; bạn vẫn có thể bổ sung rủi ro." : "Không có rủi ro trong bộ lọc này."}</p>}
+      <div ref={list} className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f7f7f5] p-3">
+        {!visible.length && <p role="status" className="p-4 text-ui text-muted-foreground">{filter === "pending" && pendingCount === 0 ? !controller.editable ? "Không còn mục chưa xử lý. Chọn Tất cả để xem kết quả." : "Không còn mục chưa xử lý. Kiểm tra lại kết quả trước khi hoàn tất; bạn vẫn có thể bổ sung vấn đề." : "Không có mục nào trong bộ lọc này."}</p>}
         {visible.map((finding) => (
           <VerificationFindingCard
             key={verificationFindingId(finding)} finding={finding} editable={!disabled} readOnly={workspace.historical}

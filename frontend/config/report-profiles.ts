@@ -45,7 +45,7 @@ export const roleReportConfig: Record<
 
 export function operationalReportFeatures(role: "administrator" | "owner") {
   return {
-    risks: permissions.contracts(role),
+    issues: permissions.contracts(role),
     payments: permissions.admin(role),
     workspaceRanking: permissions.admin(role),
     organizationFilter: permissions.admin(role),

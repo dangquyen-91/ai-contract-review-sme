@@ -9,7 +9,7 @@ export function ReportChange({ change }: { change?: ReportMetricChange }) {
   const signed = (value: number) =>
     `${value > 0 ? "+" : ""}${value.toLocaleString("vi-VN", { maximumFractionDigits: 1 })}`;
   return (
-    <p className="mt-3 rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium leading-5 text-slate-700">
+    <p className="mt-3 rounded-md bg-slate-50 px-2.5 py-1.5 text-[11px] font-medium leading-5 text-slate-600">
       {change.unit === "percentage_points"
         ? `${signed(change.difference ?? 0)} điểm % so với kỳ so sánh`
         : change.status === "no_baseline"

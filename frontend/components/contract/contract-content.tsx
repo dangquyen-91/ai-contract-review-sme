@@ -60,7 +60,7 @@ export function ContractContent({ data, access, onReview, isReviewing = false }:
           Không thể cập nhật danh sách hợp đồng.{query.data && " Bên dưới là dữ liệu lần tải gần nhất."}
           <Button variant="link" size="sm" onClick={() => { void query.refetch(); }}>Thử lại</Button>
         </div>}
-        <div key={`${scopeId}:${controller.state.page}:${controller.state.search}:${controller.state.status}:${controller.state.riskLevel}:${controller.state.verificationStatus}`}
+        <div key={`${scopeId}:${controller.state.page}:${controller.state.search}:${controller.state.status}:${controller.state.issues}:${controller.state.verificationStatus}`}
           aria-busy={query.isFetching} className="space-y-4 p-4 sm:p-5">
           {!scopeId ? <p className="py-8 text-center text-ui text-muted-foreground">Chưa có không gian làm việc để tải danh sách hợp đồng.</p>
             : query.isPending ? <ContractTrackingSkeleton />

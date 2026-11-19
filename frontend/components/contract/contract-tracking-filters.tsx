@@ -7,13 +7,14 @@ import { Input } from "@/components/ui/input";
 import type { ContractTrackingController } from "@/hooks/contracts/use-contract-tracking-list";
 import type { DashboardContractFilter } from "@/types/dashboard";
 import { ContractVerificationTabs } from "./contract-verification-tabs";
+import { issueFilterOptions } from "@/config/issue-display";
 
 const choices: { label: string; filter: DashboardContractFilter }[] = [
   { label: "Tất cả", filter: {} },
   { label: "Chờ rà soát", filter: { status: "uploaded" } },
   { label: "AI đang xử lý", filter: { status: "processing" } },
   { label: "Có kết quả AI", filter: { status: "reviewed" } },
-  { label: "Rủi ro cao", filter: { riskLevel: "high" } },
+  ...issueFilterOptions.map((option) => ({ label: option.label, filter: { issues: option.value } })),
 ];
 
 function SearchForm({ search, onSearch }: { search: string; onSearch: (value: string) => void }) {
@@ -42,8 +43,8 @@ export function ContractTrackingFilters({ controller }: { controller: ContractTr
       <div role="group" aria-label="Trạng thái AI" className="flex flex-wrap items-center gap-1 bg-muted/20 px-4 py-3 sm:px-5">
         <span className="mr-2 text-ui-meta text-muted-foreground">Kết quả AI</span>
         {choices.map((choice) => (
-          <Button key={choice.label} variant={filter.status === choice.filter.status && filter.riskLevel === choice.filter.riskLevel ? "secondary" : "ghost"}
-            size="sm" aria-pressed={filter.status === choice.filter.status && filter.riskLevel === choice.filter.riskLevel}
+          <Button key={choice.label} variant={filter.status === choice.filter.status && filter.issues === choice.filter.issues ? "secondary" : "ghost"}
+            size="sm" aria-pressed={filter.status === choice.filter.status && filter.issues === choice.filter.issues}
             onClick={() => { void setFilter({ ...choice.filter, verificationStatus: filter.verificationStatus }); }}>
             {choice.label}
           </Button>

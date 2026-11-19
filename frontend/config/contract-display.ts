@@ -1,4 +1,4 @@
-import type { ContractRiskLevel, ContractStatus } from "@/types/contracts";
+import type { ContractStatus } from "@/types/contracts";
 
 export const contractTypeLabels: Record<string, string> = {
   sales: "Mua bán hàng hóa",
@@ -34,18 +34,6 @@ export const contractStatusLabels: Record<ContractStatus, string> = {
   unsupported: "Chưa hỗ trợ",
 };
 
-export const contractRiskLabels: Record<ContractRiskLevel, string> = {
-  high: "Rủi ro cao",
-  medium: "Rủi ro trung bình",
-  low: "Rủi ro thấp",
-  none: "Chưa đánh giá",
-};
-
-export const reviewedRiskLabels: Record<ContractRiskLevel, string> = {
-  ...contractRiskLabels,
-  none: "Không phát hiện rủi ro",
-};
-
 export const contractStatusClasses: Record<ContractStatus, string> = {
   uploaded: "text-[#53677f] bg-[#eef2f6]",
   processing: "text-[#1557ae] bg-[#e7f0ff]",
@@ -54,19 +42,8 @@ export const contractStatusClasses: Record<ContractStatus, string> = {
   unsupported: "text-[#875a00] bg-[#fff4dc]",
 };
 
-export const contractRiskClasses: Record<ContractRiskLevel, string> = {
-  high: "text-[#a63045] bg-[#fff0f2]",
-  medium: "text-[#875a00] bg-[#fff4dc]",
-  low: "text-[#20705d] bg-[#e8f5f1]",
-  none: "text-[#75808e] bg-[#f0f2f5]",
-};
-
 export const contractStatusTones: Record<ContractStatus, "neutral" | "info" | "success"> = {
   uploaded: "neutral", processing: "info", reviewed: "success", archived: "neutral", unsupported: "neutral",
-};
-
-export const contractRiskTones: Record<ContractRiskLevel, "danger" | "warning" | "success" | "neutral"> = {
-  high: "danger", medium: "warning", low: "success", none: "neutral",
 };
 
 export function formatContractDate(value: string) {

@@ -1,8 +1,8 @@
-import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
+import type { ContractIssueFilter, ContractStatus, DashboardContract } from "@/types/contracts";
 
 export type DashboardContractFilter = {
   status?: ContractStatus;
-  riskLevel?: ContractRiskLevel;
+  issues?: ContractIssueFilter;
   verificationStatus?: "not_sent" | "requested" | "in_progress" | "approved" | "returned";
 };
 
@@ -22,12 +22,12 @@ export type DashboardData = {
   totalContracts: number;
   distribution?: {
     statuses: Record<ContractStatus, number>;
-    risks: Record<ContractRiskLevel, number>;
+    issues: { withViolations: number; withIssues: number; noIssues: number };
   };
   stats: {
     processing: number;
     reviewed: number;
-    highRisk: number;
+    withViolations: number;
   };
   role: string;
   user: {

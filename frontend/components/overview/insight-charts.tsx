@@ -1,6 +1,9 @@
 "use client";
 
+import { useId } from "react";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -15,8 +18,18 @@ import { ChartContainer } from "@/components/ui/chart";
 import { dashboardInsightConfig } from "@/config/dashboard-insights";
 import type { DashboardInsights } from "@/types/dashboard-insights";
 import { insightLabel } from "@/lib/reports/insight-format";
+import styles from "@/components/reports/reports.module.css";
 
-export function InsightCharts({ data }: { data: DashboardInsights }) {
+export function InsightCharts({
+  data,
+  reportPage = false,
+}: {
+  data: DashboardInsights;
+  reportPage?: boolean;
+}) {
+  const gradientId = useId().replace(/:/g, "");
+  const TrendChart = reportPage ? AreaChart : LineChart;
+  const TrendSeries = reportPage ? Area : Line;
   const config = dashboardInsightConfig[data.role];
   const distribution = data.distribution.map((row) => ({
     ...row,
@@ -31,12 +44,25 @@ export function InsightCharts({ data }: { data: DashboardInsights }) {
   return (
     <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
       <section
-        className="min-w-0 rounded-xl border border-border bg-card p-5 sm:p-6"
+        className={
+          reportPage
+            ? `${styles.panel} ${styles.chart}`
+            : "min-w-0 rounded-xl border border-border bg-card p-5 sm:p-6"
+        }
         aria-label="Xu hướng hoạt động"
       >
-        <h3 className="text-base font-semibold tracking-tight">
-          Xu hướng hoạt động
-        </h3>
+        <div className={reportPage ? styles.chartHeader : undefined}>
+          <h3
+            className={
+              reportPage
+                ? styles.chartTitle
+                : "text-base font-semibold tracking-tight"
+            }
+          >
+            Xu hướng hoạt động
+          </h3>
+          {reportPage && <span className={styles.chartBadge}>TRONG KỲ</span>}
+        </div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           {config.trendNote ??
             "Hợp đồng và lượt rà soát là hai loại số đếm riêng. Xem ngày của từng nhóm trong tooltip hoặc bảng số liệu."}
@@ -51,11 +77,36 @@ export function InsightCharts({ data }: { data: DashboardInsights }) {
             )}
             className="mt-5 h-64 w-full min-w-0 aspect-auto sm:h-72"
           >
-            <LineChart
+            <TrendChart
               accessibilityLayer
               data={data.trend}
               margin={{ left: 0, right: 12, top: 12 }}
             >
+              {reportPage && (
+                <defs>
+                  {config.series.map((series) => (
+                    <linearGradient
+                      key={series.key}
+                      id={`${gradientId}-${series.key}`}
+                      x1="0"
+                      y1="0"
+                      x2="0"
+                      y2="1"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor={series.color}
+                        stopOpacity={0.18}
+                      />
+                      <stop
+                        offset="95%"
+                        stopColor={series.color}
+                        stopOpacity={0.01}
+                      />
+                    </linearGradient>
+                  ))}
+                </defs>
+              )}
               <CartesianGrid vertical={false} strokeDasharray="3 3" />
               <XAxis
                 dataKey="date"
@@ -72,16 +123,33 @@ export function InsightCharts({ data }: { data: DashboardInsights }) {
                 tickFormatter={number}
               />
               <Tooltip
+                contentStyle={
+                  reportPage
+                    ? {
+                        border: "1px solid #e1e7f0",
+                        borderRadius: 12,
+                        boxShadow: "0 8px 30px #1e3a5f15",
+                        fontSize: 11,
+                      }
+                    : undefined
+                }
                 formatter={(value) => Number(value).toLocaleString("vi-VN")}
               />
-              <Legend wrapperStyle={{ fontSize: 11, paddingTop: 12 }} />
+              <Legend
+                iconType="circle"
+                iconSize={7}
+                wrapperStyle={{ fontSize: 11, paddingTop: 12 }}
+              />
               {config.series.map((series) => (
-                <Line
+                <TrendSeries
                   key={series.key}
                   dataKey={series.key}
                   name={series.label}
                   stroke={series.color}
                   strokeWidth={2}
+                  fill={
+                    reportPage ? `url(#${gradientId}-${series.key})` : "none"
+                  }
                   dot={data.trend.length === 1 ? { r: 3 } : false}
                   activeDot={{ r: 4 }}
                   type="linear"
@@ -89,19 +157,32 @@ export function InsightCharts({ data }: { data: DashboardInsights }) {
                   connectNulls={false}
                 />
               ))}
-            </LineChart>
+            </TrendChart>
           </ChartContainer>
         ) : (
           <EmptyChart text="Chưa có hoạt động trong kỳ đã chọn." />
         )}
       </section>
       <section
-        className="min-w-0 rounded-xl border border-border bg-card p-5 sm:p-6"
+        className={
+          reportPage
+            ? `${styles.panel} ${styles.chart}`
+            : "min-w-0 rounded-xl border border-border bg-card p-5 sm:p-6"
+        }
         aria-label={config.distributionTitle}
       >
-        <h3 className="text-base font-semibold tracking-tight">
-          {config.distributionTitle}
-        </h3>
+        <div className={reportPage ? styles.chartHeader : undefined}>
+          <h3
+            className={
+              reportPage
+                ? styles.chartTitle
+                : "text-base font-semibold tracking-tight"
+            }
+          >
+            {config.distributionTitle}
+          </h3>
+          {reportPage && <span className={styles.chartBadge}>PHÂN BỐ</span>}
+        </div>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
           {config.distributionNote}
         </p>

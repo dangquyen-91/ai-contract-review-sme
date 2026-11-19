@@ -26,15 +26,13 @@ export type OperationalReport = {
     averageDurationMs: number | null;
     successRate: number | null;
   };
-  risks: {
-    high: number;
-    medium: number;
-    low: number;
-    none: number;
-    unknown: number;
-    assessedContracts: number;
-    highRiskRate: number | null;
-    percentages?: Record<"high" | "medium" | "low" | "none", number | null>;
+  issues: {
+    withViolations: number;
+    withIssues: number;
+    noIssues: number;
+    checkedContracts: number;
+    violationRate: number | null;
+    percentages?: Record<"withViolations" | "withIssues" | "noIssues", number | null>;
   };
   payments: { amount: number; count: number; unfulfilled: number } | null;
   consumedUnits: { analysis: number; chat: number; drafting: number };
@@ -51,7 +49,7 @@ export type OperationalReport = {
     mode: ReportFilters["comparison"];
     period: OperationalReport["period"] | null;
     changes: Record<string, ReportMetricChange>;
-    previousRisk: OperationalReport["risks"] | null;
+    previousIssues: OperationalReport["issues"] | null;
   };
   trend?: {
     granularity: "day" | "week" | "month";

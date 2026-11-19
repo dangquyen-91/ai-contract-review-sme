@@ -1,5 +1,5 @@
 import type { ExpertVerification, VerificationPerson } from "./expert-verification";
-import type { RiskCode, RiskFinding } from "./contracts";
+import type { IssueGroup, RiskFinding } from "./contracts";
 
 export type VerificationQueueFilter = "all" | "requested" | "in_progress";
 export type VerificationQueueItem = Omit<ExpertVerification, "contractId"> & {
@@ -10,8 +10,7 @@ export type VerifiedFinding = Omit<RiskFinding, "detectedBy" | "clause"> & {
   clause?: { index: number; title?: string | null } | null;
 };
 export type VerificationFindingInput = {
-  severity: "high" | "medium" | "low";
-  riskCode: RiskCode;
+  checkGroup: IssueGroup;
   title: string;
   problem: string[];
   consequences: string[];

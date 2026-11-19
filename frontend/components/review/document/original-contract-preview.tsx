@@ -9,11 +9,38 @@ function normalizeText(value: string) {
   return value.normalize("NFKC").replace(/[\u00ad\u200b-\u200d\ufeff]/g, "").replace(/\s+/g, " ").trim();
 }
 
+function locateParagraph(paragraphs: HTMLElement[], target: { text: string; context?: string }) {
+  if (target.context !== undefined) {
+    // The quote may appear in several articles; locate its clause before the quote.
+    let cursor = 0;
+    const blocks = paragraphs.map((element) => ({ element, text: normalizeText(element.textContent ?? "") }))
+      .filter((block) => block.text.length > 0)
+      .map((block) => {
+        const start = cursor;
+        cursor += block.text.length + 1;
+        return { ...block, start, end: start + block.text.length };
+      });
+    const documentText = blocks.map((block) => block.text).join(" ");
+    const context = normalizeText(target.context);
+    const quote = normalizeText(target.text);
+    if (!context || !quote) return;
+    const contextStart = documentText.indexOf(context);
+    const quoteStart = context.indexOf(quote);
+    if (contextStart < 0 || quoteStart < 0 || documentText.indexOf(context, contextStart + 1) >= 0) return;
+    const position = contextStart + quoteStart;
+    return blocks.find((block) => block.start <= position && position < block.end)?.element;
+  }
+
+  const lines = target.text.split(/\r?\n/).map(normalizeText).filter((line) => line.length >= 8).slice(0, 8);
+  return lines.reduce<HTMLElement | undefined>((match, line) =>
+    match ?? paragraphs.find((item) => normalizeText(item.textContent ?? "").includes(line.slice(0, 120))), undefined);
+}
+
 export function OriginalContractPreview({ contractId, mimeType, fileName, target, version, redacted = false, onTextFallback }: {
   contractId: string;
   mimeType: string;
   fileName?: string;
-  target?: { text: string; requestId: number } | null;
+  target?: { text: string; context?: string; requestId: number } | null;
   version?: string;
   redacted?: boolean;
   onTextFallback?: () => void;
@@ -94,9 +121,7 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
     if (redacted || !isDocx || !rendered || !target || !containerRef.current) return;
     const container = containerRef.current;
     const paragraphs = Array.from(container.querySelectorAll<HTMLElement>("p"));
-    const lines = target.text.split(/\r?\n/).map(normalizeText).filter((line) => line.length >= 8).slice(0, 8);
-    const paragraph = lines.reduce<HTMLElement | undefined>((match, line) =>
-      match ?? paragraphs.find((item) => normalizeText(item.textContent ?? "").includes(line.slice(0, 120))), undefined);
+    const paragraph = locateParagraph(paragraphs, target);
 
     if (!paragraph) {
       setLocationNotFound(true);

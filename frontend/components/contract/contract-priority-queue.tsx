@@ -19,7 +19,7 @@ export function ContractPriorityQueue({ orgId, role, onReview, onViewContracts, 
   const groups: { label: string; filter: DashboardContractFilter }[] = role === "staff" ? [
     { label: "Chờ rà soát", filter: { status: "uploaded" } }, { label: "Đang xử lý", filter: { status: "processing" } },
   ] : [
-    { label: "Rủi ro cao", filter: { riskLevel: "high", status: "reviewed" } },
+    { label: "Có vi phạm", filter: { issues: "violations", status: "reviewed" } },
     { label: role === "manager" ? "Chờ rà soát" : "Đã có kết quả", filter: { status: role === "manager" ? "uploaded" : "reviewed" } },
     { label: "Đang xử lý", filter: { status: "processing" } },
   ];

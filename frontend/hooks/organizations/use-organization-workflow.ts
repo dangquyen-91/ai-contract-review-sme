@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { reviewErrorMessage } from "@/hooks/review/use-review-workflow";
 import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider";
 import { useDashboardWorkspace } from "@/hooks/dashboard/use-dashboard-workspace";
-import type { ContractRiskLevel, ContractStatus, DashboardContract } from "@/types/contracts";
+import type { ContractIssueFilter, ContractStatus, DashboardContract } from "@/types/contracts";
 import type { DashboardContractFilter } from "@/types/dashboard";
 import { organizationDashboardPath, organizationDashboardView, type OrganizationDashboardRole, type OrganizationDashboardView } from "@/lib/routing/organization-dashboard-route";
 import { useLoadContract } from "@/hooks/contracts/use-contracts";
@@ -26,10 +26,10 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
   const searchParams = useSearchParams();
   const activeTab = organizationDashboardView(pathname);
   const statusParam = searchParams.get("status");
-  const riskParam = searchParams.get("riskLevel");
+  const issuesParam = searchParams.get("issues");
   const contractFilter: DashboardContractFilter = {
     ...(["uploaded", "processing", "reviewed", "archived"].includes(statusParam ?? "") ? { status: statusParam as ContractStatus } : {}),
-    ...(["high", "medium", "low", "none"].includes(riskParam ?? "") ? { riskLevel: riskParam as ContractRiskLevel } : {}),
+    ...(["violations", "any", "none"].includes(issuesParam ?? "") ? { issues: issuesParam as ContractIssueFilter } : {}),
   };
   const returnLocation = useRef<{ url: string; scroll: number } | null>(null);
   const returnScroll = useRef<number | null>(null);
@@ -90,7 +90,7 @@ export function useOrganizationWorkflow(role: OrganizationDashboardRole) {
       const search = searchParams.get("search");
       if (search && activeTab === "contracts") params.set("search", search);
       if (filter.status) params.set("status", filter.status);
-      if (filter.riskLevel) params.set("riskLevel", filter.riskLevel);
+      if (filter.issues) params.set("issues", filter.issues);
     }
     router.replace(`${organizationDashboardPath(role, tab)}${params.size ? `?${params}` : ""}`, { scroll: false });
   }

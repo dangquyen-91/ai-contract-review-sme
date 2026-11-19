@@ -2,6 +2,7 @@ import { apiClient, apiRequest } from "@/lib/api/client";
 import type { DashboardContractFilter } from "@/types/dashboard";
 import type { ContractShareSummary, ContractVersionSummary, ReviewBillingConfirmation, VersionMatchResult } from "@/types/contracts";
 import { readContractStream } from "@/lib/api/contract-stream";
+import { reviewIssueCounts } from "@/lib/review/issue-counts";
 import type { ChatStreamEvent, ContractChatMessage, ContractClause, ContractKeyTerms, ContractListResult, ContractProfile, ContractReviewResult, ContractReviewRun, ContractTextResult, DashboardContract, ProposedRevisionUpdate, RiskFinding } from "@/types/contracts";
 
 
@@ -24,7 +25,7 @@ export const contractsApi = {
     const response = await apiClient.get<{ data: DashboardContract[]; meta: { total: number; page: number; limit: number } }>("/contracts", {
       params: { ...filter, limit: 10, sortBy: "updatedAt", sortOrder: "desc" },
     });
-    return { items: response.data.data.map((contract) => ({ ...contract, overallRiskLevel: contract.currentVersion?.overallRiskLevel ?? contract.overallRiskLevel ?? "none" })), total: response.data.meta.total };
+    return { items: response.data.data, total: response.data.meta.total };
   },
   getContract(contractId: string) {
     return apiRequest<DashboardContract>({ url: `/contracts/${contractId}` });
@@ -56,13 +57,23 @@ export const contractsApi = {
     );
   },
 
-  getReview(contractId: string, signal?: AbortSignal) {
-    return apiRequest<ContractReviewResult>({
+  async getReview(contractId: string, signal?: AbortSignal) {
+    const result = await apiRequest<ContractReviewResult>({
       url: `/contracts/${contractId}/review-result`,
       method: "GET",
       timeout: 30_000,
       signal,
     });
+    if (result.contract.currentVersion?.issueCounts) {
+      return {
+        ...result,
+        contract: {
+          ...result.contract,
+          currentVersion: { ...result.contract.currentVersion, issueCounts: reviewIssueCounts(result) },
+        },
+      };
+    }
+    return result;
   },
 
   upload(formData: FormData) {

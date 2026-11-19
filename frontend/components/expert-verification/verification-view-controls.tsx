@@ -14,7 +14,7 @@ export function VerificationViewControls({ controller }: { controller: Verificat
       </div>
       <div role="group" aria-label="Bố cục đối chiếu" className="hidden flex-wrap items-center gap-2 lg:flex">
         <span className="mr-1 text-ui-meta text-muted-foreground">Chế độ xem</span>
-        {([{ value: "split", label: "Đối chiếu hai bên", Icon: Columns2 }, { value: "findings", label: "Mở rộng rủi ro", Icon: ListChecks }, { value: "document", label: "Mở rộng văn bản", Icon: FileText }] as const).map(({ value, label, Icon }) => (
+        {([{ value: "split", label: "Đối chiếu hai bên", Icon: Columns2 }, { value: "findings", label: "Mở rộng kết quả", Icon: ListChecks }, { value: "document", label: "Mở rộng văn bản", Icon: FileText }] as const).map(({ value, label, Icon }) => (
           <Button key={value} size="sm" variant={viewMode === value ? "secondary" : "ghost"} aria-pressed={viewMode === value}
             onClick={() => { setViewMode(value); if (value !== "split") setPane(value); }}>
             <Icon aria-hidden="true" />{label}

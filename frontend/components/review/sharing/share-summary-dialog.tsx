@@ -72,7 +72,7 @@ export function ShareSummaryDialog({ contractId, version, onClose }: {
             spellCheck={false} maxLength={10000} rows={15}
             aria-describedby="share-summary-draft-note"
             className="min-h-64 w-full resize-none overflow-hidden rounded-xl border border-input bg-card p-4 text-ui leading-6 text-card-foreground focus-visible:outline-2 focus-visible:outline-ring focus-visible:outline-offset-2" />
-          </> : <ShareSummaryPreview text={text} counts={query.data?.findingCounts} />}
+          </> : <ShareSummaryPreview text={text} counts={query.data?.issueCounts} />}
           <div id="share-summary-draft-note" className="flex flex-wrap items-center justify-between gap-2 text-ui-meta text-muted-foreground">
             <span>Bản chỉnh sửa chỉ giữ trong hộp này, không đổi báo cáo đầy đủ.</span>
             {draft !== null && <Button variant="ghost" size="sm" onClick={() => { setDraft(null); setCopyError(""); setCopiedText(null); }}>Khôi phục bản tóm tắt</Button>}

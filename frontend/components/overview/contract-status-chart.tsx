@@ -8,10 +8,9 @@ export function ContractStatusChart({ data, expertMode, onFilter }: {
   const distribution = data.distribution;
   const titleId = expertMode ? "member-risk-chart-title" : "member-status-chart-title";
   const items = expertMode ? [
-    { label: "Rủi ro cao", value: distribution?.risks.high ?? 0, color: "#d65a70", filter: { riskLevel: "high" } as DashboardContractFilter },
-    { label: "Trung bình", value: distribution?.risks.medium ?? 0, color: "#d69a32", filter: { riskLevel: "medium" } as DashboardContractFilter },
-    { label: "Rủi ro thấp", value: distribution?.risks.low ?? 0, color: "#20a078", filter: { riskLevel: "low" } as DashboardContractFilter },
-    { label: "Chưa đánh giá", value: distribution?.risks.none ?? 0, color: "#9aa8bc", filter: { riskLevel: "none" } as DashboardContractFilter },
+    { label: "Có vi phạm", value: distribution?.issues?.withViolations ?? 0, color: "#d65a70", filter: { issues: "violations" } as DashboardContractFilter },
+    { label: "Có vấn đề khác", value: distribution?.issues?.withIssues ?? 0, color: "#d69a32", filter: { issues: "any" } as DashboardContractFilter },
+    { label: "Không phát hiện vấn đề", value: distribution?.issues?.noIssues ?? 0, color: "#9aa8bc", filter: { issues: "none" } as DashboardContractFilter },
   ] : [
     { label: "Chờ rà soát", value: distribution?.statuses.uploaded ?? 0, color: "#d69a32", filter: { status: "uploaded" } as DashboardContractFilter },
     { label: "AI đang xử lý", value: distribution?.statuses.processing ?? 0, color: "#3775df", filter: { status: "processing" } as DashboardContractFilter },
@@ -27,7 +26,7 @@ export function ContractStatusChart({ data, expertMode, onFilter }: {
   }).join(", ");
 
   return <section className={"min-w-[0] [border:1px_solid_#e1e8f2] rounded-[18px] [background:#fff] p-[24px] shadow-[0_18px_35px_-34px_#4b668b] [&_h2]:m-[0] [&_h2]:text-[18px] [&_h2]:font-bold [&_h2]:tracking-[-.02em] max-[650px]:p-[20px]"} aria-labelledby={titleId}>
-    <h2 id={titleId}>{expertMode ? "Phân bố mức rủi ro" : "Trạng thái hợp đồng"}</h2>
+    <h2 id={titleId}>{expertMode ? "Kết quả rà soát hợp đồng" : "Trạng thái hợp đồng"}</h2>
     <p className={"mt-[7px]! text-[#708099] text-[12px] leading-[1.6]"}>Toàn tổ chức · số hợp đồng</p>
     {!distribution ? <p className={"grid min-h-[220px] content-center text-[#708099] text-[13px] leading-[1.7] text-center"}>Chưa tải được thống kê biểu đồ.</p> : !total ? <p className={"grid min-h-[220px] content-center text-[#708099] text-[13px] leading-[1.7] text-center"}>Chưa có hợp đồng để thống kê. Biểu đồ sẽ xuất hiện khi có dữ liệu.</p> : <>
       {!expertMode && <div className={"grid w-[168px] h-[168px] place-items-center rounded-[50%] m-[24px_auto] [animation:reveal_.5s_ease_both] [&_>_div]:grid [&_>_div]:w-[123px] [&_>_div]:h-[123px] [&_>_div]:place-content-center [&_>_div]:gap-[4px] [&_>_div]:rounded-[50%] [&_>_div]:[background:white] [&_>_div]:text-center [&_strong]:text-[#203754] [&_strong]:text-[30px] [&_strong]:font-bold [&_strong]:tracking-[-.04em] [&_span]:text-[#708099] [&_span]:text-[12px] motion-reduce:[animation:none]"} style={{ background: `conic-gradient(${gradient})` }} aria-hidden="true"><div><strong>{total.toLocaleString("vi-VN")}</strong><span>hợp đồng</span></div></div>}
@@ -39,7 +38,7 @@ export function ContractStatusChart({ data, expertMode, onFilter }: {
         </button></li>)}
       </ul>
       <p className={"mt-[18px]! text-[#708099] text-[12px] leading-[1.6] pt-[15px] [border-top:1px_solid_#edf1f7]"}>Chọn một nhóm để xem hợp đồng tương ứng.</p>
-      {expertMode && <p className={"mt-[7px]! text-[#708099] text-[12px] leading-[1.6]"}>Mức rủi ro do AI đánh giá, chưa thể hiện phê duyệt của chuyên viên.</p>}
+      {expertMode && <p className={"mt-[7px]! text-[#708099] text-[12px] leading-[1.6]"}>Nhóm “Có vấn đề khác” không gồm hợp đồng có vi phạm. Chọn nhóm này để mở danh sách mọi hợp đồng có vấn đề.</p>}
     </>}
   </section>;
 }

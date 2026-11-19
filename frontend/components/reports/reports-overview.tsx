@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { PageHeading } from "@/components/ui/page-heading";
+import { ReportPageHeader } from "./report-page-header";
+import styles from "./reports.module.css";
 import { Button } from "@/components/ui/button";
 import { useReport } from "@/hooks/reports/use-report";
 import { reportCsv } from "@/lib/reports/report-format";
@@ -9,7 +10,10 @@ import type { ReportFilters as Filters } from "@/types/reports";
 import { ReportFilters } from "./report-filters";
 import { ReportMetrics } from "./report-metrics";
 import { ReportCharts } from "./report-charts";
-import { operationalReportFeatures, roleReportConfig } from "@/config/report-profiles";
+import {
+  operationalReportFeatures,
+  roleReportConfig,
+} from "@/config/report-profiles";
 
 const initialFilters: Filters = {
   period: "month",
@@ -54,11 +58,11 @@ export function ReportsOverview({
   }
 
   return (
-    <>
-      <PageHeading
-        eyebrow="Phân tích"
+    <div className={styles.page} aria-busy={query.isFetching}>
+      <ReportPageHeader
         title={config.title}
         description={config.description}
+        scope={organizationOnly ? "Không gian tổ chức" : "Toàn hệ thống"}
       />
       <ReportFilters
         value={filters}
@@ -82,48 +86,69 @@ export function ReportsOverview({
           </Button>
         </div>
       ) : !ready || !report ? (
-        <p role="status" className="py-16 text-center text-sm text-slate-500">
-          Đang tính số liệu báo cáo…
-        </p>
+        <div
+          role="status"
+          aria-label="Đang tính số liệu báo cáo…"
+          className={styles.loading}
+        >
+          {Array.from({ length: 6 }, (_, index) => (
+            <div key={index} />
+          ))}
+        </div>
       ) : (
         <>
-          <div
-            role="status"
-            className="mb-5 rounded-xl border border-blue-100 bg-blue-50/50 p-4 text-xs leading-6 text-slate-600"
-          >
-            <p>
-              <strong>Kỳ báo cáo:</strong> {report.period.startDate} –{" "}
-              {report.period.endDate} · Giờ Việt Nam
-              {report.period.partial ? " · Kỳ chưa kết thúc" : ""}
-            </p>
-            {report.comparison?.period && (
+          <div role="status" className={styles.period}>
+            <div>
               <p>
-                <strong>Kỳ so sánh:</strong>{" "}
-                {report.comparison.period.startDate} –{" "}
-                {report.comparison.period.endDate} ·{" "}
-                {report.comparison.mode === "year"
-                  ? "Cùng kỳ năm trước"
-                  : "Kỳ trước"}
+                <strong>Kỳ báo cáo:</strong> {report.period.startDate} –{" "}
+                {report.period.endDate} · Giờ Việt Nam
+                {report.period.partial ? " · Kỳ chưa kết thúc" : ""}
               </p>
-            )}
-            <p>
-              Cập nhật{" "}
-              {new Date(report.computedAt).toLocaleString("vi-VN", {
-                timeZone: report.timezone,
-              })}
-              . Mốc kết thúc thực tế:{" "}
-              {new Date(report.period.toExclusive).toLocaleString("vi-VN", {
-                timeZone: report.timezone,
-              })}{" "}
-              (không bao gồm mốc này).
-            </p>
+              {report.comparison?.period && (
+                <p>
+                  <strong>Kỳ so sánh:</strong>{" "}
+                  {report.comparison.period.startDate} –{" "}
+                  {report.comparison.period.endDate} ·{" "}
+                  {report.comparison.mode === "year"
+                    ? "Cùng kỳ năm trước"
+                    : "Kỳ trước"}
+                </p>
+              )}
+            </div>
+            <div className={styles.periodMeta}>
+              <span className={styles.statusDot} aria-hidden="true" />
+              <span>
+                {query.isFetching ? "Đang cập nhật… " : "Cập nhật "}
+                {new Date(report.computedAt).toLocaleString("vi-VN", {
+                  timeZone: report.timezone,
+                })}
+              </span>
+              <details>
+                <summary className="cursor-pointer text-[11px]">
+                  Mốc dữ liệu
+                </summary>
+                <p>
+                  Mốc kết thúc thực tế:{" "}
+                  {new Date(report.period.toExclusive).toLocaleString("vi-VN", {
+                    timeZone: report.timezone,
+                  })}{" "}
+                  (không bao gồm mốc này).
+                </p>
+              </details>
+            </div>
+          </div>
+          <div className={styles.sectionTitle}>
+            <h2>Tổng quan trong kỳ</h2>
+            <p>Các chỉ số chính & mức thay đổi</p>
           </div>
           <ReportMetrics report={report} />
+          <div className={styles.sectionTitle}>
+            <h2>Phân tích chi tiết</h2>
+            <p>Xu hướng hoạt động theo thời gian</p>
+          </div>
           <ReportCharts report={report} />
-          <details className="mt-6 rounded-2xl border border-blue-100 bg-blue-50/50 p-5 text-sm text-slate-700">
-            <summary className="cursor-pointer font-semibold text-blue-900">
-              Quy tắc tính và đọc báo cáo
-            </summary>
+          <details className={styles.notes}>
+            <summary>Quy tắc tính và đọc báo cáo</summary>
             <ul className="mt-3 list-disc space-y-2 pl-5 leading-6">
               <li>
                 Tuần bắt đầu thứ Hai; tháng, quý và năm theo lịch Việt Nam. Kỳ
@@ -143,11 +168,11 @@ export function ReportsOverview({
                 bại) × 100%. Không tính đang chờ, đang chạy hoặc đã hủy vào mẫu
                 số.
               </li>
-              {features.risks && (
+              {features.issues && (
                 <li>
-                  Rủi ro dùng kết quả thành công mới nhất trong kỳ của mỗi hợp
-                  đồng. Kết quả thiếu mức rủi ro không được coi là không có rủi
-                  ro.
+                  Phân loại vấn đề dùng lượt rà soát thành công mới nhất có dữ
+                  liệu phân loại trong kỳ của mỗi hợp đồng. Kết quả thiếu dữ
+                  liệu này không được coi là không phát hiện vấn đề.
                 </li>
               )}
               <li>
@@ -176,6 +201,6 @@ export function ReportsOverview({
           </details>
         </>
       )}
-    </>
+    </div>
   );
 }

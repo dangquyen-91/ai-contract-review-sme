@@ -37,7 +37,7 @@ export type LegalSourceCatalogEntry = {
   code: string;
   label: string;
   usedByProfiles: { code: string; name: string }[];
-  ruleCodes: string[];
+  checkCodes: string[];
   legalSource: { _id: string; title: string; status?: LegalSource["status"]; ingestionStatus: NonNullable<LegalSource["ingestion"]>["status"] | null } | null;
 };
 
