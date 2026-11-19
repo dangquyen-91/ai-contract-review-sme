@@ -40,6 +40,7 @@ export const CONTRACT_SORT_FIELDS = [
   'title',
   'type',
   'status',
+  'issueCount',
   'overallRiskLevel',
 ] as const;
 
@@ -52,6 +53,7 @@ export const listContractsQuerySchema = z.object({
   industry: codeSchema.optional(),
   status: z.enum(CONTRACT_STATUSES).optional(),
   riskLevel: z.enum(RISK_LEVELS).optional(),
+  issues: z.enum(['violations', 'any', 'none']).optional(),
   verificationStatus: z
     .enum(['not_sent', 'requested', 'in_progress', 'approved', 'returned'])
     .optional(),

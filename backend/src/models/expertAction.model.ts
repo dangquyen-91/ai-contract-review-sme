@@ -1,5 +1,5 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
-import { RISK_CODES, RISK_FINDING_TYPES, RISK_SEVERITIES } from './riskFinding.model';
+import { FINDING_GROUPS, RISK_CODES, RISK_FINDING_TYPES, RISK_SEVERITIES } from './riskFinding.model';
 
 export const EXPERT_ACTIONS = ['confirm', 'adjust', 'reject', 'add', 'remove'] as const;
 
@@ -8,6 +8,8 @@ const findingSnapshotSchema = new Schema(
     findingType: { type: String, enum: RISK_FINDING_TYPES },
     severity: { type: String, enum: RISK_SEVERITIES },
     riskCode: { type: String, enum: RISK_CODES },
+    checkGroup: { type: String, enum: FINDING_GROUPS },
+    label: { type: String },
     title: { type: String },
     problem: { type: [String], default: undefined },
     consequences: { type: [String], default: undefined },

@@ -49,7 +49,7 @@ import { isLlmConfigured } from '../ai/llm.service';
 import { logger } from '../../config/logger';
 import { ContractProfileModel } from '../../models/contractProfile.model';
 import { isCatalogLegalSourceCode, LEGAL_SOURCE_CATALOG, LegalSourceCode } from './legalSourceCatalog.data';
-import { LEGAL_RULES } from './legalRules.data';
+import { checkCodesCitingSource } from '../playbook/playbook.service';
 import { fileHashOf } from '../contract/contractVersion.service';
 import {
   createFileDownloadLink,
@@ -729,7 +729,8 @@ export async function listLegalSourceCatalog() {
       usedByProfiles: profiles
         .filter((p) => p.legalSourceCodes.includes(code))
         .map((p) => ({ code: p.code, name: p.name })),
-      ruleCodes: LEGAL_RULES.filter((r) => r.citations.some((c) => c.sourceCode === code)).map((r) => r.code),
+      checkCodes: checkCodesCitingSource(code),
+      ruleCodes: checkCodesCitingSource(code),
       legalSource: source
         ? { _id: source.id, title: source.title, status: source.status, ingestionStatus: source.ingestion?.status ?? null }
         : null,

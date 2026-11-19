@@ -301,7 +301,9 @@ erDiagram
         String summaryStatus
         String summaryError
         Date summaryStartedAt
-        String overallRiskLevel
+        String overallRiskLevel "legacy"
+        IssueCounts issueCounts "embedded"
+        CheckCoverage checkCoverage "embedded"
         String[] overallAssessment
         String[] summaryPoints
         KeyTerm[] keyTerms "embedded"
@@ -360,7 +362,15 @@ erDiagram
         ObjectId clauseId FK
         ObjectId expectedClauseTypeId FK
         String findingType
-        String severity
+        String checkCode
+        String checkGroup
+        String outcome
+        String label
+        String playbookVersion
+        FindingEvidence[] evidence "embedded"
+        FindingBasis basis "embedded"
+        Boolean noVerifiedLegalBasis
+        String severity "legacy"
         String title
         String[] problem
         String[] consequences

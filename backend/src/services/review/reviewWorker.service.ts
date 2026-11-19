@@ -11,7 +11,7 @@ import { RiskFindingModel } from '../../models/riskFinding.model';
 import { REVIEW_STAGES, ReviewModel } from '../../models/review.model';
 import { segmentClauses } from '../analysis/clause.service';
 import { generateContractSummary } from '../analysis/summary.service';
-import { detectRisks } from '../analysis/risk.service';
+import { runPlaybookReview } from '../playbook/playbookReview.service';
 import { extendUsageLease, finishUsage, isUsageSucceeded, keepUsageLeaseAlive } from '../billing/usage.service';
 import { reviewErrorCodeOf, reviewFailure, ReviewErrorCode, withReviewErrorCode } from './reviewErrors';
 
@@ -23,7 +23,7 @@ const EXTRACTION_WAIT_MS = 15 * 60 * 1000;
 const CANCEL_POLL_MS = 3000;
 const ACTIVE_JOB_STATES = new Set(['waiting', 'active', 'delayed', 'prioritized', 'waiting-children']);
 const UNFINISHED_STATUSES = ['queued', 'running'];
-const SEVERITY_ORDER = { high: 0, medium: 1, low: 2 } as const;
+const GROUP_ORDER: Record<string, number> = { compliance: 0, clarity: 1, completeness: 2, balance: 3, referral: 4 };
 
 type ReviewStage = (typeof REVIEW_STAGES)[number];
 type StageKey = 'segmentation' | 'summary' | 'riskDetection';
@@ -153,37 +153,39 @@ async function buildReviewResult(versionId: string, reviewId: string) {
   const [version, clauses, findings] = await Promise.all([
     ContractVersionModel.findById(versionId),
     ClauseModel.find({ contractVersionId: versionId, reviewId }).select('index title'),
-    RiskFindingModel.find({ contractVersionId: versionId, reviewId }).select('findingType severity title clauseId detectedBy riskCode ruleCode'),
+    RiskFindingModel.find({ contractVersionId: versionId, reviewId }).select(
+      'findingType checkCode checkGroup outcome label title clauseId detectedBy',
+    ),
   ]);
   const clauseById = new Map(clauses.map((c) => [c._id.toString(), c]));
-  const counts = { high: 0, medium: 0, low: 0 };
-  for (const f of findings) counts[f.severity]++;
 
   return {
-    overallRiskLevel: version?.overallRiskLevel ?? 'none',
+    issueCounts: version?.issueCounts ?? undefined,
+    checkCoverage: version?.checkCoverage ?? undefined,
     overallAssessment: version?.overallAssessment ?? [],
     summaryPoints: version?.summaryPoints ?? [],
     clauseCount: clauses.length,
-    findingCounts: counts,
-    legalRetrievalStatus: version?.legalRetrievalStatus ?? undefined,
-    ruleCheckStatus: version?.ruleCheckStatus ?? undefined,
-    legalCoverage: version?.legalCoverage ?? undefined,
     keyTerms: version?.keyTerms ?? undefined,
     findings: findings
       .map((f) => {
         const clause = f.clauseId ? clauseById.get(f.clauseId.toString()) : undefined;
         return {
           findingType: f.findingType,
-          severity: f.severity,
+          checkCode: f.checkCode ?? undefined,
+          checkGroup: f.checkGroup ?? undefined,
+          outcome: f.outcome ?? undefined,
+          label: f.label ?? undefined,
           title: f.title,
           clauseIndex: clause?.index,
           clauseTitle: clause?.title ?? undefined,
           detectedBy: f.detectedBy,
-          riskCode: f.riskCode ?? undefined,
-          ruleCode: f.ruleCode ?? undefined,
         };
       })
-      .sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]),
+      .sort(
+        (a, b) =>
+          (a.clauseIndex ?? Number.MAX_SAFE_INTEGER) - (b.clauseIndex ?? Number.MAX_SAFE_INTEGER) ||
+          (GROUP_ORDER[a.checkGroup ?? ''] ?? 9) - (GROUP_ORDER[b.checkGroup ?? ''] ?? 9),
+      ),
   };
 }
 
@@ -200,13 +202,10 @@ async function buildPartialResult(versionId: string, reviewId: string, stages: R
     ...(riskDone
       ? {}
       : {
-          overallRiskLevel: 'none',
+          issueCounts: undefined,
+          checkCoverage: undefined,
           overallAssessment: [],
-          findingCounts: { high: 0, medium: 0, low: 0 },
           findings: [],
-          legalRetrievalStatus: undefined,
-          ruleCheckStatus: undefined,
-          legalCoverage: undefined,
           keyTerms: undefined,
         }),
     partial: true,
@@ -219,6 +218,7 @@ async function restoreCompletedResult(reviewId: string, versionId: string, contr
     .select('result');
   const result = previous?.result;
   if (!result || result.partial) return;
+  const legacy = !result.issueCounts;
   await ContractVersionModel.updateOne(
     { _id: versionId },
     {
@@ -228,16 +228,21 @@ async function restoreCompletedResult(reviewId: string, versionId: string, contr
         riskDetectionStatus: 'completed',
         summaryPoints: result.summaryPoints,
         overallAssessment: result.overallAssessment,
-        overallRiskLevel: result.overallRiskLevel,
         keyTerms: result.keyTerms ?? [],
-        ...(result.legalRetrievalStatus ? { legalRetrievalStatus: result.legalRetrievalStatus } : {}),
-        ...(result.ruleCheckStatus ? { ruleCheckStatus: result.ruleCheckStatus } : {}),
-        ...(result.legalCoverage ? { legalCoverage: result.legalCoverage } : {}),
+        ...(legacy
+          ? {
+              ...(result.overallRiskLevel ? { overallRiskLevel: result.overallRiskLevel } : {}),
+              ...(result.legalRetrievalStatus ? { legalRetrievalStatus: result.legalRetrievalStatus } : {}),
+              ...(result.ruleCheckStatus ? { ruleCheckStatus: result.ruleCheckStatus } : {}),
+              ...(result.legalCoverage ? { legalCoverage: result.legalCoverage } : {}),
+            }
+          : { issueCounts: result.issueCounts, checkCoverage: result.checkCoverage }),
       },
       $unset: {
         segmentationError: '',
         summaryError: '',
         riskDetectionError: '',
+        ...(legacy ? { issueCounts: '', checkCoverage: '' } : { overallRiskLevel: '', legalRetrievalStatus: '', ruleCheckStatus: '' }),
         ...(result.legalCoverage ? {} : { legalCoverage: '' }),
       },
     },
@@ -426,7 +431,7 @@ async function runStages(
   if (riskPending) {
     parallel.push(
       runStage(job, 'riskDetection', 'risk_detection', () =>
-        detectRisks(
+        runPlaybookReview(
           orgId,
           contractId,
           reviewId,

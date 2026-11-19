@@ -137,47 +137,56 @@ sequenceDiagram
 ```
 
 ## Flow: Phát hiện rủi ro hợp đồng
-**Trigger**: reviewWorker gọi `detectRisks` ở giai đoạn riskDetection
+**Trigger**: reviewWorker gọi `runPlaybookReview` ở giai đoạn riskDetection
 **Related UC**: TBD
 **Related FR**: TBD
 **Related E**: —
 
+Nguyên tắc: AI chỉ đọc và trích dẫn; mọi kết luận do phép kiểm trong playbook (dữ liệu có phiên bản, có căn cứ, đã duyệt) quyết định bằng code. Không có mức rủi ro cao/trung bình/thấp.
+
 ```mermaid
 sequenceDiagram
     participant W as reviewWorker
-    participant RK as risk.service (detectRisks)
-    participant RD as redaction.service
+    participant PR as playbookReview.service
+    participant EV as playbookEvidence.service
+    participant EL as playbookEvaluation.service
+    participant PB as playbook.service
     participant LR as legalRetrieval.service
     participant LLM as llm.service (Gemini)
     participant DB as MongoDB
 
-    W->>RK: detectRisks(orgId, contractId, analysisFocus, onDetail, signal)
-    RK->>DB: ContractModel.findOne({_id, orgId}), getCurrentVersionWithText(contractId)
-    DB-->>RK: contract, version {extractedText}
-    RK->>DB: buildReviewContext(contract), claimStage(versionId, riskDetection)
-    RK->>RD: createRedactor(extractedText, redactionPolicy)
-    RD-->>RK: redactor {mask, unmask}
-    RK->>DB: ClauseModel.find({contractVersionId}), getTaxonomyByCodes(mandatoryClauses)
-    DB-->>RK: clauses, mandatory taxonomy
-
-    par legal excerpts
-        RK->>LR: buildLegalExcerpts - searchLegalChunks(clauses masked by redactor, perClause, {legalSourceCodes})
-        LR->>LLM: embedTexts(queryTexts, RETRIEVAL_QUERY)
-        LLM-->>LR: query vectors
-        LR->>DB: LegalKnowledgeChunk $vectorSearch and $search
-        DB-->>LR: matching chunks
-        LR-->>RK: {excerpts, metaByNumber}
-    and key terms
-        RK->>LLM: extractKeyTermsSafely - extractKeyTerms via generateJson(masked clauses)
-        LLM-->>RK: keyTerms
+    W->>PR: runPlaybookReview(orgId, contractId, reviewId, analysisFocus, onProgress, signal)
+    PR->>DB: contract, version {extractedText}, buildReviewContext, claimStage(riskDetection, reviewId)
+    PR->>DB: Clause.find({versionId, reviewId}) với loại điều khoản
+    Note over PR: Redactor che PII cho mọi prompt
+    PR->>EV: collectContractEvidence (collecting_evidence)
+    EV->>PB: playbook theo loại điều khoản, chỉ phép kiểm đã duyệt
+    EV->>LLM: ② điền trường theo nhóm điều khoản (kèm câu trích)
+    EV->>EV: kiểm câu trích tồn tại + hỗ trợ giá trị (số liệu bằng code)
+    EV->>LLM: ③ tìm trường còn trống trong toàn văn + tình tiết + điều khoản bị phân loại nhầm
+    EV->>LLM: kiểm chứng độc lập (có/không, tình tiết, số suy ra)
+    EV-->>PR: ContractEvidence
+    PR->>EL: evaluateContract (evaluating_checks)
+    EL->>PB: verifyPlaybookArticleRefs (tra đúng Điều, kiểm cụm từ neo)
+    PB->>DB: LegalSource còn hiệu lực + LegalKnowledgeChunk
+    EL->>EL: chấm từng phép kiểm + kiểm tra toàn văn VB-01..VB-06
+    EL-->>PR: kết quả: Đạt / Chưa rõ ràng / Thiếu nội dung / Nên thương lượng / Vi phạm / Chưa xác minh được / Không kiểm tra được
+    par preparing_suggestions
+        PR->>LLM: ⑥ điểm đáng lo chưa có trong playbook (kèm câu trích)
+        PR->>LR: searchLegalChunks — điều luật tham khảo cho chuyên gia
+    and
+        PR->>LLM: ⑦ gợi ý sửa (câu gốc phải có nguyên văn trong điều khoản)
     end
-
-    RK->>RK: evaluateLegalRules(reviewContext, keyTerms), resolveRuleCitations(ruleFindings)
-    RK->>LLM: detectContractRisks(masked clauses, excerpts, analysisFocus) via generateJson
-    LLM-->>RK: {overallAssessment, findings, ruleRevisions}
-    RK->>RD: redactor.unmask(findings text)
-    RK->>LR: verifyLegalBasis(findings.legalBasis)
-    LR-->>RK: verified legal basis
-    RK->>DB: RiskFindingModel.insertMany(findings), delete old findings, save overallRiskLevel and overallAssessment
-    RK-->>W: done
+    PR->>DB: insert RiskFinding + RiskCitation (snapshot), xoá bản cũ của review này (saving_findings)
+    PR->>DB: ContractVersion {issueCounts, checkCoverage, overallAssessment theo mẫu, keyTerms}
+    PR-->>W: done
 ```
+
+| Kết quả của phép kiểm | Khi nào | Lưu thành |
+| --- | --- | --- |
+| Đạt | Hợp đồng đáp ứng tiêu chí | Chỉ đếm trong `checkCoverage.passed` |
+| Chưa rõ ràng / Thiếu nội dung / Nên thương lượng | Phép kiểm nhóm rõ ràng / đầy đủ / cân bằng không đạt | `RiskFinding` `outcome=failed` |
+| Vi phạm | Phép kiểm tuân thủ không đạt, điều luật **và** điều kiện áp dụng đều đã xác minh | `RiskFinding` `checkGroup=compliance` |
+| Chưa xác minh được | Phép kiểm tuân thủ không đạt nhưng chưa xác định được tình tiết hoặc điều luật | `RiskFinding` `outcome=unverified` |
+| Không kiểm tra được | Giá trị đọc từ hợp đồng không chắc chắn | `checkCoverage.notCheckedItems` |
+| Đề nghị chuyên gia xem xét | AI thấy điểm đáng lo mà playbook chưa có; không trùng vị trí với vấn đề đã báo | `RiskFinding` `findingType=referral`, không tính vào `issueCounts.total` |

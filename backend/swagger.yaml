@@ -605,25 +605,30 @@ components:
         riskDetectionStartedAt:
           type: string
           format: date-time
-          description: When the last risk detection run started (same 10-minute stale rule as segmentation)
+          description: When the last risk detection run started (same 10-minute stale rule as segmentation; the review that started a run may take it over again at once, e.g. after a worker crash)
         legalRetrievalStatus:
           type: string
           enum: [ok, degraded, no_sources, unavailable]
-          description: How the legal knowledge search went during the last risk detection. ok = vector and text search both ran. degraded = only one of them ran. no_sources = the legal knowledge base has no searchable source. unavailable = the search failed, so the findings were written without legal excerpts (rule checks still ran). Absent until risk detection completes, and cleared when clauses are re-segmented.
+          description: Legacy - only on reviews made before the review playbook (playbook 1.0.0), never set by the playbook review. How the legal knowledge search went during the last risk detection. ok = vector and text search both ran. degraded = only one of them ran. no_sources = the legal knowledge base has no searchable source. unavailable = the search failed, so the findings were written without legal excerpts (rule checks still ran). Absent until risk detection completes, and cleared when clauses are re-segmented.
         ruleCheckStatus:
           type: string
           enum: [ok, skipped, not_applicable]
-          description: Whether the fixed legal rule checks (detectedBy rule) ran during the last risk detection. ok = key terms were extracted and every rule for this contract type was evaluated. skipped = key term extraction failed, so no rule ran and the findings come from the LLM and the missing-clause check only. not_applicable = this contract type has no fixed legal rules yet. Absent until risk detection completes, and cleared when clauses are re-segmented.
+          description: Legacy - only on reviews made before the review playbook (playbook 1.0.0), never set by the playbook review. Whether the fixed legal rule checks (detectedBy rule) ran during the last risk detection. ok = key terms were extracted and every rule for this contract type was evaluated. skipped = key term extraction failed, so no rule ran and the findings come from the LLM and the missing-clause check only. not_applicable = this contract type has no fixed legal rules yet. Absent until risk detection completes, and cleared when clauses are re-segmented.
         legalCoverage:
           $ref: '#/components/schemas/LegalCoverageSnapshot'
         overallAssessment:
           type: array
           items:
             type: string
-          description: '"Đánh giá tổng quan" bullets (Vietnamese), written together with the findings by a review (POST /contracts/{id}/reviews)'
+          description: '"Đánh giá tổng quan" bullets (Vietnamese). The playbook review builds them from the counts (number of checks run, issues per group, unverified points, expert referrals); no AI writes them.'
         overallRiskLevel:
           type: string
           enum: [high, medium, low, none]
+          description: Legacy - only on reviews made before the review playbook (playbook 1.0.0), never set by the playbook review. There is no overall risk level any more; see issueCounts and checkCoverage.
+        issueCounts:
+          $ref: '#/components/schemas/IssueCounts'
+        checkCoverage:
+          $ref: '#/components/schemas/CheckCoverage'
         analysisFocus:
           type: string
           description: Free-text analysis direction the user last requested (e.g. "phân tích theo hướng có lợi cho bên A"), sent with POST /contracts/{id}/reviews. Also used as context by chat.
@@ -674,7 +679,7 @@ components:
           description: Present while running. waiting_for_extraction means the upload is still being OCRed.
         stageDetail:
           type: string
-          description: Extra progress text, e.g. "7/12 pages" while waiting for extraction, or retrieving_legal_sources / analyzing_clauses / saving_findings during risk detection
+          description: Extra progress text, e.g. "7/12 pages" while waiting for extraction, or collecting_evidence / evaluating_checks / preparing_suggestions / saving_findings during risk detection
         stages:
           type: object
           description: A retry re-runs only the stages that are not completed
@@ -720,6 +725,11 @@ components:
             overallRiskLevel:
               type: string
               enum: [high, medium, low, none]
+              description: Legacy - only on reviews made before the review playbook (playbook 1.0.0), never set by the playbook review.
+            issueCounts:
+              $ref: '#/components/schemas/IssueCounts'
+            checkCoverage:
+              $ref: '#/components/schemas/CheckCoverage'
             overallAssessment:
               type: array
               items:
@@ -732,6 +742,7 @@ components:
               type: integer
             findingCounts:
               type: object
+              description: Legacy - only on reviews made before the review playbook (playbook 1.0.0), never set by the playbook review.
               properties:
                 high:
                   type: integer
@@ -756,10 +767,23 @@ components:
                 properties:
                   findingType:
                     type: string
-                    enum: [clause_risk, missing_clause]
+                    enum: [clause_risk, missing_clause, referral]
+                  checkCode:
+                    type: string
+                    description: See RiskFinding.checkCode
+                  checkGroup:
+                    type: string
+                    enum: [clarity, completeness, balance, compliance, referral]
+                  outcome:
+                    type: string
+                    enum: [failed, unverified, referral]
+                  label:
+                    type: string
+                    description: See RiskFinding.label
                   severity:
                     type: string
                     enum: [high, medium, low]
+                    description: Legacy - only on reviews made before the review playbook (playbook 1.0.0), never set by the playbook review.
                   title:
                     type: string
                   clauseIndex:
@@ -768,7 +792,7 @@ components:
                     type: string
                   detectedBy:
                     type: string
-                    enum: [rule, llm, hybrid, checklist]
+                    enum: [rule, llm, hybrid, checklist, expert, playbook, document_check, expert_referral]
                   riskCode:
                     type: string
                     description: See RiskFinding.riskCode
@@ -1084,10 +1108,70 @@ components:
           description: Set when findingType is "missing_clause"; the populated taxonomy entry expected but absent
         findingType:
           type: string
-          enum: [clause_risk, missing_clause]
+          enum: [clause_risk, missing_clause, referral]
+          description: referral = a point the AI suggests a lawyer should check; it is not a finding and is not counted in issueCounts.total
+        checkCode:
+          type: string
+          description: Code of the playbook check (e.g. TT-02, PV-05) or document check (VB-01..VB-06) that produced the finding. Absent on legacy findings, expert-added findings and referrals.
+          example: PV-05
+        checkGroup:
+          type: string
+          enum: [clarity, completeness, balance, compliance, referral]
+          description: Kind of criterion the finding failed. Only compliance can be labelled a violation.
+        outcome:
+          type: string
+          enum: [failed, unverified, referral]
+          description: failed = the check did not pass. unverified = a compliance check would fail but its applicability or legal basis could not be verified ("Chưa xác minh được"). referral = see findingType.
+        label:
+          type: string
+          enum: ['Chưa rõ ràng', 'Thiếu nội dung', 'Nên thương lượng', 'Vi phạm', 'Chưa xác minh được', 'Đề nghị chuyên gia xem xét']
+          description: Fixed Vietnamese label derived from checkGroup and outcome
+        playbookVersion:
+          type: string
+          example: 1.0.0
+        neutral:
+          type: boolean
+          description: True when a balance check failed but the user has not said which party they are; the asymmetry is reported without saying who it hurts
+        evidence:
+          type: array
+          description: Verbatim quotes from the contract that the result rests on, with offsets into GET /contracts/{id}/text
+          items:
+            type: object
+            properties:
+              fieldKey: { type: string }
+              label: { type: string }
+              quote: { type: string }
+              clauseIndex: { type: integer }
+              startOffset: { type: integer }
+              endOffset: { type: integer }
+              value: {}
+        observed:
+          description: Value read from the contract for limit checks (e.g. 12 for a 12% penalty)
+        limit:
+          type: number
+          description: Limit the observed value was compared with
+        vagueTerm:
+          type: string
+          description: Vague wording that made a stated value unclear (e.g. "hợp lý")
+        reason:
+          type: string
+          description: Why a check is unverified
+        question:
+          type: string
+          description: Question the contract should answer
+        basis:
+          type: object
+          description: Criterion the check applies ("Căn cứ phát hiện")
+          properties:
+            kind: { type: string, enum: [criterion, practice, policy, law] }
+            statement: { type: string }
+        noVerifiedLegalBasis:
+          type: boolean
+          description: True when no legal article could be verified for this finding; show "Không có căn cứ pháp lý được xác minh"
         severity:
           type: string
           enum: [high, medium, low]
+          description: Legacy - only on reviews made before the review playbook (playbook 1.0.0), never set by the playbook review.
         title:
           type: string
         problem:
@@ -1112,6 +1196,10 @@ components:
                 type: array
                 items:
                   type: string
+              role:
+                type: string
+                enum: [basis, fallback, reference]
+                description: basis = the law the compliance check rests on; fallback = the rule that applies when the contract is silent ("Quy định áp dụng khi hợp đồng không thoả thuận"); reference = reference only (practice references and expert referral hints). Absent on legacy findings.
               verification:
                 type: string
                 enum: [verified, partially_verified, article_not_found, not_in_knowledge_base, unreferenced]
@@ -1143,12 +1231,12 @@ components:
           enum: [open, acknowledged, dismissed, resolved]
         detectedBy:
           type: string
-          enum: [rule, llm, hybrid, checklist, expert]
-          description: rule = a fixed legal rule fired (ruleCode is set); llm = found by the LLM; hybrid = a missing clause found by the taxonomy check and described by the LLM; checklist = a missing clause found by the taxonomy check that the LLM did not describe (generic text); expert = added by an expert during verification. Findings saved before checklist existed may still use rule for that last case.
+          enum: [rule, llm, hybrid, checklist, expert, playbook, document_check, expert_referral]
+          description: playbook = a playbook check failed (checkCode is set); document_check = a deterministic whole-text check (VB-01..VB-06); expert_referral = a point suggested for a lawyer to check. Legacy values - rule = a fixed legal rule fired (ruleCode is set); llm = found by the LLM; hybrid = a missing clause found by the taxonomy check and described by the LLM; checklist = a missing clause found by the taxonomy check that the LLM did not describe (generic text); expert = added by an expert during verification. Findings saved before checklist existed may still use rule for that last case.
         riskCode:
           type: string
           enum: [UNLAWFUL_TERM, MISSING_MANDATORY_FORM, UNILATERAL_TERMINATION, AUTO_RENEWAL, EXCESSIVE_PENALTY, LIABILITY_LIMITATION, ONE_SIDED_INDEMNITY, UNFAVORABLE_PAYMENT, ONE_SIDED_OBLIGATION, BROAD_EXCLUSION, IP_DATA_RISK, UNFAVORABLE_DISPUTE_FORUM, VAGUE_SCOPE, AMBIGUOUS_TERM, MISSING_CLAUSE, MISSING_PROTECTION, OTHER]
-          description: Stable risk type from the risk catalog, used to compare findings across reviews and to measure accuracy per risk type. Fixed legal rules are UNLAWFUL_TERM, missing clauses are MISSING_CLAUSE, and LLM findings pick a code (OTHER when none fits, capped at medium). The severity of LLM findings is kept within the range allowed for the code. Absent on findings saved before the catalog existed.
+          description: Legacy - only on reviews made before the review playbook (playbook 1.0.0), never set by the playbook review. Stable risk type from the risk catalog, used to compare findings across reviews and to measure accuracy per risk type. Fixed legal rules are UNLAWFUL_TERM, missing clauses are MISSING_CLAUSE, and LLM findings pick a code (OTHER when none fits, capped at medium). The severity of LLM findings is kept within the range allowed for the code. Absent on findings saved before the catalog existed.
           example: UNILATERAL_TERMINATION
         ruleCode:
           type: string
@@ -1171,6 +1259,43 @@ components:
           type: string
           format: date-time
 
+    IssueCounts:
+      type: object
+      description: Number of issues found by the playbook review of a version. total = violations + unclear + missing + negotiable; unverified points and expert referrals are counted separately and are not issues.
+      properties:
+        violations: { type: integer, description: Compliance checks failed ("Vi phạm") }
+        unclear: { type: integer, description: Clarity checks failed plus document checks ("Chưa rõ ràng") }
+        missing: { type: integer, description: Completeness checks failed ("Thiếu nội dung") }
+        negotiable: { type: integer, description: Balance checks failed ("Nên thương lượng") }
+        unverified: { type: integer, description: Compliance checks that could not be verified ("Chưa xác minh được") }
+        referrals: { type: integer, description: Points suggested for a lawyer to check }
+        total: { type: integer }
+
+    CheckCoverage:
+      type: object
+      description: What the playbook review checked, so a result with no issue can say "no issue found against N checks"
+      properties:
+        playbookVersion: { type: string, example: 1.0.0 }
+        checks: { type: integer, description: Approved playbook checks that applied to this contract }
+        passed: { type: integer }
+        failed: { type: integer }
+        notApplicable: { type: integer }
+        notChecked: { type: integer, description: Checks skipped because the value read from the contract was uncertain }
+        unverified: { type: integer }
+        documentChecks: { type: integer, description: Deterministic whole-text checks run (VB-01..VB-06) }
+        clauseTypesWithoutPlaybook:
+          type: array
+          items: { type: string }
+          description: Clause types present in the contract that no playbook covers yet
+        notCheckedItems:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              title: { type: string }
+              reason: { type: string }
+
     FindingVerification:
       type: object
       description: Latest expert decision on the finding, copied from the newest ExpertAction. Absent until an expert acts on it.
@@ -1182,7 +1307,11 @@ components:
         originalSeverity:
           type: string
           enum: [high, medium, low]
-          description: Severity the AI gave, kept so the UI can show AI vs expert severity. Absent on findings the expert added.
+          description: Legacy - only on reviews made before the review playbook (playbook 1.0.0), never set by the playbook review. Severity the AI gave, kept so the UI can show AI vs expert severity. Absent on findings the expert added.
+        originalGroup:
+          type: string
+          enum: [clarity, completeness, balance, compliance, referral]
+          description: Group the review gave before an expert changed it (an expert may turn a referral into an issue). Absent on findings the expert added.
         reason:
           type: string
         verifiedBy:
@@ -1248,10 +1377,16 @@ components:
       properties:
         findingType:
           type: string
-          enum: [clause_risk, missing_clause]
+          enum: [clause_risk, missing_clause, referral]
+        checkGroup:
+          type: string
+          enum: [clarity, completeness, balance, compliance, referral]
+        label:
+          type: string
         severity:
           type: string
           enum: [high, medium, low]
+          description: Legacy - only on reviews made before the review playbook (playbook 1.0.0), never set by the playbook review.
         riskCode:
           type: string
         title:
@@ -1312,9 +1447,14 @@ components:
           type: string
           maxLength: 2000
           description: Required when verdict is rejected
+        checkGroup:
+          type: string
+          enum: [clarity, completeness, balance, compliance]
+          description: Moves the finding to another group; its label follows (compliance = "Vi phạm"). Turning a referral into an issue uses this field.
         severity:
           type: string
           enum: [high, medium, low]
+          description: Legacy findings only
         riskCode:
           type: string
         title:
@@ -1339,18 +1479,24 @@ components:
 
     AddExpertFindingRequest:
       type: object
-      required: [severity, riskCode, title, problem]
+      required: [title, problem]
+      description: Send checkGroup. severity is still accepted for older clients; one of them is required.
       additionalProperties: false
       properties:
         clauseIndex:
           type: integer
           minimum: 0
           description: Clause the risk belongs to. Omit for a missing clause.
+        checkGroup:
+          type: string
+          enum: [clarity, completeness, balance, compliance]
         severity:
           type: string
           enum: [high, medium, low]
+          description: Legacy
         riskCode:
           type: string
+          description: Legacy, optional
         title:
           type: string
           maxLength: 300
@@ -3460,9 +3606,9 @@ paths:
           name: sortBy
           schema:
             type: string
-            enum: [createdAt, updatedAt, title, type, status, overallRiskLevel]
+            enum: [createdAt, updatedAt, title, type, status, issueCount, overallRiskLevel]
             default: createdAt
-          description: overallRiskLevel sorts by severity (high > medium > low > none), not alphabetically
+          description: issueCount sorts contracts with violations first, then by number of issues. overallRiskLevel is a legacy alias that sorts the same way (legacy reviews by high > medium > low > none).
         - in: query
           name: sortOrder
           schema: { type: string, enum: [asc, desc] }
@@ -3479,6 +3625,11 @@ paths:
         - in: query
           name: riskLevel
           schema: { type: string }
+          description: Legacy filter; matches only reviews made before the review playbook
+        - in: query
+          name: issues
+          schema: { type: string, enum: [violations, any, none] }
+          description: violations = the current version has at least one violation; any = at least one issue; none = reviewed with no issue found
         - in: query
           name: verificationStatus
           schema: { type: string, enum: [not_sent, requested, in_progress, approved, returned] }
@@ -3810,7 +3961,10 @@ paths:
                             id: { type: string }
                             status: { type: string, enum: [queued, running, completed, failed, cancelled] }
                             finishedAt: { type: string, format: date-time, nullable: true }
-                            overallRiskLevel: { type: string, nullable: true, enum: [high, medium, low, none] }
+                            issueCounts:
+                              allOf: [{ $ref: '#/components/schemas/IssueCounts' }]
+                              nullable: true
+                            overallRiskLevel: { type: string, nullable: true, enum: [high, medium, low, none], description: Legacy }
                             findingCounts:
                               type: object
                               nullable: true
@@ -3971,8 +4125,8 @@ paths:
       parameters:
         - $ref: '#/components/parameters/VersionIdQuery'
       description: |
-        During risk detection the LLM extracts the terms that legal rules check for this contract type (e.g. penalty rate, deposit share, probation length, working hours). A term is kept only when its quote appears verbatim in the cited clause. A few yes/no terms have a legal default when the contract is silent (e.g. no notarization, penalty without damages); those are returned with inferredFromSilence true and no clause.
-        Life insurance has no rule checks yet, so its list is empty.
+        The playbook review stores every field it read from the contract with a verified quote (keys like payment.due_time or contract.keeps_original_documents). A value is kept only when its quote exists in the contract and supports the value. deferred is true when the contract refers the value to another document (an appendix, a purchase order).
+        Reviews made before the review playbook return their legacy key terms (keys like penalty_percent), some inferred from silence.
       responses:
         '200':
           description: OK
@@ -4006,9 +4160,13 @@ paths:
                           oneOf:
                             - type: number
                             - type: boolean
+                            - type: string
                           example: 15
+                        deferred:
+                          type: boolean
                         inferredFromSilence:
                           type: boolean
+                          description: Legacy only
                         clause:
                           type: object
                           nullable: true
@@ -4314,15 +4472,16 @@ paths:
                       redacted:
                         type: boolean
                         enum: [true]
-                      findingCounts:
+                      issueCounts:
                         type: object
+                        description: Issues listed in the summary; referrals and unverified points are not listed as issues
                         properties:
-                          high:
-                            type: integer
-                          medium:
-                            type: integer
-                          low:
-                            type: integer
+                          violations: { type: integer }
+                          unclear: { type: integer }
+                          missing: { type: integer }
+                          negotiable: { type: integer }
+                          unverified: { type: integer }
+                          total: { type: integer }
         '404':
           description: Contract not accessible in the current organization
         '409':
@@ -5415,12 +5574,17 @@ paths:
                             type: string
                           name:
                             type: string
-                    ruleCodes:
+                    checkCodes:
                       type: array
-                      description: Legal rules that cite this source; their citations can only be verified once it is uploaded
+                      description: Review playbook checks that cite this source; they can only be verified once it is uploaded
                       items:
                         type: string
-                      example: [LTM_PENALTY_CAP]
+                      example: [PV-05, TT-02]
+                    ruleCodes:
+                      type: array
+                      description: Deprecated alias of checkCodes
+                      items:
+                        type: string
                     legalSource:
                       type: object
                       nullable: true

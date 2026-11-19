@@ -254,11 +254,44 @@ export interface ArticleRefResult {
   checkCode: string;
   ref: LegalArticleRef;
   status: ArticleRefStatus;
+  chunkId?: string;
 }
+
+export interface SourceAnchor {
+  article: number;
+  clause?: number;
+  verifyText: string;
+  checks: string[];
+}
+
+export function playbookAnchorsForSource(sourceCode: string | null | undefined): SourceAnchor[] {
+  const anchors = new Map<string, SourceAnchor>();
+  for (const { checkCode, ref } of playbookArticleRefs()) {
+    if (ref.sourceCode !== sourceCode) continue;
+    const key = `${ref.article}:${ref.clause ?? ''}:${ref.verifyText}`;
+    const anchor = anchors.get(key) ?? { article: ref.article, clause: ref.clause, verifyText: ref.verifyText, checks: [] };
+    if (!anchor.checks.includes(checkCode)) anchor.checks.push(checkCode);
+    anchors.set(key, anchor);
+  }
+  return [...anchors.values()];
+}
+
+export const checkCodesCitingSource = (sourceCode: string) => [
+  ...new Set(playbookArticleRefs().filter(({ ref }) => ref.sourceCode === sourceCode).map(({ checkCode }) => checkCode)),
+];
+
+const fieldLabels = new Map(
+  [...CLAUSE_PLAYBOOKS.flatMap((playbook) => playbook.fields), ...CONTRACT_PLAYBOOKS.flatMap((playbook) => playbook.fields)].map(
+    (field) => [field.key, field.label],
+  ),
+);
+
+export const playbookFieldLabel = (key: string) => fieldLabels.get(key.split('.').pop() ?? key);
 
 const normalizeForMatch = (value: string) => value.normalize('NFC').replace(/\s+/g, ' ').toLowerCase();
 
 interface StoredArticleChunk {
+  _id: Types.ObjectId;
   legalSourceId: Types.ObjectId;
   articleNumber?: number | null;
   clauseFrom?: number | null;
@@ -292,7 +325,7 @@ export async function verifyPlaybookArticleRefs(
   ];
   const chunks = articleKeys.length
     ? ((await LegalKnowledgeChunkModel.find({ $or: articleKeys })
-        .select('legalSourceId articleNumber clauseFrom clauseTo chunkText')
+        .select('_id legalSourceId articleNumber clauseFrom clauseTo chunkText')
         .lean()) as unknown as StoredArticleChunk[])
     : [];
 
@@ -304,8 +337,10 @@ export async function verifyPlaybookArticleRefs(
     );
     if (article.length === 0) return { checkCode, ref, status: 'article_not_found' as const };
     const phrase = normalizeForMatch(ref.verifyText);
-    const found = article.some((chunk) => coversClause(chunk, ref.clause) && normalizeForMatch(chunk.chunkText).includes(phrase));
-    return { checkCode, ref, status: found ? ('verified' as const) : ('anchor_not_found' as const) };
+    const found = article.find((chunk) => coversClause(chunk, ref.clause) && normalizeForMatch(chunk.chunkText).includes(phrase));
+    return found
+      ? { checkCode, ref, status: 'verified' as const, chunkId: String(found._id) }
+      : { checkCode, ref, status: 'anchor_not_found' as const };
   });
 }
 

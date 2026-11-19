@@ -255,7 +255,7 @@ const verifyResponse: Schema = {
   required: ['verdicts'],
 };
 
-async function askJson<T>(prompt: string, schema: Schema, parser: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+export async function askJson<T>(prompt: string, schema: Schema, parser: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     const parsed = parser.safeParse(await generateJson(prompt, schema, signal));
     if (parsed.success) return parsed.data;

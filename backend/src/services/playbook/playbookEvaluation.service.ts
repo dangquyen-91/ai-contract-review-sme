@@ -2,6 +2,7 @@ import type { ClauseCategory } from '../../models/clauseTypeTaxonomy.model';
 import { DOCUMENT_CHECKS, DocumentCheck, VAGUE_TERMS } from './documentChecks.data';
 import { DocumentFinding, runDocumentChecks } from './documentChecks.service';
 import {
+  ArticleRefResult,
   ArticleRefStatus,
   getClausePlaybook,
   getContractPlaybook,
@@ -34,6 +35,7 @@ export type CheckOutcome = 'passed' | 'failed' | 'not_applicable' | 'not_checked
 export interface VerifiedArticle {
   ref: LegalArticleRef;
   status: ArticleRefStatus;
+  chunkId?: string;
 }
 
 export interface CheckResult {
@@ -217,7 +219,7 @@ interface CheckContext {
   defaultClauseIndex?: number;
   evidence: ContractEvidence;
   presentClauseTypes: Set<ClauseCategory>;
-  articleStatus: Map<string, ArticleRefStatus>;
+  articleStatus: Map<string, ArticleRefResult>;
 }
 
 function evaluateCheck(check: PlaybookCheck, ctx: CheckContext): CheckResult {
@@ -225,7 +227,10 @@ function evaluateCheck(check: PlaybookCheck, ctx: CheckContext): CheckResult {
     const value = ctx.evidence.facts[fact]?.value;
     return value === undefined ? 'unknown' : value;
   };
-  const verified = (ref: LegalArticleRef): VerifiedArticle => ({ ref, status: ctx.articleStatus.get(refKey(ref)) ?? 'source_unavailable' });
+  const verified = (ref: LegalArticleRef): VerifiedArticle => {
+    const found = ctx.articleStatus.get(refKey(ref));
+    return { ref, status: found?.status ?? 'source_unavailable', chunkId: found?.chunkId };
+  };
   const base: Omit<CheckResult, 'outcome'> = {
     code: check.code,
     group: check.group,
@@ -324,7 +329,7 @@ export async function evaluateContract({ contractType, userParty, clauses, evide
   ];
 
   const statuses = await verifyPlaybookArticleRefs(playbookArticleRefs(units.flatMap((unit) => unit.checks)));
-  const articleStatus = new Map(statuses.map((result) => [refKey(result.ref), result.status]));
+  const articleStatus = new Map(statuses.map((result) => [refKey(result.ref), result]));
 
   const results = units.flatMap((unit) =>
     unit.checks.map((check) =>

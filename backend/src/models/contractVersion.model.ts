@@ -79,12 +79,47 @@ export const legalCoverageSnapshotSchema = new Schema(
 export const keyTermSchema = new Schema(
   {
     key: { type: String, required: true },
+    label: { type: String },
     numberValue: { type: Number },
     booleanValue: { type: Boolean },
+    textValue: { type: String, ...encryptedString },
+    deferred: { type: Boolean },
     clauseId: { type: Types.ObjectId, ref: 'Clause' },
     quote: { type: String, ...encryptedString },
   },
   { _id: false, ...decryptOnSerialize },
+);
+
+export const issueCountsSchema = new Schema(
+  {
+    violations: { type: Number, default: 0 },
+    unclear: { type: Number, default: 0 },
+    missing: { type: Number, default: 0 },
+    negotiable: { type: Number, default: 0 },
+    unverified: { type: Number, default: 0 },
+    referrals: { type: Number, default: 0 },
+    total: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
+export const checkCoverageSchema = new Schema(
+  {
+    playbookVersion: { type: String },
+    checks: { type: Number, default: 0 },
+    passed: { type: Number, default: 0 },
+    failed: { type: Number, default: 0 },
+    notApplicable: { type: Number, default: 0 },
+    notChecked: { type: Number, default: 0 },
+    unverified: { type: Number, default: 0 },
+    documentChecks: { type: Number, default: 0 },
+    clauseTypesWithoutPlaybook: { type: [String], default: [] },
+    notCheckedItems: {
+      type: [new Schema({ code: String, title: String, reason: String }, { _id: false })],
+      default: [],
+    },
+  },
+  { _id: false },
 );
 
 const contractVersionSchema = new Schema(
@@ -118,6 +153,7 @@ const contractVersionSchema = new Schema(
     },
     segmentationError: { type: String },
     segmentationStartedAt: { type: Date },
+    segmentationReviewId: { type: Types.ObjectId, ref: 'Review' },
     riskDetectionStatus: {
       type: String,
       enum: RISK_DETECTION_STATUSES,
@@ -126,18 +162,22 @@ const contractVersionSchema = new Schema(
     },
     riskDetectionError: { type: String },
     riskDetectionStartedAt: { type: Date },
+    riskDetectionReviewId: { type: Types.ObjectId, ref: 'Review' },
     legalRetrievalStatus: { type: String, enum: LEGAL_RETRIEVAL_STATUSES },
     ruleCheckStatus: { type: String, enum: RULE_CHECK_STATUSES },
     legalCoverage: { type: legalCoverageSnapshotSchema },
     overallAssessment: { type: [String], default: [] },
     keyTerms: { type: [keyTermSchema], default: undefined },
     keyTermsExtractedAt: { type: Date },
-    overallRiskLevel: { type: String, enum: RISK_LEVELS, default: 'none', index: true },
+    overallRiskLevel: { type: String, enum: RISK_LEVELS, index: true },
+    issueCounts: { type: issueCountsSchema, default: undefined },
+    checkCoverage: { type: checkCoverageSchema, default: undefined },
     analysisFocus: { type: String },
     summaryPoints: { type: [String], default: [] },
     summaryStatus: { type: String, enum: SUMMARY_STATUSES, default: 'pending', index: true },
     summaryError: { type: String },
     summaryStartedAt: { type: Date },
+    summaryReviewId: { type: Types.ObjectId, ref: 'Review' },
   },
   { timestamps: true, ...decryptOnSerialize },
 );

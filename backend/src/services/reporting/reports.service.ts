@@ -33,6 +33,7 @@ type Usage = { _id: Types.ObjectId; completed: number; failed: number };
 type ReviewStatistics = {
   outcomes: Outcomes[];
   risks: { _id: string; count: number }[];
+  issues: { _id: string; count: number }[];
   daily: Day[];
   usage: Usage[];
   pending: { _id: string; count: number }[];
@@ -127,6 +128,25 @@ async function getReportSnapshot(
             },
             { $group: { _id: { $ifNull: ['$risk', 'unknown'] }, count: { $sum: 1 } } },
           ],
+          issues: [
+            { $match: { finishedAt: range, status: 'completed', 'result.issueCounts': { $exists: true } } },
+            { $sort: { finishedAt: -1, _id: -1 } },
+            { $group: { _id: '$contractId', counts: { $first: '$result.issueCounts' } } },
+            {
+              $group: {
+                _id: {
+                  $switch: {
+                    branches: [
+                      { case: { $gt: [{ $ifNull: ['$counts.violations', 0] }, 0] }, then: 'withViolations' },
+                      { case: { $gt: [{ $ifNull: ['$counts.total', 0] }, 0] }, then: 'withIssues' },
+                    ],
+                    default: 'noIssues',
+                  },
+                },
+                count: { $sum: 1 },
+              },
+            },
+          ],
           daily: [
             {
               $match: { finishedAt: range, status: { $in: ['completed', 'failed', 'cancelled'] } },
@@ -218,6 +238,13 @@ async function getReportSnapshot(
     unknown: riskCounts.unknown ?? 0,
   };
   const assessedContracts = risks.high + risks.medium + risks.low + risks.none;
+  const issueRows = Object.fromEntries((stats?.issues ?? []).map((row) => [row._id, row.count]));
+  const issues = {
+    withViolations: issueRows.withViolations ?? 0,
+    withIssues: issueRows.withIssues ?? 0,
+    noIssues: issueRows.noIssues ?? 0,
+  };
+  const checkedContracts = issues.withViolations + issues.withIssues + issues.noIssues;
   const daysByDate = new Map(stats?.daily.map((row) => [row._id, row]));
   const names = new Map(organizations.map((org) => [String(org._id), org.name]));
   // Resolve only organization names. Never include individual users' names or emails in aggregate reports.
@@ -272,6 +299,16 @@ async function getReportSnapshot(
         medium: percentage(risks.medium, assessedContracts),
         low: percentage(risks.low, assessedContracts),
         none: percentage(risks.none, assessedContracts),
+      },
+    },
+    issues: {
+      ...issues,
+      checkedContracts,
+      violationRate: percentage(issues.withViolations, checkedContracts),
+      percentages: {
+        withViolations: percentage(issues.withViolations, checkedContracts),
+        withIssues: percentage(issues.withIssues, checkedContracts),
+        noIssues: percentage(issues.noIssues, checkedContracts),
       },
     },
     payments,
@@ -329,6 +366,7 @@ export async function getComparedReports(
     failed: report.reviews.failed,
     success: report.reviews.successRate,
     risk: report.risks.highRiskRate,
+    violations: report.issues.violationRate,
     duration: report.reviews.averageDurationMs,
     units: report.consumedUnits.analysis,
     chat: report.consumedUnits.chat,
@@ -344,7 +382,7 @@ export async function getComparedReports(
       compareReportMetric(
         currentValues[key],
         previousValues?.[key] ?? null,
-        ['success', 'risk'].includes(key),
+        ['success', 'risk', 'violations'].includes(key),
       ),
     ]),
   );
@@ -365,6 +403,7 @@ export async function getComparedReports(
           : null,
       changes,
       previousRisk: previous?.risks ?? null,
+      previousIssues: previous?.issues ?? null,
     },
     trend: {
       granularity: periods.granularity,

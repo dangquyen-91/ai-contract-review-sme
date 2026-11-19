@@ -39,6 +39,7 @@ export async function segmentClauses(
   const versionId = versionWithText._id;
   const claimed = await claimStage(versionId, 'segmentation', {
     blockedBy: ['summary', 'riskDetection'],
+    reviewId,
   });
   if (!claimed) {
     throw AppError.conflict('Contract analysis is already running for this contract');
@@ -91,12 +92,14 @@ export async function segmentClauses(
           summaryPoints: [],
           riskDetectionStatus: 'pending',
           overallAssessment: [],
-          overallRiskLevel: 'none',
         },
         $unset: {
           segmentationError: '',
           summaryError: '',
           riskDetectionError: '',
+          overallRiskLevel: '',
+          issueCounts: '',
+          checkCoverage: '',
           legalRetrievalStatus: '',
           ruleCheckStatus: '',
           legalCoverage: '',

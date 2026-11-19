@@ -78,12 +78,13 @@ async function buildContractContext(
     const texts = f.legalBasis.map((b) => b.text).filter(Boolean);
     return texts.length ? ` Legal basis: ${texts.join(' ')}` : '';
   };
+  const labelOf = (f: (typeof findings)[number]) => f.label ?? f.severity ?? 'finding';
   const findingLines = findings.flatMap((f) => {
     if (!f.clauseId)
-      return [`- (${f.severity}, missing clause) ${f.title}: ${f.problem.join(' ')}${legalBasisOf(f)}`];
+      return [`- (${labelOf(f)}, whole contract) ${f.title}: ${f.problem.join(' ')}${legalBasisOf(f)}`];
     const clauseIndex = clauseIndexById.get(f.clauseId.toString());
     if (clauseIndex === undefined) return [];
-    return [`- (${f.severity}, clause ${clauseIndex + 1}) ${f.title}: ${f.problem.join(' ')}${legalBasisOf(f)}`];
+    return [`- (${labelOf(f)}, clause ${clauseIndex + 1}) ${f.title}: ${f.problem.join(' ')}${legalBasisOf(f)}`];
   });
   const findingBlock =
     findingLines.length > 0 ? findingLines.join('\n') : '(no risk findings recorded)';

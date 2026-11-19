@@ -99,20 +99,31 @@ interface ClaimOptions {
   blockedBy?: AnalysisStage[];
   requireSegmented?: boolean;
   set?: Record<string, unknown>;
+  reviewId?: Types.ObjectId | string;
 }
 
 export async function claimStage(
   versionId: Types.ObjectId,
   stage: AnalysisStage,
-  { blockedBy = [], requireSegmented = false, set = {} }: ClaimOptions = {},
+  { blockedBy = [], requireSegmented = false, set = {}, reviewId }: ClaimOptions = {},
 ) {
   return ContractVersionModel.findOneAndUpdate(
     {
       _id: versionId,
       ...(requireSegmented ? { segmentationStatus: 'completed' } : {}),
-      $and: [stage, ...blockedBy].map(notRunning),
+      $and: [
+        reviewId ? { $or: [notRunning(stage), { [`${stage}ReviewId`]: reviewId }] } : notRunning(stage),
+        ...blockedBy.map(notRunning),
+      ],
     },
-    { $set: { [`${stage}Status`]: 'processing', [`${stage}StartedAt`]: new Date(), ...set } },
+    {
+      $set: {
+        [`${stage}Status`]: 'processing',
+        [`${stage}StartedAt`]: new Date(),
+        ...(reviewId ? { [`${stage}ReviewId`]: reviewId } : {}),
+        ...set,
+      },
+    },
     { new: true },
   );
 }

@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { RISK_CODES, RISK_SEVERITIES } from '../models/riskFinding.model';
 import { reviewIdParamSchema } from './review.validation';
 
+export const EXPERT_FINDING_GROUPS = ['clarity', 'completeness', 'balance', 'compliance'] as const;
+
 const note = z.string().trim().min(1).max(2000);
 const points = z.array(z.string().trim().min(1).max(2000)).max(20);
 
@@ -19,6 +21,7 @@ export const requestVerificationBodySchema = z
   .strict();
 
 const findingContent = {
+  checkGroup: z.enum(EXPERT_FINDING_GROUPS).optional(),
   severity: z.enum(RISK_SEVERITIES).optional(),
   riskCode: z.enum(RISK_CODES).optional(),
   title: z.string().trim().min(1).max(300).optional(),
@@ -54,15 +57,20 @@ export const decideFindingBodySchema = z
 export const addFindingBodySchema = z
   .object({
     clauseIndex: z.number().int().min(0).optional(),
-    severity: z.enum(RISK_SEVERITIES),
-    riskCode: z.enum(RISK_CODES),
+    checkGroup: z.enum(EXPERT_FINDING_GROUPS).optional(),
+    severity: z.enum(RISK_SEVERITIES).optional(),
+    riskCode: z.enum(RISK_CODES).optional(),
     title: z.string().trim().min(1).max(300),
     problem: points.min(1),
     consequences: points.default([]),
     recommendations: points.default([]),
     reason: note.optional(),
   })
-  .strict();
+  .strict()
+  .refine((v) => v.checkGroup !== undefined || v.severity !== undefined, {
+    message: 'Provide checkGroup for the added finding',
+    path: ['checkGroup'],
+  });
 
 export const approveVerificationBodySchema = z.object({ decisionNote: note.optional() }).strict().default({});
 

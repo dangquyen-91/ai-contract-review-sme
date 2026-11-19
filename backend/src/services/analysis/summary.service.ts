@@ -35,6 +35,7 @@ export async function generateContractSummary(
   const claimed = await claimStage(version._id, 'summary', {
     requireSegmented: true,
     set: analysisFocus ? { analysisFocus } : {},
+    reviewId,
   });
   if (!claimed) {
     throw AppError.conflict('Summary is already running or clauses are being re-segmented');
