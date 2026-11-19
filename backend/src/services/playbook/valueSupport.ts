@@ -78,6 +78,57 @@ export function numericCandidates(kind: FieldKind, quote: string): number[] {
   }
 }
 
+const DIGIT_WORDS: Record<string, number> = {
+  khong: 0,
+  mot: 1,
+  hai: 2,
+  ba: 3,
+  bon: 4,
+  tu: 4,
+  nam: 5,
+  lam: 5,
+  nham: 5,
+  sau: 6,
+  bay: 7,
+  tam: 8,
+  chin: 9,
+};
+const SCALE_WORDS: Record<string, number> = { nghin: 1e3, ngan: 1e3, trieu: 1e6, ty: 1e9, ti: 1e9 };
+
+export function parseVietnameseNumberWords(text: string): number | undefined {
+  const words = foldForNumbers(text).match(/\p{L}+/gu) ?? [];
+  let total = 0;
+  let section = 0;
+  let pending = 0;
+  let numberWords = 0;
+  for (const word of words) {
+    if (word in DIGIT_WORDS) {
+      pending = DIGIT_WORDS[word];
+      numberWords++;
+    } else if (word === 'muoi' && pending === 0) {
+      section += 10;
+      numberWords++;
+    } else if (word === 'muoi') {
+      section += pending * 10;
+      pending = 0;
+      numberWords++;
+    } else if (word === 'tram') {
+      section += pending * 100;
+      pending = 0;
+      numberWords++;
+    } else if (word in SCALE_WORDS) {
+      total += (section + pending || 1) * SCALE_WORDS[word];
+      section = 0;
+      pending = 0;
+      numberWords++;
+    } else if (word === 'linh' || word === 'le') {
+      numberWords++;
+    }
+  }
+  if (numberWords < 2) return undefined;
+  return total + section + pending;
+}
+
 const closeTo = (a: number, b: number) => Math.abs(a - b) <= Math.max(1e-6, Math.abs(b) * 0.005);
 
 export const numberSupportedByQuote = (kind: FieldKind, quote: string, value: number) =>

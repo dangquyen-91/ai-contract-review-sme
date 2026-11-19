@@ -15,7 +15,7 @@ import {
   PlaybookCheck,
   PlaybookField,
 } from './playbookSchema';
-import { locateQuote } from './quoteMatching';
+import { foldForMatch, locateQuote } from './quoteMatching';
 import { numberSupportedByQuote, numericCandidates, textSupportedByQuote } from './valueSupport';
 
 export interface EvidenceClause {
@@ -59,10 +59,18 @@ export interface FactEvidence {
   endOffset?: number;
 }
 
+export interface ClauseCoverage {
+  clauseIndex: number;
+  quote: string;
+  startOffset: number;
+  endOffset: number;
+}
+
 export interface ContractEvidence {
   playbooks: PlaybookEvidence[];
   contractFields: Record<string, FieldEvidence>;
   facts: Partial<Record<ContractFact, FactEvidence>>;
+  clauseCoverage: Partial<Record<ClauseCategory, ClauseCoverage>>;
 }
 
 export interface CollectEvidenceInput {
@@ -172,6 +180,17 @@ const searchParser = z.object({
     )
     .nullable()
     .optional(),
+  coverage: z
+    .array(
+      z.object({
+        id: z.string(),
+        covered: z.boolean(),
+        clauseIndex: z.number().int().nullable().optional(),
+        quote: z.string().nullable().optional(),
+      }),
+    )
+    .nullable()
+    .optional(),
 });
 
 const searchResponse: Schema = {
@@ -197,8 +216,21 @@ const searchResponse: Schema = {
         required: ['fact', 'value'],
       },
     },
+    coverage: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          id: { type: Type.STRING },
+          covered: { type: Type.BOOLEAN },
+          clauseIndex: { type: Type.INTEGER, nullable: true },
+          quote: { type: Type.STRING, nullable: true },
+        },
+        required: ['id', 'covered'],
+      },
+    },
   },
-  required: ['fields', 'facts'],
+  required: ['fields', 'facts', 'coverage'],
 };
 
 const verifyParser = z.object({
@@ -266,7 +298,7 @@ async function runWithConcurrency<T, R>(
 
 const RULES_BLOCK = `Rules:
 - Only report what the contract text says. Never apply legal defaults, never guess, never judge whether a term is fair or lawful.
-- Every "stated" or "deferred" field MUST have a "quote": the shortest sentence or phrase copied word for word from the contract that states the information, including for number and true/false fields. It must appear verbatim in the text. Use null only for "absent".
+- Every "stated" or "deferred" field MUST have a "quote": the shortest sentence or phrase copied word for word from the contract that states the information, including for number and true/false fields. It must appear verbatim in the text as ONE continuous passage: never join separate parts with "..." or "…"; if the information is spread out, quote the single most relevant passage. Use null only for "absent".
 - A true/false field is "stated" only when the text says so; if the text is silent, the field is "absent", not false.
 - For text fields, "value" uses the exact words of the contract. For number fields, follow the unit given for the field.
 - "deferred" is only for fields marked deferrable, when the text explicitly says the information is fixed in another document (an appendix, a purchase order, a price list); quote that reference.`;
@@ -319,9 +351,32 @@ interface Located {
   exact: boolean;
 }
 
-function locateInClause(clause: EvidenceClause, quote: string): Located | null {
-  const location = locateQuote(clause.text, quote);
-  return location && { clause, ...location };
+const quoteFragments = (quote: string) =>
+  quote
+    .split(/\s*(?:\.{3,}|…)\s*/)
+    .map((part) => part.trim())
+    .filter((part) => foldForMatch(part).length >= 4);
+
+function locateFragmentsInClause(clause: EvidenceClause, fragments: string[], fuzzy: boolean): Located | null {
+  let cursor = 0;
+  let first: Located | null = null;
+  let end = 0;
+  for (const fragment of fragments) {
+    const location = locateQuote(clause.text.slice(cursor), fragment, { fuzzy });
+    if (!location) return null;
+    const start = cursor + location.start;
+    cursor = cursor + location.end;
+    first ??= { clause, start, end: cursor, exact: false };
+    end = cursor;
+  }
+  return first && { ...first, end };
+}
+
+function locateInClause(clause: EvidenceClause, quote: string, fuzzy = true): Located | null {
+  const location = locateQuote(clause.text, quote, { fuzzy });
+  if (location) return { clause, ...location };
+  const fragments = quoteFragments(quote);
+  return fragments.length > 1 ? locateFragmentsInClause(clause, fragments, fuzzy) : null;
 }
 
 function locateInContract(clauses: EvidenceClause[], quote: string, clauseIndex?: number | null): Located | null {
@@ -329,10 +384,19 @@ function locateInContract(clauses: EvidenceClause[], quote: string, clauseIndex?
   const fromPreferred = preferred && locateInClause(preferred, quote);
   if (fromPreferred) return fromPreferred;
   for (const clause of clauses) {
-    const location = locateQuote(clause.text, quote, { fuzzy: false });
-    if (location) return { clause, ...location };
+    const location = locateInClause(clause, quote, false);
+    if (location) return location;
   }
-  return null;
+  const fragments = quoteFragments(quote);
+  if (fragments.length < 2) return null;
+  const located = fragments.map((fragment) => {
+    for (const clause of clauses) {
+      const location = locateQuote(clause.text, fragment, { fuzzy: false });
+      if (location) return { clause, ...location, exact: false };
+    }
+    return null;
+  });
+  return located.every(Boolean) ? located[0] : null;
 }
 
 interface PendingClaim {
@@ -419,9 +483,15 @@ function searchPrompt(
   clauses: EvidenceClause[],
   requests: { id: string; field: PlaybookField; scope: string }[],
   facts: ContractFact[],
+  coverage: { id: ClauseCategory; topic: string }[],
   redactor: Redactor,
 ) {
   const contract = clauses.map((clause) => `[index=${clause.index}] ${redactor.mask(clause.text)}`).join('\n\n');
+  const coverageBlock = coverage.length
+    ? `Task 3, "coverage": the topics below were not found as separate clauses. For each topic id, set "covered" to true only if some clause actually sets out the parties' terms on that topic (a passing mention is not enough), with its "clauseIndex" and a verbatim "quote" showing those terms; otherwise false.\n${coverage
+        .map((item) => `- id="${item.id}": ${item.topic}`)
+        .join('\n')}`
+    : 'Task 3, "coverage": return an empty array.';
   const requestBlock = requests.length
     ? `Task 1, "fields": search the WHOLE contract for each request and return one item per request with "key" set to the request key, "state", "clauseIndex" of the clause containing the quote, "quote" and the value.\n${requests
         .map((request) => `${fieldLine(request.field, request.id)} (about: ${request.scope})`)
@@ -439,6 +509,8 @@ ${describeReviewContext(context)}
 ${requestBlock}
 
 ${factBlock}
+
+${coverageBlock}
 
 ${RULES_BLOCK}${placeholderInstruction(redactor)}
 
@@ -508,6 +580,11 @@ export async function collectContractEvidence({
         ...acceptance.pending,
         apply: (verdict) => {
           if (verdict === 'supported') return;
+          if (evidence.value === false) {
+            evidence.state = 'absent';
+            delete evidence.value;
+            return;
+          }
           evidence.state = 'uncertain';
           evidence.uncertainReason = 'value_not_supported';
         },
@@ -554,13 +631,26 @@ export async function collectContractEvidence({
     neededFacts.map((fact) => [fact, { fact, value: 'unknown' as const }]),
   );
 
-  const requestChunks = requests.length ? chunk(requests, MAX_SEARCH_REQUESTS) : neededFacts.length ? [[]] : [];
+  const presentTypes = new Set(clauses.flatMap((clause) => clause.clauseTypes));
+  const coverageRequests = contractChecks.flatMap((check) =>
+    check.test.kind === 'clause_present' && !presentTypes.has(check.test.clauseType)
+      ? [{ id: check.test.clauseType, topic: check.title }]
+      : [],
+  );
+  const clauseCoverage: Partial<Record<ClauseCategory, ClauseCoverage>> = {};
+
+  const requestChunks = requests.length
+    ? chunk(requests, MAX_SEARCH_REQUESTS)
+    : neededFacts.length || coverageRequests.length
+      ? [[]]
+      : [];
   for (const [chunkIndex, requestChunk] of requestChunks.entries()) {
     signal?.throwIfAborted();
     const askFacts = chunkIndex === 0 ? neededFacts : [];
-    if (requestChunk.length === 0 && askFacts.length === 0) continue;
+    const askCoverage = chunkIndex === 0 ? coverageRequests : [];
+    if (requestChunk.length === 0 && askFacts.length === 0 && askCoverage.length === 0) continue;
     const result = await askJson(
-      searchPrompt(context, clauses, requestChunk, askFacts, redactor),
+      searchPrompt(context, clauses, requestChunk, askFacts, askCoverage, redactor),
       searchResponse,
       searchParser,
       signal,
@@ -608,6 +698,27 @@ export async function collectContractEvidence({
         },
       });
     }
+    for (const raw of result.coverage ?? []) {
+      const request = askCoverage.find((item) => item.id === raw.id);
+      if (!request || !raw.covered) continue;
+      const quote = raw.quote ? redactor.unmask(raw.quote).trim() : '';
+      const located = quote ? locateInContract(clauses, quote, raw.clauseIndex) : null;
+      if (!located) continue;
+      const covered: ClauseCoverage = {
+        clauseIndex: located.clause.index,
+        quote: located.clause.text.slice(located.start, located.end),
+        startOffset: located.clause.startOffset + located.start,
+        endOffset: located.clause.startOffset + located.end,
+      };
+      clauseCoverage[request.id] = covered;
+      queueClaim({
+        quote: covered.quote,
+        claim: `This text sets out the parties' terms on the following topic: ${request.topic}`,
+        apply: (verdict) => {
+          if (verdict !== 'supported') delete clauseCoverage[request.id];
+        },
+      });
+    }
   }
 
   for (const claims of chunk(pending, MAX_VERIFY_ITEMS)) {
@@ -627,5 +738,5 @@ export async function collectContractEvidence({
   });
   for (const field of contractFieldList) contractFields[field.key] ??= { key: field.key, state: 'absent' };
 
-  return { playbooks, contractFields, facts };
+  return { playbooks, contractFields, facts, clauseCoverage };
 }
