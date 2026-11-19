@@ -6,6 +6,7 @@ import { useDashboardWorkspace } from "@/hooks/dashboard/use-dashboard-workspace
 import { useReviewWorkflow } from "@/hooks/review/use-review-workflow";
 import { useReviewResultNavigation } from "@/hooks/review/use-review-result-navigation";
 import { useReviewTimelineScroll } from "@/hooks/review/use-review-timeline-scroll";
+import { ReviewCostConfirmationDialog } from "@/components/review/timeline/review-cost-confirmation-dialog";
 
 type ReviewWorkflow = ReturnType<typeof useReviewWorkflow> & { setOpenContractPage: (contractId: string | null) => void };
 const ReviewWorkflowContext = createContext<ReviewWorkflow | null>(null);
@@ -33,7 +34,12 @@ export function ReviewWorkflowProvider({ children }: { children: ReactNode; init
     resultRef: workflow.reviewResultRef,
     onOpenResult: openResult,
   });
-  return <ReviewWorkflowContext.Provider value={{ ...workflow, setOpenContractPage }}>{children}</ReviewWorkflowContext.Provider>;
+  return (
+    <ReviewWorkflowContext.Provider value={{ ...workflow, setOpenContractPage }}>
+      {children}
+      {workflow.costConfirmation && <ReviewCostConfirmationDialog {...workflow.costConfirmation} />}
+    </ReviewWorkflowContext.Provider>
+  );
 }
 
 export function useDashboardReviewWorkflow() {

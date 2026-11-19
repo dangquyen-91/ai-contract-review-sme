@@ -7,7 +7,7 @@ import { dashboardKeys } from "@/lib/query-keys/dashboard";
 import { contractsApi } from "@/lib/api/contracts";
 import { ApiClientError } from "@/lib/api/client";
 import { isAwaitingClassification } from "@/lib/contracts/contract-classification";
-import { confirmReviewCost } from "@/lib/review/confirm-review-cost";
+import { confirmReviewCost, type ConfirmReviewCost } from "@/lib/review/confirm-review-cost";
 import type { ReviewBillingConfirmation } from "@/types/contracts";
 import type {
   ChatStreamEvent,
@@ -23,6 +23,7 @@ import { contractKeys, contractMutationKeys } from "@/lib/query-keys/contracts";
 import type { DashboardContractFilter } from "@/types/dashboard";
 
 type ReviewContractVariables = {
+  confirmCost: ConfirmReviewCost;
   billing?: ReviewBillingConfirmation;
   contractId: string;
   analysisFocus?: string;
@@ -416,6 +417,7 @@ export function useReviewContractMutation() {
       onProgress,
       resumeOnly,
       billing,
+      confirmCost,
     }) => {
       controller.current?.abort();
       const request = new AbortController();
@@ -430,7 +432,7 @@ export function useReviewContractMutation() {
           onProgress,
           onConnection: setReconnecting,
           beforeCharge: () =>
-            billing ? Promise.resolve(billing) : confirmReviewCost(contractId),
+            billing ? Promise.resolve(billing) : confirmReviewCost(contractId, confirmCost, request.signal),
         });
       } finally {
         if (!request.signal.aborted) setReconnecting(false);

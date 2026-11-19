@@ -9,6 +9,7 @@ import { isReviewCancelled, readReviewSession } from "@/lib/review/review-sessio
 import { serverCodeMessage } from "@/lib/review/review-error-codes";
 import { reviewBlockReason, reviewBlockedMessage, type ReviewBlockReason } from "@/lib/review/review-failure";
 import type { ContractReviewRun, DashboardContract, DuplicateFileMatch, ReviewBillingConfirmation } from "@/types/contracts";
+import type { ConfirmReviewCost, ReviewCostPrompt } from "@/lib/review/confirm-review-cost";
 
 type ReviewStage = "idle" | "uploading" | "reviewing" | "done";
 type Access = { upload: boolean; review: boolean };
@@ -55,6 +56,11 @@ export function useReviewWorkflow({ access, workspaceReady = true, personal = fa
   const [reviewError, setReviewError] = useState("");
   const [reviewBlocked, setReviewBlocked] = useState<ReviewBlockReason | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [costConfirmation, setCostConfirmation] = useState<{
+    details: ReviewCostPrompt;
+    onConfirm: () => void;
+    onCancel: () => void;
+  } | null>(null);
   const [duplicateUpload, setDuplicateUpload] = useState<DuplicateUpload | null>(null);
   const uploadContractMutation = useUploadContractMutation();
   const uploadVersionMutation = useUploadContractVersionMutation();
@@ -152,6 +158,23 @@ export function useReviewWorkflow({ access, workspaceReady = true, personal = fa
     }
   }
 
+  const confirmCost: ConfirmReviewCost = (details, signal) => {
+    signal.throwIfAborted();
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const abort = () => settle(false);
+      function settle(accepted: boolean) {
+        if (settled) return;
+        settled = true;
+        signal.removeEventListener("abort", abort);
+        setCostConfirmation(null);
+        resolve(accepted);
+      }
+      signal.addEventListener("abort", abort, { once: true });
+      setCostConfirmation({ details, onConfirm: () => settle(true), onCancel: () => settle(false) });
+    });
+  };
+
   async function runReview(contractId: string, focus = "", resumeOnly = false, billing?: ReviewBillingConfirmation) {
     setSelectedContractId(contractId);
     setRetryKind("run");
@@ -160,7 +183,7 @@ export function useReviewWorkflow({ access, workspaceReady = true, personal = fa
     setReviewProgress(null);
     activeReviewRequest.current = contractId;
     window.history.replaceState(window.history.state, "", `/contract/${encodeURIComponent(contractId)}?reviewMode=resume`);
-    try { await reviewContractMutation.mutateAsync({ contractId, analysisFocus: focus.trim() || undefined, resumeOnly, billing, onProgress: (review) => {
+    try { await reviewContractMutation.mutateAsync({ contractId, analysisFocus: focus.trim() || undefined, resumeOnly, billing, confirmCost, onProgress: (review) => {
       setReviewProgress(review);
       if (review.status === "completed") setRetryKind("load");
     } }); }
@@ -246,5 +269,5 @@ export function useReviewWorkflow({ access, workspaceReady = true, personal = fa
     }
   }
 
-  return { selectedContractId, duplicateUpload, dismissDuplicateUpload, uploadDuplicateAnyway, file, title, setTitle, uploadedContract, setUploadedContract, cancelReview, cancelling, reviewResult, reviewProgress, reviewResultRef, reviewTimelineRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, runReview, reviewUploadedContract, reviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing: reviewContractMutation.isPending, loadingResult: resultQuery.isLoadingResult, reconnecting: reviewContractMutation.reconnecting };
+  return { costConfirmation, selectedContractId, duplicateUpload, dismissDuplicateUpload, uploadDuplicateAnyway, file, title, setTitle, uploadedContract, setUploadedContract, cancelReview, cancelling, reviewResult, reviewProgress, reviewResultRef, reviewTimelineRef, timelineScrollRequest, pendingReviewId, retryKind, reviewError, reviewBlocked, stage, isReviewing, selectFile, runReview, reviewUploadedContract, reviewExisting, retryReview, activeReviewRequest, workflowComplete, reviewing: reviewContractMutation.isPending, loadingResult: resultQuery.isLoadingResult, reconnecting: reviewContractMutation.reconnecting };
 }
