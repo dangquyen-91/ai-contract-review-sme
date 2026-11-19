@@ -338,19 +338,18 @@ classDiagram
         +segment: String
         +governingLaws: String[]
         +legalSourceCodes: String[]
-        +mandatoryClauses: ClauseCategory[]
-        +industryRules: IndustryRule[]
         +redactionPolicy: SensitiveDataType[]
     }
     class ReviewContext {
         <<value object>>
         +profileCode: String
         +contractLabel: String
+        +governingLaws: String[]
         +legalSourceCodes: String[]
+        +partyCode: String
         +partyName: String
         +industryName: String
-        +industryChecks: String[]
-        +mandatoryClauses: ClauseCategory[]
+        +clauseCategories: ClauseCategory[]
         +redactionPolicy: SensitiveDataType[]
     }
     class ContractVersion {
@@ -361,7 +360,9 @@ classDiagram
         +overallAssessment: String[]
         +issueCounts: IssueCounts
         +checkCoverage: CheckCoverage
-        +overallRiskLevel: RiskLevel (legacy)
+        +summaryPoints: String[]
+        +summarySources: SummarySource[]
+        +keyTerms: KeyTerm[]
     }
     class Review {
         +contractId: ObjectId
@@ -380,11 +381,11 @@ classDiagram
     class ReviewResult {
         +issueCounts: IssueCounts
         +checkCoverage: CheckCoverage
-        +overallRiskLevel: RiskLevel (legacy)
         +overallAssessment: String[]
         +summaryPoints: String[]
+        +summarySources: SummarySource[]
         +clauseCount: Number
-        +findingCounts: FindingCounts (legacy)
+        +keyTerms: KeyTerm[]
         +findings: FindingSnapshot[]
         +partial: Boolean
     }
@@ -392,12 +393,12 @@ classDiagram
         +findingType: String
         +checkCode: String
         +checkGroup: String
+        +outcome: String
         +label: String
-        +severity: Severity (legacy)
         +title: String
         +clauseIndex: Number
+        +clauseTitle: String
         +detectedBy: String
-        +ruleCode: String
     }
     class Clause {
         +contractVersionId: ObjectId
@@ -407,6 +408,7 @@ classDiagram
         +text: String
         +clauseTypeId: ObjectId
         +summary: String
+        +summaryKind: String
     }
     class ClauseTypeTaxonomy {
         +code: ClauseCategory
@@ -427,7 +429,6 @@ classDiagram
         +evidence: FindingEvidence[]
         +basis: FindingBasis
         +noVerifiedLegalBasis: Boolean
-        +severity: Severity (legacy)
         +title: String
         +problem: String[]
         +consequences: String[]
@@ -436,8 +437,6 @@ classDiagram
         +proposedRevision: ProposedRevision
         +status: String
         +detectedBy: String
-        +ruleCode: String
-        +ruleVersion: Number
     }
     class LegalBasis {
         +text: String
@@ -474,7 +473,6 @@ classDiagram
     }
 
     ContractProfile ..> ReviewContext : builds
-    ContractProfile ..> ClauseTypeTaxonomy : mandatoryClauses
     ContractVersion "1" -- "0..*" Review : reviewed by
     UsageRun "1" -- "1" Review : charges
     Review "1" *-- "0..1" ReviewResult
@@ -496,7 +494,7 @@ classDiagram
 | --- | --- |
 | `Review` | 1 lần rà soát gồm 3 stage segmentation / summary / riskDetection, gắn với 1 `UsageRun` |
 | `ReviewContext` | Ngữ cảnh rà soát dựng từ `ContractProfile` + ngành của tổ chức (luật áp dụng, điều khoản bắt buộc, chính sách che dữ liệu) |
-| `RiskFinding` | Một phép kiểm không đạt trên 1 điều khoản (`clause_risk`), nội dung bị thiếu (`missing_clause`) hoặc một điểm đề nghị chuyên gia xem xét (`referral`); có mã phép kiểm, nhóm, nhãn cố định, bằng chứng trích nguyên văn và căn cứ. Nguồn `playbook` / `document_check` / `expert_referral` / `expert`; `rule` / `llm` / `hybrid` / `checklist` và `severity` chỉ còn ở dữ liệu cũ |
+| `RiskFinding` | Một phép kiểm không đạt trên 1 điều khoản (`clause_risk`), nội dung bị thiếu (`missing_clause`) hoặc một điểm đề nghị chuyên gia xem xét (`referral`); có mã phép kiểm, nhóm, nhãn cố định, bằng chứng trích nguyên văn và căn cứ. Nguồn `playbook` / `document_check` / `expert_referral` / `expert`; không có mức độ nghiêm trọng |
 | `LegalBasis` | Căn cứ pháp lý, có trạng thái đối chiếu kho luật (`verified` … `unreferenced`) |
 | `RiskCitation` | Liên kết finding với đoạn luật kèm điểm liên quan |
 

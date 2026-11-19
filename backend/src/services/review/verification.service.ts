@@ -2,7 +2,7 @@ import mongoose, { ClientSession, HydratedDocument, Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { ClauseModel } from '../../models/clause.model';
 import { ContractModel } from '../../models/contract.model';
-import { ContractVersionModel, RISK_LEVELS } from '../../models/contractVersion.model';
+import { ContractVersionModel } from '../../models/contractVersion.model';
 import { EXPERT_ACTIONS, ExpertActionModel } from '../../models/expertAction.model';
 import {
   ExpertReview,
@@ -21,14 +21,12 @@ import { getCurrentVersion } from '../contract/contractVersion.service';
 import { redactionPolicyFor } from '../contract/redactionPolicy.service';
 import { archiveExpertWork, historicalExpertWork } from './expertWork.service';
 import { FAILED_CHECK_LABELS } from '../playbook/playbookSchema';
+import { countIssues } from '../playbook/playbook.service';
 
-type RiskLevel = (typeof RISK_LEVELS)[number];
 type ExpertActionType = (typeof EXPERT_ACTIONS)[number];
 type FindingDoc = HydratedDocument<RiskFinding>;
 
-const SEVERITY_RANK: Record<RiskLevel, number> = { none: 0, low: 1, medium: 2, high: 3 };
-
-const CONTENT_FIELDS = ['checkGroup', 'severity', 'riskCode', 'title', 'problem', 'consequences', 'recommendations'] as const;
+const CONTENT_FIELDS = ['checkGroup', 'title', 'problem', 'consequences', 'recommendations'] as const;
 
 type IssueGroup = keyof typeof FAILED_CHECK_LABELS;
 
@@ -43,10 +41,8 @@ async function snapshotOf(finding: FindingDoc) {
   const clause = finding.clauseId ? await ClauseModel.findById(finding.clauseId).select('index') : null;
   return {
     findingType: finding.findingType,
-    severity: finding.severity ?? undefined,
-    checkGroup: finding.checkGroup ?? undefined,
-    label: finding.label ?? undefined,
-    riskCode: finding.riskCode ?? undefined,
+    checkGroup: finding.checkGroup,
+    label: finding.label,
     title: finding.title,
     problem: [...finding.problem],
     consequences: [...finding.consequences],
@@ -222,11 +218,9 @@ export async function decideFinding(
     }
   }
   const after = await snapshotOf(finding);
-  const originalSeverity = finding.verification?.originalSeverity ?? (addedByExpert ? undefined : before.severity);
   const originalGroup = finding.verification?.originalGroup ?? (addedByExpert ? undefined : before.checkGroup);
   finding.set('verification', {
     verdict: addedByExpert ? 'added' : input.verdict,
-    originalSeverity,
     originalGroup,
     reason: input.reason ?? (addedByExpert ? finding.verification?.reason : undefined),
     verifiedBy: expertId,
@@ -255,11 +249,9 @@ export async function addFinding(expertId: string, reviewId: string, input: AddF
     orgId: session.orgId,
     clauseId,
     findingType: clauseId ? 'clause_risk' : 'missing_clause',
-    severity: input.severity,
-    ...(input.checkGroup
-      ? { checkGroup: input.checkGroup, label: FAILED_CHECK_LABELS[input.checkGroup], outcome: 'failed' }
-      : {}),
-    riskCode: input.riskCode,
+    checkGroup: input.checkGroup,
+    label: FAILED_CHECK_LABELS[input.checkGroup],
+    outcome: 'failed',
     title: input.title,
     problem: input.problem,
     consequences: input.consequences,
@@ -292,33 +284,12 @@ export async function removeFinding(expertId: string, reviewId: string, findingI
 
 export async function approveVerification(expertId: string, reviewId: string, decisionNote?: string) {
   const { session, review } = await loadOwnSession(expertId, reviewId);
-  const findings = await RiskFindingModel.find({ reviewId: review._id }).select('severity checkGroup outcome verification');
+  const findings = await RiskFindingModel.find({ reviewId: review._id }).select('checkGroup outcome verification');
   const pending = findings.filter((finding) => !finding.verification);
   if (pending.length) {
     throw AppError.badRequest(`Còn ${pending.length} rủi ro chưa được xử lý.`, 'VERIFICATION_INCOMPLETE');
   }
-  const kept = findings.filter((finding) => finding.verification?.verdict !== 'rejected');
-  const legacy = kept.length > 0 && kept.every((finding) => !finding.checkGroup);
-  let versionUpdate: Record<string, unknown>;
-  if (legacy) {
-    let overallRiskLevel: RiskLevel = 'none';
-    for (const finding of kept) {
-      if (finding.severity && SEVERITY_RANK[finding.severity] > SEVERITY_RANK[overallRiskLevel]) overallRiskLevel = finding.severity;
-    }
-    versionUpdate = { overallRiskLevel };
-  } else {
-    const failedIn = (group: string) =>
-      kept.filter((finding) => finding.checkGroup === group && finding.outcome !== 'unverified').length;
-    const counts = {
-      violations: failedIn('compliance'),
-      unclear: failedIn('clarity'),
-      missing: failedIn('completeness'),
-      negotiable: failedIn('balance'),
-      unverified: kept.filter((finding) => finding.outcome === 'unverified').length,
-      referrals: kept.filter((finding) => finding.checkGroup === 'referral').length,
-    };
-    versionUpdate = { issueCounts: { ...counts, total: counts.violations + counts.unclear + counts.missing + counts.negotiable } };
-  }
+  const issueCounts = countIssues(findings.filter((finding) => finding.verification?.verdict !== 'rejected'));
   const workspace = await getExpertWorkspace(expertId, reviewId);
   return mongoose.connection.transaction(async (dbSession) => {
     const approved = await ExpertReviewModel.findOneAndUpdate(
@@ -327,7 +298,7 @@ export async function approveVerification(expertId: string, reviewId: string, de
       { new: true, session: dbSession },
     );
     if (!approved) throw AppError.conflict('Yêu cầu xác minh vừa thay đổi. Vui lòng tải lại.', 'VERIFICATION_NOT_OPEN');
-    await ContractVersionModel.updateOne({ _id: review.versionId }, { $set: versionUpdate }, { session: dbSession });
+    await ContractVersionModel.updateOne({ _id: review.versionId }, { $set: { issueCounts } }, { session: dbSession });
     await archiveExpertWork(approved, workspace, dbSession);
     return approved;
   });
@@ -374,9 +345,9 @@ export async function listVerificationQueue(
     .sort({ requestedAt: 1 })
     .limit(100)
     .populate('requestedBy', 'name')
-    .populate<{ contractId: { _id: Types.ObjectId; title: string; type?: string; overallRiskLevel?: string } | null }>(
+    .populate<{ contractId: { _id: Types.ObjectId; title: string; type?: string } | null }>(
       'contractId',
-      'title type overallRiskLevel',
+      'title type',
     );
   return Promise.all(
     sessions.map(async (session) => {

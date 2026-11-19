@@ -24,15 +24,6 @@ const partySchema = new Schema(
   { _id: false },
 );
 
-const industryRuleSchema = new Schema(
-  {
-    industry: { type: String, required: true },
-    checks: { type: [String], default: [] },
-    extraMandatoryClauses: { type: [String], enum: CLAUSE_CATEGORIES, default: [] },
-  },
-  { _id: false },
-);
-
 const contractProfileSchema = new Schema(
   {
     code: { type: String, required: true, unique: true },
@@ -44,8 +35,6 @@ const contractProfileSchema = new Schema(
     governingLaws: { type: [String], default: [] },
     legalSourceCodes: { type: [String], default: [] },
     clauseCategories: { type: [String], enum: CLAUSE_CATEGORIES, default: [] },
-    mandatoryClauses: { type: [String], enum: CLAUSE_CATEGORIES, default: [] },
-    industryRules: { type: [industryRuleSchema], default: [] },
     redactionPolicy: { type: [String], enum: SENSITIVE_DATA_TYPES, default: [] },
   },
   { timestamps: true },

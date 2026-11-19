@@ -232,6 +232,42 @@ export function findPlaybookProblems(
   return problems;
 }
 
+export function applicableChecks(checks: PlaybookCheck[], contractType: string) {
+  return checks.filter(
+    (check) => check.review.status === 'approved' && check.appliesTo.contractTypes.includes(contractType),
+  );
+}
+
+export interface IssueCountInput {
+  checkGroup?: string | null;
+  outcome?: string | null;
+}
+
+export function countIssues(findings: IssueCountInput[]) {
+  const failedIn = (group: string) =>
+    findings.filter((finding) => finding.checkGroup === group && finding.outcome === 'failed').length;
+  const counts = {
+    violations: failedIn('compliance'),
+    unclear: failedIn('clarity'),
+    missing: failedIn('completeness'),
+    negotiable: failedIn('balance'),
+    unverified: findings.filter((finding) => finding.outcome === 'unverified').length,
+    referrals: findings.filter((finding) => finding.outcome === 'referral').length,
+  };
+  return { ...counts, total: counts.violations + counts.unclear + counts.missing + counts.negotiable };
+}
+
+export type IssueCounts = ReturnType<typeof countIssues>;
+
+const GROUP_ORDER: Record<string, number> = { compliance: 0, clarity: 1, completeness: 2, balance: 3, referral: 4 };
+
+export const compareByContractOrder = (
+  a: { clauseIndex?: number | null; checkGroup?: string | null },
+  b: { clauseIndex?: number | null; checkGroup?: string | null },
+) =>
+  (a.clauseIndex ?? Number.MAX_SAFE_INTEGER) - (b.clauseIndex ?? Number.MAX_SAFE_INTEGER) ||
+  (GROUP_ORDER[a.checkGroup ?? ''] ?? 9) - (GROUP_ORDER[b.checkGroup ?? ''] ?? 9);
+
 export function allPlaybookChecks(
   clausePlaybooks: ClausePlaybook[] = CLAUSE_PLAYBOOKS,
   contractPlaybooks: ContractPlaybook[] = CONTRACT_PLAYBOOKS,

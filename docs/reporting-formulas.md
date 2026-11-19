@@ -21,8 +21,7 @@ Trang `/admin/reports` và trang Owner `/reports` lấy dữ liệu thật từ 
 | Thành công / thất bại / hủy | Đếm Review theo trạng thái và `finishedAt` trong kỳ |
 | Tỷ lệ thành công | completed / (completed + failed) × 100; loại queued, running và cancelled khỏi mẫu số |
 | Hợp đồng có vi phạm | Trong các Review completed kết thúc trong kỳ có `result.issueCounts`, chọn bản cuối cùng của mỗi contractId; số hợp đồng có `violations > 0` / số hợp đồng đó × 100. Phân bố gồm có vi phạm, có vấn đề khác (`total > 0`), không phát hiện vấn đề |
-| Rủi ro cao (dữ liệu cũ) | Chỉ còn cho Review trước playbook: high / (high + medium + low + none) × 100. Review theo playbook không có mức rủi ro nên không vào chỉ số này |
-| Kết quả rủi ro thiếu/không hợp lệ | Tính riêng unknown, không coi như none hoặc low, không cộng vào mẫu số |
+| Review thiếu kết quả kiểm tra | Review completed không có `result.issueCounts` (ví dụ chỉ hoàn tất một phần) không vào mẫu số của chỉ số hợp đồng có vi phạm |
 | Thời gian xử lý trung bình | Trung bình `finishedAt − startedAt` của Review completed có đủ ngày hợp lệ và finishedAt >= startedAt; không tính thời gian chờ |
 | Tiền đã nhận | Tổng amount VND của Payment status=paid theo paidAt; không đếm sự kiện webhook để tránh cộng lặp; đơn chờ kích hoạt được ghi riêng |
 | Lượt đã dùng | Tổng units của UsageRun status=succeeded theo updatedAt và kind; không cộng reserved/failed |

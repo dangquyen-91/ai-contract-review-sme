@@ -3,20 +3,9 @@ import { decryptOnSerialize, encryptedString } from '../utils/fieldEncryption';
 
 export const RISK_FINDING_TYPES = ['clause_risk', 'missing_clause', 'referral'] as const;
 
-export const RISK_SEVERITIES = ['high', 'medium', 'low'] as const;
-
 export const RISK_FINDING_STATUSES = ['open', 'acknowledged', 'dismissed', 'resolved'] as const;
 
-export const RISK_DETECTED_BY = [
-  'rule',
-  'llm',
-  'hybrid',
-  'checklist',
-  'expert',
-  'playbook',
-  'document_check',
-  'expert_referral',
-] as const;
+export const RISK_DETECTED_BY = ['playbook', 'document_check', 'expert_referral', 'expert'] as const;
 
 export const FINDING_VERDICTS = ['confirmed', 'adjusted', 'rejected', 'added'] as const;
 
@@ -24,33 +13,7 @@ export const FINDING_GROUPS = ['clarity', 'completeness', 'balance', 'compliance
 
 export const FINDING_OUTCOMES = ['failed', 'unverified', 'referral'] as const;
 
-export const RISK_CODES = [
-  'UNLAWFUL_TERM',
-  'MISSING_MANDATORY_FORM',
-  'UNILATERAL_TERMINATION',
-  'AUTO_RENEWAL',
-  'EXCESSIVE_PENALTY',
-  'LIABILITY_LIMITATION',
-  'ONE_SIDED_INDEMNITY',
-  'UNFAVORABLE_PAYMENT',
-  'ONE_SIDED_OBLIGATION',
-  'BROAD_EXCLUSION',
-  'IP_DATA_RISK',
-  'UNFAVORABLE_DISPUTE_FORUM',
-  'VAGUE_SCOPE',
-  'AMBIGUOUS_TERM',
-  'MISSING_CLAUSE',
-  'MISSING_PROTECTION',
-  'OTHER',
-] as const;
-
-export const LEGAL_BASIS_VERIFICATIONS = [
-  'verified',
-  'partially_verified',
-  'article_not_found',
-  'not_in_knowledge_base',
-  'unreferenced',
-] as const;
+export const LEGAL_BASIS_VERIFICATIONS = ['verified', 'partially_verified', 'not_in_knowledge_base', 'unreferenced'] as const;
 
 export const LEGAL_BASIS_ROLES = ['basis', 'fallback', 'reference'] as const;
 
@@ -79,7 +42,6 @@ const proposedRevisionSchema = new Schema(
 const findingVerificationSchema = new Schema(
   {
     verdict: { type: String, enum: FINDING_VERDICTS, required: true },
-    originalSeverity: { type: String, enum: RISK_SEVERITIES },
     originalGroup: { type: String, enum: FINDING_GROUPS },
     reason: { type: String },
     verifiedBy: { type: Types.ObjectId, ref: 'User', required: true },
@@ -122,11 +84,10 @@ const riskFindingSchema = new Schema(
     clauseId: { type: Types.ObjectId, ref: 'Clause', default: null },
     expectedClauseTypeId: { type: Types.ObjectId, ref: 'ClauseTypeTaxonomy', default: null },
     findingType: { type: String, enum: RISK_FINDING_TYPES, required: true },
-    severity: { type: String, enum: RISK_SEVERITIES },
     checkCode: { type: String },
-    checkGroup: { type: String, enum: FINDING_GROUPS },
-    outcome: { type: String, enum: FINDING_OUTCOMES },
-    label: { type: String },
+    checkGroup: { type: String, enum: FINDING_GROUPS, required: true },
+    outcome: { type: String, enum: FINDING_OUTCOMES, required: true },
+    label: { type: String, required: true },
     playbookVersion: { type: String },
     neutral: { type: Boolean },
     evidence: { type: [findingEvidenceSchema], default: undefined },
@@ -145,9 +106,6 @@ const riskFindingSchema = new Schema(
     proposedRevision: { type: proposedRevisionSchema, default: undefined },
     status: { type: String, enum: RISK_FINDING_STATUSES, default: 'open', index: true },
     detectedBy: { type: String, enum: RISK_DETECTED_BY, required: true },
-    riskCode: { type: String, enum: RISK_CODES },
-    ruleCode: { type: String },
-    ruleVersion: { type: Number },
     verification: { type: findingVerificationSchema, default: undefined },
   },
   { timestamps: true, ...decryptOnSerialize },

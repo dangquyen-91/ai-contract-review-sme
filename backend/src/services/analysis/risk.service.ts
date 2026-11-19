@@ -8,6 +8,7 @@ import { LegalKnowledgeChunkModel } from '../../models/legalKnowledgeChunk.model
 import { LegalSourceModel } from '../../models/legalSource.model';
 import { getCurrentVersion, resolveResultReview } from '../contract/contractVersion.service';
 import { LegalSourceReference, provenanceOf, sourceReferenceOf } from '../legal/legalSourceAvailability';
+import { compareByContractOrder } from '../playbook/playbook.service';
 
 interface ChunkSnapshot {
   citationLabel: string;
@@ -122,31 +123,20 @@ async function attachCitations<T extends { _id: unknown; toObject: () => Record<
   }));
 }
 
-const GROUP_ORDER: Record<string, number> = { compliance: 0, clarity: 1, completeness: 2, balance: 3, referral: 4 };
-const LEGACY_SEVERITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
-
 type ListedFinding = {
   checkGroup?: string | null;
-  severity?: string | null;
   createdAt?: Date;
   clause: { index: number } | null;
 };
 
 function sortFindings<T extends ListedFinding>(findings: T[]) {
-  const clauseOrder = (f: T) => f.clause?.index ?? Number.MAX_SAFE_INTEGER;
-  return [...findings].sort((a, b) => {
-    if (a.checkGroup || b.checkGroup) {
-      return (
-        clauseOrder(a) - clauseOrder(b) ||
-        (GROUP_ORDER[a.checkGroup ?? ''] ?? 9) - (GROUP_ORDER[b.checkGroup ?? ''] ?? 9) ||
-        (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)
-      );
-    }
-    return (
-      (LEGACY_SEVERITY_ORDER[a.severity ?? ''] ?? 9) - (LEGACY_SEVERITY_ORDER[b.severity ?? ''] ?? 9) ||
-      (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)
-    );
-  });
+  return [...findings].sort(
+    (a, b) =>
+      compareByContractOrder(
+        { clauseIndex: a.clause?.index, checkGroup: a.checkGroup },
+        { clauseIndex: b.clause?.index, checkGroup: b.checkGroup },
+      ) || (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0),
+  );
 }
 
 export async function listRiskFindings(

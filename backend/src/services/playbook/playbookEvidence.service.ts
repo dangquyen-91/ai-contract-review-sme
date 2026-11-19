@@ -5,7 +5,7 @@ import type { ClauseCategory } from '../../models/clauseTypeTaxonomy.model';
 import { generateJson } from '../ai/llm.service';
 import { placeholderInstruction, Redactor } from '../ai/redaction.service';
 import { describeReviewContext, ReviewContext } from '../contract/contractProfile.service';
-import { fieldsUsedBy, getClausePlaybook, getContractPlaybook } from './playbook.service';
+import { applicableChecks, fieldsUsedBy, getClausePlaybook, getContractPlaybook } from './playbook.service';
 import {
   CONTRACT_FACTS,
   ClausePlaybook,
@@ -85,12 +85,6 @@ const MAX_BATCH_CHARS = 15000;
 const BATCH_CONCURRENCY = 3;
 const MAX_SEARCH_REQUESTS = 40;
 const MAX_VERIFY_ITEMS = 60;
-
-export function applicableChecks(checks: PlaybookCheck[], contractType: string) {
-  return checks.filter(
-    (check) => check.review.status === 'approved' && check.appliesTo.contractTypes.includes(contractType),
-  );
-}
 
 function neededFields(fields: PlaybookField[], checks: PlaybookCheck[]) {
   const used = new Set(checks.flatMap((check) => fieldsUsedBy(check.test).map((use) => use.field)));

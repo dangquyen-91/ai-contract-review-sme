@@ -121,15 +121,15 @@ sequenceDiagram
         AN->>DB: summarizeContract via generateJson, ContractVersionModel.updateOne(summaryPoints)
         AN-->>W: done
     and riskDetection stage
-        W->>AN: detectRisks(orgId, contractId, analysisFocus, onDetail, signal)
-        AN->>DB: RiskFindingModel.insertMany, overallRiskLevel, overallAssessment
+        W->>AN: runPlaybookReview(orgId, contractId, reviewId, analysisFocus, onDetail, signal)
+        AN->>DB: RiskFindingModel.insertMany, issueCounts, checkCoverage, overallAssessment, keyTerms
         AN-->>W: done
     end
 
     W->>US: finishUsage(orgId, usageRunId, true, {reviewId})
     US->>DB: UsageRun status succeeded, analysisReserved -1, analysisUsed +1
     W->>DB: buildReviewResult(versionId) - ContractVersion, Clause, RiskFinding
-    DB-->>W: {overallRiskLevel, summaryPoints, clauseCount, findingCounts, findings}
+    DB-->>W: {issueCounts, checkCoverage, overallAssessment, summaryPoints, summarySources, clauseCount, keyTerms, findings}
     W->>DB: updateReview({status: completed, finishedAt, result}) unset activeLock
     W--)RC: QueueEvents completed
     RC->>DB: getReview(orgId, reviewId)

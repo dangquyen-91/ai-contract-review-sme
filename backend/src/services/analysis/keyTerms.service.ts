@@ -3,7 +3,6 @@ import { ClauseModel } from '../../models/clause.model';
 import { ContractModel } from '../../models/contract.model';
 import { resolveVersion } from '../contract/contractVersion.service';
 import { playbookFieldLabel } from '../playbook/playbook.service';
-import { KEY_TERMS } from './keyTermExtraction.data';
 
 export async function listKeyTerms(orgId: string, contractId: string, versionId?: string) {
   const contract = await ContractModel.findOne({ _id: contractId, orgId });
@@ -15,8 +14,6 @@ export async function listKeyTerms(orgId: string, contractId: string, versionId?
     ? await ClauseModel.find({ _id: { $in: clauseIds } }).select('index title')
     : [];
   const clauseById = new Map(clauses.map((c) => [c._id.toString(), c]));
-  const legacyDefinitionOf = (key: string) =>
-    (KEY_TERMS as Record<string, { label: string; unit?: string }>)[key];
 
   return {
     extractedAt: version.keyTermsExtractedAt ?? null,
@@ -24,11 +21,9 @@ export async function listKeyTerms(orgId: string, contractId: string, versionId?
       const clause = t.clauseId ? clauseById.get(t.clauseId.toString()) : undefined;
       return {
         key: t.key,
-        label: t.label ?? legacyDefinitionOf(t.key)?.label ?? playbookFieldLabel(t.key) ?? t.key,
-        unit: legacyDefinitionOf(t.key)?.unit ?? null,
+        label: t.label ?? playbookFieldLabel(t.key) ?? t.key,
         value: t.numberValue ?? t.booleanValue ?? t.textValue ?? null,
         deferred: Boolean(t.deferred),
-        inferredFromSilence: !t.clauseId && !t.quote,
         clause: clause ? { index: clause.index, title: clause.title ?? null } : null,
         quote: t.quote ?? null,
       };

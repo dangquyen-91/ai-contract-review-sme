@@ -21,9 +21,9 @@ import {
 } from '../contract/contractVersion.service';
 import { searchLegalChunks } from '../legal/legalRetrieval.service';
 import { DOCUMENT_CHECKS } from './documentChecks.data';
-import { getContractPlaybook, playbookFieldLabel } from './playbook.service';
+import { countIssues, getContractPlaybook, IssueCountInput, IssueCounts, playbookFieldLabel } from './playbook.service';
 import { askJson, collectContractEvidence, ContractEvidence, EvidenceClause, FieldEvidence } from './playbookEvidence.service';
-import { CheckResult, DocumentCheckResult, evaluateContract, PlaybookEvaluation } from './playbookEvaluation.service';
+import { CheckResult, evaluateContract, PlaybookEvaluation } from './playbookEvaluation.service';
 import { FALLBACK_RULE_PREFIX, PLAYBOOK_VERSION } from './playbookSchema';
 import { locateQuote } from './quoteMatching';
 
@@ -334,21 +334,8 @@ function legalBasisOf(result: CheckResult) {
   return entries;
 }
 
-function countIssues(results: CheckResult[], documents: DocumentCheckResult[], referrals: Referral[]) {
-  const failed = (group: CheckResult['group']) => results.filter((r) => r.outcome === 'failed' && r.group === group).length;
-  const counts = {
-    violations: failed('compliance'),
-    unclear: failed('clarity') + documents.length,
-    missing: failed('completeness'),
-    negotiable: failed('balance'),
-    unverified: results.filter((r) => r.outcome === 'unverified').length,
-    referrals: referrals.length,
-  };
-  return { ...counts, total: counts.violations + counts.unclear + counts.missing + counts.negotiable };
-}
-
 export function describeOutcome(
-  counts: ReturnType<typeof countIssues>,
+  counts: IssueCounts,
   coverage: PlaybookEvaluation['coverage'],
   documentCheckCount: number,
 ): string[] {
@@ -613,7 +600,7 @@ export async function runPlaybookReview(
     await RiskCitationModel.deleteMany({ riskFindingId: { $in: oldFindingIds } });
     await RiskFindingModel.deleteMany({ _id: { $in: oldFindingIds } });
 
-    const issueCounts = countIssues(reported, evaluation.documentFindings, referrals);
+    const issueCounts = countIssues(pending.map((item) => item.doc as IssueCountInput));
     const documentCheckCount = Object.keys(DOCUMENT_CHECKS).length;
     const checkCoverage = {
       playbookVersion: PLAYBOOK_VERSION,
@@ -634,13 +621,7 @@ export async function runPlaybookReview(
           keyTerms: keyTermsOf(evidence, new Map(clauses.map((clause) => [clause.index, clause.id]))),
           keyTermsExtractedAt: new Date(),
         },
-        $unset: {
-          riskDetectionError: '',
-          overallRiskLevel: '',
-          legalRetrievalStatus: '',
-          ruleCheckStatus: '',
-          legalCoverage: '',
-        },
+        $unset: { riskDetectionError: '' },
       },
     );
     await setContractStatus(contractId, orgId, 'reviewed');

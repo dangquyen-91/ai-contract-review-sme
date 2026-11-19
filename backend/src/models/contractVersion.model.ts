@@ -1,8 +1,6 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
 import { decryptOnSerialize, encryptedString } from '../utils/fieldEncryption';
 
-export const RISK_LEVELS = ['high', 'medium', 'low', 'none'] as const;
-
 export const EXTRACTION_STATUSES = [
   'pending',
   'processing',
@@ -47,35 +45,6 @@ export const RISK_DETECTION_STATUSES = ['pending', 'processing', 'completed', 'f
 
 export const SUMMARY_STATUSES = ['pending', 'processing', 'completed', 'failed'] as const;
 
-export const LEGAL_RETRIEVAL_STATUSES = ['ok', 'degraded', 'no_sources', 'unavailable'] as const;
-
-export const RULE_CHECK_STATUSES = ['ok', 'skipped', 'not_applicable'] as const;
-
-export const LEGAL_SEARCH_SCOPES = ['profile', 'partial', 'all_sources', 'none'] as const;
-
-export const SKIPPED_RULE_REASONS = ['source_not_in_force', 'source_missing'] as const;
-
-export const legalCoverageSnapshotSchema = new Schema(
-  {
-    searchScope: { type: String, enum: LEGAL_SEARCH_SCOPES },
-    missingSources: { type: [String], default: undefined },
-    skippedRules: {
-      type: [
-        new Schema(
-          {
-            code: { type: String, required: true },
-            reason: { type: String, enum: SKIPPED_RULE_REASONS, required: true },
-            sources: { type: [String], default: [] },
-          },
-          { _id: false },
-        ),
-      ],
-      default: undefined,
-    },
-  },
-  { _id: false },
-);
-
 export const keyTermSchema = new Schema(
   {
     key: { type: String, required: true },
@@ -86,6 +55,17 @@ export const keyTermSchema = new Schema(
     deferred: { type: Boolean },
     clauseId: { type: Types.ObjectId, ref: 'Clause' },
     quote: { type: String, ...encryptedString },
+  },
+  { _id: false, ...decryptOnSerialize },
+);
+
+export const summarySourceSchema = new Schema(
+  {
+    pointIndex: { type: Number, required: true },
+    clauseIndex: { type: Number, required: true },
+    quote: { type: String, required: true, ...encryptedString },
+    startOffset: { type: Number },
+    endOffset: { type: Number },
   },
   { _id: false, ...decryptOnSerialize },
 );
@@ -163,17 +143,14 @@ const contractVersionSchema = new Schema(
     riskDetectionError: { type: String },
     riskDetectionStartedAt: { type: Date },
     riskDetectionReviewId: { type: Types.ObjectId, ref: 'Review' },
-    legalRetrievalStatus: { type: String, enum: LEGAL_RETRIEVAL_STATUSES },
-    ruleCheckStatus: { type: String, enum: RULE_CHECK_STATUSES },
-    legalCoverage: { type: legalCoverageSnapshotSchema },
     overallAssessment: { type: [String], default: [] },
     keyTerms: { type: [keyTermSchema], default: undefined },
     keyTermsExtractedAt: { type: Date },
-    overallRiskLevel: { type: String, enum: RISK_LEVELS, index: true },
     issueCounts: { type: issueCountsSchema, default: undefined },
     checkCoverage: { type: checkCoverageSchema, default: undefined },
     analysisFocus: { type: String },
     summaryPoints: { type: [String], default: [] },
+    summarySources: { type: [summarySourceSchema], default: undefined },
     summaryStatus: { type: String, enum: SUMMARY_STATUSES, default: 'pending', index: true },
     summaryError: { type: String },
     summaryStartedAt: { type: Date },

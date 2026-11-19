@@ -70,7 +70,7 @@ async function operational(
       failed: report.reviews.failed,
       successRate: report.reviews.successRate,
       averageDurationMs: report.reviews.averageDurationMs,
-      highRisk: report.risks.high,
+      withViolations: report.issues.withViolations,
       queued: state.queued ?? 0,
       running: state.running ?? 0,
       ...(actor.role === 'administrator'
@@ -80,10 +80,7 @@ async function operational(
     distribution:
       actor.role === 'administrator'
         ? report.usage.map((row) => ({ key: row.id, label: row.name, value: row.total }))
-        : ['high', 'medium', 'low', 'none', 'unknown'].map((key) => ({
-            key,
-            value: report.risks[key as 'high' | 'medium' | 'low' | 'none' | 'unknown'],
-          })),
+        : (['withViolations', 'withIssues', 'noIssues'] as const).map((key) => ({ key, value: report.issues[key] })),
     trend: (report.trend?.buckets ?? []).map((bucket) => ({
       date: bucket.label,
       uploads: bucket.current?.uploads ?? 0,

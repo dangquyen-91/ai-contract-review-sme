@@ -10,7 +10,7 @@ import { getOrganization } from '../organization/organization.service';
 type IssueBucket = 'withViolations' | 'withIssues' | 'noIssues' | null;
 
 type ContractCount = {
-  _id: { status: string; risk: string | null; issues: IssueBucket };
+  _id: { status: string; issues: IssueBucket };
   count: number;
 };
 
@@ -25,7 +25,7 @@ async function countContracts(scopeId: string) {
           { $match: { $expr: { $eq: ['$contractId', '$$contractId'] } } },
           { $sort: { versionNumber: -1 } },
           { $limit: 1 },
-          { $project: { overallRiskLevel: 1, issueCounts: 1 } },
+          { $project: { issueCounts: 1 } },
         ],
         as: 'version',
       },
@@ -35,7 +35,6 @@ async function countContracts(scopeId: string) {
       $group: {
         _id: {
           status: '$status',
-          risk: { $ifNull: ['$version.overallRiskLevel', null] },
           issues: {
             $switch: {
               branches: [
@@ -68,13 +67,11 @@ export async function getDashboard(actor: AccessTokenPayload) {
     UserModel.findById(actor.sub).select('name email').lean(),
   ]);
   const statuses = { uploaded: 0, processing: 0, reviewed: 0, archived: 0 };
-  const risks = { high: 0, medium: 0, low: 0, none: 0 };
   const issues = { withViolations: 0, withIssues: 0, noIssues: 0 };
   let totalContracts = 0;
   for (const { _id, count } of counts) {
     totalContracts += count;
     if (Object.hasOwn(statuses, _id.status)) statuses[_id.status as keyof typeof statuses] += count;
-    if (_id.risk && Object.hasOwn(risks, _id.risk)) risks[_id.risk as keyof typeof risks] += count;
     if (_id.issues) issues[_id.issues] += count;
   }
   return {
@@ -94,16 +91,14 @@ export async function getDashboard(actor: AccessTokenPayload) {
     contracts: recent.items.map((contract) => ({
       ...contract,
       issueCounts: contract.currentVersion?.issueCounts ?? null,
-      overallRiskLevel: contract.currentVersion?.overallRiskLevel ?? null,
       fileName: contract.currentVersion?.fileName,
     })),
     totalContracts,
-    ...(actor.role === 'staff' ? { distribution: { statuses, risks, issues } } : {}),
+    ...(actor.role === 'staff' ? { distribution: { statuses, issues } } : {}),
     stats: {
       processing: statuses.processing,
       reviewed: statuses.reviewed,
       withViolations: issues.withViolations,
-      highRisk: risks.high,
     },
     role: actor.role,
     user: user ? { name: user.name, email: user.email } : null,

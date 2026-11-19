@@ -5,12 +5,12 @@ import {
   ArticleRefResult,
   ArticleRefStatus,
   getClausePlaybook,
+  applicableChecks,
   getContractPlaybook,
   playbookArticleRefs,
   verifyPlaybookArticleRefs,
 } from './playbook.service';
 import {
-  applicableChecks,
   ContractEvidence,
   EvidenceClause,
   FactEvidence,

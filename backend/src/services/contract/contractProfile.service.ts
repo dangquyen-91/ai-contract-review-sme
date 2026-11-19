@@ -10,21 +10,12 @@ import type { SensitiveDataType } from '../ai/redaction.service';
 import { DEFAULT_INDUSTRIES, DEFAULT_PROFILES, DefaultProfile } from './contractProfile.data';
 import { LEGAL_SOURCE_CATALOG, LegalSourceCode } from '../legal/legalSourceCatalog.data';
 import { legalSourceAvailability } from '../legal/legalSourceAvailability';
+import { applicableChecks, getContractPlaybook } from '../playbook/playbook.service';
 
 function assertProfileConsistency(profile: DefaultProfile) {
   const categories = new Set(profile.clauseCategories);
-  const industries = new Set<string>(DEFAULT_INDUSTRIES.map((i) => i.code));
   const problems = [
     ...(categories.has('other') ? [] : ['clauseCategories must include "other"']),
-    ...profile.mandatoryClauses
-      .filter((code) => !categories.has(code))
-      .map((code) => `mandatory clause "${code}" is not in clauseCategories`),
-    ...(profile.industryRules ?? []).flatMap((rule) => [
-      ...(industries.has(rule.industry) ? [] : [`unknown industry "${rule.industry}"`]),
-      ...(rule.extraMandatoryClauses ?? [])
-        .filter((code) => !categories.has(code))
-        .map((code) => `${rule.industry} extra mandatory clause "${code}" is not in clauseCategories`),
-    ]),
     ...(new Set(profile.parties.map((p) => p.code)).size === profile.parties.length
       ? []
       : ['party codes must be unique']),
@@ -50,7 +41,6 @@ export async function seedDefaultContractProfiles(): Promise<void> {
         {
           $set: {
             aliases: [],
-            industryRules: [],
             ...profile,
             governingLaws: legalSources.map((code) => LEGAL_SOURCE_CATALOG[code]),
             legalSourceCodes: legalSources,
@@ -93,9 +83,7 @@ export interface ReviewContext {
   partyCode?: string;
   partyName?: string;
   industryName?: string;
-  industryChecks: string[];
   clauseCategories: ClauseCategory[];
-  mandatoryClauses: ClauseCategory[];
   redactionPolicy: SensitiveDataType[];
 }
 
@@ -114,9 +102,6 @@ export async function buildReviewContext(contract: {
     (contract.orgId
       ? (await OrganizationModel.findById(contract.orgId.toString()).select('industry'))?.industry
       : undefined);
-  const rule = industryCode
-    ? profile.industryRules.find((r) => r.industry === industryCode)
-    : undefined;
   const industry = industryCode ? await IndustryModel.findOne({ code: industryCode }) : null;
 
   return {
@@ -127,11 +112,7 @@ export async function buildReviewContext(contract: {
     partyCode: contract.ourParty ?? undefined,
     partyName: profile.parties.find((p) => p.code === contract.ourParty)?.name,
     industryName: industry?.name,
-    industryChecks: rule?.checks ?? [],
     clauseCategories: profile.clauseCategories as ClauseCategory[],
-    mandatoryClauses: [
-      ...new Set([...profile.mandatoryClauses, ...(rule?.extraMandatoryClauses ?? [])]),
-    ] as ClauseCategory[],
     redactionPolicy: profile.redactionPolicy as SensitiveDataType[],
   };
 }
@@ -143,8 +124,8 @@ export function describeReviewContext(context: ReviewContext): string {
       ? `Main governing Vietnamese law: ${context.governingLaws.join(', ')}.`
       : '',
     context.partyName
-      ? `The user is "${context.partyName}" in this contract. Judge every clause from this party's point of view and protect its interests.`
-      : 'The user has not said which party they are. When a clause favors one side, say which side it hurts.',
+      ? `The user is "${context.partyName}" in this contract; "the user's party" means this party.`
+      : 'The user has not said which party they are.',
     context.industryName ? `The user's business is in the "${context.industryName}" industry.` : '',
   ]
     .filter(Boolean)
@@ -156,13 +137,22 @@ export async function listContractProfiles() {
     ContractProfileModel.find().sort({ segment: 1, code: 1 }),
     IndustryModel.find().sort({ code: 1 }),
   ]);
+  const expectedByProfile = new Map(
+    profiles.map((profile) => {
+      const playbook = getContractPlaybook(profile.code);
+      const checks = playbook ? applicableChecks(playbook.checks, profile.code) : [];
+      return [
+        profile.code,
+        checks.flatMap((check) =>
+          check.test.kind === 'clause_present'
+            ? [{ code: check.test.clauseType, checkCode: check.code, basis: check.basis.kind }]
+            : [],
+        ),
+      ];
+    }),
+  );
   const taxonomy = await getTaxonomyByCodes([
-    ...new Set(
-      profiles.flatMap((p) => [
-        ...p.mandatoryClauses,
-        ...p.industryRules.flatMap((r) => r.extraMandatoryClauses),
-      ]),
-    ),
+    ...new Set([...expectedByProfile.values()].flatMap((items) => items.map((item) => item.code))),
   ]);
   const clauseName = (code: string) => ({
     code,
@@ -193,16 +183,12 @@ export async function listContractProfiles() {
     parties: profile.parties.map(({ code, name }) => ({ code, name })),
     governingLaws: profile.governingLaws,
     legalSources: profile.legalSourceCodes.map(legalSource),
-    mandatoryClauses: profile.mandatoryClauses.map(clauseName),
+    expectedClauses: (expectedByProfile.get(profile.code) ?? []).map((item) => ({
+      ...clauseName(item.code),
+      checkCode: item.checkCode,
+      basis: item.basis,
+    })),
     redactionPolicy: profile.redactionPolicy,
-    industries: industries.map((industry) => {
-      const rule = profile.industryRules.find((r) => r.industry === industry.code);
-      return {
-        code: industry.code,
-        name: industry.name,
-        checks: rule?.checks ?? [],
-        extraMandatoryClauses: (rule?.extraMandatoryClauses ?? []).map(clauseName),
-      };
-    }),
+    industries: industries.map((industry) => ({ code: industry.code, name: industry.name })),
   }));
 }

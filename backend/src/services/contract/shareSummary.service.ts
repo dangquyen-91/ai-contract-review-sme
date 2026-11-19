@@ -5,26 +5,19 @@ import { AppError } from '../../errors/AppError';
 import { createRedactor } from '../ai/redaction.service';
 import { findResultReviewId, getCurrentVersionWithText } from './contractVersion.service';
 import { resolveContractProfile } from './contractProfile.service';
+import { countIssues, IssueCounts } from '../playbook/playbook.service';
 
 type Finding = {
-  checkGroup?: string | null;
-  outcome?: string | null;
-  label?: string | null;
-  severity?: string | null;
+  checkGroup: string;
+  outcome: string;
+  label: string;
   title: string;
   recommendations?: string[];
 };
 
 const GROUP_ORDER: Record<string, number> = { compliance: 0, clarity: 1, completeness: 2, balance: 3 };
-const LEGACY_ORDER: Record<string, number> = { high: 10, medium: 11, low: 12 };
-const LEGACY_LABELS: Record<string, string> = { high: 'Cao', medium: 'Trung bình', low: 'Thấp' };
 
-const rankOf = (finding: Finding) =>
-  finding.checkGroup ? (GROUP_ORDER[finding.checkGroup] ?? 9) : (LEGACY_ORDER[finding.severity ?? ''] ?? 20);
-const labelOf = (finding: Finding) => finding.label ?? LEGACY_LABELS[finding.severity ?? ''] ?? 'Lưu ý';
-
-function countLineOf(counts: { violations: number; unclear: number; missing: number; negotiable: number; total: number }, legacy: boolean) {
-  if (legacy) return `Phát hiện ${counts.total} vấn đề trong kết quả rà soát trước đây.`;
+function countLineOf(counts: IssueCounts) {
   if (counts.total === 0) return 'Không phát hiện vấn đề theo các tiêu chí đã kiểm tra.';
   const parts = [
     counts.violations ? `${counts.violations} vi phạm` : '',
@@ -43,17 +36,10 @@ export function buildShareSummary(input: {
   findings: Finding[];
   updatedAt: Date;
 }) {
-  const reportable = input.findings.filter((finding) => finding.checkGroup !== 'referral' && finding.outcome !== 'unverified');
-  const ordered = [...reportable].sort((a, b) => rankOf(a) - rankOf(b));
-  const legacy = ordered.length > 0 && ordered.every((finding) => !finding.checkGroup);
-  const counts = {
-    violations: ordered.filter((finding) => finding.checkGroup === 'compliance').length,
-    unclear: ordered.filter((finding) => finding.checkGroup === 'clarity').length,
-    missing: ordered.filter((finding) => finding.checkGroup === 'completeness').length,
-    negotiable: ordered.filter((finding) => finding.checkGroup === 'balance').length,
-    unverified: input.findings.filter((finding) => finding.outcome === 'unverified').length,
-    total: ordered.length,
-  };
+  const ordered = input.findings
+    .filter((finding) => finding.outcome === 'failed')
+    .sort((a, b) => (GROUP_ORDER[a.checkGroup] ?? 9) - (GROUP_ORDER[b.checkGroup] ?? 9));
+  const counts = countIssues(input.findings);
   const priorities = ordered.slice(0, 3);
   const recommendations = [
     ...new Set(priorities.flatMap((finding) => finding.recommendations ?? [])),
@@ -86,12 +72,12 @@ export function buildShareSummary(input: {
     '',
     'TỔNG QUAN',
     ...input.summaryPoints.slice(0, 2).map((point) => `• ${clean(point, 240)}`),
-    countLineOf(counts, legacy),
+    countLineOf(counts),
     ...(counts.unverified ? [`${counts.unverified} điểm chưa xác minh được điều kiện áp dụng.`] : []),
     '',
     'VẤN ĐỀ CẦN XỬ LÝ',
     ...(priorities.length
-      ? priorities.map((finding, index) => `${index + 1}. [${labelOf(finding)}] ${clean(finding.title, 180)}`)
+      ? priorities.map((finding, index) => `${index + 1}. [${finding.label}] ${clean(finding.title, 180)}`)
       : ['Không có vấn đề nào cần xử lý trong kết quả đã lưu.']),
     ...(ordered.length > 3 ? [`Còn ${ordered.length - 3} điểm khác trong báo cáo đầy đủ.`] : []),
     '',
@@ -128,7 +114,7 @@ export async function getShareSummary(
       contractVersionId: version._id,
       reviewId: await findResultReviewId(version._id),
       orgId,
-    }).select('severity checkGroup outcome label title recommendations verification')
+    }).select('checkGroup outcome label title recommendations verification')
   ).filter((finding) => finding.verification?.verdict !== 'rejected');
   if (!contract.type) throw AppError.conflict('Complete the analysis before creating a share summary.');
   const profile = await resolveContractProfile(contract.type);

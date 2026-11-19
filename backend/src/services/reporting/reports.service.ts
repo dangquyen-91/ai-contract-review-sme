@@ -32,7 +32,6 @@ type Day = {
 type Usage = { _id: Types.ObjectId; completed: number; failed: number };
 type ReviewStatistics = {
   outcomes: Outcomes[];
-  risks: { _id: string; count: number }[];
   issues: { _id: string; count: number }[];
   daily: Day[];
   usage: Usage[];
@@ -108,25 +107,6 @@ async function getReportSnapshot(
                 },
               },
             },
-          ],
-          risks: [
-            { $match: { finishedAt: range, status: 'completed' } },
-            { $sort: { finishedAt: -1, _id: -1 } },
-            {
-              $group: {
-                _id: '$contractId',
-                risk: {
-                  $first: {
-                    $cond: [
-                      { $in: ['$result.overallRiskLevel', ['high', 'medium', 'low', 'none']] },
-                      '$result.overallRiskLevel',
-                      'unknown',
-                    ],
-                  },
-                },
-              },
-            },
-            { $group: { _id: { $ifNull: ['$risk', 'unknown'] }, count: { $sum: 1 } } },
           ],
           issues: [
             { $match: { finishedAt: range, status: 'completed', 'result.issueCounts': { $exists: true } } },
@@ -229,15 +209,6 @@ async function getReportSnapshot(
     timedReviews: 0,
     averageDurationMs: null,
   };
-  const riskCounts = Object.fromEntries((stats?.risks ?? []).map((row) => [row._id, row.count]));
-  const risks = {
-    high: riskCounts.high ?? 0,
-    medium: riskCounts.medium ?? 0,
-    low: riskCounts.low ?? 0,
-    none: riskCounts.none ?? 0,
-    unknown: riskCounts.unknown ?? 0,
-  };
-  const assessedContracts = risks.high + risks.medium + risks.low + risks.none;
   const issueRows = Object.fromEntries((stats?.issues ?? []).map((row) => [row._id, row.count]));
   const issues = {
     withViolations: issueRows.withViolations ?? 0,
@@ -289,17 +260,6 @@ async function getReportSnapshot(
       successRate: percentage(outcomes.completed, outcomes.completed + outcomes.failed),
       queued: stats?.pending.find((row) => row._id === 'queued')?.count ?? 0,
       running: stats?.pending.find((row) => row._id === 'running')?.count ?? 0,
-    },
-    risks: {
-      ...risks,
-      assessedContracts,
-      highRiskRate: percentage(risks.high, assessedContracts),
-      percentages: {
-        high: percentage(risks.high, assessedContracts),
-        medium: percentage(risks.medium, assessedContracts),
-        low: percentage(risks.low, assessedContracts),
-        none: percentage(risks.none, assessedContracts),
-      },
     },
     issues: {
       ...issues,
@@ -365,7 +325,6 @@ export async function getComparedReports(
     completed: report.reviews.completed,
     failed: report.reviews.failed,
     success: report.reviews.successRate,
-    risk: report.risks.highRiskRate,
     violations: report.issues.violationRate,
     duration: report.reviews.averageDurationMs,
     units: report.consumedUnits.analysis,
@@ -382,7 +341,7 @@ export async function getComparedReports(
       compareReportMetric(
         currentValues[key],
         previousValues?.[key] ?? null,
-        ['success', 'risk', 'violations'].includes(key),
+        ['success', 'violations'].includes(key),
       ),
     ]),
   );
@@ -402,7 +361,6 @@ export async function getComparedReports(
           ? { ...previous.period, partial: periods.previous.partial }
           : null,
       changes,
-      previousRisk: previous?.risks ?? null,
       previousIssues: previous?.issues ?? null,
     },
     trend: {

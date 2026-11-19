@@ -730,7 +730,6 @@ export async function listLegalSourceCatalog() {
         .filter((p) => p.legalSourceCodes.includes(code))
         .map((p) => ({ code: p.code, name: p.name })),
       checkCodes: checkCodesCitingSource(code),
-      ruleCodes: checkCodesCitingSource(code),
       legalSource: source
         ? { _id: source.id, title: source.title, status: source.status, ingestionStatus: source.ingestion?.status ?? null }
         : null,

@@ -12,6 +12,7 @@ import { REVIEW_STAGES, ReviewModel } from '../../models/review.model';
 import { segmentClauses } from '../analysis/clause.service';
 import { generateContractSummary } from '../analysis/summary.service';
 import { runPlaybookReview } from '../playbook/playbookReview.service';
+import { compareByContractOrder } from '../playbook/playbook.service';
 import { extendUsageLease, finishUsage, isUsageSucceeded, keepUsageLeaseAlive } from '../billing/usage.service';
 import { reviewErrorCodeOf, reviewFailure, ReviewErrorCode, withReviewErrorCode } from './reviewErrors';
 
@@ -23,7 +24,6 @@ const EXTRACTION_WAIT_MS = 15 * 60 * 1000;
 const CANCEL_POLL_MS = 3000;
 const ACTIVE_JOB_STATES = new Set(['waiting', 'active', 'delayed', 'prioritized', 'waiting-children']);
 const UNFINISHED_STATUSES = ['queued', 'running'];
-const GROUP_ORDER: Record<string, number> = { compliance: 0, clarity: 1, completeness: 2, balance: 3, referral: 4 };
 
 type ReviewStage = (typeof REVIEW_STAGES)[number];
 type StageKey = 'segmentation' | 'summary' | 'riskDetection';
@@ -164,6 +164,7 @@ async function buildReviewResult(versionId: string, reviewId: string) {
     checkCoverage: version?.checkCoverage ?? undefined,
     overallAssessment: version?.overallAssessment ?? [],
     summaryPoints: version?.summaryPoints ?? [],
+    summarySources: version?.summarySources ?? undefined,
     clauseCount: clauses.length,
     keyTerms: version?.keyTerms ?? undefined,
     findings: findings
@@ -172,20 +173,16 @@ async function buildReviewResult(versionId: string, reviewId: string) {
         return {
           findingType: f.findingType,
           checkCode: f.checkCode ?? undefined,
-          checkGroup: f.checkGroup ?? undefined,
-          outcome: f.outcome ?? undefined,
-          label: f.label ?? undefined,
+          checkGroup: f.checkGroup,
+          outcome: f.outcome,
+          label: f.label,
           title: f.title,
           clauseIndex: clause?.index,
           clauseTitle: clause?.title ?? undefined,
           detectedBy: f.detectedBy,
         };
       })
-      .sort(
-        (a, b) =>
-          (a.clauseIndex ?? Number.MAX_SAFE_INTEGER) - (b.clauseIndex ?? Number.MAX_SAFE_INTEGER) ||
-          (GROUP_ORDER[a.checkGroup ?? ''] ?? 9) - (GROUP_ORDER[b.checkGroup ?? ''] ?? 9),
-      ),
+      .sort(compareByContractOrder),
   };
 }
 
@@ -198,7 +195,7 @@ async function buildPartialResult(versionId: string, reviewId: string, stages: R
   const result = await buildReviewResult(versionId, reviewId);
   return {
     ...result,
-    ...(summaryDone ? {} : { summaryPoints: [] }),
+    ...(summaryDone ? {} : { summaryPoints: [], summarySources: undefined }),
     ...(riskDone
       ? {}
       : {
@@ -218,7 +215,6 @@ async function restoreCompletedResult(reviewId: string, versionId: string, contr
     .select('result');
   const result = previous?.result;
   if (!result || result.partial) return;
-  const legacy = !result.issueCounts;
   await ContractVersionModel.updateOne(
     { _id: versionId },
     {
@@ -227,24 +223,13 @@ async function restoreCompletedResult(reviewId: string, versionId: string, contr
         summaryStatus: 'completed',
         riskDetectionStatus: 'completed',
         summaryPoints: result.summaryPoints,
+        summarySources: result.summarySources ?? [],
         overallAssessment: result.overallAssessment,
         keyTerms: result.keyTerms ?? [],
-        ...(legacy
-          ? {
-              ...(result.overallRiskLevel ? { overallRiskLevel: result.overallRiskLevel } : {}),
-              ...(result.legalRetrievalStatus ? { legalRetrievalStatus: result.legalRetrievalStatus } : {}),
-              ...(result.ruleCheckStatus ? { ruleCheckStatus: result.ruleCheckStatus } : {}),
-              ...(result.legalCoverage ? { legalCoverage: result.legalCoverage } : {}),
-            }
-          : { issueCounts: result.issueCounts, checkCoverage: result.checkCoverage }),
+        issueCounts: result.issueCounts,
+        checkCoverage: result.checkCoverage,
       },
-      $unset: {
-        segmentationError: '',
-        summaryError: '',
-        riskDetectionError: '',
-        ...(legacy ? { issueCounts: '', checkCoverage: '' } : { overallRiskLevel: '', legalRetrievalStatus: '', ruleCheckStatus: '' }),
-        ...(result.legalCoverage ? {} : { legalCoverage: '' }),
-      },
+      $unset: { segmentationError: '', summaryError: '', riskDetectionError: '' },
     },
   );
   await ContractModel.updateOne({ _id: contractId, orgId }, { $set: { status: 'reviewed' } });
