@@ -81,7 +81,7 @@ const fact = (label: string, extraction: string) => ({ label, extraction });
 export const CONTRACT_FACTS = {
   commercial_contract: fact(
     'Hợp đồng thương mại',
-    'At least one party is a trader (an enterprise, cooperative or business household) and the contract serves a profit-making purpose.',
+    'At least one party is a trader: an enterprise ("công ty", "doanh nghiệp"), a cooperative or a registered business household.',
   ),
   no_foreign_exchange_exemption: fact(
     'Không thuộc trường hợp được dùng ngoại hối',
@@ -129,7 +129,7 @@ export const CONTRACT_FACTS = {
   ),
   employee_in_compulsory_insurance: fact(
     'Người lao động thuộc diện bảo hiểm xã hội bắt buộc',
-    'The employee is subject to compulsory social insurance (for example a Vietnamese employee with a labor contract of one month or longer).',
+    'Under the law the employee is subject to compulsory social insurance: decide only from the employee\'s nationality and the contract term (a Vietnamese employee with a labor contract of one month or longer is subject). Ignore what the contract agrees about joining or not joining insurance; an agreement not to join does not make this false.',
   ),
   labor_contract_indefinite: fact(
     'Hợp đồng lao động không xác định thời hạn',

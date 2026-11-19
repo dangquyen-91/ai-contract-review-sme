@@ -128,7 +128,8 @@ export const LABOR_CONTRACT_PLAYBOOK: ContractPlaybook = {
       label: 'Phạt tiền, cắt lương người lao động',
       aspect: 'what',
       kind: 'boolean',
-      extraction: 'true when the employer may fine the employee or cut wages as a disciplinary measure.',
+      extraction:
+        'true only when the employer may fine the employee or cut wages as a punishment for breaking work rules or discipline. Deductions from wages to compensate damage to the employer\'s property are NOT fines.',
     },
   ],
   checks: [

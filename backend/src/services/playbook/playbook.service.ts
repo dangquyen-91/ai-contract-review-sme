@@ -84,7 +84,7 @@ const CHECK_CODE_PATTERN = /^[A-Z]{2,4}-\d{2}$/;
 
 type FieldNeed = 'any' | 'numeric' | 'boolean';
 
-function fieldsUsedBy(test: CheckTest): { field: string; need: FieldNeed }[] {
+export function fieldsUsedBy(test: CheckTest): { field: string; need: FieldNeed }[] {
   switch (test.kind) {
     case 'stated':
       return [{ field: test.field, need: 'any' }];
