@@ -19,6 +19,7 @@ import { seedPlans } from './services/billing/subscription.service';
 import { seedTopUpPacks } from './services/billing/topUp.service';
 import { PaymentModel } from './models/payment.model';
 import { MembershipModel } from './models/membership.model';
+import { checkPlaybooksOnStartup } from './services/playbook/playbook.service';
 
 async function bootstrap() {
   await connectDB();
@@ -35,6 +36,7 @@ async function bootstrap() {
   await ensureLegalVectorIndex();
   await ensureLegalTextIndex();
   await reconcileLegalEmbeddingModel();
+  await checkPlaybooksOnStartup();
 
   if (env.START_WORKERS) {
     startBackgroundWorkers();
