@@ -1,14 +1,66 @@
-import mongoose from 'mongoose';
+import mongoose, { ClientSession } from 'mongoose';
 import { env } from '../../config/env';
 import { AppError } from '../../errors/AppError';
 import { ContractModel } from '../../models/contract.model';
 import { ContractVersionModel } from '../../models/contractVersion.model';
 import { ContractReviewPurchaseModel } from '../../models/contractReviewPurchase.model';
-import { PaymentModel } from '../../models/payment.model';
+import { PaymentModel, isReplaceableOrder } from '../../models/payment.model';
 import { UserModel } from '../../models/user.model';
 import { requireReviewCost } from './reviewCost';
 import { getSubscription, lockSubscriptionOrganization } from './subscription.service';
 import { assertAccountReviewPolicy } from '../contract/personalReviewPolicy';
+
+// Purchases of this contract that still have included chat questions left.
+const withChatLeft = {
+  $expr: { $lt: [{ $add: ['$chatUsed', '$chatReserved'] }, '$chatAllowance'] },
+};
+
+/** The paid review purchase whose included chat the next question should use. */
+export function findChatAllowance(
+  orgId: string,
+  userId: string,
+  contractId: string,
+  session: ClientSession | null = null,
+) {
+  return ContractReviewPurchaseModel.findOne({ orgId, userId, contractId, ...withChatLeft })
+    .sort({ createdAt: 1 })
+    .session(session);
+}
+
+/** Included chat questions across every paid review of the contract. */
+export async function contractChatAllowance(orgId: string, userId: string, contractId: string) {
+  const rows = await ContractReviewPurchaseModel.find({ orgId, userId, contractId })
+    .select('chatAllowance chatUsed chatReserved')
+    .lean();
+  const total = (field: 'chatAllowance' | 'chatUsed' | 'chatReserved') =>
+    rows.reduce((sum, row) => sum + (row[field] ?? 0), 0);
+  const allowance = total('chatAllowance');
+  const used = total('chatUsed');
+  const reserved = total('chatReserved');
+  return { allowance, used, reserved, available: Math.max(0, allowance - used - reserved) };
+}
+
+/**
+ * An unused paid review bought for an earlier version of the contract. It moves to
+ * the latest version instead of being stranded when a new file is uploaded.
+ */
+export function findCarriedPurchase(
+  orgId: string,
+  userId: string,
+  contractId: string,
+  currentVersionId: string,
+  session: ClientSession | null = null,
+) {
+  return ContractReviewPurchaseModel.findOne({
+    orgId,
+    userId,
+    contractId,
+    status: 'available',
+    versionId: { $ne: currentVersionId },
+  })
+    .sort({ createdAt: -1 })
+    .session(session);
+}
 
 export async function contractReviewQuote(userId: string, orgId: string, contractId: string) {
   const user = await UserModel.findOne({ _id: userId, isActive: true, platformRole: null });
@@ -26,19 +78,42 @@ export async function contractReviewQuote(userId: string, orgId: string, contrac
   const cost = requireReviewCost(version);
   const subscription = await getSubscription(userId, orgId);
   const purchase = await ContractReviewPurchaseModel.findOne({ orgId, versionId: version.id });
-  const pending = await PaymentModel.findOne({ orgId, isOpen: true }).select('orderCode');
+  // Unused paid units (for this version or carried from an earlier one) count first,
+  // then the plan's remaining units; only the shortfall is paid.
+  const paidSource = purchase
+    ? purchase.status === 'available'
+      ? purchase
+      : null
+    : await findCarriedPurchase(orgId, userId, contractId, version.id);
+  const paidUnits = paidSource?.units ?? 0;
+  const planUnits = Math.min(subscription.analysis.available, Math.max(0, cost.units - paidUnits));
+  const shortfallUnits = Math.max(0, cost.units - paidUnits - planUnits);
+  const spent = purchase && purchase.status !== 'available';
+  const pending = await PaymentModel.findOne({ orgId, isOpen: true }).select(
+    'orderCode paidAt paymentLinkId providerError',
+  );
+  // An abandoned unpaid order is replaced by a new checkout instead of blocking it.
+  const blocking = pending && !isReplaceableOrder(pending) ? pending : null;
   return {
     contractId,
     versionId: version.id,
     pageCount: cost.pageCount!,
     units: cost.units,
+    paidUnits,
+    planUnits,
+    shortfallUnits,
+    carryPurchaseId: paidSource?.id ?? null,
     unitPrice: env.PERSONAL_REVIEW_PRICE_PER_UNIT,
-    amount: cost.units * env.PERSONAL_REVIEW_PRICE_PER_UNIT,
+    amount: shortfallUnits * env.PERSONAL_REVIEW_PRICE_PER_UNIT,
     currency: 'VND',
     availableUnits: subscription.analysis.available,
-    canPurchase: !purchase && subscription.analysis.available < cost.units,
-    purchaseStatus: purchase?.status ?? null,
-    openOrderCode: pending?.orderCode ?? null,
+    canPurchase: !spent && shortfallUnits > 0,
+    purchaseStatus: spent ? purchase!.status : paidSource && shortfallUnits === 0 ? 'available' : null,
+    openOrderCode: blocking?.orderCode ?? null,
+    replacesOrderCode: pending && !blocking ? pending.orderCode : null,
+    // Chat included with a new purchase, and what earlier purchases have left.
+    includedChat: env.PERSONAL_REVIEW_CHAT_ALLOWANCE,
+    contractChat: await contractChatAllowance(orgId, userId, contractId),
   };
 }
 
@@ -64,6 +139,27 @@ export async function activateContractReviewPurchase(order: InstanceType<typeof 
     }).session(session);
     if (!version || !contract)
       throw AppError.conflict('Không tìm thấy phiên bản hợp đồng đã thanh toán.');
+    if (order.carryPurchaseId) {
+      // Top-up for a longer new version: move the earlier paid review onto it.
+      const carried = await ContractReviewPurchaseModel.findOne({
+        _id: order.carryPurchaseId,
+        orgId: order.orgId,
+      }).session(session);
+      if (!carried) throw AppError.conflict('Không tìm thấy lượt rà soát đã thanh toán trước.');
+      if (carried.extraOrderCodes?.includes(order.orderCode)) return;
+      if (carried.status !== 'available')
+        throw AppError.conflict('Lượt rà soát đã thanh toán trước không còn khả dụng.');
+      await ContractReviewPurchaseModel.updateOne(
+        { _id: carried._id, status: 'available' },
+        {
+          $set: { versionId: order.versionId, pageCount: order.pageCount, units: order.reviewUnits },
+          $inc: { amount: order.amount },
+          $push: { extraOrderCodes: order.orderCode },
+        },
+        { session },
+      );
+      return;
+    }
     const existing = await ContractReviewPurchaseModel.findOne({
       orgId: order.orgId,
       versionId: order.versionId,
@@ -84,6 +180,7 @@ export async function activateContractReviewPurchase(order: InstanceType<typeof 
           pageCount: order.pageCount,
           units: order.reviewUnits,
           amount: order.amount,
+          chatAllowance: env.PERSONAL_REVIEW_CHAT_ALLOWANCE,
         },
       ],
       { session },

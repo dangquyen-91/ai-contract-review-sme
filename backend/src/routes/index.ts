@@ -9,9 +9,10 @@ import reviewRoutes from './review.routes';
 import invitationRoutes from './invitation.routes';
 import profileRoutes from './profile.routes';
 import contractDraftRoutes from './contractDraft.routes';
+import managedTemplateRoutes from './managedTemplate.routes';
 import reportsRoutes from './reports.routes';
 import dashboardRoutes from './dashboard.routes';
-import { listPlansHandler } from '../controllers/subscription.controller';
+import { listPlansHandler, listTopUpPacksHandler } from '../controllers/subscription.controller';
 
 const router = Router();
 
@@ -20,6 +21,7 @@ router.get('/health', (_req, res) => res.json({ success: true, data: { status: '
 router.use('/auth', authRoutes);
 router.use('/profile', profileRoutes);
 router.use('/contract-drafts', contractDraftRoutes);
+router.use('/manager/contract-templates', managedTemplateRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/admin/users', userManagementRoutes);
@@ -28,6 +30,7 @@ router.use('/admin/userManagement', userManagementRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/invitations', invitationRoutes);
 router.get('/plans', listPlansHandler);
+router.get('/top-up-packs', listTopUpPacksHandler);
 router.use('/contracts', contractRoutes);
 router.use('/contract-profiles', contractProfileRoutes);
 router.use('/reviews', reviewRoutes);

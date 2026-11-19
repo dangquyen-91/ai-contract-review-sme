@@ -48,7 +48,7 @@ test('Original DOCX shows every page and scrolls clause links inside the preview
   const { OriginalContractPreview } = load('../components/review/document/original-contract-preview.tsx', {
     react: React, 'react/jsx-runtime': jsx,
     '@/components/ui/button': { Button: 'button' },
-    '@/hooks/use-contracts': { useContractFile: () => file },
+    '@/hooks/contracts/use-contracts': { useContractFile: () => file },
     'docx-preview': { renderAsync: async (_blob, container) => {
       container.innerHTML = '<div class="docx-wrapper"><section class="docx"><p>First page content</p></section><section class="docx"><p>Destination clause content</p></section><section class="docx"><p>Last page content</p></section></div>';
     } },

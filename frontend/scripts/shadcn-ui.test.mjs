@@ -21,6 +21,29 @@ const React = require('react');
 const { createRoot } = require('react-dom/client');
 const { renderToStaticMarkup } = require('react-dom/server');
 const modules = new Map();
+// The app wraps every page in a QueryClientProvider; components rendered here get
+// the same through a shared client (react-query v5 hooks accept one explicitly).
+const ReactQuery = require('@tanstack/react-query');
+// No retries and no garbage-collection timers, so nothing keeps the test process alive.
+const testQueryClient = new ReactQuery.QueryClient({ defaultOptions: {
+  queries: { retry: false, gcTime: Infinity, staleTime: Infinity, refetchOnWindowFocus: false },
+  mutations: { retry: false, gcTime: Infinity },
+} });
+test.after(() => testQueryClient.clear());
+// Marker package that only guards client bundles; it has no runtime behavior here.
+modules.set('server-only', { exports: {} });
+// Components render outside the Next.js app router: give them an empty URL and a no-op router.
+modules.set('next/navigation', { exports: {
+  useRouter: () => ({ push() {}, replace() {}, refresh() {}, back() {} }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/',
+} });
+modules.set('@tanstack/react-query', { exports: {
+  ...ReactQuery,
+  useQueryClient: (client) => client ?? testQueryClient,
+  useQuery: (options, client) => ReactQuery.useQuery(options, client ?? testQueryClient),
+  useMutation: (options, client) => ReactQuery.useMutation(options, client ?? testQueryClient),
+} });
 function load(relative) {
   if (modules.has(relative)) return modules.get(relative).exports;
   const loadedModule = { exports: {} };
@@ -50,21 +73,21 @@ const { Badge } = load('components/ui/badge.tsx');
 const { InvitationFormDialog } = load('components/invitations/invitation-form-dialog.tsx');
 const { MemberCapacityDialog } = load('components/members/member-capacity-dialog.tsx');
 const { SectionDetailDialog } = load('components/management/section-detail-dialog.tsx');
-const { ReviewBlockedNotice } = load('components/review/review-blocked-notice.tsx');
+const { ReviewBlockedNotice } = load('components/review/timeline/review-blocked-notice.tsx');
 let shareState;
-modules.set('hooks/use-contract-share-summary.ts', { exports: { useContractShareSummary: () => shareState } });
-const { ShareSummaryDialog } = load('components/review/share-summary-dialog.tsx');
-modules.set('hooks/use-review-allowance.ts', { exports: { useReviewAllowance: () => ({}) } });
-const { AnalysisFocusDialog } = load('components/review/analysis-focus-dialog.tsx');
-const { ReviewResultHeader } = load('components/review/review-result-header.tsx');
-const { ContractUploadForm } = load('components/review/contract-upload-form.tsx');
+modules.set('hooks/contracts/use-contract-share-summary.ts', { exports: { useContractShareSummary: () => shareState } });
+const { ShareSummaryDialog } = load('components/review/sharing/share-summary-dialog.tsx');
+modules.set('hooks/review/use-review-allowance.ts', { exports: { useReviewAllowance: () => ({}) } });
+const { AnalysisFocusDialog } = load('components/review/upload/analysis-focus-dialog.tsx');
+const { ReviewResultHeader } = load('components/review/results/review-result-header.tsx');
+const { ContractUploadForm } = load('components/review/upload/contract-upload-form.tsx');
 const wait = () => new Promise((resolve) => setTimeout(resolve, 20));
 
 test('Legal detail opens in place, restores focus, and keeps the parent open through nested actions and pending mutations', async () => {
   const source = { _id: '0123456789abcdef01234567', title: 'Luật Thương mại 2005', sourceType: 'law', citationLabel: '36/2005/QH11', chunkCount: 325, status: 'in_force', ingestion: { status: 'failed', embeddedChunks: 100, totalChunks: 325 } };
   let query = { data: undefined, isPending: true, isFetching: false, isError: false, refetch: () => { retries++; return Promise.resolve(); } };
   let resumeRequests = 0, deleteRequests = 0, retries = 0, resumeDone, deleteDone, rejectDelete;
-  modules.set('hooks/use-legal-sources.ts', { exports: {
+  modules.set('hooks/legal-sources/use-legal-sources.ts', { exports: {
     useLegalSource: () => query,
     useResumeLegalSourceMutation: () => {
       const [isPending, setPending] = React.useState(false);
@@ -76,7 +99,7 @@ test('Legal detail opens in place, restores focus, and keeps the parent open thr
     },
     useAppendLegalSourcePartMutation: () => ({ mutateAsync() {} }),
   } });
-  modules.set('hooks/use-legal-source-upload.ts', { exports: { useLegalSourceUpload: () => ({ pending: false, preview: null, error: '', reset() {}, submit(event) { event.preventDefault(); } }) } });
+  modules.set('hooks/legal-sources/use-legal-source-upload.ts', { exports: { useLegalSourceUpload: () => ({ pending: false, preview: null, error: '', reset() {}, submit(event) { event.preventDefault(); } }) } });
   const { LegalSourceTable } = load('components/legal-sources/legal-source-table.tsx');
   const { LegalSourceDetailDialog } = load('components/legal-sources/legal-source-detail-dialog.tsx');
   const host = document.createElement('div'); document.body.append(host);
@@ -147,7 +170,7 @@ test('Homepage and catalog share the same modern plan cards, live data and selec
   assert.equal(plans.length, 4);
   const changedPlans = plans.map((plan) => plan.code === 'business_starter' ? { ...plan, price: 512345, analysisLimit: 301 } : plan);
   let query = { data: changedPlans, isPending: false, isError: false, isFetching: false, refetch() {} };
-  modules.set('hooks/use-subscription-plans.ts', { exports: { useSubscriptionPlans: () => query } });
+  modules.set('hooks/subscription/use-subscription-plans.ts', { exports: { useSubscriptionPlans: () => query } });
   const { PricingPlans } = load('components/landing/pricing-plans.tsx');
   const { SubscriptionCatalog } = load('components/subscription/subscription-catalog.tsx');
   const { SubscriptionConfirmation } = load('components/subscription/subscription-confirmation.tsx');
@@ -158,13 +181,13 @@ test('Homepage and catalog share the same modern plan cards, live data and selec
     const homepageCard = host.querySelector('[data-plan-code="business_starter"]');
     const cardClasses = homepageCard.className;
     assert.match(homepageCard.textContent, /512\.345/);
-    assert.match(homepageCard.textContent, /301 lượt phân tích/);
+    assert.match(homepageCard.textContent, /301 lượt rà soát/);
     assert.match(homepageCard.textContent, /500 lượt chat/);
     assert.ok(!host.textContent.includes('trang mỗi tháng'));
     assert.equal(host.querySelector('input[value="yearly"]'), null);
     await React.act(async () => host.querySelector('input[value="personal"]').click());
     assert.equal(host.querySelectorAll('[data-plan-code]').length, 2);
-    assert.match(host.querySelector('[data-plan-code="personal_free"]').textContent, /3 lượt phân tích/);
+    assert.match(host.querySelector('[data-plan-code="personal_free"]').textContent, /3 lượt rà soát/);
     assert.equal(host.querySelector('[data-plan-code="personal_free"] a').getAttribute('href'), '/dang-ky');
     assert.match(host.querySelector('[data-plan-code="personal_pro"]').textContent, /99\.000/);
     await React.act(async () => host.querySelector('[data-plan-code="personal_pro"] button').click()); await flush();
@@ -174,8 +197,9 @@ test('Homepage and catalog share the same modern plan cards, live data and selec
     const catalogCard = host.querySelector('[data-plan-code="business_starter"]');
     assert.equal(catalogCard.className, cardClasses);
     assert.equal(catalogCard.dataset.planVariant, 'catalog');
-    assert.equal(catalogCard.querySelectorAll('ul svg').length, 4);
-    assert.match(catalogCard.textContent, /301 lượt phân tích/);
+    // Review, chat, drafting, seats and quota scope.
+    assert.equal(catalogCard.querySelectorAll('ul svg').length, 5);
+    assert.match(catalogCard.textContent, /301 lượt rà soát/);
     assert.match(catalogCard.textContent, /512\.345/);
     assert.match(host.querySelector('table').textContent, /512\.345/);
     await React.act(async () => catalogCard.querySelector('button').click()); await flush();
@@ -186,7 +210,7 @@ test('Homepage and catalog share the same modern plan cards, live data and selec
     assert.match(host.querySelector('table').textContent, /99\.000/);
     await React.act(async () => root.render(React.createElement(SubscriptionConfirmation, { planCode: 'business_starter' })));
     assert.match(host.textContent, /512\.345/);
-    assert.match(host.textContent, /301 lượt phân tích/);
+    assert.match(host.textContent, /301 lượt rà soát/);
     assert.ok(!host.textContent.includes('Doanh nghiệp mẫu'));
     query = { ...query, data: undefined, isPending: true };
     await React.act(async () => root.render(React.createElement(PricingPlans)));
@@ -211,7 +235,7 @@ test('Homepage and catalog share the same modern plan cards, live data and selec
 });
 
 test('Legal source charts preserve unknown statuses, show true totals and filter via their actions', async () => {
-  const { getLegalSourceAnalytics } = load('lib/legal-source-analytics.ts');
+  const { getLegalSourceAnalytics } = load('lib/legal-sources/legal-source-analytics.ts');
   const { LegalSourceCharts } = load('components/legal-sources/legal-source-charts.tsx');
   const sources = [
     { _id: 'law', sourceType: 'law' },
@@ -246,9 +270,9 @@ test('Legal source charts preserve unknown statuses, show true totals and filter
 
 test('Create legal source dialog preserves fields across preview/back and confirms discarding edits', async () => {
   modules.set('next/navigation', { exports: { useRouter: () => ({ push() {} }) } });
-  modules.set('hooks/use-legal-sources.ts', { exports: { useCreateLegalSourceMutation: () => ({ mutateAsync() {} }) } });
+  modules.set('hooks/legal-sources/use-legal-sources.ts', { exports: { useCreateLegalSourceMutation: () => ({ mutateAsync() {} }), useLegalSourceCatalog: () => ({ data: undefined, isPending: false }) } });
   let pending = false;
-  modules.set('hooks/use-legal-source-upload.ts', { exports: { useLegalSourceUpload: () => {
+  modules.set('hooks/legal-sources/use-legal-source-upload.ts', { exports: { useLegalSourceUpload: () => {
     const [preview, setPreview] = React.useState(null);
     return { pending, preview, error: '', reset: () => setPreview(null), submit: (event) => { event.preventDefault(); setPreview({ chunks: [] }); } };
   } } });
@@ -381,6 +405,10 @@ test('Starting review accepts an empty focus and trims a supplied focus', async 
     const root = createRoot(host);
     try {
       await React.act(async () => root.render(React.createElement(AnalysisFocusDialog, { contractTitle: 'Test', isReviewing: false, onReview: (focus) => calls.push(focus), onDismiss() {} }))); await flush();
+      // The optional focus field starts collapsed; open it to type a focus.
+      const toggle = document.querySelector('button[aria-controls$="-focus-panel"]');
+      assert.equal(toggle.getAttribute('aria-expanded'), 'false');
+      await React.act(async () => toggle.click());
       const input = document.querySelector('textarea');
       assert.ok(input.getAttribute('aria-describedby'));
       if (value) await React.act(async () => {
@@ -508,7 +536,7 @@ test('Share button opens a clearly labelled UI preview with email disabled and n
 });
 
 test('Formatted summary preserves ordinary text and renders each recognized priority as a labelled risk card', () => {
-  const { ShareSummaryPreview } = load('components/review/share-summary-preview.tsx');
+  const { ShareSummaryPreview } = load('components/review/sharing/share-summary-preview.tsx');
   const html = renderToStaticMarkup(React.createElement(ShareSummaryPreview, {
     text: 'TÓM TẮT\nVẤN ĐỀ ƯU TIÊN\n1. [Cao] High item\n2. [Trung bình] Medium item\n3. [Thấp] Low item\nCustom edited line',
     counts: { high: 1, medium: 1, low: 1 },
@@ -536,17 +564,24 @@ test('Quota notice offers plans to owners and personal users, directs members to
     assert.match(html, /Hợp đồng đã lưu/);
     assert.match(html, /chưa được bắt đầu/);
     assert.ok(!html.includes('Tiếp tục theo dõi'));
-    assert.match(html, new RegExp(`/dashboard/${role}/contract`));
-    if (role === 'owner' || role === 'user') assert.match(html, /href="\/goi-dich-vu"/);
-    else { assert.ok(!html.includes('/goi-dich-vu')); assert.match(html, /Liên hệ Chủ tổ chức/); }
+    assert.match(html, /href="\/contract"/);
+    if (role === 'owner' || role === 'user') {
+      assert.match(html, /href="\/goi-dich-vu"/);
+      // Plan managers can buy extra units right away.
+      assert.match(html, /href="\/subscription#mua-them-luot"/);
+    } else {
+      assert.ok(!html.includes('/goi-dich-vu'));
+      assert.ok(!html.includes('mua-them-luot'));
+      assert.match(html, /Liên hệ Chủ tổ chức/);
+    }
   }
 });
 async function flush() { await React.act(async () => { await wait(); }); }
 
-test('Organization editing trims values, clears optional fields and keeps failed saves open for retry', async () => {
+test('Organization editing trims values, submits once and keeps failed saves open for retry', async () => {
   const calls = [];
   let rejectSave;
-  modules.set('hooks/use-organizations.ts', { exports: { useUpdateOrganization: () => {
+  modules.set('hooks/organizations/use-organizations.ts', { exports: { useUpdateOrganization: () => {
     const [isPending, setPending] = React.useState(false);
     const [error, setError] = React.useState(null);
     return { isPending, error, mutateAsync: async (input) => {
@@ -556,17 +591,22 @@ test('Organization editing trims values, clears optional fields and keeps failed
       finally { setPending(false); }
     } };
   } } });
+  modules.set('hooks/organizations/use-industry-options.ts', { exports: { useIndustryOptionsQuery: () => ({ industries: [{ code: 'other', name: 'Khác' }], isPending: false, isError: false, refetch() {} }) } });
   const { OrganizationEditDialog } = load('components/organizations/organization-edit-dialog.tsx');
   const host = document.createElement('div'); document.body.append(host);
   const root = createRoot(host);
   const originalFormData = globalThis.FormData; globalThis.FormData = dom.window.FormData;
   let closed = 0;
   try {
-    await React.act(async () => root.render(React.createElement(OrganizationEditDialog, { organization: { id: 'org', name: '  Updated name  ', taxCode: '', address: '' }, onClose: () => { closed++; } })));
+    await React.act(async () => root.render(React.createElement(OrganizationEditDialog, { organization: {
+      id: 'org', name: '  Updated name  ', taxCode: '0312345678', industry: 'other',
+      // Tax code, industry and address are required, as when creating the organization.
+      addressDetails: { provinceCode: '01', wardCode: '00004', addressLine: '  12 Test  ' },
+    }, onClose: () => { closed++; } })));
     await flush();
     const form = document.querySelector('[role="dialog"] form');
     await React.act(async () => { form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); });
-    assert.deepEqual(calls, [{ name: 'Updated name', taxCode: null, address: null }]);
+    assert.deepEqual(calls, [{ name: 'Updated name', taxCode: '0312345678', industry: 'other', addressDetails: { provinceCode: '01', wardCode: '00004', addressLine: '12 Test' } }]);
     assert.equal(form.querySelector('button[type="submit"]').disabled, true);
     await React.act(async () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })));
     assert.equal(closed, 0);
@@ -582,9 +622,11 @@ test('Subscription management confirms downgrades, exposes the effective date an
   const starter = { code: 'business_starter', name: 'Starter', audience: 'business', price: 499000, memberLimit: 5 };
   const pro = { code: 'business_pro', name: 'Pro', audience: 'business', price: 999000, memberLimit: 15 };
   const subscription = { data: { status: 'active', plan: pro, endsAt: '2026-11-01T00:00:00Z', scheduledDowngrade: { planCode: starter.code, effectiveAt: '2026-11-01T00:00:00Z' }, members: { count: 2, limit: 15 }, analysis: { available: 100, limit: 600 }, chat: { available: 200, limit: 1500 } } };
-  modules.set('hooks/use-subscription-management.ts', { exports: { useSubscriptionManagement: () => ({ subscription, schedule: { reset() {}, mutateAsync: async (code) => calls.push(['schedule', code]) }, cancel: { reset() {}, mutateAsync: async () => calls.push(['cancel']) } }) } });
-  modules.set('hooks/use-subscription-plans.ts', { exports: { useSubscriptionPlans: () => ({ data: [starter, pro] }) } });
+  modules.set('hooks/subscription/use-subscription-management.ts', { exports: { useSubscriptionManagement: () => ({ subscription, schedule: { reset() {}, mutateAsync: async (code) => calls.push(['schedule', code]) }, cancel: { reset() {}, mutateAsync: async () => calls.push(['cancel']) } }) } });
+  modules.set('hooks/subscription/use-subscription-plans.ts', { exports: { useSubscriptionPlans: () => ({ data: [starter, pro] }), useTopUpPacks: () => ({ data: [] }) } });
   modules.set('components/subscription/payment-history.tsx', { exports: { PaymentHistory: () => null } });
+  // Buying extra units has its own section and tests; this one covers downgrades.
+  modules.set('components/subscription/top-up-packs.tsx', { exports: { TopUpPacks: () => null } });
   const { SubscriptionManagement } = load('components/subscription/subscription-management.tsx');
   const host = document.createElement('div'); document.body.append(host);
   const root = createRoot(host);
@@ -714,7 +756,8 @@ test('Invitation Dialog labels itself, blocks dismissal while sending and restor
     assert.equal(dialog.getAttribute('aria-busy'), 'true');
     assert.equal(dialog.querySelector('[data-slot="dialog-close"]').disabled, true);
     assert.equal(dialog.querySelector('input').disabled, true);
-    assert.equal(dialog.querySelector('select').disabled, true);
+    // Only Staff can be invited, so there is no role selector to lock.
+    assert.equal(dialog.querySelector('select'), null);
     assert.equal([...dialog.querySelectorAll('button')].every((button) => button.disabled), true);
     await React.act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
     assert.ok(document.querySelector('[role="dialog"]'));

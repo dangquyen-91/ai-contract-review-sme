@@ -17,7 +17,8 @@ const { createApp } = require('../dist/app');
 const { UserModel } = require('../dist/models/user.model');
 const { OrganizationModel } = require('../dist/models/organization.model');
 const { OrganizationInvitationModel } = require('../dist/models/organizationInvitation.model');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
+const { seedDefaultRoles } = require('../dist/services/identity/role.service');
+const { MembershipModel } = require('../dist/models/membership.model');
 const { logger } = require('../dist/config/logger');
 logger.silent = true;
 let replica,
@@ -106,22 +107,21 @@ test('Google login after onboarding never creates an organization or assigns org
   const again = await signIn();
   expect(again.status).toBe(200);
   expect(again.body.data.user).toMatchObject({ orgId: null, hasCompletedOnboarding: true });
-  expect((await UserModel.findOne({ email: payload.email })).orgId).toBeUndefined();
+  const created = await UserModel.findOne({ email: payload.email });
+  expect(await MembershipModel.exists({ userId: created._id })).toBeNull();
   expect(await OrganizationModel.countDocuments()).toBe(organizationsBefore);
 });
 
 test('verified existing account links without duplicating account or altering owner rights', async () => {
   const payload = identity();
-  const role = await getRoleByCode('owner');
   const orgId = new mongoose.Types.ObjectId();
   const user = await UserModel.create({
     email: payload.email,
     name: 'Existing Owner',
-    roleId: role._id,
-    orgId,
     emailVerifiedAt: new Date(),
     passwordHash: 'original-hash',
   });
+  await MembershipModel.create({ userId: user._id, orgId, role: 'owner' });
   const response = await signIn();
   expect(response.status).toBe(200);
   expect(response.body.data.user).toMatchObject({
@@ -135,12 +135,10 @@ test('verified existing account links without duplicating account or altering ow
 });
 
 test('disabled and unverified existing accounts cannot be taken over through Google', async () => {
-  const role = await getRoleByCode('user');
   const payload = identity();
   const user = await UserModel.create({
     email: payload.email,
     name: 'Existing',
-    roleId: role._id,
     passwordHash: 'existing-hash',
   });
   expect((await signIn()).status).toBe(409);

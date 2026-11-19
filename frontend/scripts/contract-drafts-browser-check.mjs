@@ -22,6 +22,9 @@ const organization = { name: 'Fixture Company', taxCode: '0101234567', address: 
 const workspaceSwitch = process.argv.includes('--workspace-switch');
 const reportsMode = process.argv.includes('--reports');
 const organizationValidation = process.argv.includes('--organization-validation');
+const managedTemplatesMode = process.argv.includes('--managed-templates');
+let managedTemplate;
+let managedRevision = 0;
 let organizationEdits = 0;
 if (organizationValidation) Object.assign(organization, { industry: 'other', addressDetails: { provinceCode: '01', wardCode: '00004', addressLine: '12 Test' } });
 let reportEmpty = false, reportFailure = false;
@@ -34,6 +37,7 @@ const user = { id: 'a'.repeat(24), role: personalHousing ? 'user' : 'staff', nam
 if (workspaceSwitch) Object.assign(user, { workspace: 'organization', organizationMembership: { orgId: 'b'.repeat(24), role: 'staff' } });
 if (reportsMode) Object.assign(user, { role: 'administrator', orgId: null });
 if (organizationValidation) Object.assign(user, { role: 'owner' });
+if (managedTemplatesMode) Object.assign(user, { role: 'manager', orgId: null });
 const token = 'fixture.refresh.signature';
 let draft, saves = 0, requests = 0, downloads = 0, failSaveOnce = false, failAiOnce = false, draftingAvailable = 50;
 let history = []; const requestIds = new Map();
@@ -48,6 +52,30 @@ const backend = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const send = (data, status = 200) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: true, data })); };
   const error = (message, status) => { res.writeHead(status, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ success: false, error: { message } })); };
+  if (managedTemplatesMode && url.pathname.startsWith('/api/v1/manager/contract-templates')) {
+    const suffix = url.pathname.slice('/api/v1/manager/contract-templates'.length);
+    if (!suffix && req.method === 'GET') return send({ items: managedTemplate ? [managedTemplate] : [], total: managedTemplate ? 1 : 0, page: 1, pages: 1 });
+    if (!suffix && req.method === 'POST') {
+      const definition = structuredClone(accountTemplate(body.code, false));
+      definition.name = body.name;
+      managedTemplate = { id: 'e'.repeat(24), code: body.code, name: body.name, description: definition.description, status: 'draft', revision: 0, publishedVersion: 0, hasUnpublishedChanges: true, updatedAt: new Date().toISOString(), definition, publishedDefinition: null, versions: [] };
+      return send(managedTemplate, 201);
+    }
+    if (!managedTemplate) return error('Not found', 404);
+    if (req.method === 'GET') return send(managedTemplate);
+    if (body.revision !== managedTemplate.revision) return error('Mẫu đã thay đổi', 409);
+    if (req.method === 'PATCH') {
+      const parsed = require('../../backend/dist/validations/managedTemplate.validation').templateDefinitionSchema.safeParse(body.definition);
+      if (!parsed.success) return error(parsed.error.issues.map(issue => issue.message).join('. '), 400);
+      managedTemplate.definition = body.definition; managedTemplate.name = body.definition.name; managedTemplate.hasUnpublishedChanges = true;
+    } else if (suffix.endsWith('/publish')) {
+      managedTemplate.publishedDefinition = structuredClone(managedTemplate.definition); managedTemplate.publishedVersion++;
+      managedTemplate.status = 'published'; managedTemplate.hasUnpublishedChanges = false;
+      managedTemplate.versions.push({ version: managedTemplate.publishedVersion, publishedAt: new Date().toISOString() });
+    } else if (suffix.endsWith('/retire')) managedTemplate.status = 'retired';
+    else if (req.method === 'DELETE') { managedTemplate = undefined; return send({ id: 'e'.repeat(24) }); }
+    managedTemplate.revision++; managedRevision++; return send(managedTemplate);
+  }
   if (reportsMode && url.pathname === '/api/v1/reports') {
     reportRequests.push(url.search);
     if (reportFailure) return error('Chưa tải được báo cáo. Hãy thử lại.', 503);
@@ -225,7 +253,39 @@ try {
     await fillSelector('[role=dialog] input:not([type=checkbox]),[role=dialog] textarea,[role=dialog] select', value);
     await click('Lưu thông tin'); await waitFor('!document.querySelector("[role=dialog]")');
   };
-  if (organizationValidation) {
+  if (managedTemplatesMode) {
+    await call('Page.navigate', { url: `${origin}/management/contract-templates` });
+    await waitFor('document.body.innerText.includes("Chưa tìm thấy mẫu phù hợp")');
+    assert.ok(await evaluate(`!!document.querySelector('a[href="/management/contract-templates"]')`));
+    await click('Tạo mẫu'); await waitFor('!!document.querySelector("[role=dialog] form")');
+    await fillSelector('[role=dialog] select', 'service');
+    await fillSelector('[role=dialog] input', 'Mẫu dịch vụ quản lý kiểm thử');
+    await click('Tạo bản nháp');
+    await waitFor('document.body.innerText.includes("Chưa có phiên bản công khai")');
+    assert.equal(managedTemplate.status, 'draft');
+    await fillSelector('main input[maxlength="160"]', 'Mẫu dịch vụ đã chỉnh sửa');
+    await click('Lưu nháp'); await waitFor('document.body.innerText.includes("Bản sửa chưa phát hành")');
+    assert.equal(managedTemplate.definition.name, 'Mẫu dịch vụ đã chỉnh sửa');
+    await click('Phát hành'); await waitFor('!!document.querySelector("[role=dialog]")');
+    await click('Xác nhận'); await waitFor('document.body.innerText.includes("Đang sử dụng")');
+    assert.equal(managedTemplate.status, 'published');
+    for (const width of [1440, 390]) {
+      await call('Emulation.setDeviceMetricsOverride', { width, height: 1000, deviceScaleFactor: 1, mobile: width < 600 });
+      assert.equal(await evaluate('document.documentElement.scrollWidth > innerWidth'), false, `Template editor overflow at ${width}`);
+      await shot(`managed-templates-${width}.png`);
+    }
+    await call('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
+    await click('Ngừng sử dụng'); await waitFor('!!document.querySelector("[role=dialog]")'); await click('Xác nhận');
+    await waitFor('document.body.innerText.includes("Đã ngừng sử dụng")');
+    await click('Danh sách mẫu'); await waitFor('document.body.innerText.includes("Quản lý mẫu")');
+    await click('Tạo mẫu'); await waitFor('!!document.querySelector("[role=dialog] form")');
+    await fillSelector('[role=dialog] input', 'Mẫu nháp sẽ xóa'); await click('Tạo bản nháp');
+    await waitFor('document.body.innerText.includes("Chưa có phiên bản công khai")');
+    await click('Xóa mẫu'); await waitFor('!!document.querySelector("[role=dialog]")'); await click('Xác nhận');
+    await waitFor('document.body.innerText.includes("Chưa tìm thấy mẫu phù hợp")');
+    assert.equal(managedTemplate, undefined); assert.ok(managedRevision >= 3);
+    console.log(`PASS Manager template UI: create, edit, save, publish, retire, delete unpublished, desktop/mobile. Screenshots: ${artifacts}`);
+  } else if (organizationValidation) {
     await call('Page.navigate', { url: `${origin}/settings` });
     await waitFor(`!!document.querySelector('button[aria-label="Chỉnh sửa thông tin tổ chức"]')`);
     await clickLabel('Chỉnh sửa thông tin tổ chức');

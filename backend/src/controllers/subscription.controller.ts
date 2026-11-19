@@ -1,12 +1,19 @@
 import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import * as service from '../services/billing/subscription.service';
+import { listTopUpPacks } from '../services/billing/topUp.service';
 
 export const listPlansHandler = asyncHandler(async (_req, res) => {
   ok(res, await service.listPlans());
 });
+export const listTopUpPacksHandler = asyncHandler(async (_req, res) => {
+  ok(res, await listTopUpPacks());
+});
 export const getSubscriptionHandler = asyncHandler(async (req, res) => {
   ok(res, await service.getSubscription(req.user!.sub, req.params.id));
+});
+export const planQuoteHandler = asyncHandler(async (req, res) => {
+  ok(res, await service.quotePlanCheckout(req.user!.sub, req.params.id, req.query.planCode as never));
 });
 export const scheduleDowngradeHandler = asyncHandler(async (req, res) => {
   ok(res, await service.scheduleDowngrade(req.user!.sub, req.params.id, req.body.planCode));

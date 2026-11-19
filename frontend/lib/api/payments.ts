@@ -1,12 +1,16 @@
 import { apiRequest } from "./client";
 import type { PaymentAction, PaymentHistory, PaymentOrder, ContractReviewQuote } from "@/types/payment";
-import type { PlanCode } from "@/types/subscription";
+import type { PlanCode, TopUpPack } from "@/types/subscription";
 
 const base = (orgId: string) => `/organizations/${orgId}/payments`;
 export const paymentsApi = {
   reviewQuote: (contractId: string) => apiRequest<ContractReviewQuote>({ url: `/contracts/${contractId}/review-payment` }),
   createReview: (accountId: string, quote: ContractReviewQuote, key: string) => apiRequest<PaymentOrder>({
     url: base(accountId), method: "POST", data: { purpose: "contract_review", action: "purchase", contractId: quote.contractId, versionId: quote.versionId, expectedAmount: quote.amount },
+    headers: { "Idempotency-Key": key }, timeout: 35_000,
+  }),
+  createTopUp: (accountId: string, pack: TopUpPack, key: string) => apiRequest<PaymentOrder>({
+    url: base(accountId), method: "POST", data: { purpose: "top_up", action: "purchase", packCode: pack.code, expectedAmount: pack.price },
     headers: { "Idempotency-Key": key }, timeout: 35_000,
   }),
   list: (orgId: string, page = 1) => apiRequest<PaymentHistory>({ url: base(orgId), params: { page } }),

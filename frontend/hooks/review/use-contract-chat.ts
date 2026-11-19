@@ -1,11 +1,28 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { paymentsApi } from "@/lib/api/payments";
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { useContractChatMessages, useStreamChatMutation } from "@/hooks/contracts/use-contracts";
 import { isApiClientError } from "@/lib/api/client";
+import { isQuotaExhausted, TOP_UP_HREF } from "@/lib/subscription/quota-error";
 
-export function useContractChat(contractId: string, canAsk: boolean) {
+export const contractChatAllowanceKey = (contractId: string) =>
+  ["contract-chat-allowance", contractId] as const;
+
+export function useContractChat(contractId: string, canAsk: boolean, canManagePlan = false, personal = false) {
+  const router = useRouter();
+  const client = useQueryClient();
+  // Chat included with a paid per-contract review; only personal accounts can buy one.
+  const allowance = useQuery({
+    queryKey: contractChatAllowanceKey(contractId),
+    queryFn: async () => (await paymentsApi.reviewQuote(contractId)).contractChat ?? null,
+    enabled: personal,
+    retry: false,
+    staleTime: 0,
+  });
   const history = useContractChatMessages(contractId);
   const stream = useStreamChatMutation();
   const sending = useRef(false);
@@ -30,14 +47,19 @@ export function useContractChat(contractId: string, canAsk: boolean) {
       });
       await history.refetch();
     } catch (error) {
-      toast.error("Chưa thể trả lời câu hỏi", {
+      const outOfCredits = isQuotaExhausted(error);
+      toast.error(outOfCredits ? "Đã hết lượt chat" : "Chưa thể trả lời câu hỏi", {
         description: isApiClientError(error) ? error.message : "Vui lòng thử lại sau.",
+        ...(outOfCredits && canManagePlan
+          ? { action: { label: "Thêm lượt", onClick: () => router.push(TOP_UP_HREF) } }
+          : {}),
       });
       setDraft(message);
     } finally {
       setPendingQuestion("");
       setAnswer("");
       sending.current = false;
+      if (personal) void client.invalidateQueries({ queryKey: contractChatAllowanceKey(contractId) });
     }
   }
 
@@ -51,6 +73,7 @@ export function useContractChat(contractId: string, canAsk: boolean) {
     pendingQuestion,
     answer,
     isSending: Boolean(pendingQuestion),
+    includedChat: allowance.data?.allowance ? allowance.data : null,
     ask,
   };
 }

@@ -1,6 +1,6 @@
 FROM node:22-slim AS build
 WORKDIR /app
-COPY package*.json ./
+COPY package*.json .npmrc ./
 RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
@@ -10,7 +10,7 @@ FROM node:22-slim
 ENV NODE_ENV=production PORT=4000
 RUN apt-get update && apt-get install -y --no-install-recommends libreoffice-writer fonts-liberation fonts-dejavu-core && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY package*.json ./
+COPY package*.json .npmrc ./
 RUN npm ci --omit=dev
 RUN node -e "require('tesseract.js').createWorker('vie+eng').then((w) => w.terminate())"
 COPY --from=build /app/dist ./dist

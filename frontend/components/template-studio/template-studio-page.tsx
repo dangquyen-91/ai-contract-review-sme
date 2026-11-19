@@ -26,6 +26,7 @@ import { StudioLoadingState, StudioLegacyEntry } from "./studio-entry-state";
 import { getStudioPresentation } from "./studio-presentation";
 import styles from "@/styles/template-studio.module.css";
 import { billingAccountId } from "@/lib/subscription/billing-account";
+import { canBuyTopUp } from "@/lib/subscription/quota-error";
 
 export function TemplateStudioPage({
   id,
@@ -159,6 +160,7 @@ function Studio({ initial, user }: { initial: ContractDraft; user: AuthUser }) {
             <StudioChat
               studio={studio}
               accountId={billingAccountId(user) ?? undefined}
+              canManagePlan={canBuyTopUp(user.role)}
               selection={selection}
               onClearSelection={() => setSelection({ blockIds: [], text: "" })}
             />

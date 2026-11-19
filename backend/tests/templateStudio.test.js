@@ -33,8 +33,8 @@ const { LegalSourceModel } = require('../dist/models/legalSource.model');
 const { LegalKnowledgeChunkModel } = require('../dist/models/legalKnowledgeChunk.model');
 const { ContractProfileModel } = require('../dist/models/contractProfile.model');
 const { studioLawContext } = require('../dist/services/drafting/studioLegalSources.service');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
-const { tokensForUser } = require('../dist/services/identity/auth.service');
+const { seedDefaultRoles } = require('../dist/services/identity/role.service');
+const { createAccount, organizationOf } = require('./helpers/accounts');
 const { CONTRACT_TEMPLATES } = require('../dist/services/drafting/templates');
 const {
   normalizeStudioDocument,
@@ -66,19 +66,9 @@ const template = CONTRACT_TEMPLATES.find((item) => item.code === 'service');
 const call = (member, method, path = '') =>
   request(app)
     [method](`/api/v1/contract-drafts${path}`)
-    .set('Authorization', `Bearer ${tokensForUser(member).accessToken}`);
-async function member(role) {
-  return (
-    await UserModel.create({
-      name: role,
-      email: `studio-${++sequence}@example.com`,
-      orgId: org.id,
-      roleId: (await getRoleByCode(role))._id,
-      passwordHash: 'unused',
-      emailVerifiedAt: new Date(),
-    })
-  ).populate('roleId');
-}
+    .set('Authorization', `Bearer ${member.testSession.accessToken}`);
+const member = (role) =>
+  createAccount({ role, orgId: org.id, name: role, email: `studio-${++sequence}@example.com` });
 async function create(input = {}, code = 'service') {
   const response = await call(staff, 'post').send({
     templateCode: code,
@@ -264,9 +254,7 @@ test('sales picker only exposes ready sales sources and rejects unrelated law se
 });
 
 test.each([['personal_free', 3], ['personal_pro', 30]])('standalone %s grants drafting credits and refunds failed AI calls', async (planCode, limit) => {
-  const personal = await UserModel.create({ name: 'Personal drafter', email: `draft-personal-${++sequence}@example.com`,
-    passwordHash: 'unused', emailVerifiedAt: new Date(), roleId: (await getRoleByCode('user'))._id });
-  await personal.populate('roleId');
+  const personal = await createAccount({ name: 'Personal drafter', email: `draft-personal-${++sequence}@example.com` });
   if (planCode === 'personal_pro') await activatePaidSubscription({ orgId: personal.id, planCode,
     action: 'purchase', amount: 99000, paymentReference: `personal-drafting-${++sequence}` });
   const created = await call(personal, 'post').send({ templateCode: 'labor', title: 'Personal drafting', ourParty: 'employee', editorMode: 'studio', input: {} });
@@ -289,7 +277,7 @@ test.each([['personal_free', 3], ['personal_pro', 30]])('standalone %s grants dr
   expect(failure.status).toBe(503);
   expect(failure.body.error).toMatchObject({ code: 'AI_UNAVAILABLE', message: expect.stringContaining('không bị trừ lượt') });
   expect((await getSubscription(personal.id, personal.id)).drafting).toMatchObject({ used: 1, reserved: 0, available: limit - 1 });
-  expect((await UserModel.findById(personal.id)).orgId).toBeFalsy();
+  expect(await organizationOf(personal.id)).toBeUndefined();
 });
 
 test('studio law catalog is read-only, searchable, paginated and hides unavailable sources', async () => {
@@ -316,9 +304,7 @@ test('studio law catalog is read-only, searchable, paginated and hides unavailab
   expect((await request(app).get('/api/v1/contract-drafts/legal-sources')).status).toBe(401);
   const manager = await member('manager');
   expect((await call(manager, 'get', '/legal-sources')).status).toBe(403);
-  const personal = await UserModel.create({ name: 'Personal law reader', email: `law-personal-${++sequence}@example.com`,
-    passwordHash: 'unused', emailVerifiedAt: new Date(), roleId: (await getRoleByCode('user'))._id });
-  await personal.populate('roleId');
+  const personal = await createAccount({ name: 'Personal law reader', email: `law-personal-${++sequence}@example.com` });
   expect((await call(personal, 'get', '/legal-sources')).status).toBe(200);
   const preview = await call(staff, 'get', `/legal-sources/${law.id}`);
   expect(preview.status).toBe(200);

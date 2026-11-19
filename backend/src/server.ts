@@ -16,6 +16,7 @@ import { startBackgroundWorkers, stopBackgroundWork } from './services/workers.s
 import { OrganizationInvitationModel } from './models/organizationInvitation.model';
 import { initializeSubscriptionModels } from './models/subscription.model';
 import { seedPlans } from './services/billing/subscription.service';
+import { seedTopUpPacks } from './services/billing/topUp.service';
 import { PaymentModel } from './models/payment.model';
 import { MembershipModel } from './models/membership.model';
 
@@ -27,6 +28,7 @@ async function bootstrap() {
   await MembershipModel.init();
   await initializeSubscriptionModels();
   await seedPlans();
+  await seedTopUpPacks();
   await seedDefaultRoles();
   await seedDefaultClauseTaxonomy();
   await seedDefaultContractProfiles();

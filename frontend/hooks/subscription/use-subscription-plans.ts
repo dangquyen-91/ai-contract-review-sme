@@ -12,3 +12,12 @@ export function useSubscriptionPlans() {
     retry: false,
   });
 }
+
+export function useTopUpPacks() {
+  return useQuery({
+    queryKey: planKeys.topUpPacks,
+    queryFn: ({ signal }) => plansApi.topUpPacks(signal),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}

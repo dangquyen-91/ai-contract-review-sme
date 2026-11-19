@@ -5,6 +5,7 @@ import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { paymentsApi } from "@/lib/api/payments";
+import { useSubscriptionPlans } from "@/hooks/subscription/use-subscription-plans";
 import { safeCheckoutUrl } from "@/lib/subscription/payment-state";
 
 export function ContractReviewPayment({
@@ -29,6 +30,7 @@ export function ContractReviewPayment({
   const lock = useRef(false);
   const key = useRef<{ fingerprint: string; value: string } | null>(null);
   const quote = query.data;
+  const pro = useSubscriptionPlans().data?.find((plan) => plan.code === "personal_pro");
   async function checkout() {
     if (!quote || !quote.canPurchase || lock.current || disabled) return;
     lock.current = true;
@@ -79,8 +81,10 @@ export function ContractReviewPayment({
   if (quote.purchaseStatus)
     return (
       <p className="mb-4 rounded-lg bg-blue-50 p-3 text-sm text-blue-800">
-        {quote.purchaseStatus === "available"
-          ? "Phiên bản này đã thanh toán. Bấm Bắt đầu rà soát; lượt trong gói được giữ nguyên."
+        {quote.purchaseStatus === "available" && quote.paidUnits
+          ? `Lượt rà soát đã thanh toán sẽ được dùng cho phiên bản này${quote.planUnits ? `, cùng ${quote.planUnits} lượt còn lại trong gói` : ""}. Bấm Bắt đầu rà soát.`
+          : quote.purchaseStatus === "available"
+          ? `Phiên bản này đã thanh toán${quote.planUnits ? `; lần rà soát dùng thêm ${quote.planUnits} lượt còn lại trong gói` : ""}. Bấm Bắt đầu rà soát.`
           : quote.purchaseStatus === "reserved"
             ? "Lần rà soát đã thanh toán đang được xử lý."
             : "Phiên bản này đã có kết quả rà soát được thanh toán."}
@@ -96,15 +100,26 @@ export function ContractReviewPayment({
         Không đủ lượt trong gói? Thanh toán hợp đồng này
       </p>
       <p>
-        {quote.pageCount} trang · {quote.units} ×{" "}
-        {quote.unitPrice.toLocaleString("vi-VN")}đ / 5 trang ={" "}
+        {quote.pageCount} trang = {quote.units} lượt (mỗi lượt tối đa 5 trang)
+        {quote.planUnits ? ` · dùng ${quote.planUnits} lượt còn lại trong gói` : ""}
+        {quote.paidUnits ? ` · ${quote.paidUnits} lượt đã thanh toán` : ""}
+        {" · trả thêm "}
+        {quote.shortfallUnits ?? quote.units} lượt ×{" "}
+        {quote.unitPrice.toLocaleString("vi-VN")}đ ={" "}
         <strong>{quote.amount.toLocaleString("vi-VN")}đ</strong>
       </p>
       <p className="text-xs leading-5 text-muted-foreground">
-        Giữ nguyên {quote.availableUnits} lượt còn lại. Một lần rà soát thành
-        công cho đúng phiên bản này; AI lỗi hoặc hủy được thử lại miễn phí. Chat
-        dùng hạn mức gói hiện tại.
+        Một lần rà soát thành công cho đúng phiên bản này; AI lỗi hoặc hủy thì
+        cả lượt đã trả lẫn lượt trong gói được hoàn lại để thử lại.
+        {quote.includedChat
+          ? ` Kèm ${quote.includedChat} câu hỏi chat về hợp đồng này, dùng trước hạn mức chat của gói.`
+          : " Chat dùng hạn mức gói hiện tại."}
       </p>
+      {!quote.openOrderCode && quote.replacesOrderCode ? (
+        <p className="text-xs text-muted-foreground">
+          Đơn #{quote.replacesOrderCode} chưa thanh toán sẽ được hủy khi bạn tạo đơn này.
+        </p>
+      ) : null}
       {quote.openOrderCode ? (
         <Button asChild variant="outline">
           <Link href={`/thanh-toan/ket-qua?orderCode=${quote.openOrderCode}`}>
@@ -122,7 +137,9 @@ export function ContractReviewPayment({
         href="/goi-dich-vu/xac-nhan?plan=personal_pro"
         className="block font-medium text-blue-700"
       >
-        Hoặc xem gói Personal Pro
+        {pro
+          ? `Hoặc Personal Pro ${pro.price.toLocaleString("vi-VN")}đ/tháng: ${pro.analysisLimit} lượt rà soát, ${pro.chatLimit} lượt chat, ${pro.draftingLimit} lượt soạn`
+          : "Hoặc xem gói Personal Pro"}
       </Link>
       {error && (
         <p role="alert" className="text-red-700">

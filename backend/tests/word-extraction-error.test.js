@@ -11,7 +11,12 @@ const { countDocxPages } = require('../dist/services/contract/documentPageCount.
 
 test('missing Word conversion retains a distinct error code and cannot produce a billable page estimate', async () => {
   countDocxPages.mockRejectedValueOnce(new AppError('Converter unavailable', 503, true, 'REVIEW_PAGE_COUNT_UNAVAILABLE'));
-  const result = await extractContractText(Buffer.from('fixture'), 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  // A structurally valid DOCX, so the archive check passes and page counting is reached.
+  const zip = new (require('jszip'))();
+  zip.file('[Content_Types].xml', '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>');
+  zip.file('word/document.xml', '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"/>');
+  const docx = await zip.generateAsync({ type: 'nodebuffer' });
+  const result = await extractContractText(docx, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
   expect(result).toMatchObject({ status: 'failed', errorCode: 'REVIEW_PAGE_COUNT_UNAVAILABLE' });
   expect(result.quality?.pageCount).toBeUndefined();
 });

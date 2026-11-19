@@ -20,7 +20,7 @@ const invitationKeys = load('../lib/query-keys/invitations.ts').invitationKeys;
 test('Scheduling and cancelling a downgrade refresh the shared quota and member-capacity cache', async () => {
   const client = new QueryClient();
   const calls = [];
-  const { useSubscriptionManagement } = load('../hooks/use-subscription-management.ts', {
+  const deps = {
     '@tanstack/react-query': { useQuery: (options) => options, useMutation: (options) => options, useQueryClient: () => client },
     '@/lib/query-keys/invitations': { invitationKeys },
     '@/lib/api/billing': { billingApi: {
@@ -28,7 +28,10 @@ test('Scheduling and cancelling a downgrade refresh the shared quota and member-
       scheduleDowngrade: async (...args) => calls.push(['schedule', ...args]),
       cancelDowngrade: async (...args) => calls.push(['cancel', ...args]),
     } },
-  });
+  };
+  // The subscription query lives in its own hook, sharing the same query key.
+  deps['./use-subscription'] = load('../hooks/subscription/use-subscription.ts', deps);
+  const { useSubscriptionManagement } = load('../hooks/subscription/use-subscription-management.ts', deps);
   const key = invitationKeys.subscription('org-1');
   const hooks = useSubscriptionManagement('org-1');
   client.setQueryData(key, {});
@@ -62,7 +65,7 @@ test('Deleting a contract removes its private cache and invalidates lists and ov
 test('Share summary queries separate versions and reject an unmarked response without falling back to full results', async () => {
   const calls = [];
   let response = { text: 'Safe summary', redacted: true };
-  const { useContractShareSummary } = load('../hooks/use-contract-share-summary.ts', {
+  const { useContractShareSummary } = load('../hooks/contracts/use-contract-share-summary.ts', {
     '@tanstack/react-query': { useQuery: (options) => options },
     '@/lib/query-keys/contracts': keys,
     '@/lib/api/contracts': { contractsApi: { getShareSummary: async (...args) => { calls.push(args); return response; } } },
@@ -88,7 +91,7 @@ function setup(overrides = {}) {
     getFile: async (id, signal, redacted) => { calls.push({ type: 'file', id, signal, redacted }); return new Blob([redacted ? 'masked' : 'original']); },
     ...overrides,
   };
-  const hooks = load('../hooks/use-contracts.ts', {
+  const hooks = load('../hooks/contracts/use-contracts.ts', {
     react: { useCallback: (fn) => fn, useEffect: () => {}, useRef: (value) => ({ current: value }), useState: (value) => [value, () => {}] },
     '@tanstack/react-query': {
       useQueryClient: () => client,
@@ -98,7 +101,7 @@ function setup(overrides = {}) {
     '@/lib/query-keys/contracts': keys,
     '@/lib/query-keys/dashboard': dashboard,
     '@/lib/api/contracts': { contractsApi: api },
-    '@/lib/review-session': { clearReviewSession: () => {}, executeReview: async () => result },
+    '@/lib/review/review-session': { clearReviewSession: () => {}, executeReview: async () => result },
   });
   return { client, calls, hooks, result };
 }
@@ -215,7 +218,7 @@ test('Review completion updates listings without refetching or invalidating its 
 
 test('Invitation changes invalidate every page and capacity only for their organization', async () => {
   const client = new QueryClient();
-  const hooks = load('../hooks/use-invitations.ts', {
+  const hooks = load('../hooks/organizations/use-invitations.ts', {
     '@tanstack/react-query': { useQueryClient: () => client, useMutation: (options) => options },
     '@/lib/query-keys/invitations': { invitationKeys },
     '@/lib/api/client': { isApiClientError: (error) => error.status !== undefined },

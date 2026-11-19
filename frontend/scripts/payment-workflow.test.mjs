@@ -65,7 +65,7 @@ test('payment action follows active plan, full-price upgrades and scheduled down
   const active = { ...current, status: 'active', plan };
   assert.equal(state.paymentAction(active, plan), 'renew');
   assert.equal(state.paymentAction(active, { ...plan, code: 'business_pro', price: 999000 }), 'upgrade');
-  assert.equal(state.paymentAction({ ...active, plan: { ...plan, price: 999000 }, scheduledDowngrade: { planCode: plan.code } }, plan), 'downgrade');
+  assert.equal(state.paymentAction({ ...active, plan: { ...plan, price: 999000 }, scheduledDowngrade: { planCode: plan.code } }, plan), 'renew');
 });
 
 test('password, Google and OTP destinations preserve payment context and prioritize invitations', () => {
@@ -111,7 +111,7 @@ test('contract-payment payload forwards only server-checked version and expected
   assert.deepEqual(JSON.parse(JSON.stringify(calls[0].data)), { purpose: 'contract_review', action: 'purchase', contractId: quote.contractId, versionId: quote.versionId, expectedAmount: 20000 });
   assert.equal(calls[0].headers['Idempotency-Key'], 'review-payment-key');
   assert.equal(state.paymentMessage({ ...order, purpose: 'contract_review', fulfilledAt: 'now' }).success, true);
-  assert.match(state.paymentMessage({ ...order, purpose: 'contract_review', fulfilledAt: 'now' }).detail, /Lượt trong gói được giữ nguyên/);
+  assert.match(state.paymentMessage({ ...order, purpose: 'contract_review', fulfilledAt: 'now' }).detail, /các lượt được hoàn lại/);
 });
 
 test('payment proxy rejects missing sessions, cross-origin POST and invalid identifiers before upstream', async () => {
@@ -155,7 +155,10 @@ function find(node, predicate) {
   if (typeof node.type === 'function') return find(node.type(node.props), predicate);
   return [...(predicate(node) ? [node] : []), ...find(node.props?.children, predicate)];
 }
-function checkoutHarness({ subscription = current, items = [], create = async () => order, schedule = async () => {}, account = user, targetPlan = plan } = {}) {
+function checkoutHarness({ subscription = current, items = [], create = async () => order, schedule = async () => {}, account = user, targetPlan = plan, quote } = {}) {
+  // Stands in for the server quote: action from the shared rule, list price, no credit.
+  const action = state.paymentAction(subscription, targetPlan);
+  const serverQuote = quote ?? { planCode: targetPlan.code, action, needsSchedule: action === 'downgrade', listPrice: targetPlan.price, credit: 0, amount: action === 'downgrade' ? null : targetPlan.price, blockReason: null, blockCode: null };
   let cursor = 0;
   const slots = [], navigation = [], calls = [];
   const history = { data: { items }, isPending: false, refetch: async () => {} };
@@ -171,6 +174,7 @@ function checkoutHarness({ subscription = current, items = [], create = async ()
     '@/components/ui/icon': { Icon: props => jsx.jsx('svg', props) },
     '@/hooks/subscription/use-subscription-management': { useSubscriptionManagement: () => ({ subscription: { data: subscription, isPending: false }, schedule: { mutateAsync: schedule } }) },
     '@/hooks/subscription/use-payments': { usePaymentHistory: () => history },
+    '@/hooks/subscription/use-plan-quote': { usePlanQuote: () => ({ data: serverQuote, isPending: false, refetch: async () => {} }) },
     '@/lib/api/payments': { paymentsApi: { create: async (...args) => { calls.push(args); return create(...args); } } },
     '@/lib/subscription/payment-state': state,
     '@/lib/routing/workspace-path': { workspacePath: () => '/chon-to-chuc' },
@@ -234,8 +238,12 @@ test('uncertain checkout retries reuse the key and do not claim success or navig
   assert.ok(ctx.render().some(n => n.props?.role === 'alert' && text(n).includes('Network lost')));
 });
 
-test('an existing unfinished order blocks a new purchase and staff have no checkout action', () => {
-  assert.equal(checkoutHarness({ items: [order] }).render().filter(n => n.type === 'button').length, 0);
+test('only an uncertain unfinished order blocks a new purchase; an abandoned payOS link is replaced; staff have no checkout action', () => {
+  for (const uncertain of [{ ...order, status: 'paid', paidAt: 'now' }, { ...order, status: 'creating', checkoutUrl: null, providerError: 'Payment creation was not confirmed.' }])
+    assert.equal(checkoutHarness({ items: [uncertain] }).render().filter(n => n.type === 'button').length, 0);
+  const abandoned = checkoutHarness({ items: [order] }).render();
+  assert.equal(abandoned.filter(n => n.type === 'button').length, 1);
+  assert.match(text(abandoned), new RegExp(`Đơn #${order.orderCode} chưa thanh toán sẽ được hủy`));
   const ctx = checkoutHarness({ account: { ...user, role: 'staff' } });
   assert.equal(ctx.render().filter(n => n.type === 'button').length, 0);
   assert.equal(ctx.calls.length, 0);
@@ -252,4 +260,29 @@ test('downgrade must be scheduled before a payment is created', async () => {
   const ctx = checkoutHarness({ subscription: { ...current, status: 'active', plan: { ...plan, code: 'business_pro', price: 999000 } }, schedule: async () => { scheduled++; } });
   await ctx.render().find(n => n.type === 'button').props.onClick();
   assert.equal(scheduled, 1); assert.equal(ctx.calls.length, 0);
+});
+
+test('top-up orders describe the units credited and stay unfinished until fulfilled', () => {
+  const topUp = { ...order, planCode: null, purpose: 'top_up', packCode: 'business_chat_300', topUpKind: 'chat', topUpUnits: 300, amount: 99000 };
+  assert.equal(state.topUpKindLabel(topUp), 'chat');
+  assert.equal(state.isUnfinishedPayment(topUp), true);
+  const done = state.paymentMessage({ ...topUp, status: 'paid', paidAt: '2026-10-19T09:50:00Z', fulfilledAt: '2026-10-19T09:50:01Z' });
+  assert.equal(done.success, true);
+  assert.match(done.detail, /300 lượt chat/);
+  assert.match(done.detail, /dùng ngay/);
+  assert.equal(state.isUnfinishedPayment({ ...topUp, fulfilledAt: '2026-10-19T09:50:01Z' }), false);
+});
+
+test('quota errors point owners to top-ups only when a paid plan is active', () => {
+  const isApiClientError = (error) => Boolean(error && error.isApi);
+  const quota = load('../lib/subscription/quota-error.ts', { '@/lib/api/client': { isApiClientError } });
+  assert.equal(quota.isQuotaExhausted({ isApi: true, serverCode: 'CHAT_QUOTA_EXHAUSTED' }), true);
+  assert.equal(quota.isQuotaExhausted({ isApi: true, serverCode: 'DRAFTING_QUOTA_EXHAUSTED' }), true);
+  assert.equal(quota.isQuotaExhausted({ isApi: true, serverCode: 'AI_PLAN_REQUIRED' }), false);
+  assert.equal(quota.isQuotaExhausted(new Error('CHAT_QUOTA_EXHAUSTED')), false);
+  assert.deepEqual({ ...quota.quotaRecovery({ status: 'active', plan: { price: 499000 } }) }, { href: '/subscription#mua-them-luot', label: 'Mua thêm lượt' });
+  assert.equal(quota.quotaRecovery({ status: 'active', plan: { price: 0 } }).href, '/goi-dich-vu');
+  assert.equal(quota.quotaRecovery({ status: 'expired', plan: null }).href, '/goi-dich-vu');
+  assert.equal(quota.canBuyTopUp('owner') && quota.canBuyTopUp('user'), true);
+  assert.equal(quota.canBuyTopUp('staff'), false);
 });

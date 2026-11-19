@@ -37,7 +37,7 @@ export function DraftTemplateCard({
   onOpen: () => void;
 }) {
   const Icon = icons[template.code];
-  const roleId = `template-role-${template.code}`;
+  const roleId = `template-role-${template.id ?? template.code}`;
   return (
     <article
       data-template-code={template.code}

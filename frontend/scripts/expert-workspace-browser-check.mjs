@@ -154,7 +154,7 @@ try {
   socket = new WebSocket(pages.find(p => p.type === 'page').webSocketDebuggerUrl);
   await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onerror = reject; });
   let seq = 0; const pending = new Map();
-  socket.onmessage = ({ data }) => { const message = JSON.parse(data); if (!pending.has(message.id)) return; const fn = pending.get(message.id); pending.delete(message.id); message.error ? fn.reject(new Error(message.error.message)) : fn.resolve(message.result); };
+  socket.onmessage = ({ data }) => { const message = JSON.parse(data); if (!pending.has(message.id)) return; const fn = pending.get(message.id); pending.delete(message.id); if (message.error) fn.reject(new Error(message.error.message)); else fn.resolve(message.result); };
   const call = (method, params = {}) => new Promise((resolve, reject) => {
     const id = ++seq; const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Timeout ${method}`)); }, 30000);
     pending.set(id, { resolve: value => { clearTimeout(timer); resolve(value); }, reject: error => { clearTimeout(timer); reject(error); } }); socket.send(JSON.stringify({ id, method, params }));

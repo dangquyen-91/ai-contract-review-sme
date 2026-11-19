@@ -4,6 +4,7 @@ import { AppError } from '../errors/AppError';
 import { Request } from 'express';
 
 export const downgradeSchema = z.object({ planCode: z.enum(PLAN_CODES) });
+export const planQuoteSchema = z.object({ planCode: z.enum(PLAN_CODES) });
 
 export function getIdempotencyKey(req: Request) {
   const key = req.get('Idempotency-Key');

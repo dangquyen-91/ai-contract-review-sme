@@ -33,9 +33,9 @@ function harness(file, mutations) {
     '@tanstack/react-query': { useQueryClient: () => ({ cancelQueries: async () => {}, clear: () => calls.push('clear') }) },
     sonner: { toast: { success: () => {}, error: () => {} } },
     '@/lib/api/client': { isApiClientError: () => false },
-    '@/lib/workspace-path': { workspacePath: () => '/dashboard/staff' },
-    '@/hooks/use-auth': { useLogoutMutation: () => mutations.logout },
-    '@/hooks/use-invitations': {
+    '@/lib/routing/workspace-path': { workspacePath: () => '/dashboard/staff' },
+    '@/hooks/auth/use-auth': { useLogoutMutation: () => mutations.logout },
+    '@/hooks/organizations/use-invitations': {
       useAcceptInvitationMutation: () => mutations.accept,
       useCreateInvitationMutation: () => mutations.create,
       useRevokeInvitationMutation: () => mutations.revoke,
@@ -54,9 +54,9 @@ function harness(file, mutations) {
   vm.runInNewContext(source, { exports, require: (name) => deps[name] ?? {}, window: { confirm: () => true } });
   return exports;
   }
-  deps['@/lib/session-cache'] = load('../lib/session-cache.ts');
-  deps['@/lib/invitation-error'] = load('../lib/invitation-error.ts');
-  deps['@/hooks/use-logout-workflow'] = load('../hooks/use-logout-workflow.ts');
+  deps['@/lib/auth/session-cache'] = load('../lib/auth/session-cache.ts');
+  deps['@/lib/invitations/invitation-error'] = load('../lib/invitations/invitation-error.ts');
+  deps['@/hooks/auth/use-logout-workflow'] = load('../hooks/auth/use-logout-workflow.ts');
   const exports = load(file);
   return { calls, render: (props) => { cursor = 0; return Object.values(exports)[0](props); } };
 }
@@ -226,13 +226,13 @@ function loadModule(file, dependencies) {
 
 test('member removal refreshes member lists, revoked invitations, capacity and dashboard', async () => {
   const calls = [];
-  const { useRemoveMemberMutation } = loadModule('../hooks/use-invitations.ts', {
+  const { useRemoveMemberMutation } = loadModule('../hooks/organizations/use-invitations.ts', {
     '@tanstack/react-query': { useQueryClient: () => ({ invalidateQueries: async ({ queryKey }) => calls.push([...queryKey]) }), useMutation: options => options },
     '@/lib/api/invitations': { invitationsApi: { removeMember: async (orgId, userId) => calls.push([orgId, userId]) } },
     '@/lib/api/client': {},
     '@/lib/query-keys/invitations': { invitationKeys: { membersBase: id => ['org-members', id], invitationsBase: id => ['org-invitations', id], subscription: id => ['org-subscription', id] } },
     '@/lib/query-keys/dashboard': { dashboardKeys: { all: ['dashboard'] } },
-    '@/lib/session-cache': { clearSessionCache: async () => {} },
+    '@/lib/auth/session-cache': { clearSessionCache: async () => {} },
   });
   const mutation = useRemoveMemberMutation('org-1');
   await mutation.mutationFn('member-1'); await mutation.onSuccess();
@@ -243,7 +243,7 @@ test('member removal proxy rejects cross-origin requests and invalid IDs before 
   const calls = [];
   const { DELETE } = loadModule('../app/api/organizations/[id]/members/[userId]/route.ts', {
     'next/server': { NextRequest, NextResponse },
-    '@/lib/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
+    '@/lib/api/request-origin': { isSameOriginRequest: request => request.headers.get('origin') === 'http://localhost' },
     '@/lib/api/organization-proxy': { proxyOrganizationMutation: async (request, id, suffix) => { calls.push([request.method, id, suffix]); return new Response(null, { status: 204 }); } },
   });
   const id = 'a'.repeat(24), userId = 'b'.repeat(24);

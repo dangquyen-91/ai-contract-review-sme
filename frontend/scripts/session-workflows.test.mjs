@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import axios from 'axios';
 import { QueryClient, MutationObserver } from '@tanstack/react-query';
+import { z } from 'zod';
 
 function load(file, deps) {
   const exports = {};
@@ -45,27 +46,28 @@ function harness(file, mutations = {}, overrides = {}) {
         };
       },
     },
-    '@/hooks/use-auth': {
+    '@/hooks/auth/use-auth': {
       useLogoutMutation: () => ({ isPending: false, mutateAsync: mutations.logout }),
       useRefreshTokenMutation: () => ({ mutateAsync: mutations.refresh }),
       useCompleteOnboardingMutation: () => ({ mutateAsync: mutations.complete }),
     },
-    '@/hooks/use-organizations': { useCreateOrganizationMutation: () => ({ mutateAsync: mutations.create }) },
+    '@/hooks/organizations/use-organizations': { useCreateOrganizationMutation: () => ({ mutateAsync: mutations.create }) },
     '@/lib/query-keys/auth': { authMutationKeys: { onboardingWorkflow: ['onboarding'] } },
     '@/lib/api/client': { isApiClientError: () => false },
     sonner: { toast: { success() {}, error() { calls.push('error'); } } },
   };
   Object.assign(deps, overrides);
-  deps['@/hooks/use-pagination-page'] ??= { usePaginationPage: () => react.useState(1) };
-  deps['@/lib/session-cache'] = load('../lib/session-cache.ts', deps);
-  deps['@/lib/legal-source-filtering'] = load('../lib/legal-source-filtering.ts', {});
+  deps['@/hooks/shared/use-pagination-page'] ??= { usePaginationPage: () => react.useState(1) };
+  deps['@/lib/auth/session-cache'] = load('../lib/auth/session-cache.ts', deps);
+  deps['@/schemas/organization.schema'] = load('../schemas/organization.schema.ts', { zod: { z } });
+  deps['@/lib/legal-sources/legal-source-filtering'] = load('../lib/legal-sources/legal-source-filtering.ts', {});
   const hook = Object.values(load(file, deps))[0];
   return { client, calls, render: () => { cursor = 0; return hook(); } };
 }
 
 test('Logout failure preserves account cache and permits retry; success clears it and locks navigation', async () => {
   let requests = 0;
-  const ctx = harness('../hooks/use-logout-workflow.ts', { logout: async () => { if (++requests === 1) throw new Error('Offline'); } });
+  const ctx = harness('../hooks/auth/use-logout-workflow.ts', { logout: async () => { if (++requests === 1) throw new Error('Offline'); } });
   await ctx.render().logout();
   assert.ok(ctx.client.getQueryData(['previous-user']));
   assert.equal(ctx.render().loggingOut, false);
@@ -81,24 +83,27 @@ test('Session cache cancellation prevents a late previous-user response from rep
   const client = new QueryClient();
   let resolve;
   const request = client.fetchQuery({ queryKey: ['private'], queryFn: () => new Promise((yes) => { resolve = yes; }) }).catch(() => {});
-  const { clearSessionCache } = load('../lib/session-cache.ts', {});
+  const { clearSessionCache } = load('../lib/auth/session-cache.ts', {});
   await clearSessionCache(client);
   resolve({ private: true }); await request;
   assert.equal(client.getQueryCache().getAll().length, 0);
 });
 
+// Creating a business requires its tax code, industry and address, not just a name.
+const business = (name) => ({ name, taxCode: '0312345678', industry: 'other', provinceCode: '01', wardCode: '00004', addressLine: '12 Test' });
+
 test('Organization setup retries token refresh without creating another organization', async () => {
   let creates = 0, refreshes = 0;
-  const ctx = harness('../hooks/use-onboarding-workflow.ts', {
+  const ctx = harness('../hooks/onboarding/use-onboarding-workflow.ts', {
     create: async ({ name }) => { creates++; assert.equal(name, 'Test organization'); },
     refresh: async () => { if (++refreshes === 1) throw new Error('Offline'); },
   });
-  await ctx.render().createOrganization(' Test organization ');
+  await ctx.render().createOrganization(business(' Test organization '));
   assert.equal(ctx.render().setupCompleted, true);
   assert.equal(ctx.render().busy, false);
   assert.ok(ctx.render().error);
   assert.ok(ctx.client.getQueryData(['previous-user']));
-  await ctx.render().createOrganization('');
+  await ctx.render().createOrganization(business(''));
   assert.equal(creates, 1); assert.equal(refreshes, 2);
   assert.equal(ctx.render().busy, true);
   assert.deepEqual(ctx.calls, ['/dashboard', 'refresh']);
@@ -107,12 +112,12 @@ test('Organization setup retries token refresh without creating another organiza
 
 test('Invalid organization names never submit; personal setup completes once across refresh retry', async () => {
   let completes = 0, refreshes = 0;
-  const ctx = harness('../hooks/use-onboarding-workflow.ts', {
+  const ctx = harness('../hooks/onboarding/use-onboarding-workflow.ts', {
     create: async () => assert.fail('Invalid name submitted'),
     complete: async () => { completes++; },
     refresh: async () => { if (++refreshes === 1) throw new Error('Offline'); },
   });
-  await ctx.render().createOrganization(' ');
+  await ctx.render().createOrganization(business(' '));
   assert.ok(ctx.render().error);
   assert.equal(refreshes, 0);
   await ctx.render().continueWithoutOrganization();
@@ -123,13 +128,13 @@ test('Invalid organization names never submit; personal setup completes once acr
 
 test('Rapid onboarding clicks submit a single organization creation', async () => {
   let resolve, creates = 0;
-  const ctx = harness('../hooks/use-onboarding-workflow.ts', {
+  const ctx = harness('../hooks/onboarding/use-onboarding-workflow.ts', {
     create: () => { creates++; return new Promise((yes) => { resolve = yes; }); },
     refresh: async () => {},
   });
   const workflow = ctx.render();
-  const first = workflow.createOrganization('Test');
-  await workflow.createOrganization('Test');
+  const first = workflow.createOrganization(business('Test'));
+  await workflow.createOrganization(business('Test'));
   await new Promise((yes) => setTimeout(yes, 0));
   assert.equal(creates, 1);
   resolve(); await first;
@@ -156,8 +161,8 @@ test('Token refresh callers share one request; failure releases the request for 
 
 test('Legal source filters reset pagination and shrinking data clamps the displayed page', () => {
   const query = { data: Array.from({ length: 21 }, (_, index) => ({ _id: String(index), title: `Source ${index}`, citationLabel: '', sourceType: index === 0 ? 'law' : 'template' })) };
-  const ctx = harness('../hooks/use-legal-sources-workspace.ts', {}, {
-    '@/hooks/use-legal-sources': { useLegalSources: () => query, useRemoveLegalSourceMutation: () => ({ isPending: false }) },
+  const ctx = harness('../hooks/legal-sources/use-legal-sources-workspace.ts', {}, {
+    '@/hooks/legal-sources/use-legal-sources': { useLegalSources: () => query, useRemoveLegalSourceMutation: () => ({ isPending: false }) },
   });
   ctx.render().setPage(3);
   assert.equal(ctx.render().sources.length, 1);
@@ -176,8 +181,8 @@ test('Legal search combines Vietnamese text, document numbers, dates, status and
     { _id: 'b', title: 'Nghị định', issuingBody: 'Chính phủ', sourceType: 'decree', status: 'repealed', ingestion: { status: 'paused' } },
     { _id: 'c', title: 'Luật khác', issuingBody: 'Quốc hội', sourceType: 'law', status: 'in_force', issuedDate: '2024-01-19', ingestion: { status: 'completed' }, coverage: { complete: true, structured: true } },
   ] };
-  const ctx = harness('../hooks/use-legal-sources-workspace.ts', {}, {
-    '@/hooks/use-legal-sources': { useLegalSources: () => query, useRemoveLegalSourceMutation: () => ({ isPending: false }) },
+  const ctx = harness('../hooks/legal-sources/use-legal-sources-workspace.ts', {}, {
+    '@/hooks/legal-sources/use-legal-sources': { useLegalSources: () => query, useRemoveLegalSourceMutation: () => ({ isPending: false }) },
   });
   ctx.render().changeSearch('  LUAT DAT DAI  ');
   assert.equal(ctx.render().sources[0]._id, 'a');
@@ -206,8 +211,8 @@ test('Legal search combines Vietnamese text, document numbers, dates, status and
 test('Legal source deletion blocks concurrent actions and keeps the selection after failure for retry', async () => {
   const source = { _id: 'source-1', title: 'Test', citationLabel: '', sourceType: 'law' };
   let requests = 0, reject;
-  const ctx = harness('../hooks/use-legal-sources-workspace.ts', {}, {
-    '@/hooks/use-legal-sources': {
+  const ctx = harness('../hooks/legal-sources/use-legal-sources-workspace.ts', {}, {
+    '@/hooks/legal-sources/use-legal-sources': {
       useLegalSources: () => ({ data: [source] }),
       useRemoveLegalSourceMutation: () => ({ isPending: false, mutateAsync: () => {
         if (++requests === 1) return new Promise((_, no) => { reject = no; });

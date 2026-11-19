@@ -16,7 +16,7 @@ function load(path, dependencies) {
   return exports;
 }
 
-const { RedactedDocument } = load('../components/review/redacted-document.tsx', {
+const { RedactedDocument } = load('../components/review/document/redacted-document.tsx', {
   'react/jsx-runtime': jsx,
   '@/components/ui/icon': { Icon: () => null },
 });
@@ -91,7 +91,7 @@ test('Text proxy does not forward arbitrary query parameters', async () => {
 function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••• •••• ••••', redacted: true, redactionMode: 'partial' }) {
   let queryOptions;
   let requestOptions;
-  const hooks = load('../hooks/use-contracts.ts', {
+  const hooks = load('../hooks/contracts/use-contracts.ts', {
     '@/lib/query-keys/contracts': load('../lib/query-keys/contracts.ts'),
     'react': React,
     '@tanstack/react-query': { useQuery: (options) => {
@@ -101,21 +101,26 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
     } },
     '@/lib/api/contracts': { contractsApi: { getText: async (_id, options) => { requestOptions = options; return textResponse; } } },
   });
-  const { ReviewResultHeader } = load('../components/review/review-result-header.tsx', {
+  const { ReviewResultHeader } = load('../components/review/results/review-result-header.tsx', {
     'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
   });
-  const { ReviewResults } = load('../components/review/review-results.tsx', {
+  // The results view is exported as ReviewWorkbench and renders the document text and
+  // the findings pane through sub-components; findings are not under test here.
+  const { ReviewWorkbench: ReviewResults } = load('../components/review/results/review-results.tsx', {
+    '@/components/review/results/review-analysis-pane': { ReviewAnalysisPane: () => null },
+    '@/components/review/document/contract-document-text': load('../components/review/document/contract-document-text.tsx', { react: React, 'react/jsx-runtime': jsx }),
+    '@/components/review/document/document-disclosure-dialog': { DocumentDisclosureDialog: () => null },
     'react': React,
     'react/jsx-runtime': jsx,
-    '@/hooks/use-contracts': hooks,
+    '@/hooks/contracts/use-contracts': hooks,
     '@/styles/review/review-workspace.module.css': { default: {} },
     '@/components/ui/icon': { Icon: () => null },
-    '@/components/review/redacted-document': { RedactedDocument },
-    '@/components/review/contract-chat': { ContractChat: () => null },
-    '@/components/review/risk-details': { RiskDetails: () => null },
-    '@/components/review/review-result-header': { ReviewResultHeader },
-    '@/components/review/original-contract-preview': { OriginalContractPreview: () => jsx.jsx('iframe', { title: 'Original file' }) },
-    '@/components/review/key-terms': { KeyTerms: () => null },
+    '@/components/review/document/redacted-document': { RedactedDocument },
+    '@/components/review/results/contract-chat': { ContractChat: () => null },
+    '@/components/review/results/risk-details': { RiskDetails: () => null },
+    '@/components/review/results/review-result-header': { ReviewResultHeader },
+    '@/components/review/document/original-contract-preview': { OriginalContractPreview: () => jsx.jsx('iframe', { title: 'Original file' }) },
+    '@/components/review/results/key-terms': { KeyTerms: () => null },
   });
   const result = {
     contract: { _id: 'contract-1', title: 'Test contract', updatedAt: '2026-10-13', currentVersion: { mimeType: 'application/pdf' } },

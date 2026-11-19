@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { PLAN_CODES } from '../models/subscription.model';
+import { PLAN_CODES, TOP_UP_PACK_CODES } from '../models/subscription.model';
 import { PAYMENT_ACTIONS } from '../models/payment.model';
 
 const subscriptionPaymentSchema = z
@@ -16,6 +16,14 @@ export const createPaymentSchema = z.union([
       action: z.literal('purchase'),
       contractId: z.string().regex(/^[a-f\d]{24}$/i),
       versionId: z.string().regex(/^[a-f\d]{24}$/i),
+      expectedAmount: z.number().int().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      purpose: z.literal('top_up'),
+      action: z.literal('purchase'),
+      packCode: z.enum(TOP_UP_PACK_CODES),
       expectedAmount: z.number().int().positive(),
     })
     .strict(),

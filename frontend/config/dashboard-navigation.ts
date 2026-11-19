@@ -45,6 +45,7 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
     { key: "overview", href: "/management", label: "Tổng quan", icon: "chart", group: "Không gian quản lý", mobile: true },
     { key: "organizations", href: "/management/organizations", label: "Tổ chức", icon: "building", mobile: true },
     { key: "legal-sources", href: "/management/legal-sources", label: "Kho pháp lý", icon: "scales", mobile: true },
+    { key: "contract-templates", href: "/management/contract-templates", label: "Mẫu hợp đồng", icon: "document", mobile: true },
     ...reports,
     ...supportNavigation,
   ];

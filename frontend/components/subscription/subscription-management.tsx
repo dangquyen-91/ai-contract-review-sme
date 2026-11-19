@@ -7,8 +7,13 @@ import { Button } from "@/components/ui/button";
 import { ConfirmActionDialog } from "@/components/shared/confirm-action-dialog";
 import { useSubscriptionManagement } from "@/hooks/subscription/use-subscription-management";
 import { useSubscriptionPlans } from "@/hooks/subscription/use-subscription-plans";
-import type { SubscriptionPlan } from "@/types/subscription";
+import type { SubscriptionPlan, UsageCounter } from "@/types/subscription";
 import { PaymentHistory } from "./payment-history";
+import { TopUpPacks } from "./top-up-packs";
+import { RenewalAction } from "./renewal-action";
+
+const bonusNote = (counter?: UsageCounter) =>
+  counter?.bonus ? ` (gồm ${counter.bonus} lượt mua thêm)` : "";
 
 const date = (value: string) =>
   new Date(value).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
@@ -64,8 +69,10 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
               </p>
               <p className="text-muted-foreground">
                 Rà soát còn {current.analysis.available}/
-                {current.analysis.limit} lượt (1 lượt/5 trang) · Chat còn{" "}
-                {current.chat.available}/{current.chat.limit}
+                {current.analysis.limit} lượt{bonusNote(current.analysis)} (1
+                lượt/5 trang) · Chat còn {current.chat.available}/
+                {current.chat.limit}
+                {bonusNote(current.chat)}
                 {current.plan?.audience === "business" &&
                   ` · Thành viên ${current.members.count}/${current.members.limit}`}
               </p>
@@ -73,35 +80,28 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
                 <p className="text-muted-foreground">
                   Soạn AI / kiểm tra điều khoản còn{" "}
                   {current.drafting?.available ?? 0}/
-                  {current.drafting?.limit ?? 0} lượt ·{" "}
+                  {current.drafting?.limit ?? 0} lượt
+                  {bonusNote(current.drafting)} ·{" "}
                   {current.plan.audience === "personal"
                     ? "Hạn mức cá nhân"
                     : "Dùng chung trong tổ chức"}
                 </p>
               )}
-              {current.plan &&
-                current.plan.price > 0 &&
-                !current.scheduledDowngrade && (
-                  <Button asChild variant="outline">
-                    <Link
-                      href={`/goi-dich-vu/xac-nhan?plan=${current.plan.code}`}
-                    >
-                      Gia hạn gói hiện tại
-                    </Link>
+              {current.trial && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <p>
+                    Tổ chức đang dùng thử đến <strong>{date(current.trial.endsAt)}</strong>. Sau đó cần
+                    gói trả phí để tiếp tục dùng AI.
+                  </p>
+                  <Button asChild size="sm">
+                    <Link href="/goi-dich-vu?audience=business">Chọn gói</Link>
                   </Button>
-                )}
-              {current.scheduledDowngrade &&
-                plans.data?.find(
-                  (plan) => plan.code === current.scheduledDowngrade?.planCode,
-                )?.price !== 0 && (
-                  <Button asChild>
-                    <Link
-                      href={`/goi-dich-vu/xac-nhan?plan=${current.scheduledDowngrade.planCode}`}
-                    >
-                      Thanh toán kỳ hạ gói
-                    </Link>
-                  </Button>
-                )}
+                </div>
+              )}
+              <RenewalAction
+                renewal={current.renewal}
+                planName={(code) => plans.data?.find((plan) => plan.code === code)?.name ?? code}
+              />
               {current.scheduledDowngrade && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 p-3">
                   <p>
@@ -158,8 +158,8 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
               )}
               {current.plan && current.plan.price > 0 && (
                 <p className="text-xs leading-5 text-muted-foreground">
-                  Hạ gói có hiệu lực sau các kỳ đã thanh toán. Gói trả phí ở kỳ
-                  tiếp theo vẫn cần thanh toán; đặt lịch chưa kích hoạt gói mới.
+                  Hạ gói chỉ chọn gói cho kỳ tới và có hiệu lực khi kỳ hiện tại kết
+                  thúc; bạn thanh toán gói đó khi gia hạn và có thể hủy lịch trước đó.
                 </p>
               )}
             </div>
@@ -200,6 +200,7 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
           />
         )}
       </section>
+      {current && <TopUpPacks orgId={orgId} current={current} />}
       <div className="mt-6">
         <PaymentHistory orgId={orgId} />
       </div>

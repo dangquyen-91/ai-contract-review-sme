@@ -8,12 +8,31 @@ export function paymentAction(
   current: OrganizationSubscription,
   target: SubscriptionPlan,
 ): PaymentAction {
-  if (current.scheduledDowngrade?.planCode === target.code) return "downgrade";
+  // The plan chosen for the next period is paid as the renewal.
+  if (current.scheduledDowngrade?.planCode === target.code) return "renew";
   if (current.status !== "active" || !current.plan || current.plan.price === 0)
     return "purchase";
   if (target.price > current.plan.price) return "upgrade";
   if (target.code === current.plan.code) return "renew";
   return "downgrade";
+}
+
+/**
+ * An unpaid order with a confirmed payOS link is cancelled by the server when a new
+ * checkout starts, so it does not block one. Anything else unfinished does.
+ */
+export function isReplaceablePayment(order: PaymentOrder) {
+  return (
+    !order.fulfilledAt &&
+    !order.paidAt &&
+    !order.providerError &&
+    order.status === "pending" &&
+    Boolean(order.checkoutUrl)
+  );
+}
+
+export function blocksNewCheckout(order: PaymentOrder) {
+  return isUnfinishedPayment(order) && !isReplaceablePayment(order);
 }
 
 export function isUnfinishedPayment(order: PaymentOrder) {
@@ -26,12 +45,26 @@ export function isUnfinishedPayment(order: PaymentOrder) {
   );
 }
 
+export function topUpKindLabel(order: Pick<PaymentOrder, "topUpKind">) {
+  return order.topUpKind === "analysis"
+    ? "rà soát"
+    : order.topUpKind === "chat"
+      ? "chat"
+      : "soạn AI";
+}
+
 export function paymentMessage(order: PaymentOrder) {
   if (order.fulfilledAt && order.purpose === "contract_review")
     return {
       title: "Thanh toán thành công",
       detail:
-        "Bạn đã mua quyền rà soát phiên bản hợp đồng này. Lượt trong gói được giữ nguyên; nếu AI lỗi hoặc bị hủy, bạn có thể thử lại mà không trả thêm tiền.",
+        "Bạn đã mua phần lượt còn thiếu để rà soát phiên bản hợp đồng này. Nếu AI lỗi hoặc bị hủy, các lượt được hoàn lại và bạn có thể thử lại mà không trả thêm tiền.",
+      success: true,
+    };
+  if (order.fulfilledAt && order.purpose === "top_up")
+    return {
+      title: "Thanh toán thành công",
+      detail: `Đã cộng ${order.topUpUnits ?? ""} lượt ${topUpKindLabel(order)} vào kỳ hiện tại. Bạn có thể dùng ngay; lượt mua thêm hết hạn cùng kỳ.`,
       success: true,
     };
   if (order.fulfilledAt)

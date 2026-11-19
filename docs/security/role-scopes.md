@@ -17,5 +17,22 @@ Menu báo cáo riêng được mở cho từng role theo tính năng hiện có.
 - Chỉ Owner gửi lời mời; vai trò được mời duy nhất là Staff. Chỉ User tạo tổ chức; hệ thống chuyển người tạo thành Owner. Staff không thể tạo thêm tổ chức bằng vai trò Staff.
 - Owner/Staff có thể dùng không gian cá nhân theo lựa chọn trong phiên đăng nhập, không chuyển dữ liệu hay hạn mức giữa hai không gian.
 - Admin tạo tài khoản User, Admin, Manager hoặc Expert. Không gán Manager cho một thành viên doanh nghiệp; thay đổi tư cách tổ chức đi qua quy trình thành viên.
-- Khi `seedDefaultRoles` chạy lúc khởi động backend, dữ liệu cũ của Admin/Manager/Expert có `orgId` được gỡ liên kết, tăng phiên bản quyền và hoàn tất onboarding. Vai trò được giữ nguyên, không xóa tài khoản, tổ chức, hợp đồng hay lịch sử thanh toán. Chạy lại không tăng phiên bản lần nữa. Lời mời đang chờ có vai trò khác Staff được thu hồi.
-- Chưa thực hiện thao tác migration trực tiếp lên cơ sở dữ liệu triển khai trong phiên sửa code này.
+- Vai trò tổ chức lấy từ `Membership`, vai trò hệ thống từ `User.platformRole`. `seedDefaultRoles` lúc khởi động chỉ tạo danh mục vai trò, **không** chuyển dữ liệu cũ.
+
+## Chuyển dữ liệu trước mô hình membership
+
+Dữ liệu tạo trước ngày 12/11/2026 lưu vai trò ở `User.roleId`/`User.orgId` và có thể còn không gian cá nhân dạng tổ chức (`Organization.isPersonal`). Backend mới bỏ qua các trường này, nên cần chạy migration một lần **trước khi** mở bản mới cho người dùng:
+
+```bash
+cd backend
+npm run migrate:legacy-accounts            # chạy thử: in báo cáo, không ghi gì
+npm run migrate:legacy-accounts -- --apply # ghi thay đổi
+```
+
+Script ([legacyAccounts.migration.ts](../../backend/src/migrations/legacyAccounts.migration.ts)):
+
+- Owner/Staff → tạo `Membership` cùng tổ chức. Admin/Manager/Expert (kể cả `reviewer` cũ → Expert) → đặt `platformRole`, không tạo membership.
+- Không gian cá nhân `isPersonal` → chuyển hợp đồng, kỳ gói, thanh toán, lượt dùng, kết quả rà soát sang ID người dùng; bản nháp và đề xuất chuyển về `orgId: null`. Bản ghi tổ chức được lưu bản sao trong `legacymigrations` rồi mới xóa.
+- Hợp đồng thiếu `ownerType` được bổ sung; lời mời đang chờ có vai trò khác Staff bị thu hồi.
+- Mỗi tài khoản chạy trong một transaction. Trường hợp xung đột (tổ chức có hai Owner cũ, không gian cá nhân dùng chung) được bỏ qua, liệt kê trong `skipped` và trả mã thoát 2 để xử lý thủ công. Chạy lại an toàn: tài khoản đã xử lý được đánh dấu `legacyAccountMigratedAt`, trường cũ được giữ nguyên để đối chiếu.
+- Nên sao lưu cơ sở dữ liệu trước khi chạy `--apply`.

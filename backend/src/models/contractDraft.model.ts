@@ -6,6 +6,16 @@ import { OWNER_TYPES } from './contract.model';
 const schema = new Schema(
   {
     orgId: { type: Schema.Types.ObjectId, ref: 'Organization', default: null, index: true },
+    // Restored after being dropped in a merge (PR #68). Drafts saved without it are
+    // personal when they have no organization.
+    ownerType: {
+      type: String,
+      enum: OWNER_TYPES,
+      required: true,
+      default: function (this: { orgId?: unknown }) {
+        return this.orgId ? 'organization' : 'personal';
+      },
+    },
     createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
     title: { type: String, required: true },
     templateCode: { type: String, enum: TEMPLATE_CODES, required: true },

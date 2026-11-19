@@ -22,13 +22,15 @@ const { createApp } = require('../dist/app');
 const { logger } = require('../dist/config/logger');
 logger.silent = true;
 const { UserModel } = require('../dist/models/user.model');
-const { EmailVerificationModel } = require('../dist/models/emailVerification.model');
+const { decryptField } = require('../dist/utils/fieldEncryption');
+const verifications = require('./helpers/otpStore').otpStore('email-verification');
 const { OrganizationModel } = require('../dist/models/organization.model');
 const { OrganizationInvitationModel } = require('../dist/models/organizationInvitation.model');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
+const { seedDefaultRoles } = require('../dist/services/identity/role.service');
+const { MembershipModel } = require('../dist/models/membership.model');
 const { startEmailVerification } = require('../dist/services/identity/emailVerification.service');
 const { sendEmail } = require('../dist/services/email/email.service');
-const { tokensForUser } = require('../dist/services/identity/auth.service');
+const { sessionFor } = require('../dist/services/identity/auth.service');
 const { seedPlans } = require('../dist/services/billing/subscription.service');
 const { initializeSubscriptionModels } = require('../dist/models/subscription.model');
 let replica,
@@ -52,17 +54,12 @@ const resend = (challenge) =>
   request(app)
     .post('/api/v1/auth/resend-verification')
     .send({ challengeId: challenge.challengeId });
-const allowResend = (email) =>
-  EmailVerificationModel.updateOne(
-    { email },
-    { $set: { lastSentAt: new Date(Date.now() - 61_000) } },
-  );
+const allowResend = (email) => verifications.skipCooldown(email);
 
 beforeAll(async () => {
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(replica.getUri());
   await seedDefaultRoles();
-  await EmailVerificationModel.init();
   await UserModel.init();
   await OrganizationInvitationModel.init();
   await initializeSubscriptionModels();
@@ -79,12 +76,14 @@ test('registration creates no user/session before OTP and verified users log in 
   expect(flow.response.body.data.accessToken).toBeUndefined();
   expect(flow.response.body.data.user).toBeUndefined();
   expect(await UserModel.exists({ email: flow.email })).toBeNull();
-  const stored = await EmailVerificationModel.findOne({ email: flow.email }).select(
-    '+otpHash +challengeHash +passwordHash',
-  );
-  expect(stored.otpHash).not.toBe(flow.code);
-  expect(stored.challengeHash).not.toBe(flow.challenge.challengeId);
-  expect(await bcrypt.compare(password, stored.passwordHash)).toBe(true);
+  // Only hashes are stored and the pending account (with its bcrypt hash) is encrypted.
+  const stored = await verifications.challenge(flow.challenge.challengeId);
+  expect(stored.otpHash).toMatch(/^[a-f0-9]{64}$/);
+  expect(JSON.stringify(stored)).not.toContain(flow.challenge.challengeId);
+  expect(JSON.stringify(stored)).not.toContain(flow.code);
+  const pending = JSON.parse(decryptField(stored.data));
+  expect(stored.data).not.toContain(pending.passwordHash);
+  expect(await bcrypt.compare(password, pending.passwordHash)).toBe(true);
   const response = await verify(flow.challenge, flow.code);
   expect(response.status).toBe(200);
   expect(response.body.data.user).toMatchObject({
@@ -132,12 +131,10 @@ test('normal registration, onboarding, password login and refresh leave orgId un
   expect(refreshed.status).toBe(200);
   expect(refreshed.body.data.user.orgId).toBeNull();
   // Verifying an older account that already completed onboarding must also stay organization-free.
-  const role = await getRoleByCode('user');
   const old = await UserModel.create({
     email: `old-${flow.email}`,
     name: 'Existing personal user',
     passwordHash: await bcrypt.hash(password, 10),
-    roleId: role._id,
     hasCompletedOnboarding: true,
   });
   const challenge = await startEmailVerification({
@@ -149,7 +146,8 @@ test('normal registration, onboarding, password login and refresh leave orgId un
   const existingVerified = await verify(challenge, lastCode());
   expect(existingVerified.status).toBe(200);
   expect(existingVerified.body.data.user.orgId).toBeNull();
-  expect((await UserModel.findOne({ email: flow.email })).orgId).toBeUndefined();
+  const registered = await UserModel.findOne({ email: flow.email });
+  expect(await MembershipModel.exists({ userId: registered._id })).toBeNull();
   expect(await OrganizationModel.countDocuments()).toBe(organizationsBefore);
 });
 
@@ -160,17 +158,14 @@ test('wrong codes are counted persistently and the fifth failure blocks even the
   expect(results.filter((result) => result.status === 400)).toHaveLength(4);
   expect(results.filter((result) => result.status === 429)).toHaveLength(1);
   expect((await verify(flow.challenge, flow.code)).status).toBe(429);
-  expect((await EmailVerificationModel.findOne({ email: flow.email })).attempts).toBe(5);
+  expect((await verifications.challenge(flow.challenge.challengeId)).attempts).toBe('5');
   expect(await UserModel.exists({ email: flow.email })).toBeNull();
 });
 
 test('expired codes fail; resend enforces cooldown, invalidates old code and has hourly limit', async () => {
   const flow = await register();
   expect((await resend(flow.challenge)).status).toBe(429);
-  await EmailVerificationModel.updateOne(
-    { email: flow.email },
-    { $set: { expiresAt: new Date(0) } },
-  );
+  await verifications.expire(flow.challenge.challengeId);
   expect((await verify(flow.challenge, flow.code)).status).toBe(400);
   await allowResend(flow.email);
   const next = await resend(flow.challenge);
@@ -186,23 +181,19 @@ test('expired codes fail; resend enforces cooldown, invalidates old code and has
     ).status,
   ).toBe(400);
   await allowResend(flow.email);
-  await EmailVerificationModel.updateOne({ email: flow.email }, { $set: { sentCount: 5 } });
+  await verifications.setSendCount(flow.email, 5);
   expect((await resend(next.body.data)).status).toBe(429);
   expect((await verify(next.body.data, newCode)).status).toBe(200);
 });
 
 test('old accounts require correct password plus email OTP; existing refresh/access cannot bypass verification', async () => {
-  const role = await getRoleByCode('user');
   const email = `legacy-${++serial}@example.com`;
-  const user = await (
-    await UserModel.create({
-      name: 'Legacy',
-      email,
-      passwordHash: await bcrypt.hash(password, 4),
-      roleId: role._id,
-    })
-  ).populate('roleId');
-  const old = tokensForUser(user);
+  const user = await UserModel.create({
+    name: 'Legacy',
+    email,
+    passwordHash: await bcrypt.hash(password, 4),
+  });
+  const old = await sessionFor(user);
   expect(
     (await request(app).get('/api/v1/contracts').set('Authorization', `Bearer ${old.accessToken}`))
       .status,

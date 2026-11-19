@@ -91,18 +91,18 @@ export function DraftWorkspace({ user }: { user: AuthUser }) {
           >
             {catalog.data?.templates.map((template) => (
               <DraftTemplateCard
-                key={template.code}
+                key={template.id ?? template.code}
                 template={template}
-                party={parties[template.code] ?? template.parties[0].code}
+                party={parties[template.id ?? template.code] ?? template.parties[0].code}
                 pending={create.isPending}
                 onPartyChange={(value) =>
                   setParties((current) => ({
                     ...current,
-                    [template.code]: value,
+                    [template.id ?? template.code]: value,
                   }))
                 }
                 onOpen={() =>
-                  void create.start(template, parties[template.code] ?? template.parties[0].code)
+                  void create.start(template, parties[template.id ?? template.code] ?? template.parties[0].code)
                 }
               />
             ))}

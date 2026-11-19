@@ -9,7 +9,7 @@ function setup(fetch) {
   let refreshes = 0;
   const exports = {};
   const source = ts.transpileModule(fs.readFileSync(new URL('../lib/api/contract-stream.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
-  vm.runInNewContext(source, { exports, require: () => ({ ApiClientError, refreshSession: async () => { refreshes++; } }), fetch, TextDecoder, AbortSignal, AbortController, DOMException, setTimeout, clearTimeout });
+  vm.runInNewContext(source, { exports, require: () => ({ ApiClientError, refreshSession: async () => { refreshes++; } }), fetch, TextDecoder, AbortSignal, AbortController, DOMException, setTimeout, clearTimeout, crypto: globalThis.crypto });
   return { read: exports.readContractStream, refreshes: () => refreshes };
 }
 const stream = (chunks, onCancel = () => {}) => new Response(new ReadableStream({

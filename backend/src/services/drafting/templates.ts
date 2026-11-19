@@ -26,6 +26,7 @@ export interface FormGroup {
   fields: string[];
 }
 export interface ContractTemplate {
+  id?: string;
   code: TemplateCode;
   identityKind?: 'individual';
   counterpartyLabel?: string;

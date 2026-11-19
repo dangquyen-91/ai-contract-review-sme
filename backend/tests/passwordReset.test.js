@@ -17,9 +17,10 @@ const { createApp } = require('../dist/app');
 const { logger } = require('../dist/config/logger');
 logger.silent = true;
 const { UserModel } = require('../dist/models/user.model');
-const { PasswordResetModel } = require('../dist/models/passwordReset.model');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
-const { tokensForUser } = require('../dist/services/identity/auth.service');
+const { seedDefaultRoles } = require('../dist/services/identity/role.service');
+const { createAccount } = require('./helpers/accounts');
+const resets = require('./helpers/otpStore').otpStore('password-reset');
+const tokensForUser = (user) => user.testSession;
 const { sendEmail } = require('../dist/services/email/email.service');
 let repl,
   app,
@@ -31,17 +32,12 @@ const code = () => sendEmail.mock.calls.at(-1)[0].text.match(/\b\d{6}\b/)[0];
 const post = (path, body) =>
   request(app).post(`/api/v1/auth/${path}`).set('X-Forwarded-For', `198.51.100.${ip}`).send(body);
 async function account(extra = {}) {
-  const role = await getRoleByCode('user');
-  return (
-    await UserModel.create({
-      name: 'Recovery user',
-      email: `reset-${++sequence}@example.com`,
-      passwordHash: await bcrypt.hash(oldPassword, 10),
-      roleId: role._id,
-      emailVerifiedAt: new Date(),
-      ...extra,
-    })
-  ).populate('roleId');
+  return createAccount({
+    name: 'Recovery user',
+    email: `reset-${++sequence}@example.com`,
+    passwordHash: await bcrypt.hash(oldPassword, 10),
+    ...extra,
+  });
 }
 async function start(user) {
   const response = await post('forgot-password', { email: user.email });
@@ -54,7 +50,7 @@ beforeAll(async () => {
   repl = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
   await mongoose.connect(repl.getUri());
   await seedDefaultRoles();
-  await Promise.all([UserModel.init(), PasswordResetModel.init()]);
+  await UserModel.init();
   app = createApp();
   app.set('trust proxy', 1);
 });
@@ -73,11 +69,11 @@ test('reset hashes the password, consumes the OTP and revokes old access and ref
   const flow = await start(user);
   expect(flow.response.body.data.resendAfterSeconds).toBe(60);
   expect(flow.response.body.data).not.toHaveProperty('code');
-  const stored = await PasswordResetModel.findOne({ email: user.email }).select(
-    '+challengeHash +otpHash',
-  );
-  expect(stored.challengeHash).not.toBe(flow.challengeId);
-  expect(stored.otpHash).not.toBe(flow.code);
+  // Only hashes are stored: neither the challenge ID nor the code appears in Redis.
+  const stored = await resets.challenge(flow.challengeId);
+  expect(stored.otpHash).toMatch(/^[a-f0-9]{64}$/);
+  expect(JSON.stringify(stored)).not.toContain(flow.challengeId);
+  expect(JSON.stringify(stored)).not.toContain(flow.code);
   const result = await reset(flow);
   expect(result.status).toBe(200);
   expect(result.body.data).toEqual({ reset: true });
@@ -156,7 +152,7 @@ test('five incorrect attempts block even the correct code, and expired codes fai
   expect((await reset(flow)).status).toBe(429);
   const user = await account();
   const expired = await start(user);
-  await PasswordResetModel.updateOne({ email: user.email }, { $set: { expiresAt: new Date(0) } });
+  await resets.expire(expired.challengeId);
   expect((await reset(expired)).status).toBe(400);
 });
 
@@ -164,18 +160,13 @@ test('resending enforces cooldown, invalidates the previous challenge and enforc
   const user = await account();
   const first = await start(user);
   expect((await post('forgot-password', { email: user.email })).status).toBe(429);
-  await PasswordResetModel.updateOne(
-    { email: user.email },
-    { $set: { lastSentAt: new Date(Date.now() - 61000) } },
-  );
+  await resets.skipCooldown(user.email);
   const second = await start(user);
   expect(second.challengeId).not.toBe(first.challengeId);
   expect((await reset(first)).status).toBe(400);
   expect((await reset(second)).status).toBe(200);
-  await PasswordResetModel.updateOne(
-    { email: user.email },
-    { $set: { lastSentAt: new Date(0), sentCount: 5 } },
-  );
+  await resets.skipCooldown(user.email);
+  await resets.setSendCount(user.email, 5);
   expect((await post('forgot-password', { email: user.email })).status).toBe(429);
 });
 
@@ -205,7 +196,7 @@ test('password rules apply before consuming an OTP, and legacy accounts without 
   const flow = await start(user);
   for (const password of ['short', 'é'.repeat(37)])
     expect((await reset(flow, password)).status).toBe(400);
-  expect((await PasswordResetModel.findOne({ email: user.email })).attempts).toBe(0);
+  expect((await resets.challenge(flow.challengeId)).attempts).toBe('0');
   expect((await reset(flow)).status).toBe(200);
   expect((await UserModel.findById(user.id)).authVersion).toBe(1);
   expect((await post('forgot-password', { email: 'invalid-email' })).status).toBe(400);

@@ -1,7 +1,8 @@
 import type { DashboardRole } from "@/config/dashboard-roles";
 export const dashboardRoles: DashboardRole[] = ["administrator", "owner", "manager", "staff", "expert", "user"];
 export const permissions = {
-  reports: (role: string) => dashboardRoles.includes(role as DashboardRole),
+  // Personal accounts have too little data for a report page; their overview shows it.
+  reports: (role: string) => role !== "user" && dashboardRoles.includes(role as DashboardRole),
   operationalReports: (role: string) => ["administrator", "owner"].includes(role),
   reportExport: (role: string) => ["administrator", "owner", "manager", "expert", "user"].includes(role),
   expertVerification: (role: string) => role === "expert",

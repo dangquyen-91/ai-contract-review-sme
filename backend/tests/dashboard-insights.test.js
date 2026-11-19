@@ -130,8 +130,8 @@ test('owner shares report formulas without financial data; administrator has act
     { orgId: other, contractId: id(), status: 'failed', finishedAt: inside },
   ]);
   await PaymentModel.collection.insertMany([
-    { orgId: other, status: 'paid', amount: 99000, currency: 'VND', paidAt: inside },
-    { orgId: other, status: 'pending', amount: 50000, currency: 'VND', createdAt: inside },
+    { orderCode: 9100000000001, orgId: other, status: 'paid', amount: 99000, currency: 'VND', paidAt: inside },
+    { orderCode: 9100000000002, orgId: other, status: 'pending', amount: 50000, currency: 'VND', createdAt: inside },
   ]);
   const owner = await getDashboardInsights(
     { sub: String(user), role: 'owner', orgId: String(org) },

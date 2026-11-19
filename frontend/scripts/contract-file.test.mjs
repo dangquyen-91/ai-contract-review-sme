@@ -13,8 +13,11 @@ function setup(responses, token = 'test-session', redacted = false) {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
   }).outputText;
   vm.runInNewContext(source, {
-    exports, require: () => ({ NextResponse: { json: (body, options) => Response.json(body, options) } }),
-    URL, Response, process: { env: { API_BASE_URL: 'http://backend.test' } },
+    exports, require: (name) => name === '@/lib/auth/api-session'
+      // The route verifies the session server-side; `token` stands for a valid session.
+      ? { getApiSession: async () => token ? { accessToken: token } : { error: Response.json({ success: false }, { status: 401 }) } }
+      : { NextResponse: { json: (body, options) => Response.json(body, options) } },
+    URL, URLSearchParams, Response, process: { env: { API_BASE_URL: 'http://backend.test' } },
     fetch: async (url, options) => {
       calls.push({ url: String(url), options });
       assert.ok(responses.length, 'Unexpected extra fetch');

@@ -18,7 +18,6 @@ jest.mock('../dist/services/email/email.service', () => ({
   sendEmail: jest.fn().mockResolvedValue(undefined),
 }));
 const { sendEmail } = require('../dist/services/email/email.service');
-const { EmailVerificationModel } = require('../dist/models/emailVerification.model');
 const mongoose = require('mongoose');
 const { MongoMemoryReplSet } = require('mongodb-memory-server');
 const request = require('supertest');
@@ -30,8 +29,9 @@ const { OrganizationModel } = require('../dist/models/organization.model');
 const {
   OrganizationInvitationModel: Invitations,
 } = require('../dist/models/organizationInvitation.model');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
-const { tokensForUser } = require('../dist/services/identity/auth.service');
+const { seedDefaultRoles } = require('../dist/services/identity/role.service');
+const { sessionFor } = require('../dist/services/identity/auth.service');
+const { MembershipModel } = require('../dist/models/membership.model');
 const { sendInvitationEmail } = require('../dist/services/organization/invitationEmail.service');
 const {
   seedPlans,
@@ -44,8 +44,9 @@ const {
 
 let repl, app, org, owner, ownerToken;
 let sequence = 0;
+const newMemberEmail = 'new-member@example.com';
+// Organization roles live in memberships; a user without one is a standalone personal account.
 async function makeUser(role = 'user', orgId, email = `user${++sequence}@example.com`) {
-  const roleDoc = await getRoleByCode(role);
   if (role === 'owner' && orgId && !(await SubscriptionPeriodModel.exists({ orgId }))) {
     await activatePaidSubscription({
       orgId: orgId.toString(),
@@ -55,18 +56,23 @@ async function makeUser(role = 'user', orgId, email = `user${++sequence}@example
       action: 'purchase',
     });
   }
-  return (
-    await UserModel.create({
-      name: 'Test user',
-      email,
-      passwordHash: 'unused',
-      emailVerifiedAt: new Date(),
-      roleId: roleDoc._id,
+  const user = await UserModel.create({
+    name: 'Test user',
+    email,
+    passwordHash: 'unused',
+    emailVerifiedAt: new Date(),
+  });
+  if (orgId)
+    await MembershipModel.create({
+      userId: user._id,
       orgId,
-    })
-  ).populate('roleId');
+      role: role === 'owner' ? 'owner' : 'staff',
+    });
+  user.testToken = (await sessionFor(user)).accessToken;
+  return user;
 }
-const bearer = (user) => `Bearer ${tokensForUser(user).accessToken}`;
+const bearer = (user) => `Bearer ${user.testToken}`;
+const orgOf = async (userId) => (await MembershipModel.findOne({ userId }))?.orgId.toString();
 async function invite(email = `invite${++sequence}@example.com`, role = 'staff') {
   const response = await request(app)
     .post(`/api/v1/organizations/${org.id}/invitations`)
@@ -102,7 +108,6 @@ beforeAll(async () => {
   await seedDefaultRoles();
   await initializeSubscriptionModels();
   await seedPlans();
-  await EmailVerificationModel.init();
   await Promise.all([UserModel.init(), Invitations.init(), OrganizationModel.init()]);
   org = await OrganizationModel.create({ name: 'Test company' });
   owner = await makeUser('owner', org._id);
@@ -115,8 +120,8 @@ afterAll(async () => {
 });
 
 test('owner sends normalized email; registration, preview, acceptance and member listing work', async () => {
-  const invitation = await invite('NEW-MEMBER@EXAMPLE.COM', 'staff');
-  expect(sendInvitationEmail.mock.calls.at(-1)[0].email).toBe('new-member@example.com');
+  const invitation = await invite(newMemberEmail.toUpperCase(), 'staff');
+  expect(sendInvitationEmail.mock.calls.at(-1)[0].email).toBe(newMemberEmail);
   expect(JSON.stringify(invitation.data)).not.toContain(invitation.token);
   const stored = await Invitations.findById(invitation.data.id).select('+tokenHash');
   expect(stored.tokenHash).toBe(createHash('sha256').update(invitation.token).digest('hex'));
@@ -159,7 +164,7 @@ test('owner sends normalized email; registration, preview, acceptance and member
   const members = await request(app)
     .get(`/api/v1/organizations/${org.id}/members`)
     .set('Authorization', ownerToken);
-  expect(members.body.data.some((member) => member.email === 'new-member@example.com')).toBe(true);
+  expect(members.body.data.some((member) => member.email === newMemberEmail)).toBe(true);
   const list = await request(app)
     .get(`/api/v1/organizations/${org.id}/invitations`)
     .set('Authorization', ownerToken);
@@ -211,43 +216,46 @@ test('wrong email, expired invitation and revoked invitation cannot be accepted'
     .set('Authorization', ownerToken);
   expect(revoked.status).toBe(200);
   expect((await accept(intended, fresh.token)).status).toBe(400);
-  expect((await UserModel.findById(intended.id)).orgId).toBeUndefined();
+  expect(await orgOf(intended.id)).toBeUndefined();
 });
 
-test('personal workspace user can be invited and joins only after acceptance', async () => {
-  const personal = await OrganizationModel.create({ name: 'Personal', isPersonal: true });
-  const user = await makeUser('user', personal._id);
+test('standalone personal user can be invited and joins only after acceptance', async () => {
+  const user = await makeUser();
   await UserModel.updateOne({ _id: user.id }, { $set: { hasCompletedOnboarding: true } });
   const oldToken = bearer(user);
   const invitation = await invite(user.email, 'staff');
-  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(personal.id);
+  expect(await orgOf(user.id)).toBeUndefined();
   const result = await accept(user, invitation.token);
   expect(result.status).toBe(200);
   expect(result.body.data.user).toMatchObject({ orgId: org.id, role: 'staff' });
   expect((await UserModel.findById(user.id)).permissionsVersion).toBe(1);
   expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
-  expect(await OrganizationModel.exists({ _id: personal._id, isPersonal: true })).toBeTruthy();
+  expect(await orgOf(user.id)).toBe(org.id);
   const stale = await request(app).get('/api/v1/contracts').set('Authorization', oldToken);
   expect(stale.status).toBe(401);
 });
 
-test('personal workspace created after sending an invitation can still join', async () => {
+test('an account registered after the invitation was sent can still join', async () => {
   const invitation = await invite();
-  const personal = await OrganizationModel.create({ name: 'Personal', isPersonal: true });
-  const user = await makeUser('user', personal._id, invitation.email);
+  const user = await makeUser('user', undefined, invitation.email);
   expect((await accept(user, invitation.token)).status).toBe(200);
-  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(org.id);
+  expect(await orgOf(user.id)).toBe(org.id);
 });
 
-test('a dangling orgId allows invitation and is replaced only on acceptance', async () => {
-  const missingOrgId = new mongoose.Types.ObjectId();
-  const user = await makeUser('user', missingOrgId);
-  const invitation = await invite(user.email);
-  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(missingOrgId.toString());
-  const response = await accept(user, invitation.token);
+test('deleting an organization releases its owner, who can then accept another invitation', async () => {
+  const deleted = await OrganizationModel.create({ name: 'Short-lived company' });
+  const formerOwner = await makeUser('owner', deleted._id);
+  const removed = await request(app)
+    .delete(`/api/v1/organizations/${deleted.id}`)
+    .set('Authorization', bearer(formerOwner));
+  expect(removed.status).toBe(204);
+  expect(await orgOf(formerOwner.id)).toBeUndefined();
+  // Deletion bumps permissionsVersion, so the former owner signs in again.
+  formerOwner.testToken = (await sessionFor(await UserModel.findById(formerOwner.id))).accessToken;
+  const invitation = await invite(formerOwner.email);
+  const response = await accept(formerOwner, invitation.token);
   expect(response.status).toBe(200);
   expect(response.body.data.user).toMatchObject({ orgId: org.id, role: 'staff' });
-  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(org.id);
   expect((await Invitations.findById(invitation.data.id)).status).toBe('accepted');
 });
 
@@ -256,7 +264,7 @@ test('company membership blocks acceptance without consuming invitation', async 
   const company = await OrganizationModel.create({ name: 'Other company' });
   const user = await makeUser('staff', company._id, invitation.email);
   expect((await accept(user, invitation.token)).status).toBe(409);
-  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(company.id);
+  expect(await orgOf(user.id)).toBe(company.id);
   expect((await Invitations.findById(invitation.data.id)).status).toBe('pending');
   const blocked = await request(app)
     .post(`/api/v1/organizations/${org.id}/invitations`)
@@ -294,7 +302,7 @@ test('concurrent acceptance consumes an invitation only once', async () => {
   ]);
   expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
   expect(responses.every((response) => [200, 400, 401, 409].includes(response.status))).toBe(true);
-  expect((await UserModel.findById(user.id)).orgId.toString()).toBe(org.id);
+  expect(await orgOf(user.id)).toBe(org.id);
 });
 
 test('invitation login and refresh skip automatic personal workspace creation', async () => {
@@ -333,37 +341,30 @@ test('invitation login and refresh skip automatic personal workspace creation', 
   expect(jwt.verify(refresh.body.data.refreshToken, process.env.JWT_REFRESH_SECRET).remember).toBe(
     true,
   );
-  expect((await UserModel.findById(registration.body.data.user.id)).orgId).toBeUndefined();
+  expect(await orgOf(registration.body.data.user.id)).toBeUndefined();
 });
 
-test.each([false, true])(
-  'simultaneous invitations assign only one organization (personal: %s)',
-  async (hasPersonal) => {
-    const first = await invite();
-    const otherOrg = await OrganizationModel.create({ name: 'Competing company' });
-    const otherOwner = await makeUser('owner', otherOrg._id);
-    const second = await request(app)
-      .post(`/api/v1/organizations/${otherOrg.id}/invitations`)
-      .set('Authorization', bearer(otherOwner))
-      .send({ email: first.email, role: 'staff' });
-    expect(second.status).toBe(201);
-    const secondToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
-    const personal = hasPersonal
-      ? await OrganizationModel.create({ name: 'Personal race', isPersonal: true })
-      : undefined;
-    const user = await makeUser('user', personal?._id, first.email);
-    const responses = await Promise.all([accept(user, first.token), accept(user, secondToken)]);
-    expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
-    expect(responses.every((response) => [200, 401, 409].includes(response.status))).toBe(true);
-    const invitations = await Invitations.find({ email: first.email });
-    expect(invitations.filter((item) => item.status === 'accepted')).toHaveLength(1);
-    expect(invitations.filter((item) => item.status === 'pending')).toHaveLength(1);
-    const updated = await UserModel.findById(user.id);
-    expect(updated.orgId.toString()).toBe(
-      invitations.find((item) => item.status === 'accepted').orgId.toString(),
-    );
-  },
-);
+test('simultaneous invitations assign only one organization', async () => {
+  const first = await invite();
+  const otherOrg = await OrganizationModel.create({ name: 'Competing company' });
+  const otherOwner = await makeUser('owner', otherOrg._id);
+  const second = await request(app)
+    .post(`/api/v1/organizations/${otherOrg.id}/invitations`)
+    .set('Authorization', bearer(otherOwner))
+    .send({ email: first.email, role: 'staff' });
+  expect(second.status).toBe(201);
+  const secondToken = sendInvitationEmail.mock.calls.at(-1)[0].token;
+  const user = await makeUser('user', undefined, first.email);
+  const responses = await Promise.all([accept(user, first.token), accept(user, secondToken)]);
+  expect(responses.filter((response) => response.status === 200)).toHaveLength(1);
+  expect(responses.every((response) => [200, 401, 409].includes(response.status))).toBe(true);
+  const invitations = await Invitations.find({ email: first.email });
+  expect(invitations.filter((item) => item.status === 'accepted')).toHaveLength(1);
+  expect(invitations.filter((item) => item.status === 'pending')).toHaveLength(1);
+  expect(await orgOf(user.id)).toBe(
+    invitations.find((item) => item.status === 'accepted').orgId.toString(),
+  );
+});
 
 test('received invitations are scoped to the authenticated email and never expose token hashes', async () => {
   const user = await makeUser();
@@ -416,7 +417,7 @@ test('declining removes the notification and expired invitations cannot be acted
     .set('Authorization', bearer(user));
   expect(response.status).toBe(200);
   expect((await Invitations.findById(invitation.data.id)).status).toBe('declined');
-  expect((await UserModel.findById(user.id)).orgId).toBeUndefined();
+  expect(await orgOf(user.id)).toBeUndefined();
   expect((await accept(user, invitation.token)).status).toBe(400);
   const expired = await seedReceivedInvitation(user.email);
   await Invitations.updateOne({ _id: expired.data.id }, { $set: { expiresAt: new Date(0) } });
@@ -450,7 +451,7 @@ test('acceptance racing organization deletion never leaves an orphan member', as
       .delete(`/api/v1/organizations/${otherOrg.id}`)
       .set('Authorization', bearer(otherOwner)),
   ]);
-  const updated = await UserModel.findById(user.id);
-  if (updated.orgId) expect(await OrganizationModel.exists({ _id: updated.orgId })).toBeTruthy();
+  const joined = await orgOf(user.id);
+  if (joined) expect(await OrganizationModel.exists({ _id: joined })).toBeTruthy();
   else expect((await Invitations.findById(sent.body.data.id)).status).toBe('revoked');
 });

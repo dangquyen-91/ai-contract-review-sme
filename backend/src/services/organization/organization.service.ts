@@ -7,6 +7,7 @@ import { IndustryModel } from '../../models/industry.model';
 import { UserModel } from '../../models/user.model';
 import { MembershipModel } from '../../models/membership.model';
 import { countMembers } from '../identity/account.service';
+import { grantBusinessTrial } from '../billing/subscription.service';
 import {
   CreateOrganizationInput,
   UpdateOrganizationInput,
@@ -33,6 +34,7 @@ export async function createOrganization(userId: string, input: CreateOrganizati
       }
       const [organization] = await OrganizationModel.create([input], { session });
       await MembershipModel.create([{ userId, orgId: organization._id, role: 'owner' }], { session });
+      await grantBusinessTrial(organization._id, user._id, session);
       return organization;
     });
   } catch (error) {

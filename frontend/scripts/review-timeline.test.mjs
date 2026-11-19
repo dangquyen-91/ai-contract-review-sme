@@ -3,9 +3,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
-import * as React from 'react';
-import * as jsx from 'react/jsx-runtime';
-import { renderToStaticMarkup } from 'react-dom/server';
 
 function load(file, dependencies = {}) {
   const exports = {};
@@ -131,92 +128,5 @@ test('Elapsed time is restored from BE dates and stops at finishedAt', () => {
   assert.equal(reviewElapsed({ ...base, startedAt: 'invalid' }, Date.now()), null);
 });
 
-const { ReviewTimeline } = load('../components/review/review-timeline.tsx', {
-  'react': React, 'react/jsx-runtime': jsx,
-  '@/lib/review/review-timeline': helpers,
-  '@/components/ui/icon': { Icon: () => null },
-  '@/styles/review/review-timeline.module.css': { default: {} },
-});
-
-test('Timeline uses five steps, separate permissions and a result-only retry action', () => {
-  const html = renderToStaticMarkup(jsx.jsx(ReviewTimeline, {
-    review: { ...base, status: 'completed' }, failureKind: 'load', error: 'Download failed',
-    roleLabel: 'User', access: { upload: true, review: true, administer: false }, onRetry: () => {},
-  }));
-  assert.match(html, /Tải lại kết quả/);
-  assert.match(html, /không tạo lượt AI mới/);
-  assert.match(html, /aria-label="Quyền hiện tại"/);
-  assert.ok(!html.includes('1–3 phút'));
-  assert.ok(!html.includes('%'));
-  assert.equal((html.match(/data-review-step="true"/g) ?? []).length, 5);
-});
-
-
-test('Completed results retain all five visible steps without a process popup', () => {
-  const html = renderToStaticMarkup(jsx.jsx(ReviewTimeline, {
-    result: { contract: { currentVersion: { extractionStatus: 'completed', segmentationStatus: 'completed', summaryStatus: 'completed', riskDetectionStatus: 'completed' } } },
-    roleLabel: 'User', access: { upload: true, review: true, administer: false }, onRetry: () => {},
-  }));
-  assert.equal((html.match(/data-review-step="true"/g) ?? []).length, 5);
-  assert.match(html, /aria-label="Quyền hiện tại"/);
-  assert.ok(!html.includes('<dialog'));
-  assert.ok(!html.includes('Xem chi tiết quy trình'));
-});
-
-test('Only a live backend step is active; disconnected or stopped polling keeps its last state', () => {
-  const props = {
-    review: { ...base, currentStage: 'segmentation', stages: { ...base.stages, segmentation: 'running' } },
-    reviewing: true, roleLabel: 'User', access: { upload: true, review: true, administer: false }, onRetry: () => {},
-  };
-  const live = renderToStaticMarkup(jsx.jsx(ReviewTimeline, props));
-  assert.match(live, /data-ai-motion="running"/);
-  assert.equal((live.match(/data-connector-flow="true"/g) ?? []).length, 1);
-  assert.equal((live.match(/data-active="true"/g) ?? []).length, 1);
-  assert.match(live, /data-state="running" data-active="true" aria-current="step"/);
-  for (const change of [{ reconnecting: true }, { reviewing: false }, { blocked: 'quota' }]) {
-    const paused = renderToStaticMarkup(jsx.jsx(ReviewTimeline, { ...props, ...change }));
-    assert.ok(!paused.includes('data-active="true"'));
-    assert.match(paused, /data-ai-motion="idle"/);
-    assert.ok(!paused.includes('data-connector-flow="true"'));
-    assert.ok(!paused.includes('aria-current="step"'));
-    assert.match(paused, /data-state="running"/);
-    assert.equal((paused.match(/data-review-step="true"/g) ?? []).length, 5);
-  }
-});
-
-test('Downloading saved results highlights the download step without claiming AI is running', () => {
-  const html = renderToStaticMarkup(jsx.jsx(ReviewTimeline, {
-    loadingResult: true, roleLabel: 'User', access: { upload: true, review: true, administer: false }, onRetry: () => {},
-  }));
-  assert.equal((html.match(/data-active="true"/g) ?? []).length, 1);
-  assert.match(html, /data-state="pending"/);
-  assert.ok(!html.includes('AI đã xử lý xong'));
-  assert.match(html, /data-ai-motion="idle"/);
-});
-
-test('Automatic retry highlights the failed stage separately without claiming active analysis or a completed connector', () => {
-  const props = {
-    review: { ...base, stageDetail: 'retrying after an error', stages: { ...base.stages, segmentation: 'failed' } },
-    reviewing: true, roleLabel: 'User', access: { upload: true, review: true, administer: false }, onRetry() {},
-  };
-  const html = renderToStaticMarkup(jsx.jsx(ReviewTimeline, props));
-  assert.match(html, /data-ai-motion="retrying"/);
-  assert.match(html, /data-state="failed" aria-current="step" data-retrying="true"/);
-  assert.match(html, /Chờ thử lại/);
-  assert.ok(!html.includes('data-active="true"'));
-  assert.ok(!html.includes('data-connector-flow="true"'));
-  for (const change of [{ reconnecting: true }, { reviewing: false }, { review: { ...props.review, status: 'failed' } }]) {
-    const paused = renderToStaticMarkup(jsx.jsx(ReviewTimeline, { ...props, ...change }));
-    assert.match(paused, /data-ai-motion="idle"/);
-    assert.ok(!paused.includes('data-retrying="true"'));
-  }
-});
-
-test('Queued review and completed results keep the AI icon still', () => {
-  for (const input of [{ review: { ...base, status: 'queued' }, reviewing: true }, { review: { ...base, status: 'completed' }, loadingResult: true }]) {
-    const html = renderToStaticMarkup(jsx.jsx(ReviewTimeline, {
-      ...input, roleLabel: 'User', access: { upload: true, review: true, administer: false }, onRetry() {},
-    }));
-    assert.match(html, /data-ai-motion="idle"/);
-  }
-});
+// The ReviewTimeline component was replaced by ReviewProgressStrip (commit 89877f1);
+// its step states come from buildReviewTimeline, which the tests above cover.

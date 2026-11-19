@@ -1,4 +1,39 @@
-# Cập nhật tích hợp API FE — 17/10/2026
+# Trạng thái tích hợp API FE
+
+## Cập nhật 18/11/2026
+
+Phần ghi chép ngày 17/10 bên dưới được giữ để tra cứu lịch sử. Một số nhận định trong đó không còn đúng với code hiện tại (nhánh `fix/contract-template`, đã gộp `dev`):
+
+| Nhận định ngày 17/10 | Hiện trạng |
+| --- | --- |
+| Manager được xóa hợp đồng; manager và expert được rà soát. | Tải lên, rà soát và xóa hợp đồng chỉ dành cho Owner, Staff, User. Manager quản lý nguồn pháp lý và mẫu hợp đồng; Expert xác minh kết quả AI qua hàng chờ riêng. |
+| Administrator sửa/xóa tổ chức của chính tài khoản. | Administrator, Manager, Expert là tài khoản hệ thống (`platformRole`), không thuộc tổ chức nào. Vai trò tổ chức (Owner/Staff) nằm ở `Membership`. Administrator quản lý người dùng qua `/admin/users`. |
+| Xóa tổ chức chuyển Owner về role User và bỏ `orgId`. | Xóa tổ chức xóa membership của Owner (thu hồi lời mời đang chờ); tài khoản tiếp tục dùng không gian cá nhân. Không còn ghi `orgId`/`roleId` trên User. |
+| Sửa tổ chức: xóa mã số thuế/địa chỉ gửi `null`. | Tên, mã số thuế, ngành nghề và địa chỉ (tỉnh/phường, số nhà) là bắt buộc khi tạo và sửa. |
+| Chưa có checkout/payment API. | Đã có thanh toán payOS: `POST/GET /organizations/:id/payments`, xem/đồng bộ/hủy theo `orderCode`, webhook. Backend tự quyết định hành động và số tiền (`GET .../subscription/quote`): mua, gia hạn (7 ngày cuối hoặc 3 ngày ân hạn), nâng gói có trừ phần thời gian chưa dùng, hạ gói trả như gia hạn. Có mua thêm lượt (`/top-up-packs`) và mua lượt rà soát lẻ theo hợp đồng (kèm lượt chat). Không có hoàn tiền và không tự động trừ tiền định kỳ. |
+| Chưa có API danh sách người dùng toàn hệ thống. | Đã có `/admin/users` (Administrator). Mục "Giám sát AI" và "Nhật ký quản trị" ở `/admin` vẫn là dữ liệu mẫu. |
+| 150/150 bài kiểm tra đạt. | Xem kết quả mới nhất ở mục dưới. |
+
+Các chức năng FE mới từ sau 17/10 (đều đi qua proxy `app/api/**`): quên/đặt lại mật khẩu, hồ sơ và ảnh đại diện, đổi mật khẩu, xóa thành viên, nhận/từ chối lời mời trong dashboard, phiên bản hợp đồng, xác minh và trao đổi với chuyên gia, soạn thảo hợp đồng (studio), quản lý mẫu (Manager), lịch sử/phân tích lại nguồn pháp lý, thanh toán, gia hạn, mua thêm lượt, dùng thử 7 ngày cho tổ chức mới, báo cáo theo vai trò (tài khoản cá nhân xem số liệu ở trang tổng quan).
+
+Lưu ý khi thêm endpoint mới ở backend: phải thêm route proxy tương ứng trong `app/api`, nếu không trình duyệt nhận 404 từ Next.
+
+Kiểm tra ngày 18/11/2026:
+
+```sh
+# frontend
+npm run lint
+node --test scripts/*.test.mjs
+npm run build
+# backend
+npm run build && npm run lint && npm test
+```
+
+Kết quả: frontend lint đạt, 302 bài kiểm tra đạt, production build đạt; backend 37 bộ / 389 bài kiểm tra đạt (Redis được thay bằng bản giả lập trong bộ test). Các kiểm tra này chưa thay thế kiểm thử tích hợp với payOS sandbox, Gemini và database thật.
+
+---
+
+## Ghi chép 17/10/2026 (lịch sử)
 
 ## Các chức năng đã nối trong đợt này
 

@@ -61,10 +61,11 @@ const { UserModel } = require('../dist/models/user.model');
 const { ContractModel } = require('../dist/models/contract.model');
 const { ContractVersionModel } = require('../dist/models/contractVersion.model');
 const { ChatMessageModel } = require('../dist/models/chatMessage.model');
-const { seedDefaultRoles, getRoleByCode } = require('../dist/services/identity/role.service');
+const { seedDefaultRoles } = require('../dist/services/identity/role.service');
+const { MembershipModel } = require('../dist/models/membership.model');
 const { seedDefaultClauseTaxonomy } = require('../dist/services/analysis/clauseTypeTaxonomy.service');
 const { seedDefaultContractProfiles } = require('../dist/services/contract/contractProfile.service');
-const { tokensForUser } = require('../dist/services/identity/auth.service');
+const { sessionFor } = require('../dist/services/identity/auth.service');
 const {
   PlanModel,
   SubscriptionPeriodModel,
@@ -80,7 +81,10 @@ const {
   activatePaidSubscription,
   scheduleDowngrade,
   cancelDowngrade,
+  quotePlanCheckout,
 } = require('../dist/services/billing/subscription.service');
+const DAY = 24 * 60 * 60 * 1000;
+const daysBefore = (date, days) => new Date(date.getTime() - days * DAY);
 const { reserveUsage, finishUsage, withUsage } = require('../dist/services/billing/usage.service');
 const { vietnamCalendarMonth, addSubscriptionMonth } = require('../dist/utils/subscriptionPeriods');
 const invitations = require('../dist/services/organization/invitation.service');
@@ -93,26 +97,44 @@ const { generateText, generateTextStream } = require('../dist/services/ai/llm.se
 let repl,
   app,
   serial = 0;
+// Organization roles live in memberships, platform roles on the user, and a
+// standalone personal account is billed under its own user ID.
+const PLATFORM_ROLES = ['administrator', 'manager', 'expert'];
 async function user(role = 'user', orgId) {
-  const roleDoc = await getRoleByCode(role);
-  return (
-    await UserModel.create({
-      name: 'Test',
-      email: `sub-${++serial}@example.com`,
-      passwordHash: 'unused',
-      emailVerifiedAt: new Date(),
-      roleId: roleDoc._id,
+  const account = await UserModel.create({
+    name: 'Test',
+    email: `sub-${++serial}@example.com`,
+    passwordHash: 'unused',
+    emailVerifiedAt: new Date(),
+    ...(PLATFORM_ROLES.includes(role) ? { platformRole: role } : {}),
+  });
+  // A platform account with a stray membership must still gain no organization rights.
+  if (orgId)
+    await MembershipModel.create({
+      userId: account._id,
       orgId,
-    })
-  ).populate('roleId');
+      role: role === 'owner' ? 'owner' : 'staff',
+    });
+  account.testToken = (await sessionFor(account)).accessToken;
+  return account;
+}
+async function tokensForUser(account) {
+  return sessionFor(await UserModel.findById(account.id ?? account._id));
 }
 async function workspace(personal = false, pages = 5) {
-  const org = await OrganizationModel.create({ name: 'Workspace', isPersonal: personal });
-  const owner = await user(personal ? 'user' : 'owner', org._id);
+  let org, owner;
+  if (personal) {
+    owner = await user();
+    org = { _id: owner._id, id: owner.id };
+  } else {
+    org = await OrganizationModel.create({ name: 'Workspace' });
+    owner = await user('owner', org._id);
+  }
   const contract = await ContractModel.create({
     title: 'Test contract',
     type: personal ? 'labor' : 'service',
     ...(personal ? { ourParty: 'employee' } : {}),
+    ownerType: personal ? 'personal' : 'organization',
     orgId: org._id,
     uploadedBy: owner._id,
   });
@@ -127,7 +149,7 @@ async function workspace(personal = false, pages = 5) {
   });
   return { org, owner, contract };
 }
-const bearer = (u) => `Bearer ${tokensForUser(u).accessToken}`;
+const bearer = (u) => `Bearer ${u.testToken}`;
 
 test('standalone users upload, classify, list and review personal contracts within their own billing scope', async () => {
   const personal = await user();
@@ -203,13 +225,13 @@ test('joining preserves personal Pro, private contracts and independent organiza
   const w = await workspace();
   await pay(w, 'business_starter');
   const paid = await activatePaidSubscription({ orgId: personal.id, planCode: 'personal_pro', action: 'purchase', amount: 99000, paymentReference: randomUUID() });
-  const contract = await ContractModel.create({ title: 'Private', type: 'labor', ourParty: 'employee', orgId: personal._id, uploadedBy: personal._id });
+  const contract = await ContractModel.create({ title: 'Private', type: 'labor', ourParty: 'employee', ownerType: 'personal', orgId: personal._id, uploadedBy: personal._id });
   await invitations.createInvitation(w.owner.id, w.org.id, { email: personal.email, role: 'staff' });
   const member = await invitations.acceptInvitation(personal.id, sendInvitationEmail.mock.calls.at(-1)[0].token);
   const { refresh } = require('../dist/services/identity/auth.service');
   const { toPublicUser } = require('../dist/services/identity/publicUser');
-  const personalSession = await refresh(tokensForUser(member).refreshToken, undefined, 'personal');
-  expect(toPublicUser(personalSession.user, personalSession.workspace)).toMatchObject({ role: 'user', orgId: null, workspace: 'personal', organizationMembership: { orgId: w.org.id, role: 'staff' } });
+  const personalSession = await refresh((await tokensForUser(member)).refreshToken, undefined, 'personal');
+  expect(toPublicUser(personalSession.user, personalSession.access, personalSession.workspace)).toMatchObject({ role: 'user', orgId: null, workspace: 'personal', organizationMembership: { orgId: w.org.id, role: 'staff' } });
   expect((await refresh(personalSession.refreshToken)).workspace).toBe('personal');
   const auth = `Bearer ${personalSession.accessToken}`;
   const privateList = await request(app).get('/api/v1/contracts').set('Authorization', auth);
@@ -230,18 +252,18 @@ test('joining preserves personal Pro, private contracts and independent organiza
   await SubscriptionPeriodModel.updateOne({ _id: paid._id }, { $set: { chatUsed: paid.plan.chatLimit } });
   await expect(reserveUsage({ ...base, orgId: member.id, contractId: contract.id, idempotencyKey: randomUUID() })).rejects.toMatchObject({ statusCode: 403 });
   expect((await getSubscription(member.id, w.org.id)).chat.used).toBe(1);
-  const draft = await request(app).post('/api/v1/contract-drafts').set('Authorization', auth).send({ templateCode: 'rental', title: 'Private rental', ourParty: 'tenant', input: {}, editorMode: 'studio' });
+  const draft = await request(app).post('/api/v1/contract-drafts').set('Authorization', auth).send({ templateCode: 'housing_purchase', title: 'Private housing purchase', ourParty: 'buyer', input: {}, editorMode: 'studio' });
   expect(draft.status).toBe(201);
   expect((await request(app).get(`/api/v1/contract-drafts/${draft.body.data.id}`).set('Authorization', `Bearer ${orgSession.accessToken}`)).status).toBe(404);
   expect((await ContractModel.findById(contract.id)).orgId.toString()).toBe(personal.id);
-  expect((await UserModel.findById(member.id)).orgId.toString()).toBe(w.org.id);
+  expect((await MembershipModel.findOne({ userId: member.id })).orgId.toString()).toBe(w.org.id);
 });
 
 test('removal revokes organization context while personal subscription survives', async () => {
   const w = await workspace();
   const staff = await user('staff', w.org._id);
   const { refresh } = require('../dist/services/identity/auth.service');
-  const scoped = await refresh(tokensForUser(staff).refreshToken, undefined, 'organization');
+  const scoped = await refresh((await tokensForUser(staff)).refreshToken, undefined, 'organization');
   const personal = await getSubscription(staff.id, staff.id);
   await invitations.removeMember(w.owner.id, w.org.id, staff.id);
   expect((await request(app).get('/api/v1/contracts').set('Authorization', `Bearer ${scoped.accessToken}`)).status).toBe(401);
@@ -260,7 +282,7 @@ test('staff can receive a previously purchased personal plan after joining; mana
   const { refresh } = require('../dist/services/identity/auth.service');
   for (const role of ['administrator', 'manager', 'expert']) {
     const admin = await user(role);
-    await expect(refresh(tokensForUser(admin).refreshToken, undefined, 'personal')).rejects.toMatchObject({ statusCode: 403 });
+    await expect(refresh((await tokensForUser(admin)).refreshToken, undefined, 'personal')).rejects.toMatchObject({ statusCode: 403 });
   }
 });
 
@@ -276,7 +298,7 @@ test('standalone personal Pro supports downgrade and cancellation without changi
   expect((await UserModel.findById(personal.id)).orgId).toBeFalsy();
 });
 
-test.each(['administrator', 'manager', 'expert'])('legacy %s orgId does not grant organization or contract permissions', async (role) => {
+test.each(['administrator', 'manager', 'expert'])('%s with a stale membership gains no organization, billing or contract permissions', async (role) => {
   const w = await workspace();
   const systemUser = await user(role, w.org._id);
   const token = bearer(systemUser);
@@ -297,7 +319,8 @@ test('Admin creates a system Manager without membership and cannot promote Staff
   const w = await workspace();
   const staff = await user('staff', w.org._id);
   expect((await request(app).patch(`/api/v1/admin/users/${staff.id}`).set('Authorization', bearer(admin)).send({ role: 'manager' })).status).toBe(400);
-  expect((await UserModel.findById(staff.id)).roleId.toString()).toBe((await getRoleByCode('staff')).id);
+  expect(await MembershipModel.findOne({ userId: staff.id })).toMatchObject({ role: 'staff' });
+  expect((await UserModel.findById(staff.id)).platformRole).toBeFalsy();
   const manager = await user('manager');
   expect((await request(app).get('/api/v1/organizations').set('Authorization', bearer(manager))).status).toBe(200);
   expect((await request(app).get('/api/v1/kb/legal-sources').set('Authorization', bearer(manager))).status).toBe(200);
@@ -448,7 +471,7 @@ test('concurrent three-unit reviews of different contracts cannot overdraw the o
   const w = await workspace(false, 12);
   const period = await pay(w, 'business_starter');
   await SubscriptionPeriodModel.updateOne({ _id: period.id }, { $set: { analysisUsed: 195 } });
-  const contract = await ContractModel.create({ title: 'Second', type: 'service', orgId: w.org.id, uploadedBy: w.owner.id });
+  const contract = await ContractModel.create({ title: 'Second', type: 'service', ownerType: 'organization', orgId: w.org.id, uploadedBy: w.owner.id });
   await ContractVersionModel.create({ contractId: contract.id, versionNumber: 1, createdBy: w.owner.id, extractionStatus: 'completed', extractionQuality: { method: 'text_layer', pageCount: 12, ocrPageCount: 0, lowConfidence: false } });
   const results = await Promise.allSettled([reserveUsage(usage(w)), reserveUsage({ ...usage(w), contractId: contract.id })]);
   expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
@@ -560,29 +583,40 @@ test('renewal adds a future period without resetting current quota; duplicate se
   const w = await workspace();
   const current = await pay(w, 'business_starter');
   await SubscriptionPeriodModel.updateOne({ _id: current._id }, { $set: { analysisUsed: 17 } });
+  // Renewal opens 7 days before the period ends; only one period is paid ahead.
+  await expect(pay(w, 'business_starter', 'renew', randomUUID(), daysBefore(current.endsAt, 8))).rejects.toMatchObject({ code: 'RENEWAL_NOT_OPEN' });
   const ref = randomUUID();
-  const renewal = await pay(w, 'business_starter', 'renew', ref);
-  const again = await pay(w, 'business_starter', 'renew', ref);
+  const renewal = await pay(w, 'business_starter', 'renew', ref, daysBefore(current.endsAt, 3));
+  const again = await pay(w, 'business_starter', 'renew', ref, daysBefore(current.endsAt, 3));
   expect(again.id).toBe(renewal.id);
   expect(renewal.startsAt).toEqual(current.endsAt);
+  await expect(pay(w, 'business_starter', 'renew', randomUUID(), daysBefore(current.endsAt, 2))).rejects.toMatchObject({ code: 'ALREADY_RENEWED' });
   expect((await getSubscription(w.owner.id, w.org.id)).analysis.used).toBe(17);
   const next = await stateAt(w, renewal.startsAt);
   expect(next.period.id).toBe(renewal.id);
   expect(next.period.analysisUsed).toBe(0);
 });
 
-test('upgrade charges full price and starts fresh immediately, cancelling old prepaid benefits', async () => {
+test('upgrade credits the unused paid time, including a period paid ahead, and starts a fresh period', async () => {
   const w = await workspace();
   const old = await pay(w, 'business_starter');
-  const prepaid = await pay(w, 'business_starter', 'renew');
+  const prepaid = await pay(w, 'business_starter', 'renew', randomUUID(), daysBefore(old.endsAt, 3));
   await SubscriptionPeriodModel.updateOne({ _id: old._id }, { $set: { analysisUsed: 99 } });
-  const upgraded = await pay(w, 'business_pro', 'upgrade');
-  expect(upgraded.plan.price).toBe(999000);
-  expect(upgraded.analysisUsed).toBe(0);
+  const at = new Date(old.startsAt.getTime() + 15 * DAY);
+  const unused = (old.endsAt - at) / (old.endsAt - old.startsAt);
+  const quote = await quotePlanCheckout(w.owner.id, w.org.id, 'business_pro', at);
+  expect(quote).toMatchObject({ action: 'upgrade', listPrice: 999000, credit: Math.floor(499000 * unused + 499000), blockReason: null });
+  expect(quote.amount).toBe(999000 - quote.credit);
+  const upgraded = await activatePaidSubscription(
+    { orgId: w.org.id, planCode: 'business_pro', action: 'upgrade', amount: quote.amount, paymentReference: randomUUID(), orderedAt: at },
+    at,
+  );
+  expect(upgraded).toMatchObject({ paidAmount: quote.amount, analysisUsed: 0, plan: { price: 999000 } });
   expect(upgraded.endsAt).toEqual(addSubscriptionMonth(upgraded.startsAt));
   expect((await SubscriptionPeriodModel.findById(old.id)).cancelledAt).toBeTruthy();
   expect((await SubscriptionPeriodModel.findById(prepaid.id)).cancelledAt).toBeTruthy();
-  expect((await getSubscription(w.owner.id, w.org.id)).plan.code).toBe('business_pro');
+  // The full list price is no longer accepted for an upgrade.
+  await expect(pay(w, 'business_pro', 'upgrade')).rejects.toMatchObject({ statusCode: 409 });
 });
 
 test('wrong price, wrong family and reused payment reference are rejected', async () => {
@@ -613,7 +647,7 @@ test('downgrade requires member count to fit and constrains future invitations u
   await expect(scheduleDowngrade(w.owner.id, w.org.id, 'business_starter')).rejects.toMatchObject({
     statusCode: 409,
   });
-  await UserModel.deleteOne({ _id: staff[0]._id });
+  await MembershipModel.deleteOne({ userId: staff[0]._id });
   await scheduleDowngrade(w.owner.id, w.org.id, 'business_starter');
   await expect(
     invitations.createInvitation(w.owner.id, w.org.id, {
@@ -629,7 +663,9 @@ test('paid downgrade waits for boundary and cannot be cancelled once funded', as
   const w = await workspace();
   const old = await pay(w, 'business_pro');
   await scheduleDowngrade(w.owner.id, w.org.id, 'business_starter');
-  const lower = await pay(w, 'business_starter', 'downgrade');
+  // The lower plan is paid as the renewal; the current plan can no longer be renewed.
+  await expect(pay(w, 'business_pro', 'renew', randomUUID(), daysBefore(old.endsAt, 3))).rejects.toMatchObject({ code: 'RENEWAL_PLAN_MISMATCH' });
+  const lower = await pay(w, 'business_starter', 'renew', randomUUID(), daysBefore(old.endsAt, 3));
   expect(lower.startsAt).toEqual(old.endsAt);
   expect((await getSubscription(w.owner.id, w.org.id)).plan.code).toBe('business_pro');
   await expect(cancelDowngrade(w.owner.id, w.org.id)).rejects.toMatchObject({ statusCode: 409 });
@@ -655,17 +691,6 @@ test('expired business retains members and data but has no AI allowance', async 
   expect(await ContractModel.exists({ _id: w.contract._id })).toBeTruthy();
 });
 
-test('recreating a personal workspace does not reset account free credits in the same month', async () => {
-  const w = await workspace(true);
-  await withUsage(usage(w), async () => ({ success: true }));
-  const replacement = await OrganizationModel.create({
-    name: 'New personal workspace',
-    isPersonal: true,
-  });
-  await UserModel.updateOne({ _id: w.owner._id }, { $set: { orgId: replacement._id } });
-  expect((await getSubscription(w.owner.id, replacement.id)).analysis.used).toBe(1);
-});
-
 test('pending invitation reserves the final paid seat', async () => {
   const w = await workspace();
   await pay(w, 'business_starter');
@@ -685,7 +710,7 @@ test('pending invitation reserves the final paid seat', async () => {
     count: 4, pending: 1, limit: 5, available: 0,
   });
   await invitations.acceptInvitation(a.id, token);
-  expect(await UserModel.countDocuments({ orgId: w.org._id })).toBe(5);
+  expect(await MembershipModel.countDocuments({ orgId: w.org._id })).toBe(5);
 });
 
 test('concurrent final chat credit permits only one reservation across organization members', async () => {

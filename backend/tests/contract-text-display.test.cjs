@@ -1,5 +1,5 @@
 jest.mock('../dist/models/contract.model', () => ({ ContractModel: { findOne: jest.fn() } }));
-jest.mock('../dist/services/contract/contractVersion.service', () => ({ getCurrentVersionWithText: jest.fn(), getCurrentVersion: jest.fn() }));
+jest.mock('../dist/services/contract/contractVersion.service', () => ({ resolveVersion: jest.fn(), getCurrentVersionWithText: jest.fn(), getCurrentVersion: jest.fn() }));
 jest.mock('../dist/services/contract/contractProfile.service', () => ({ resolveContractProfile: jest.fn(), validateContractContext: jest.fn() }));
 jest.mock('../dist/services/contract/extractionWorker.service', () => ({ enqueueExtraction: jest.fn(), waitForExtraction: jest.fn() }));
 jest.mock('../dist/services/contract/storage.service', () => ({}));
@@ -7,14 +7,14 @@ jest.mock('../dist/config/logger', () => ({ logger: { warn: jest.fn() } }));
 
 const { getContractText } = require('../dist/services/contract/contract.service');
 const { ContractModel } = require('../dist/models/contract.model');
-const { getCurrentVersionWithText } = require('../dist/services/contract/contractVersion.service');
+const { resolveVersion } = require('../dist/services/contract/contractVersion.service');
 const { resolveContractProfile } = require('../dist/services/contract/contractProfile.service');
 const source = 'STK: 0071000123456\nCCCD: 079203001234';
 
 beforeEach(() => {
   jest.clearAllMocks();
   ContractModel.findOne.mockResolvedValue({ type: 'service' });
-  getCurrentVersionWithText.mockResolvedValue({ extractedText: source, extractionStatus: 'completed' });
+  resolveVersion.mockResolvedValue({ extractedText: source, extractionStatus: 'completed' });
   resolveContractProfile.mockResolvedValue({ redactionPolicy: ['bank_account', 'national_id'] });
 });
 
@@ -22,7 +22,7 @@ test('Partial preview retains organization-scoped contract access', async () => 
   ContractModel.findOne.mockResolvedValue(null);
   await expect(getContractText('other-org', 'contract', true, 'partial')).rejects.toThrow('Contract not found');
   expect(ContractModel.findOne).toHaveBeenCalledWith({ _id: 'contract', orgId: 'other-org' });
-  expect(getCurrentVersionWithText).not.toHaveBeenCalled();
+  expect(resolveVersion).not.toHaveBeenCalled();
 });
 
 test('Partial response contains displayed positions and no sensitive original values', async () => {

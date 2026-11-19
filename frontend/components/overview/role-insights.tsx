@@ -25,6 +25,8 @@ const InsightCharts = dynamic(
   { ssr: false, loading: () => <ChartLoading panels={2} /> },
 );
 
+const SPARSE_ACTIVITY = 5;
+
 export function RoleInsights({
   role,
   scopeId,
@@ -44,6 +46,18 @@ export function RoleInsights({
   const inputId = useId();
   const data = query.data;
   const ready = !!data && !query.isError;
+  // A handful of events makes a misleading trend chart (isolated spikes, empty axes);
+  // below this much activity in the period, show the counts instead.
+  const activity = (data?.trend ?? []).reduce(
+    (total, row) =>
+      total +
+      config.series.reduce((sum, series) => {
+        const value = row[series.key];
+        return sum + (typeof value === "number" ? value : 0);
+      }, 0),
+    0,
+  );
+  const sparse = activity < SPARSE_ACTIVITY;
   const Title = heading ? "h1" : "h2";
 
   function download() {
@@ -213,7 +227,32 @@ export function RoleInsights({
               ))}
             </nav>
           )}
-          <InsightCharts data={data} />
+          {sparse ? (
+            <section
+              aria-label="Tóm tắt hoạt động"
+              className="rounded-xl border border-border px-5 py-4 text-sm"
+            >
+              <p className="text-muted-foreground">
+                Chưa đủ hoạt động trong kỳ để vẽ biểu đồ xu hướng.
+              </p>
+              {data.distribution.length > 0 && (
+                <dl className="mt-3 flex flex-wrap gap-x-8 gap-y-2 tabular-nums">
+                  {data.distribution.map((row) => (
+                    <div key={row.key} className="flex gap-2">
+                      <dt className="text-muted-foreground">
+                        {insightLabel(config.labels, row)}
+                      </dt>
+                      <dd className="font-semibold">
+                        {row.value.toLocaleString("vi-VN")}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
+            </section>
+          ) : (
+            <InsightCharts data={data} />
+          )}
           <details className="rounded-xl border border-border p-4 text-sm">
             <summary className="cursor-pointer font-medium focus-visible:outline-2 focus-visible:outline-ring">
               Xem bảng số liệu
