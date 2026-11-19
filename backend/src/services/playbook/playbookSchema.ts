@@ -1,23 +1,20 @@
 import type { ClauseCategory } from '../../models/clauseTypeTaxonomy.model';
 import type { LegalSourceCode } from '../legal/legalSourceCatalog.data';
 
-export const PLAYBOOK_VERSION = '1.0.0';
+export const PLAYBOOK_VERSION = '1.1.0';
 
 export const CHECK_GROUPS = ['clarity', 'completeness', 'balance', 'compliance'] as const;
 export type CheckGroup = (typeof CHECK_GROUPS)[number];
 
-export const CHECK_GROUP_NAMES: Record<CheckGroup, string> = {
-  clarity: 'Rõ ràng',
-  completeness: 'Đầy đủ',
-  balance: 'Cân bằng',
-  compliance: 'Tuân thủ pháp luật',
-};
+export const ISSUE_GROUPS = [...CHECK_GROUPS, 'drafting'] as const;
+export type IssueGroup = (typeof ISSUE_GROUPS)[number];
 
-export const FAILED_CHECK_LABELS: Record<CheckGroup, string> = {
+export const FAILED_CHECK_LABELS: Record<IssueGroup, string> = {
   clarity: 'Chưa rõ ràng',
   completeness: 'Thiếu nội dung',
   balance: 'Nên thương lượng',
   compliance: 'Vi phạm',
+  drafting: 'Lỗi soạn thảo',
 };
 
 export const UNVERIFIED_COMPLIANCE_LABEL = 'Chưa xác minh được';

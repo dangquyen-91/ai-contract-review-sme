@@ -1,10 +1,11 @@
-import type { CheckBasis } from './playbookSchema';
+import type { CheckBasis, IssueGroup } from './playbookSchema';
 
 export const DOCUMENT_CHECK_CODES = ['VB-01', 'VB-02', 'VB-03', 'VB-04', 'VB-05', 'VB-06'] as const;
 export type DocumentCheckCode = (typeof DOCUMENT_CHECK_CODES)[number];
 
 export interface DocumentCheck {
   code: DocumentCheckCode;
+  group: Extract<IssueGroup, 'drafting' | 'clarity'>;
   title: string;
   basis: CheckBasis;
   question: string;
@@ -14,6 +15,7 @@ export interface DocumentCheck {
 export const DOCUMENT_CHECKS: Record<DocumentCheckCode, DocumentCheck> = {
   'VB-01': {
     code: 'VB-01',
+    group: 'drafting',
     title: 'Còn chỗ trống chưa điền',
     basis: { kind: 'criterion', statement: 'Hợp đồng ký kết không được còn chỗ trống chờ điền thông tin.' },
     question: 'Thông tin còn để trống ở đây là gì?',
@@ -21,6 +23,7 @@ export const DOCUMENT_CHECKS: Record<DocumentCheckCode, DocumentCheck> = {
   },
   'VB-02': {
     code: 'VB-02',
+    group: 'drafting',
     title: 'Dẫn chiếu đến điều khoản không tồn tại',
     basis: { kind: 'criterion', statement: 'Điều khoản được dẫn chiếu phải có trong hợp đồng.' },
     question: 'Điều khoản được dẫn chiếu ở đây là điều nào?',
@@ -28,6 +31,7 @@ export const DOCUMENT_CHECKS: Record<DocumentCheckCode, DocumentCheck> = {
   },
   'VB-03': {
     code: 'VB-03',
+    group: 'drafting',
     title: 'Dẫn chiếu đến phụ lục không có trong tài liệu',
     basis: { kind: 'criterion', statement: 'Phụ lục được dẫn chiếu là một phần của hợp đồng và cần được đính kèm.' },
     question: 'Phụ lục được dẫn chiếu ở đây đã được ký kèm hợp đồng chưa?',
@@ -35,6 +39,7 @@ export const DOCUMENT_CHECKS: Record<DocumentCheckCode, DocumentCheck> = {
   },
   'VB-04': {
     code: 'VB-04',
+    group: 'drafting',
     title: 'Số tiền bằng số và bằng chữ không khớp',
     basis: { kind: 'criterion', statement: 'Số tiền ghi bằng số và bằng chữ phải giống nhau.' },
     question: 'Số tiền đúng là số ghi bằng số hay số ghi bằng chữ?',
@@ -42,6 +47,7 @@ export const DOCUMENT_CHECKS: Record<DocumentCheckCode, DocumentCheck> = {
   },
   'VB-05': {
     code: 'VB-05',
+    group: 'clarity',
     title: 'Dùng từ ngữ không xác định được',
     basis: {
       kind: 'criterion',
@@ -52,6 +58,7 @@ export const DOCUMENT_CHECKS: Record<DocumentCheckCode, DocumentCheck> = {
   },
   'VB-06': {
     code: 'VB-06',
+    group: 'clarity',
     title: 'Cùng một nội dung nhưng ghi khác nhau',
     basis: { kind: 'criterion', statement: 'Một nội dung chỉ được có một giá trị trong toàn bộ hợp đồng.' },
     question: 'Giá trị nào là giá trị các bên thực sự thoả thuận?',

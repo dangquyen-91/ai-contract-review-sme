@@ -5,7 +5,7 @@ import { AppError } from '../../errors/AppError';
 import { createRedactor } from '../ai/redaction.service';
 import { findResultReviewId, getCurrentVersionWithText } from './contractVersion.service';
 import { resolveContractProfile } from './contractProfile.service';
-import { countIssues, IssueCounts } from '../playbook/playbook.service';
+import { countIssues, groupRank, issueCountLine } from '../playbook/playbook.service';
 
 type Finding = {
   checkGroup: string;
@@ -14,19 +14,6 @@ type Finding = {
   title: string;
   recommendations?: string[];
 };
-
-const GROUP_ORDER: Record<string, number> = { compliance: 0, clarity: 1, completeness: 2, balance: 3 };
-
-function countLineOf(counts: IssueCounts) {
-  if (counts.total === 0) return 'Không phát hiện vấn đề theo các tiêu chí đã kiểm tra.';
-  const parts = [
-    counts.violations ? `${counts.violations} vi phạm` : '',
-    counts.unclear ? `${counts.unclear} chưa rõ ràng` : '',
-    counts.missing ? `${counts.missing} thiếu nội dung` : '',
-    counts.negotiable ? `${counts.negotiable} nên thương lượng` : '',
-  ].filter(Boolean);
-  return `Phát hiện ${counts.total} vấn đề: ${parts.join(', ')}.`;
-}
 
 export function buildShareSummary(input: {
   contractType: string;
@@ -38,7 +25,7 @@ export function buildShareSummary(input: {
 }) {
   const ordered = input.findings
     .filter((finding) => finding.outcome === 'failed')
-    .sort((a, b) => (GROUP_ORDER[a.checkGroup] ?? 9) - (GROUP_ORDER[b.checkGroup] ?? 9));
+    .sort((a, b) => groupRank(a.checkGroup) - groupRank(b.checkGroup));
   const counts = countIssues(input.findings);
   const priorities = ordered.slice(0, 3);
   const recommendations = [
@@ -72,7 +59,7 @@ export function buildShareSummary(input: {
     '',
     'TỔNG QUAN',
     ...input.summaryPoints.slice(0, 2).map((point) => `• ${clean(point, 240)}`),
-    countLineOf(counts),
+    issueCountLine(counts),
     ...(counts.unverified ? [`${counts.unverified} điểm chưa xác minh được điều kiện áp dụng.`] : []),
     '',
     'VẤN ĐỀ CẦN XỬ LÝ',

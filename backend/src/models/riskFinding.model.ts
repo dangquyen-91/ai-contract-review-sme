@@ -9,7 +9,7 @@ export const RISK_DETECTED_BY = ['playbook', 'document_check', 'expert_referral'
 
 export const FINDING_VERDICTS = ['confirmed', 'adjusted', 'rejected', 'added'] as const;
 
-export const FINDING_GROUPS = ['clarity', 'completeness', 'balance', 'compliance', 'referral'] as const;
+export const FINDING_GROUPS = ['clarity', 'completeness', 'balance', 'compliance', 'drafting', 'referral'] as const;
 
 export const FINDING_OUTCOMES = ['failed', 'unverified', 'referral'] as const;
 

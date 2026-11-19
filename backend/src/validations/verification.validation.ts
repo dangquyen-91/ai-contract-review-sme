@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { reviewIdParamSchema } from './review.validation';
 
-export const EXPERT_FINDING_GROUPS = ['clarity', 'completeness', 'balance', 'compliance'] as const;
+export const EXPERT_FINDING_GROUPS = ['clarity', 'completeness', 'balance', 'compliance', 'drafting'] as const;
 
 const note = z.string().trim().min(1).max(2000);
 const points = z.array(z.string().trim().min(1).max(2000)).max(20);

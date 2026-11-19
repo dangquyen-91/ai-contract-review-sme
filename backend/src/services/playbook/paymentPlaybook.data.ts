@@ -1,3 +1,4 @@
+import { percentageBaseCheck, percentageBaseFields } from './percentageBase.data';
 import type { ClausePlaybook } from './playbookSchema';
 
 const LTM = 'commercial_law_2005';
@@ -23,7 +24,7 @@ export const PAYMENT_PLAYBOOK: ClausePlaybook = {
       key: 'amount',
       label: 'Số tiền hoặc cách tính giá',
       aspect: 'how_much',
-      kind: 'money',
+      kind: 'text',
       deferrable: true,
       extraction:
         'The price or amount to pay, or the unit price or formula used to compute it. Copy the exact words, including the amount written in words if present.',
@@ -41,7 +42,7 @@ export const PAYMENT_PLAYBOOK: ClausePlaybook = {
       aspect: 'how_much',
       kind: 'text',
       extraction:
-        'Whether the price includes value added tax ("đã bao gồm thuế GTGT") or excludes it ("chưa bao gồm thuế GTGT").',
+        'Whether the price includes value added tax ("đã bao gồm thuế GTGT") or excludes it ("chưa bao gồm thuế GTGT"). A price split into an amount before tax plus VAT, or a total described as including VAT, states this even when the amounts or the VAT rate are left blank; quote the words that say it.',
     },
     {
       key: 'due_time',
@@ -112,6 +113,12 @@ export const PAYMENT_PLAYBOOK: ClausePlaybook = {
       extraction:
         'The total share of the contract value the buyer must pay before the ownership certificate ("Giấy chứng nhận", "sổ hồng") is issued.',
     },
+    ...percentageBaseFields({
+      keyPrefix: 'price',
+      label: 'Giá tính theo tỷ lệ phần trăm',
+      subject: 'price, fee or payment',
+      examples: '"20% lợi nhuận", "5% doanh thu", "3% giá trị đơn hàng"',
+    }),
   ],
   notApplicable: [
     {
@@ -416,5 +423,13 @@ export const PAYMENT_PLAYBOOK: ClausePlaybook = {
         note: 'Quy định nằm trong Điều 25 về nhà ở hình thành trong tương lai; rule cũ áp dụng cho mọi trường hợp bên bán là chủ đầu tư, kể cả nhà đã hoàn thành.',
       },
     },
+    percentageBaseCheck({
+      code: 'TT-13',
+      keyPrefix: 'price',
+      contractTypes: PAID_CONTRACTS,
+      title: 'Giá tính theo tỷ lệ phải nêu rõ tỷ lệ đó tính trên khoản nào',
+      suggestion:
+        'Bên [bên nhận] được hưởng [tỷ lệ]% [lợi nhuận sau thuế/doanh thu thuần] của [hoạt động] trong từng [quý/năm], xác định theo [báo cáo tài chính/biên bản đối soát] do Bên [bên lập] lập và gửi trong vòng [số] ngày kể từ ngày kết thúc kỳ.',
+    }),
   ],
 };

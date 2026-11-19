@@ -16,6 +16,7 @@ import {
   PlaybookField,
 } from './playbookSchema';
 import { foldForMatch, locateQuote } from './quoteMatching';
+import { containsBlank } from './blanks';
 import { numberSupportedByQuote, numericCandidates, textSupportedByQuote } from './valueSupport';
 
 export interface EvidenceClause {
@@ -39,6 +40,7 @@ export interface FieldEvidence {
   exactQuote?: boolean;
   foundBy?: 'clause' | 'contract_search';
   uncertainReason?: UncertainReason;
+  blank?: boolean;
   conflicts?: FieldEvidence[];
 }
 
@@ -121,7 +123,7 @@ const fieldLine = (field: PlaybookField, id = field.key) =>
 
 const rawFieldSchema = z.object({
   key: z.string(),
-  state: z.enum(['stated', 'deferred', 'absent']),
+  state: z.enum(['stated', 'deferred', 'absent', 'blank']),
   quote: z.string().nullable().optional(),
   value: z.string().nullable().optional(),
   numberValue: z.number().nullable().optional(),
@@ -133,7 +135,7 @@ const rawFieldResponse: Schema = {
   type: Type.OBJECT,
   properties: {
     key: { type: Type.STRING },
-    state: { type: Type.STRING, enum: ['stated', 'deferred', 'absent'] },
+    state: { type: Type.STRING, enum: ['stated', 'deferred', 'absent', 'blank'] },
     quote: { type: Type.STRING, nullable: true },
     value: { type: Type.STRING, nullable: true },
     numberValue: { type: Type.NUMBER, nullable: true },
@@ -295,6 +297,7 @@ const RULES_BLOCK = `Rules:
 - Every "stated" or "deferred" field MUST have a "quote": the shortest sentence or phrase copied word for word from the contract that states the information, including for number and true/false fields. It must appear verbatim in the text as ONE continuous passage: never join separate parts with "..." or "…"; if the information is spread out, quote the single most relevant passage. Use null only for "absent".
 - A true/false field is "stated" only when the text says so; if the text is silent, the field is "absent", not false.
 - For text fields, "value" uses the exact words of the contract. For number fields, follow the unit given for the field.
+- "blank" when the contract has a place for this information but leaves it to be filled in with dots or underscores (for example "Mức lương: .............. đồng"); quote that line. When the information is written and only another part of the line is blank, the field is "stated".
 - "deferred" is only for fields marked deferrable, when the text explicitly says the information is fixed in another document (an appendix, a purchase order, a price list); quote that reference.`;
 
 interface ClauseItem {
@@ -313,7 +316,7 @@ function buildClauseBatchPrompt(context: ReviewContext, items: ClauseItem[], red
 
 ${describeReviewContext(context)}
 
-For every field of every item, return "state": "stated" when that clause itself states the information, "deferred" (see rules) or "absent" when that clause does not state it. Use only the clause of the item, not other clauses.
+For every field of every item, return "state": "stated" when that clause itself states the information, "deferred" or "blank" (see rules), or "absent" when that clause does not state it. Use only the clause of the item, not other clauses.
 ${RULES_BLOCK}
 - Return every field of every item exactly once.${placeholderInstruction(redactor)}
 
@@ -418,6 +421,26 @@ function acceptField(
   foundBy: FieldEvidence['foundBy'],
 ): Acceptance | null {
   if (raw.state === 'absent' || (raw.state === 'deferred' && !field.deferrable)) return null;
+  if (raw.state === 'blank') {
+    const blankQuote = raw.quote ? redactor.unmask(raw.quote).trim() : '';
+    const blankLocated = blankQuote ? locate(blankQuote) : null;
+    if (!blankLocated) return null;
+    const blankOriginal = blankLocated.clause.text.slice(blankLocated.start, blankLocated.end);
+    if (!containsBlank(blankOriginal)) return null;
+    return {
+      evidence: {
+        key: field.key,
+        state: 'absent',
+        blank: true,
+        quote: blankOriginal,
+        clauseIndex: blankLocated.clause.index,
+        startOffset: blankLocated.clause.startOffset + blankLocated.start,
+        endOffset: blankLocated.clause.startOffset + blankLocated.end,
+        exactQuote: blankLocated.exact,
+        foundBy,
+      },
+    };
+  }
   const textKind = field.kind !== 'boolean' && !NUMERIC_FIELD_KINDS.includes(field.kind);
   const quoteSource = raw.quote || (textKind ? raw.value : null);
   const quote = quoteSource ? redactor.unmask(quoteSource).trim() : '';
@@ -436,6 +459,7 @@ function acceptField(
     foundBy,
   };
   if (raw.state === 'deferred') return { evidence: { ...base, value: original } };
+  const blankField = { evidence: { ...base, state: 'absent' as const, blank: true } };
 
   if (field.kind === 'boolean') {
     if (typeof raw.booleanValue !== 'boolean') return null;
@@ -450,14 +474,19 @@ function acceptField(
       : candidates.length === 1
         ? candidates[0]
         : undefined;
-    if (value === undefined) return { evidence: { ...base, state: 'uncertain', uncertainReason: 'value_not_supported' } };
+    if (value === undefined) {
+      if (containsBlank(original)) return blankField;
+      return { evidence: { ...base, state: 'uncertain', uncertainReason: 'value_not_supported' } };
+    }
     const evidence = { ...base, value };
     if (numberSupportedByQuote(field.kind, original, value)) return { evidence };
     return { evidence, pending: { quote: original, claim: fieldClaim(field, value) } };
   }
 
   const text = raw.value ? redactor.unmask(raw.value).trim() : '';
-  return { evidence: { ...base, value: text && textSupportedByQuote(original, text) ? text : original } };
+  const supported = text && textSupportedByQuote(original, text);
+  if (supported && containsBlank(text)) return blankField;
+  return { evidence: { ...base, value: supported ? text : original } };
 }
 
 const STATE_RANK: Record<FieldState, number> = { stated: 3, deferred: 2, uncertain: 1, absent: 0 };
@@ -574,7 +603,7 @@ export async function collectContractEvidence({
         ...acceptance.pending,
         apply: (verdict) => {
           if (verdict === 'supported') return;
-          if (evidence.value === false) {
+          if (evidence.value === false || (evidence.value === true && verdict === 'contradicted')) {
             evidence.state = 'absent';
             delete evidence.value;
             return;
@@ -662,7 +691,7 @@ export async function collectContractEvidence({
         'contract_search',
       );
       if (acceptance) keepAcceptance(request.playbook, acceptance, contractFields);
-      else if (raw.state !== 'absent' && !(raw.state === 'deferred' && !request.field.deferrable)) {
+      else if (raw.state !== 'absent' && raw.state !== 'blank' && !(raw.state === 'deferred' && !request.field.deferrable)) {
         const missing: FieldEvidence = { key: request.field.key, state: 'uncertain', uncertainReason: 'quote_not_found', foundBy: 'contract_search' };
         if (request.playbook) addCandidate(request.playbook, missing);
         else contractFields[missing.key] = missing;

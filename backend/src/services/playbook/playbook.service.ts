@@ -251,22 +251,40 @@ export function countIssues(findings: IssueCountInput[]) {
     unclear: failedIn('clarity'),
     missing: failedIn('completeness'),
     negotiable: failedIn('balance'),
+    drafting: failedIn('drafting'),
     unverified: findings.filter((finding) => finding.outcome === 'unverified').length,
     referrals: findings.filter((finding) => finding.outcome === 'referral').length,
   };
-  return { ...counts, total: counts.violations + counts.unclear + counts.missing + counts.negotiable };
+  return {
+    ...counts,
+    total: counts.violations + counts.unclear + counts.missing + counts.negotiable + counts.drafting,
+  };
 }
 
 export type IssueCounts = ReturnType<typeof countIssues>;
 
-const GROUP_ORDER: Record<string, number> = { compliance: 0, clarity: 1, completeness: 2, balance: 3, referral: 4 };
+export function issueCountLine(counts: IssueCounts) {
+  if (counts.total === 0) return 'Không phát hiện vấn đề theo các tiêu chí đã kiểm tra.';
+  const parts = [
+    counts.violations ? `${counts.violations} vi phạm` : '',
+    counts.unclear ? `${counts.unclear} chưa rõ ràng` : '',
+    counts.missing ? `${counts.missing} thiếu nội dung` : '',
+    counts.negotiable ? `${counts.negotiable} nên thương lượng` : '',
+    counts.drafting ? `${counts.drafting} lỗi soạn thảo` : '',
+  ].filter(Boolean);
+  return `Phát hiện ${counts.total} vấn đề: ${parts.join(', ')}.`;
+}
+
+const GROUP_ORDER: Record<string, number> = { compliance: 0, clarity: 1, completeness: 2, balance: 3, drafting: 4, referral: 5 };
+
+export const groupRank = (group?: string | null) => GROUP_ORDER[group ?? ''] ?? 9;
 
 export const compareByContractOrder = (
   a: { clauseIndex?: number | null; checkGroup?: string | null },
   b: { clauseIndex?: number | null; checkGroup?: string | null },
 ) =>
   (a.clauseIndex ?? Number.MAX_SAFE_INTEGER) - (b.clauseIndex ?? Number.MAX_SAFE_INTEGER) ||
-  (GROUP_ORDER[a.checkGroup ?? ''] ?? 9) - (GROUP_ORDER[b.checkGroup ?? ''] ?? 9);
+  groupRank(a.checkGroup) - groupRank(b.checkGroup);
 
 export function allPlaybookChecks(
   clausePlaybooks: ClausePlaybook[] = CLAUSE_PLAYBOOKS,

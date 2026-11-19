@@ -14,7 +14,7 @@ export const DEPOSIT_PLAYBOOK: ClausePlaybook = {
       key: 'deposit_amount',
       label: 'Số tiền đặt cọc',
       aspect: 'how_much',
-      kind: 'money',
+      kind: 'text',
       extraction: 'The deposit amount ("tiền đặt cọc", "tiền cọc"), or how it is calculated.',
     },
     {

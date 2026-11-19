@@ -48,7 +48,7 @@ export function numericCandidates(kind: FieldKind, quote: string): number[] {
   const mentions = numberMentions(quote);
   switch (kind) {
     case 'money':
-      return mentions.map((m) => m.value * (MONEY_MULTIPLIER[m.unit] ?? 1));
+      return mentions.filter((m) => !isPercent(m.unit)).map((m) => m.value * (MONEY_MULTIPLIER[m.unit] ?? 1));
     case 'percent':
       return mentions.filter((m) => isPercent(m.unit)).map((m) => m.value);
     case 'interest_rate':

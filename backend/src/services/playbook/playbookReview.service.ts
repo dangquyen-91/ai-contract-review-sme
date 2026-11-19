@@ -19,21 +19,25 @@ import {
   setContractStatus,
   settledStatus,
 } from '../contract/contractVersion.service';
-import { searchLegalChunks } from '../legal/legalRetrieval.service';
+import { LEGAL_SOURCE_CATALOG } from '../legal/legalSourceCatalog.data';
+import { LegalChunkMatch, searchLegalChunks } from '../legal/legalRetrieval.service';
 import { DOCUMENT_CHECKS } from './documentChecks.data';
-import { countIssues, getContractPlaybook, IssueCountInput, IssueCounts, playbookFieldLabel } from './playbook.service';
+import { countIssues, getContractPlaybook, IssueCountInput, IssueCounts, issueCountLine, playbookFieldLabel } from './playbook.service';
 import { askJson, collectContractEvidence, ContractEvidence, EvidenceClause, FieldEvidence } from './playbookEvidence.service';
 import { CheckResult, evaluateContract, PlaybookEvaluation } from './playbookEvaluation.service';
-import { FALLBACK_RULE_PREFIX, PLAYBOOK_VERSION } from './playbookSchema';
-import { locateQuote } from './quoteMatching';
+import { FALLBACK_RULE_PREFIX, FieldCondition, PLAYBOOK_VERSION } from './playbookSchema';
+import { foldForMatch, locateQuote } from './quoteMatching';
 
 export type PlaybookReviewStage = 'collecting_evidence' | 'evaluating_checks' | 'preparing_suggestions' | 'saving_findings';
 
 export const REFERRAL_LABEL = 'Đề nghị chuyên gia xem xét';
 
-const MAX_REFERRALS = 5;
-const REFERRAL_MIN_SCORE = 0.5;
+const MAX_REFERRALS = 3;
+const REFERENCE_CANDIDATES = 3;
+const LEGAL_CONCLUSION =
+  /\b(dieu|khoan)\s+\d+|\b(bo )?luat (?!su\b)[a-z]|trai (phap )?luat|vo hieu|khong hop phap|(cao|thap) hon[^.]{0,40}(quy dinh|luat|phap luat)|vuot[^.]{0,25}(quy dinh|luat dinh|muc cho phep|gioi han)|(khong )?phu hop (voi )?(quy dinh|phap luat)/;
 const MAX_SUGGESTIONS_PER_CALL = 15;
+const TEMPLATE_BLANK_COUNT = 10;
 
 interface LoadedClause extends EvidenceClause {
   id: Types.ObjectId;
@@ -61,6 +65,25 @@ const referralParser = z.object({
     .nullable()
     .optional(),
 });
+
+const referenceParser = z.object({
+  picks: z.array(z.object({ id: z.number().int(), excerpt: z.number().int().nullable().optional() })),
+});
+
+const referenceResponse: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    picks: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: { id: { type: Type.INTEGER }, excerpt: { type: Type.INTEGER, nullable: true } },
+        required: ['id'],
+      },
+    },
+  },
+  required: ['picks'],
+};
 
 const referralResponse: Schema = {
   type: Type.OBJECT,
@@ -155,13 +178,15 @@ function referralPrompt(
         .map((span) => `- ${span.clauseIndex === undefined ? 'whole contract' : `clause index=${span.clauseIndex}`}: ${span.title}${span.quote ? ` ("${redactor.mask(span.quote)}")` : ''}`)
         .join('\n')
     : '- (nothing)';
-  return `You assist a lawyer who will review a Vietnamese contract. These issues were ALREADY reported by fixed checks; do not mention them again, even in other words:
+  return `You assist a lawyer who will review a Vietnamese contract. These issues were ALREADY reported by fixed checks; do not raise them again, even in other words or about another clause:
 ${reportedBlock}
 
 ${describeReviewContext(context)}${analysisFocus ? `\nThe user asked to focus on: "${redactor.mask(analysisFocus)}"` : ''}
 
-List at most ${MAX_REFERRALS} OTHER points a lawyer should look at: terms that may conflict with Vietnamese law, or that are unusually heavy or one-sided, and that are not among the reported issues above. Never state that something is unlawful; describe it as a point to check.
-For each point return "clauseIndex", a "quote" copied word for word from that clause (one continuous passage), and "concern": one short Vietnamese sentence with full diacritics saying what the lawyer should check. Return an empty array when nothing stands out.${placeholderInstruction(redactor)}
+List at most ${MAX_REFERRALS} OTHER points where a lawyer's judgment could change what the user signs: a term that may not be enforceable as written, or that is unusually heavy or one-sided for the user's party, and that is not among the reported issues above.
+Leave out standard wording that is normal in Vietnamese contracts (for example disputes going to "Toà án có thẩm quyền", or no governing-law clause between Vietnamese parties) and generic advice that a clause "should be more detailed".
+Write each "concern" as ONE short Vietnamese question with full diacritics that the lawyer should answer, about this contract only. Do not answer it: never say a term is lawful, unlawful, higher or lower than the law allows, never name a law or an article, and never compute figures.
+For each point return "clauseIndex", a "quote" copied word for word from that clause (one continuous passage) and "concern". Return an empty array when nothing stands out.${placeholderInstruction(redactor)}
 
 Contract:
 """
@@ -192,9 +217,11 @@ async function findReferrals(
     const start = clause.startOffset + location.start;
     const end = clause.startOffset + location.end;
     if (reported.some((span) => overlapsSpan(span, start, end))) continue;
+    const concern = redactor.unmask(raw.concern).trim();
+    if (LEGAL_CONCLUSION.test(foldForMatch(concern))) continue;
     referrals.push({
       clauseIndex: clause.index,
-      concern: redactor.unmask(raw.concern).trim(),
+      concern,
       quote: clause.text.slice(location.start, location.end),
       startOffset: clause.startOffset + location.start,
       endOffset: clause.startOffset + location.end,
@@ -204,16 +231,45 @@ async function findReferrals(
 
   const search = await searchLegalChunks(
     referrals.map((referral) => redactor.mask(`${referral.concern} ${referral.quote}`)),
-    1,
+    REFERENCE_CANDIDATES,
     { legalSourceCodes: context.legalSourceCodes, signal },
   );
-  referrals.forEach((referral, i) => {
-    const match = search.matches[i]?.[0];
-    if (match && match.score >= REFERRAL_MIN_SCORE) {
-      referral.reference = { chunkId: match.chunkId, citationLabel: match.citationLabel, articleRef: match.articleRef, score: match.score };
-    }
+  const withCandidates = referrals.flatMap((referral, i) => {
+    const candidates = search.matches[i] ?? [];
+    return candidates.length ? [{ id: i, referral, candidates }] : [];
   });
+  if (withCandidates.length === 0) return referrals;
+  const picks = await askJson(referencePrompt(withCandidates, redactor), referenceResponse, referenceParser, signal)
+    .then((result) => result.picks)
+    .catch((err) => {
+      if (signal?.aborted) throw err;
+      logger.warn('Legal reference check for expert referrals failed; keeping them without references', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return [];
+    });
+  for (const pick of picks) {
+    const item = withCandidates.find((candidate) => candidate.id === pick.id);
+    const match = typeof pick.excerpt === 'number' ? item?.candidates[pick.excerpt - 1] : undefined;
+    if (!item || !match) continue;
+    item.referral.reference = { chunkId: match.chunkId, citationLabel: match.citationLabel, articleRef: match.articleRef, score: match.score };
+  }
   return referrals;
+}
+
+function referencePrompt(
+  items: { id: number; referral: Referral; candidates: LegalChunkMatch[] }[],
+  redactor: Redactor,
+) {
+  const blocks = items.map(
+    ({ id, referral, candidates }) =>
+      `[id=${id}] Contract text: "${redactor.mask(referral.quote)}"\nQuestion for the lawyer: ${redactor.mask(referral.concern)}\n${candidates
+        .map((candidate, i) => `Excerpt ${i + 1} (${candidate.citationLabel}${candidate.articleRef ? `, ${candidate.articleRef}` : ''}): ${candidate.chunkText.slice(0, 1200)}`)
+        .join('\n')}`,
+  );
+  return `For each item, pick the ONE legal excerpt whose provision directly governs the question (the lawyer would read it first to answer it), as "excerpt": its number. Set "excerpt" to null when no excerpt is directly about the question; an excerpt that only shares words or a general topic does not count.
+
+${blocks.join('\n\n')}`;
 }
 
 interface SuggestionRequest {
@@ -234,7 +290,7 @@ function suggestionPrompt(context: ReviewContext, requests: SuggestionRequest[],
 
 ${describeReviewContext(context)}
 
-For each item return "revisedText": the fixed wording in Vietnamese with full diacritics, in the style of the contract, and "reason": one short Vietnamese sentence. When the fix needs facts the contract does not give (a number of days, an amount, a date), keep a placeholder in square brackets such as [số ngày] instead of inventing a value.
+For each item return "revisedText": the fixed wording in Vietnamese with full diacritics, in the style of the contract, and "reason": one short Vietnamese sentence about what the fix makes clear; never claim that the law or a regulation requires it. When the fix needs facts the contract does not give (a number of days, an amount, a date), keep a placeholder in square brackets such as [số ngày] instead of inventing a value.
 For items with a clause, "originalText" MUST be the shortest passage copied word for word from that clause that the revised text replaces. For new clauses, set "originalText" to null.${placeholderInstruction(redactor)}
 
 ${blocks.join('\n\n')}`;
@@ -271,28 +327,67 @@ async function draftSuggestions(
 }
 
 const formatValue = (value: unknown) => (typeof value === 'number' ? value.toLocaleString('vi-VN') : String(value));
+const lowerFirst = (value: string) => value.charAt(0).toLocaleLowerCase('vi') + value.slice(1);
+const SEARCHED_WHOLE_CONTRACT = '(đã tìm trong toàn bộ hợp đồng)';
 
-function describeProblem(result: CheckResult): string[] {
+function articleCitation(result: CheckResult) {
+  const article = result.legalArticles.find((item) => item.status === 'verified' && result.basis.kind === 'law');
+  if (!article) return undefined;
+  const { ref } = article;
+  return `${ref.clause ? `khoản ${ref.clause} ` : ''}Điều ${ref.article} ${LEGAL_SOURCE_CATALOG[ref.sourceCode]}`;
+}
+
+function describeCondition(result: CheckResult, condition: FieldCondition) {
+  const field = result.evidence.find((item) => item.key === condition.field);
+  const { label, unit } = result.fields[condition.field] ?? { label: condition.field, unit: '' };
+  switch (condition.op) {
+    case 'is_true':
+      return field?.quote ? `${label}: "${field.quote}".` : `${label}: có.`;
+    case 'not_stated':
+      return field?.blank ? `${label}: còn để trống.` : `${label}: hợp đồng không nêu.`;
+    case 'greater_than':
+    case 'less_than':
+      return `${label}: ${formatValue(field?.value)}${unit} (${condition.op === 'greater_than' ? 'trên' : 'dưới'} ${formatValue(condition.value)}${unit}).`;
+  }
+}
+
+function describeProblem(result: CheckResult, missingClause: boolean): string[] {
+  const question = result.question ? [result.question] : [];
   const quoted = result.evidence.find((field) => field.quote);
   if (result.outcome === 'unverified') return [result.reason ?? 'Chưa xác minh được điều kiện áp dụng.'];
   if (result.vagueTerm && quoted) {
-    return [`"${quoted.quote}" dùng cụm từ "${result.vagueTerm}", không cho biết cụ thể.`, ...(result.question ? [result.question] : [])];
+    return [`"${quoted.quote}" dùng cụm từ "${result.vagueTerm}", không cho biết cụ thể.`, ...question];
   }
   if (result.limit !== undefined && result.observed !== undefined) {
-    return [`Hợp đồng ghi ${formatValue(result.observed)}; mức giới hạn là ${formatValue(result.limit)}.`];
+    const field = result.evidence[0];
+    const { label, unit } = (field && result.fields[field.key]) ?? { label: 'Giá trị', unit: '' };
+    const citation = articleCitation(result);
+    const exceeds = result.limitKind === 'at_least' ? 'thấp hơn mức tối thiểu' : 'vượt mức tối đa';
+    return [
+      `${label} trong hợp đồng là ${formatValue(result.observed)}${unit}, ${exceeds} ${formatValue(result.limit)}${unit}${citation ? ` theo ${citation}` : ''}.`,
+    ];
   }
-  if (result.code && result.evidence.length === 0 && result.group === 'completeness') {
-    return ['Không tìm thấy điều khoản nào về nội dung này trong hợp đồng.', ...(result.question ? [result.question] : [])];
+  if (missingClause) return [`Không có điều khoản nào về nội dung này ${SEARCHED_WHOLE_CONTRACT}.`, ...question];
+  if (result.conditions) return [...result.conditions.map((condition) => describeCondition(result, condition)), ...question];
+  const blank = result.evidence.filter((field) => field.blank);
+  if (blank.length > 0) {
+    return [
+      ...blank.map((field) => `${result.fields[field.key]?.label ?? field.key} còn để trống: "${field.quote}".`),
+      ...question,
+    ];
   }
-  if (result.evidence.length > 0 && result.evidence.every((field) => field.state === 'absent')) {
-    return ['Đã tìm trong toàn bộ hợp đồng nhưng không thấy nội dung này.', ...(result.question ? [result.question] : [])];
+  const absent = result.evidence.filter((field) => field.state === 'absent');
+  if (absent.length > 0 && absent.length === result.evidence.length) {
+    const labels = absent.map((field) => lowerFirst(result.fields[field.key]?.label ?? field.key));
+    return [`Hợp đồng không ghi ${labels.join(', ')} ${SEARCHED_WHOLE_CONTRACT}.`, ...question];
   }
-  return result.question ? [result.question] : [result.title];
+  return question.length ? question : [result.title];
 }
 
 function evidenceEntries(fields: FieldEvidence[]) {
   return fields
     .filter((field) => field.quote)
+    .filter((field, i, all) => all.findIndex((other) => other.startOffset === field.startOffset && other.endOffset === field.endOffset) === i)
     .map((field) => ({
       fieldKey: field.key,
       label: playbookFieldLabel(field.key),
@@ -334,22 +429,17 @@ function legalBasisOf(result: CheckResult) {
   return entries;
 }
 
-export function describeOutcome(
+function describeOutcome(
   counts: IssueCounts,
   coverage: PlaybookEvaluation['coverage'],
   documentCheckCount: number,
+  blankCount: number,
 ): string[] {
   const lines = [`Đã chạy ${coverage.checks} phép kiểm theo playbook ${PLAYBOOK_VERSION} và ${documentCheckCount} kiểm tra tự động trên toàn văn.`];
-  if (counts.total === 0) lines.push('Không phát hiện vấn đề theo các tiêu chí đã kiểm tra.');
-  else {
-    const parts = [
-      counts.violations ? `${counts.violations} vi phạm` : '',
-      counts.unclear ? `${counts.unclear} chưa rõ ràng` : '',
-      counts.missing ? `${counts.missing} thiếu nội dung` : '',
-      counts.negotiable ? `${counts.negotiable} nên thương lượng` : '',
-    ].filter(Boolean);
-    lines.push(`Phát hiện ${counts.total} vấn đề: ${parts.join(', ')}.`);
+  if (blankCount >= TEMPLATE_BLANK_COUNT) {
+    lines.push(`Hợp đồng còn ${blankCount} chỗ trống chưa điền, có thể đây là bản mẫu; các phép kiểm chỉ đánh giá được phần đã điền.`);
   }
+  lines.push(issueCountLine(counts));
   if (counts.unverified) lines.push(`${counts.unverified} điểm chưa xác minh được điều kiện áp dụng.`);
   if (coverage.notChecked) lines.push(`${coverage.notChecked} phép kiểm không kiểm tra được vì thông tin trích từ hợp đồng chưa chắc chắn.`);
   if (counts.referrals) lines.push(`${counts.referrals} điểm được đề nghị chuyên gia xem xét thêm.`);
@@ -429,6 +519,14 @@ export async function runPlaybookReview(
       evidence,
     });
     const reported = evaluation.results.filter((result) => result.outcome === 'failed' || result.outcome === 'unverified');
+    const contractPlaybook = getContractPlaybook(context.profileCode);
+    const expectedTypeOf = (result: CheckResult) => {
+      const check = contractPlaybook?.checks.find((c) => c.code === result.code);
+      return check?.test.kind === 'clause_present' ? check.test.clauseType : undefined;
+    };
+    const taxonomy = await getTaxonomyByCodes(reported.flatMap((result) => expectedTypeOf(result) ?? []));
+    const taxonomyByCode = new Map(taxonomy.map((entry) => [entry.code as string, entry]));
+    const problemOf = (result: CheckResult) => describeProblem(result, Boolean(expectedTypeOf(result)));
 
     signal?.throwIfAborted();
     onProgress?.('preparing_suggestions');
@@ -446,7 +544,7 @@ export async function runPlaybookReview(
             .map((result) => ({
               id: result.code,
               clause: result.clauseIndex === undefined ? undefined : clauseByIndex.get(result.clauseIndex),
-              issue: `${result.title}. ${describeProblem(result).join(' ')}`,
+              issue: `${result.title}. ${problemOf(result).join(' ')}`,
               template: result.suggestion,
               insertNew: result.clauseIndex === undefined,
             })),
@@ -468,18 +566,11 @@ export async function runPlaybookReview(
 
     signal?.throwIfAborted();
     onProgress?.('saving_findings');
-    const contractPlaybook = getContractPlaybook(context.profileCode);
-    const missingTypes = reported.flatMap((result) => {
-      const check = contractPlaybook?.checks.find((c) => c.code === result.code);
-      return check?.test.kind === 'clause_present' ? [check.test.clauseType] : [];
-    });
-    const taxonomyByCode = new Map((await getTaxonomyByCodes(missingTypes)).map((t) => [t.code, t._id]));
     const clauseIdOf = (index?: number) => (index === undefined ? null : (clauseByIndex.get(index)?.id ?? null));
 
     const pending: { doc: Record<string, unknown>; chunkIds: string[]; scores: Map<string, number> }[] = [];
     for (const result of reported) {
-      const check = contractPlaybook?.checks.find((c) => c.code === result.code);
-      const expectedType = check?.test.kind === 'clause_present' ? check.test.clauseType : undefined;
+      const expectedType = expectedTypeOf(result);
       const legalBasis = legalBasisOf(result);
       const suggestion = suggestions.get(result.code);
       pending.push({
@@ -488,7 +579,7 @@ export async function runPlaybookReview(
           reviewId,
           orgId,
           clauseId: clauseIdOf(result.clauseIndex),
-          expectedClauseTypeId: expectedType ? (taxonomyByCode.get(expectedType) ?? null) : null,
+          expectedClauseTypeId: expectedType ? (taxonomyByCode.get(expectedType)?._id ?? null) : null,
           findingType: expectedType ? 'missing_clause' : 'clause_risk',
           checkCode: result.code,
           checkGroup: result.group,
@@ -505,7 +596,7 @@ export async function runPlaybookReview(
           basis: { kind: result.basis.kind, statement: result.basis.statement },
           noVerifiedLegalBasis: result.noVerifiedLegalBasis,
           title: result.title,
-          problem: describeProblem(result),
+          problem: problemOf(result),
           consequences: [result.whyItMatters],
           recommendations: result.suggestion ? [result.suggestion] : [],
           legalBasis,
@@ -526,7 +617,7 @@ export async function runPlaybookReview(
           clauseId: clauseIdOf(finding.clauseIndex),
           findingType: 'clause_risk',
           checkCode: finding.code,
-          checkGroup: 'clarity',
+          checkGroup: check.group,
           outcome: 'failed',
           label: finding.label,
           playbookVersion: PLAYBOOK_VERSION,
@@ -617,7 +708,12 @@ export async function runPlaybookReview(
           riskDetectionStatus: 'completed',
           issueCounts,
           checkCoverage,
-          overallAssessment: describeOutcome(issueCounts, evaluation.coverage, documentCheckCount),
+          overallAssessment: describeOutcome(
+            issueCounts,
+            evaluation.coverage,
+            documentCheckCount,
+            evaluation.documentFindings.reduce((sum, finding) => sum + (finding.blankCount ?? 0), 0),
+          ),
           keyTerms: keyTermsOf(evidence, new Map(clauses.map((clause) => [clause.index, clause.id]))),
           keyTermsExtractedAt: new Date(),
         },

@@ -76,6 +76,7 @@ export const issueCountsSchema = new Schema(
     unclear: { type: Number, default: 0 },
     missing: { type: Number, default: 0 },
     negotiable: { type: Number, default: 0 },
+    drafting: { type: Number, default: 0 },
     unverified: { type: Number, default: 0 },
     referrals: { type: Number, default: 0 },
     total: { type: Number, default: 0 },

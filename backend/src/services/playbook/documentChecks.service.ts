@@ -1,6 +1,7 @@
 import type { ClauseCategory } from '../../models/clauseTypeTaxonomy.model';
 import { DocumentCheckCode, VAGUE_TERMS } from './documentChecks.data';
 import type { EvidenceClause, FieldEvidence } from './playbookEvidence.service';
+import { blankRuns } from './blanks';
 import { foldText } from './quoteMatching';
 import { parseNumberToken, parseVietnameseNumberWords } from './valueSupport';
 
@@ -11,6 +12,7 @@ export interface DocumentFinding {
   endOffset: number;
   quote: string;
   detail: string;
+  blankCount?: number;
   relatedQuotes?: { clauseIndex?: number; quote?: string; startOffset?: number; endOffset?: number }[];
 }
 
@@ -31,7 +33,6 @@ const OBLIGATION_TYPES = new Set<ClauseCategory>([
   'ownership_transfer',
 ]);
 
-const BLANK_PATTERN = /(?:…|\.{2,}|_{3,})(?:[\s/.,…_-]*(?:…|\.{2,}|_{3,}))*/gu;
 const ARTICLE_HEADING = /^\s*(?:Điều|ĐIỀU|Ðiều)\s+(\d+)/u;
 const ARTICLE_MENTION = /(?<![\p{L}\d])(?:Điều|điều)\s+(\d{1,3})(?![\d])/gu;
 const LAW_NAME_AFTER =
@@ -42,32 +43,37 @@ const APPENDIX_HEADING = /^\s*PH[ỤU]\s+L[ỤU]C\b/mu;
 const AMOUNT_WITH_WORDS =
   /(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*(?:đồng|VNĐ|VND|vnđ|đ)?\s*\(\s*(?:bằng\s+chữ\s*:?\s*)?([^()]{4,200})\)/giu;
 
-function isBlank(text: string, start: number, end: number) {
-  const run = text.slice(start, end);
-  if (/v\.v\.?\s*$/iu.test(text.slice(Math.max(0, start - 4), start))) return false;
-  if (run.includes('_') || run.includes('…')) return true;
-  return (run.match(/\./g) ?? []).length >= 3;
-}
+const MAX_LISTED_BLANK_LINES = 20;
 
 function blankFindings(clause: EvidenceClause): DocumentFinding[] {
-  const findings: DocumentFinding[] = [];
-  for (const match of clause.text.matchAll(BLANK_PATTERN)) {
-    const start = match.index ?? 0;
-    const end = start + match[0].length;
-    if (!isBlank(clause.text, start, end)) continue;
-    const lineStart = clause.text.lastIndexOf('\n', start) + 1;
-    const lineEndRaw = clause.text.indexOf('\n', end);
+  const runs = blankRuns(clause.text);
+  if (runs.length === 0) return [];
+  const lines: { start: number; end: number; quote: string }[] = [];
+  for (const run of runs) {
+    const lineStart = clause.text.lastIndexOf('\n', run.start) + 1;
+    const lineEndRaw = clause.text.indexOf('\n', run.end);
     const lineEnd = lineEndRaw === -1 ? clause.text.length : lineEndRaw;
-    findings.push({
+    if (lines.some((line) => line.start === lineStart)) continue;
+    lines.push({ start: lineStart, end: lineEnd, quote: clause.text.slice(lineStart, lineEnd).trim() });
+  }
+  const [first, ...rest] = lines;
+  return [
+    {
       code: 'VB-01',
       clauseIndex: clause.index,
-      startOffset: clause.startOffset + start,
-      endOffset: clause.startOffset + end,
-      quote: clause.text.slice(lineStart, lineEnd).trim(),
-      detail: `Chỗ trống "${match[0].trim()}"`,
-    });
-  }
-  return findings;
+      startOffset: clause.startOffset + first.start,
+      endOffset: clause.startOffset + first.end,
+      quote: first.quote,
+      detail: runs.length === 1 ? 'Còn 1 chỗ trống chưa điền.' : `Còn ${runs.length} chỗ trống chưa điền trên ${lines.length} dòng.`,
+      blankCount: runs.length,
+      relatedQuotes: rest.slice(0, MAX_LISTED_BLANK_LINES).map((line) => ({
+        clauseIndex: clause.index,
+        quote: line.quote,
+        startOffset: clause.startOffset + line.start,
+        endOffset: clause.startOffset + line.end,
+      })),
+    },
+  ];
 }
 
 function articleNumbers(clauses: EvidenceClause[]) {

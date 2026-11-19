@@ -749,7 +749,7 @@ components:
                     description: See RiskFinding.checkCode
                   checkGroup:
                     type: string
-                    enum: [clarity, completeness, balance, compliance, referral]
+                    enum: [clarity, completeness, balance, compliance, drafting, referral]
                   outcome:
                     type: string
                     enum: [failed, unverified, referral]
@@ -1104,26 +1104,26 @@ components:
         findingType:
           type: string
           enum: [clause_risk, missing_clause, referral]
-          description: referral = a point the AI suggests a lawyer should check; it is not a finding and is not counted in issueCounts.total
+          description: referral = a question the AI suggests a lawyer should answer (title holds the question; it never states a legal conclusion or names an article, at most 3 per review); it is not a finding and is not counted in issueCounts.total
         checkCode:
           type: string
           description: Code of the playbook check (e.g. TT-02, PV-05) or document check (VB-01..VB-06) that produced the finding. Absent on expert-added findings and referrals.
           example: PV-05
         checkGroup:
           type: string
-          enum: [clarity, completeness, balance, compliance, referral]
-          description: Kind of criterion the finding failed. Only compliance can be labelled a violation.
+          enum: [clarity, completeness, balance, compliance, drafting, referral]
+          description: Kind of criterion the finding failed. Only compliance can be labelled a violation. drafting = a document error fixable by editing (blank to fill, reference to a missing clause or appendix, amount in digits differing from words; VB-01..VB-04).
         outcome:
           type: string
           enum: [failed, unverified, referral]
           description: failed = the check did not pass. unverified = a compliance check would fail but its applicability or legal basis could not be verified ("Chưa xác minh được"). referral = see findingType.
         label:
           type: string
-          enum: ['Chưa rõ ràng', 'Thiếu nội dung', 'Nên thương lượng', 'Vi phạm', 'Chưa xác minh được', 'Đề nghị chuyên gia xem xét']
+          enum: ['Chưa rõ ràng', 'Thiếu nội dung', 'Nên thương lượng', 'Vi phạm', 'Lỗi soạn thảo', 'Chưa xác minh được', 'Đề nghị chuyên gia xem xét']
           description: Fixed Vietnamese label derived from checkGroup and outcome
         playbookVersion:
           type: string
-          example: 1.0.0
+          example: 1.1.0
         neutral:
           type: boolean
           description: True when a balance check failed but the user has not said which party they are; the asymmetry is reported without saying who it hurts
@@ -1196,7 +1196,7 @@ components:
                 enum: [verified, partially_verified, not_in_knowledge_base, unreferenced]
                 description: |
                   Whether the playbook articles behind "text" were found in the knowledge base, in force, with their expected wording.
-                  verified: every article was found and is linked. partially_verified: only some were. not_in_knowledge_base: none was found. unreferenced: an expert referral hint whose excerpt came from the legal search, not from a playbook article.
+                  verified: every article was found and is linked. partially_verified: only some were. not_in_knowledge_base: none was found. unreferenced: an expert referral hint whose excerpt came from the legal search, not from a playbook article; it is attached only when an AI check found it directly about the question.
         recommendations:
           type: array
           items:
@@ -1248,12 +1248,13 @@ components:
 
     IssueCounts:
       type: object
-      description: Number of issues found by the playbook review of a version. total = violations + unclear + missing + negotiable; unverified points and expert referrals are counted separately and are not issues.
+      description: Number of issues found by the playbook review of a version. total = violations + unclear + missing + negotiable + drafting; unverified points and expert referrals are counted separately and are not issues.
       properties:
         violations: { type: integer, description: Compliance checks failed ("Vi phạm") }
-        unclear: { type: integer, description: Clarity checks failed plus document checks ("Chưa rõ ràng") }
+        unclear: { type: integer, description: Clarity checks failed plus the vague-wording and conflicting-value document checks VB-05, VB-06 ("Chưa rõ ràng") }
         missing: { type: integer, description: Completeness checks failed ("Thiếu nội dung") }
         negotiable: { type: integer, description: Balance checks failed ("Nên thương lượng") }
+        drafting: { type: integer, description: Document errors VB-01..VB-04 ("Lỗi soạn thảo") }
         unverified: { type: integer, description: Compliance checks that could not be verified ("Chưa xác minh được") }
         referrals: { type: integer, description: Points suggested for a lawyer to check }
         total: { type: integer }
@@ -1262,7 +1263,7 @@ components:
       type: object
       description: What the playbook review checked, so a result with no issue can say "no issue found against N checks"
       properties:
-        playbookVersion: { type: string, example: 1.0.0 }
+        playbookVersion: { type: string, example: 1.1.0 }
         checks: { type: integer, description: Approved playbook checks that applied to this contract }
         passed: { type: integer }
         failed: { type: integer }
@@ -1293,7 +1294,7 @@ components:
           description: added = the expert created the finding. Rejected findings stay in the list and are left out of issueCounts once the verification is approved.
         originalGroup:
           type: string
-          enum: [clarity, completeness, balance, compliance, referral]
+          enum: [clarity, completeness, balance, compliance, drafting, referral]
           description: Group the review gave before an expert changed it (an expert may turn a referral into an issue). Absent on findings the expert added.
         reason:
           type: string
@@ -1363,7 +1364,7 @@ components:
           enum: [clause_risk, missing_clause, referral]
         checkGroup:
           type: string
-          enum: [clarity, completeness, balance, compliance, referral]
+          enum: [clarity, completeness, balance, compliance, drafting, referral]
         label:
           type: string
         title:
@@ -1426,7 +1427,7 @@ components:
           description: Required when verdict is rejected
         checkGroup:
           type: string
-          enum: [clarity, completeness, balance, compliance]
+          enum: [clarity, completeness, balance, compliance, drafting]
           description: Moves the finding to another group; its label follows (compliance = "Vi phạm"). Turning a referral into an issue uses this field.
         title:
           type: string
@@ -1459,7 +1460,7 @@ components:
           description: Clause the risk belongs to. Omit for a missing clause.
         checkGroup:
           type: string
-          enum: [clarity, completeness, balance, compliance]
+          enum: [clarity, completeness, balance, compliance, drafting]
         title:
           type: string
           maxLength: 300
@@ -4388,6 +4389,7 @@ paths:
                           unclear: { type: integer }
                           missing: { type: integer }
                           negotiable: { type: integer }
+                          drafting: { type: integer }
                           unverified: { type: integer }
                           total: { type: integer }
         '404':

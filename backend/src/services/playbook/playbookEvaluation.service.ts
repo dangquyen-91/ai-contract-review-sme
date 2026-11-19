@@ -22,8 +22,10 @@ import {
   ContractFact,
   FAILED_CHECK_LABELS,
   FieldCondition,
+  FieldKind,
   LegalArticleRef,
   NOT_CHECKED_LABEL,
+  NUMERIC_FIELD_KINDS,
   PlaybookCheck,
   PlaybookField,
   UNVERIFIED_COMPLIANCE_LABEL,
@@ -51,6 +53,9 @@ export interface CheckResult {
   vagueTerm?: string;
   reason?: string;
   evidence: FieldEvidence[];
+  fields: Record<string, FieldInfo>;
+  conditions?: FieldCondition[];
+  limitKind?: 'at_most' | 'at_least';
   facts: FactEvidence[];
   basis: CheckBasis;
   legalArticles: VerifiedArticle[];
@@ -60,6 +65,11 @@ export interface CheckResult {
   whyItMatters: string;
   suggestion?: string;
   replacesRule?: string;
+}
+
+export interface FieldInfo {
+  label: string;
+  unit: string;
 }
 
 export interface DocumentCheckResult extends DocumentFinding {
@@ -104,6 +114,13 @@ interface RawResult {
 
 const TEXT_KINDS = new Set(['text', 'date_or_event', 'party']);
 const foldedVague = VAGUE_TERMS.map((term) => ({ term, folded: foldForMatch(term) }));
+const UNIT_SUFFIX: Partial<Record<FieldKind, string>> = {
+  percent: '%',
+  interest_rate: '%/năm',
+  months: ' tháng',
+  days: ' ngày',
+  hours: ' giờ',
+};
 const UNCERTAIN_REASON = 'Không xác minh được thông tin trích từ hợp đồng.';
 
 function vagueTermIn(value: string): string | undefined {
@@ -236,6 +253,7 @@ function evaluateCheck(check: PlaybookCheck, ctx: CheckContext): CheckResult {
     group: check.group,
     title: check.title,
     evidence: [],
+    fields: {},
     facts: [],
     basis: check.basis,
     legalArticles: [],
@@ -284,6 +302,14 @@ function evaluateCheck(check: PlaybookCheck, ctx: CheckContext): CheckResult {
     vagueTerm: raw.vagueTerm,
     reason,
     evidence: raw.used,
+    fields: Object.fromEntries(
+      raw.used.map((field) => {
+        const definition = ctx.definitionOf(field.key);
+        return [field.key, { label: definition?.label ?? field.key, unit: (definition && UNIT_SUFFIX[definition.kind]) ?? '' }];
+      }),
+    ),
+    conditions: check.test.kind === 'fails_when_all' ? check.test.conditions : undefined,
+    limitKind: check.test.kind === 'at_least' ? 'at_least' : raw.limit !== undefined ? 'at_most' : undefined,
     facts: factEvidence,
     legalArticles: [...lawArticles, ...references],
   };
@@ -349,7 +375,8 @@ export async function evaluateContract({ contractType, userParty, clauses, evide
   const conflictFields = evidence.playbooks.flatMap((group) =>
     group.playbook.fields.flatMap((field) => {
       const found = group.fields[field.key];
-      return found?.conflicts?.length ? [{ label: field.label, evidence: found }] : [];
+      const comparable = field.kind === 'boolean' || NUMERIC_FIELD_KINDS.includes(field.kind);
+      return comparable && found?.conflicts?.length ? [{ label: field.label, evidence: found }] : [];
     }),
   );
   const vagueFailures = results.filter((result) => result.vagueTerm).flatMap((result) => result.evidence);
@@ -358,7 +385,7 @@ export async function evaluateContract({ contractType, userParty, clauses, evide
     .map((finding) => ({
       ...finding,
       title: DOCUMENT_CHECKS[finding.code].title,
-      label: FAILED_CHECK_LABELS.clarity,
+      label: FAILED_CHECK_LABELS[DOCUMENT_CHECKS[finding.code].group],
       check: DOCUMENT_CHECKS[finding.code],
     }));
 

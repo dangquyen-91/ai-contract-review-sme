@@ -170,10 +170,11 @@ sequenceDiagram
     EL->>PB: verifyPlaybookArticleRefs (tra đúng Điều, kiểm cụm từ neo)
     PB->>DB: LegalSource còn hiệu lực + LegalKnowledgeChunk
     EL->>EL: chấm từng phép kiểm + kiểm tra toàn văn VB-01..VB-06
-    EL-->>PR: kết quả: Đạt / Chưa rõ ràng / Thiếu nội dung / Nên thương lượng / Vi phạm / Chưa xác minh được / Không kiểm tra được
+    EL-->>PR: kết quả: Đạt / Chưa rõ ràng / Thiếu nội dung / Nên thương lượng / Vi phạm / Lỗi soạn thảo / Chưa xác minh được / Không kiểm tra được
     par preparing_suggestions
-        PR->>LLM: ⑥ điểm đáng lo chưa có trong playbook (kèm câu trích)
-        PR->>LR: searchLegalChunks — điều luật tham khảo cho chuyên gia
+        PR->>LLM: ⑥ tối đa 3 câu hỏi cho chuyên gia về điểm playbook chưa có (kèm câu trích, không kết luận pháp lý)
+        PR->>LR: searchLegalChunks — 3 đoạn luật ứng viên cho mỗi câu hỏi
+        PR->>LLM: chọn đoạn luật trực tiếp liên quan hoặc không chọn
     and
         PR->>LLM: ⑦ gợi ý sửa (câu gốc phải có nguyên văn trong điều khoản)
     end
@@ -187,6 +188,7 @@ sequenceDiagram
 | Đạt | Hợp đồng đáp ứng tiêu chí | Chỉ đếm trong `checkCoverage.passed` |
 | Chưa rõ ràng / Thiếu nội dung / Nên thương lượng | Phép kiểm nhóm rõ ràng / đầy đủ / cân bằng không đạt | `RiskFinding` `outcome=failed` |
 | Vi phạm | Phép kiểm tuân thủ không đạt, điều luật **và** điều kiện áp dụng đều đã xác minh | `RiskFinding` `checkGroup=compliance` |
+| Lỗi soạn thảo | Kiểm tra toàn văn VB-01..VB-04: chỗ trống, dẫn chiếu đến điều hoặc phụ lục không có, số tiền bằng số khác bằng chữ | `RiskFinding` `checkGroup=drafting` |
 | Chưa xác minh được | Phép kiểm tuân thủ không đạt nhưng chưa xác định được tình tiết hoặc điều luật | `RiskFinding` `outcome=unverified` |
 | Không kiểm tra được | Giá trị đọc từ hợp đồng không chắc chắn | `checkCoverage.notCheckedItems` |
-| Đề nghị chuyên gia xem xét | AI thấy điểm đáng lo mà playbook chưa có; không trùng vị trí với vấn đề đã báo | `RiskFinding` `findingType=referral`, không tính vào `issueCounts.total` |
+| Đề nghị chuyên gia xem xét | AI đặt câu hỏi về điểm playbook chưa có; không trùng vị trí với vấn đề đã báo; câu có kết luận pháp lý hoặc nêu tên luật, điều luật bị loại bằng code | `RiskFinding` `findingType=referral`, không tính vào `issueCounts.total` |

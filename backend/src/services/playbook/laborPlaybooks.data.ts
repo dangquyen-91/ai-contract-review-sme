@@ -1,3 +1,4 @@
+import { percentageBaseCheck, percentageBaseFields } from './percentageBase.data';
 import type { ClausePlaybook } from './playbookSchema';
 
 const BLLD = 'labor_code_2019';
@@ -122,7 +123,7 @@ export const WAGES_PLAYBOOK: ClausePlaybook = {
       key: 'wage_amount',
       label: 'Mức lương',
       aspect: 'how_much',
-      kind: 'money',
+      kind: 'text',
       extraction: 'The wage for the job or title, or how it is calculated.',
     },
     {
@@ -146,6 +147,12 @@ export const WAGES_PLAYBOOK: ClausePlaybook = {
       kind: 'percent',
       extraction: 'The maximum share of the monthly wage the employer may deduct, as a percentage.',
     },
+    ...percentageBaseFields({
+      keyPrefix: 'wage',
+      label: 'Lương, thưởng tính theo tỷ lệ phần trăm',
+      subject: 'wage, bonus or commission',
+      examples: '"3% doanh số", "10% lợi nhuận của phòng"',
+    }),
   ],
   notApplicable: [
     { aspect: 'who', reason: 'Người trả lương luôn là người sử dụng lao động.' },
@@ -218,6 +225,14 @@ export const WAGES_PLAYBOOK: ClausePlaybook = {
       replacesRule: 'BLLD_WAGE_DEDUCTION_CAP',
       review: APPROVED,
     },
+    percentageBaseCheck({
+      code: 'TL-05',
+      keyPrefix: 'wage',
+      contractTypes: LABOR,
+      title: 'Lương, thưởng tính theo tỷ lệ phải nêu rõ tỷ lệ đó tính trên khoản nào',
+      suggestion:
+        'Người lao động được hưởng [tỷ lệ]% [doanh số thuần/lợi nhuận sau thuế] của [bộ phận/hợp đồng do người lao động phụ trách] trong từng [tháng/quý], xác định theo [báo cáo/bảng đối soát] do [bộ phận] lập, chi trả cùng kỳ lương [tháng kế tiếp].',
+    }),
   ],
 };
 
