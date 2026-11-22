@@ -5,7 +5,7 @@ import { findingDisplay } from "@/config/issue-display";
 import { compareFindings, countFindingIssues } from "@/lib/review/issue-counts";
 import { IssueSummary } from "@/components/review/results/issue-summary";
 import { ReviewCoverage } from "@/components/review/results/review-coverage";
-import { ContractSummary } from "@/components/review/results/contract-summary";
+import { ExecutiveSummary } from "@/components/review/results/executive-summary";
 import { RiskDetails } from "@/components/review/results/risk-details";
 import { FindingVerificationBadge } from "@/components/expert-verification/finding-verification-info";
 import { routes } from "@/config/routes";
@@ -124,7 +124,7 @@ export function ReviewVersionResult({ contractId, title, run, version, current, 
       </header>
       <HistoryBanner contractId={contractId} run={run} version={version} current={current} />
       {run.error && <p role="alert" className="m-0 rounded-lg border border-red-200 bg-red-50 p-3 text-ui text-red-800">{run.error}</p>}
-      <ContractSummary points={run.result?.summaryPoints} sources={run.result?.summarySources} complete={run.status === "completed"} />
+      <ExecutiveSummary points={run.result?.summaryPoints} assessment={run.result?.overallAssessment} complete={run.status === "completed"} />
       <ReviewCoverage coverage={run.result?.checkCoverage} />
       <IssueSummary counts={counts} />
       {counts && (

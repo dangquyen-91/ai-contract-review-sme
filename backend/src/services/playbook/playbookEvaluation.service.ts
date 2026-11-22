@@ -19,11 +19,13 @@ import {
 import {
   CheckBasis,
   CheckGroup,
+  CONTRACT_FACTS,
   ContractFact,
   FAILED_CHECK_LABELS,
   FieldCondition,
   FieldKind,
   LegalArticleRef,
+  LimitTier,
   NOT_CHECKED_LABEL,
   NUMERIC_FIELD_KINDS,
   PlaybookCheck,
@@ -187,22 +189,26 @@ function runTest(
       if (test.absoluteLimit !== undefined && value > test.absoluteLimit) {
         return { status: 'fail', used: [field], observed: value, limit: test.absoluteLimit };
       }
-      const possible: number[] = [];
+      const possible: LimitTier[] = [];
       for (const tier of test.tiers) {
         const states = tier.facts.map(factOf);
         if (states.every((state) => state === true)) {
           return { status: value > tier.limit ? 'fail' : 'pass', used: [field], observed: value, limit: tier.limit };
         }
-        if (!states.includes(false)) possible.push(tier.limit);
+        if (!states.includes(false)) possible.push(tier);
       }
-      if (possible.length === 0 || value <= Math.min(...possible)) {
+      if (possible.length === 0 || value <= Math.min(...possible.map((tier) => tier.limit))) {
         return { status: 'pass', used: [field], observed: value, limit: test.absoluteLimit };
       }
+      const unit = UNIT_SUFFIX[definitionOf(test.field)?.kind ?? 'text'] ?? '';
+      const tiers = possible
+        .map((tier) => `${tier.limit.toLocaleString('vi-VN')}${unit} nếu ${tier.facts.map((fact) => CONTRACT_FACTS[fact].label.charAt(0).toLocaleLowerCase('vi') + CONTRACT_FACTS[fact].label.slice(1)).join(' và ')}`)
+        .join('; ');
       return {
         status: 'unknown',
         used: [field],
         observed: value,
-        reason: 'Chưa xác định được tình tiết để biết mức giới hạn nào áp dụng.',
+        reason: `Hợp đồng ghi ${value.toLocaleString('vi-VN')}${unit}. Mức tối đa tuỳ trường hợp: ${tiers}. Hợp đồng chưa cho biết trường hợp nào áp dụng.`,
       };
     }
     case 'fails_when_all': {

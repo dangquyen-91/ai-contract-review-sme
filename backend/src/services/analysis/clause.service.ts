@@ -98,6 +98,7 @@ export async function segmentClauses(
           summarySources: [],
           riskDetectionStatus: 'pending',
           overallAssessment: [],
+          assessmentSources: [],
         },
         $unset: {
           segmentationError: '',

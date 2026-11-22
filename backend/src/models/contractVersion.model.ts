@@ -70,6 +70,14 @@ export const summarySourceSchema = new Schema(
   { _id: false, ...decryptOnSerialize },
 );
 
+export const assessmentSourceSchema = new Schema(
+  {
+    pointIndex: { type: Number, required: true },
+    checkCodes: { type: [String], default: [] },
+  },
+  { _id: false },
+);
+
 export const issueCountsSchema = new Schema(
   {
     violations: { type: Number, default: 0 },
@@ -95,8 +103,16 @@ export const checkCoverageSchema = new Schema(
     unverified: { type: Number, default: 0 },
     documentChecks: { type: Number, default: 0 },
     clauseTypesWithoutPlaybook: { type: [String], default: [] },
+    uncoveredTopics: {
+      type: [new Schema({ code: String, name: String }, { _id: false })],
+      default: [],
+    },
     notCheckedItems: {
       type: [new Schema({ code: String, title: String, reason: String }, { _id: false })],
+      default: [],
+    },
+    passedItems: {
+      type: [new Schema({ code: String, title: String }, { _id: false })],
       default: [],
     },
   },
@@ -145,6 +161,7 @@ const contractVersionSchema = new Schema(
     riskDetectionStartedAt: { type: Date },
     riskDetectionReviewId: { type: Types.ObjectId, ref: 'Review' },
     overallAssessment: { type: [String], default: [] },
+    assessmentSources: { type: [assessmentSourceSchema], default: undefined },
     keyTerms: { type: [keyTermSchema], default: undefined },
     keyTermsExtractedAt: { type: Date },
     issueCounts: { type: issueCountsSchema, default: undefined },

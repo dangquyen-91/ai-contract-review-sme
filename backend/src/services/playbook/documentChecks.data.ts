@@ -74,8 +74,6 @@ export const VAGUE_TERMS = [
   'sẽ thoả thuận sau',
   'sẽ thống nhất sau',
   'thoả thuận bổ sung sau',
-  'khi cần thiết',
-  'nếu cần thiết',
   'tương đối',
   'đáng kể',
   'các chi phí khác',

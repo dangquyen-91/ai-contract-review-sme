@@ -610,7 +610,15 @@ components:
           type: array
           items:
             type: string
-          description: '"Đánh giá tổng quan" bullets (Vietnamese). The playbook review builds them from the counts (number of checks run, issues per group, unverified points, expert referrals); no AI writes them.'
+          description: '"Đánh giá tổng quan" bullets (Vietnamese). The unfilled-template note (if any) is written by code; the checks run and passed are shown from checkCoverage instead. The following points are written by the AI from the check results only; each must cite check codes (see assessmentSources), and code drops points that cite unknown codes, grade severity, or call something a violation or an imbalance without a matching failed check. When no point survives, code writes the counts instead.'
+        assessmentSources:
+          type: array
+          description: Check codes behind each AI-written assessment point; pointIndex is the index in overallAssessment.
+          items:
+            type: object
+            properties:
+              pointIndex: { type: integer }
+              checkCodes: { type: array, items: { type: string }, example: [PV-05, MB-04] }
         issueCounts:
           $ref: '#/components/schemas/IssueCounts'
         checkCoverage:
@@ -721,6 +729,13 @@ components:
               type: array
               items:
                 type: string
+            assessmentSources:
+              type: array
+              items:
+                type: object
+                properties:
+                  pointIndex: { type: integer }
+                  checkCodes: { type: array, items: { type: string } }
             summaryPoints:
               type: array
               items:
@@ -1275,6 +1290,14 @@ components:
           type: array
           items: { type: string }
           description: Clause types present in the contract that no playbook covers yet
+        uncoveredTopics:
+          type: array
+          description: The same clause types with their Vietnamese names, for display
+          items:
+            type: object
+            properties:
+              code: { type: string, example: indemnity }
+              name: { type: string, example: Bồi thường thiệt hại }
         notCheckedItems:
           type: array
           items:
@@ -1283,6 +1306,14 @@ components:
               code: { type: string }
               title: { type: string }
               reason: { type: string }
+        passedItems:
+          type: array
+          description: Playbook checks the contract met, so the result can show what was verified as well as what failed
+          items:
+            type: object
+            properties:
+              code: { type: string, example: TV-01 }
+              title: { type: string }
 
     FindingVerification:
       type: object

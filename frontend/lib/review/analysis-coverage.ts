@@ -6,7 +6,9 @@ export function analysisCoverageNotes(version?: { checkCoverage?: CheckCoverage 
   const notes: string[] = [];
   if (coverage.notChecked) notes.push(`${coverage.notChecked} phép kiểm không thực hiện được vì thông tin chưa chắc chắn.`);
   if (coverage.unverified) notes.push(`${coverage.unverified} phép kiểm chưa xác minh được căn cứ hoặc điều kiện áp dụng.`);
-  if (coverage.clauseTypesWithoutPlaybook?.length) notes.push("Một số loại điều khoản chưa có bộ tiêu chí kiểm tra.");
+  const uncovered = coverage.uncoveredTopics?.map((topic) => topic.name) ?? [];
+  if (uncovered.length) notes.push(`Chưa có bộ tiêu chí kiểm tra cho: ${uncovered.join(", ")}.`);
+  else if (coverage.clauseTypesWithoutPlaybook?.length) notes.push("Một số loại điều khoản chưa có bộ tiêu chí kiểm tra.");
   return notes;
 }
 

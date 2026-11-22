@@ -10,6 +10,13 @@ export const DELIVERY_PLAYBOOK: ClausePlaybook = {
   title: 'Giao nhận và bàn giao',
   fields: [
     {
+      key: 'claim_period',
+      label: 'Thời hạn khiếu nại về hàng hoá',
+      aspect: 'when',
+      kind: 'text',
+      extraction: 'How long after delivery the buyer may complain about the quantity or quality of the goods ("thời hạn khiếu nại").',
+    },
+    {
       key: 'delivery_time',
       label: 'Thời hạn giao hoặc bàn giao',
       aspect: 'when',
@@ -116,6 +123,26 @@ export const DELIVERY_PLAYBOOK: ClausePlaybook = {
       whyItMatters: 'Không có thủ tục nghiệm thu thì khó chứng minh hàng hoặc dịch vụ không đạt yêu cầu khi đã nhận.',
       suggestion:
         'Bên [bên nhận] kiểm tra, nghiệm thu trong vòng [số] ngày kể từ ngày nhận; quá thời hạn này mà không có ý kiến bằng văn bản thì coi như đã nghiệm thu.',
+      review: APPROVED,
+    },
+    {
+      code: 'GN-05',
+      group: 'clarity',
+      title: 'Phải nêu thời hạn khiếu nại về số lượng, chất lượng hàng hoá',
+      appliesTo: { contractTypes: ['sales'] },
+      test: { kind: 'stated', field: 'claim_period' },
+      basis: { kind: 'practice', statement: 'Thông lệ là quy định thời hạn bên mua được khiếu nại về số lượng và chất lượng sau khi nhận hàng.' },
+      question: 'Sau khi nhận hàng, bên mua được khiếu nại về số lượng, chất lượng trong bao lâu?',
+      whyItMatters: 'Không rõ thời hạn khiếu nại thì bên mua có thể mất quyền khiếu nại khi phát hiện lỗi muộn.',
+      suggestion: 'Bên mua được khiếu nại về số lượng trong [số] ngày và về chất lượng trong [số] tháng kể từ ngày nhận hàng.',
+      fallbackRules: [
+        {
+          contractTypes: ['sales'],
+          facts: ['commercial_contract'],
+          statement: 'Thời hạn khiếu nại là ba tháng về số lượng và sáu tháng về chất lượng hàng hoá, kể từ ngày giao hàng.',
+          article: { sourceCode: LTM, article: 318, verifyText: 'Sáu tháng, kể từ ngày giao hàng đối với khiếu nại về chất lượng hàng hoá' },
+        },
+      ],
       review: APPROVED,
     },
     {

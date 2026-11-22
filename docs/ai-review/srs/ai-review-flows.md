@@ -174,14 +174,17 @@ sequenceDiagram
     par preparing_suggestions
         PR->>LLM: ⑥ tối đa 3 câu hỏi cho chuyên gia về điểm playbook chưa có (kèm câu trích, không kết luận pháp lý)
         PR->>LR: searchLegalChunks — 3 đoạn luật ứng viên cho mỗi câu hỏi
-        PR->>LLM: chọn đoạn luật trực tiếp liên quan hoặc không chọn
+        PR->>LLM: kiểm lại câu hỏi với toàn văn, chọn đoạn luật trực tiếp liên quan hoặc không chọn
+        PR->>LLM: đánh giá tổng quan chỉ từ kết quả phép kiểm, mỗi ý kèm mã phép kiểm (code lọc lại)
     and
         PR->>LLM: ⑦ gợi ý sửa (câu gốc phải có nguyên văn trong điều khoản)
     end
     PR->>DB: insert RiskFinding + RiskCitation (snapshot), xoá bản cũ của review này (saving_findings)
-    PR->>DB: ContractVersion {issueCounts, checkCoverage, overallAssessment theo mẫu, keyTerms}
+    PR->>DB: ContractVersion {issueCounts, checkCoverage, overallAssessment, assessmentSources, keyTerms}
     PR-->>W: done
 ```
+
+Danh mục đầy đủ các phép kiểm, căn cứ và trạng thái xác minh điều luật: [playbook-catalog.md](../playbook-catalog.md) (sinh tự động bằng `npm run docs:playbook`).
 
 | Kết quả của phép kiểm | Khi nào | Lưu thành |
 | --- | --- | --- |

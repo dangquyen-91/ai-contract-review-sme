@@ -1,5 +1,5 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
-import { checkCoverageSchema, issueCountsSchema, keyTermSchema, summarySourceSchema } from './contractVersion.model';
+import { assessmentSourceSchema, checkCoverageSchema, issueCountsSchema, keyTermSchema, summarySourceSchema } from './contractVersion.model';
 import { FINDING_GROUPS, FINDING_OUTCOMES, RISK_DETECTED_BY, RISK_FINDING_TYPES } from './riskFinding.model';
 
 export const REVIEW_STATUSES = ['queued', 'running', 'completed', 'failed', 'cancelled'] as const;
@@ -45,6 +45,7 @@ const reviewResultSchema = new Schema(
     issueCounts: { type: issueCountsSchema, default: undefined },
     checkCoverage: { type: checkCoverageSchema, default: undefined },
     overallAssessment: { type: [String], default: [] },
+    assessmentSources: { type: [assessmentSourceSchema], default: undefined },
     summaryPoints: { type: [String], default: [] },
     summarySources: { type: [summarySourceSchema], default: undefined },
     clauseCount: { type: Number, required: true },

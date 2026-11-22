@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { RiskDetails } from "@/components/review/results/risk-details";
 import { RiskFindingCard } from "@/components/review/results/risk-finding-card";
-import { ContractSummary } from "@/components/review/results/contract-summary";
+import { ExecutiveSummary } from "@/components/review/results/executive-summary";
 import { ReviewCoverage } from "@/components/review/results/review-coverage";
 import { issueDisplay, issueGroups } from "@/config/issue-display";
 import workspaceStyles from "@/styles/review/review-workspace.module.css";
@@ -59,20 +59,13 @@ export function ReviewAnalysisPane({ result, sectionId, isDocx, showSummary = tr
 
   return (
     <div id={`${sectionId}-analysis`} className={`${styles.scope} min-w-0 border-r border-[#e4e6df] max-[1080px]:border-r-0 max-[1080px]:border-b ${workspaceStyles.analysisPane}`}>
-      {showSummary && <details className={`${styles.analysisSection} border-b border-[#e4e6df] bg-[#fbfcfa]`}>
-        <summary className="cursor-pointer text-xs font-medium text-[#484d45]">Tóm tắt và đánh giá <span className="ml-2 font-normal text-[#93988e]">{version?.summaryPoints?.length ?? 0} ý chính</span></summary>
-        <div className="mt-5 space-y-5">
-          <ContractSummary points={version?.summaryPoints} sources={version?.summarySources} clauses={clauses} complete={version?.summaryStatus === "completed"} onSource={onJumpToSource} />
-          {!!version?.overallAssessment?.length && <section className={styles.assessment}>
-            <h3 className={styles.sectionHeading}>Đánh giá tổng quan</h3>
-            <ul className={`${styles.assessmentList} space-y-2`}>{version.overallAssessment.map((point, index) => <li key={index}>{point}</li>)}</ul>
-          </section>}
-        </div>
-      </details>}
+      {showSummary && <div className={`${styles.analysisSection} border-b border-[#e4e6df] bg-[#fbfcfa]`}>
+        <ExecutiveSummary points={version?.summaryPoints} assessment={version?.overallAssessment} complete={version?.summaryStatus === "completed"} />
+      </div>}
       <section className={`${styles.analysisSection} space-y-4 bg-white`} aria-labelledby={headingId}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 id={headingId} className={styles.sectionHeading}>{verificationFilter === "rejected" ? "Các mục đã bác bỏ" : "Kết quả kiểm tra"}</h3>
-          <span className="text-ui-meta tabular-nums text-muted-foreground">{visibleFindings.length}/{findings.length} mục</span>
+          <span className="text-ui-meta tabular-nums text-muted-foreground">{visibleFindings.length}/{findings.length} mục{findings.length > 1 ? " · theo điều khoản" : ""}</span>
         </div>
         <ReviewCoverage coverage={version?.checkCoverage} />
         {!version?.issueCounts && <p role="note" className="m-0 text-ui-meta leading-6 text-muted-foreground">{risksComplete ? "Kết quả trước đây chưa có phân loại theo tiêu chí mới. Hãy rà soát lại để cập nhật." : "Rà soát chưa hoàn tất, chưa có số liệu phân loại vấn đề."}</p>}
@@ -88,13 +81,13 @@ export function ReviewAnalysisPane({ result, sectionId, isDocx, showSummary = tr
             const count = findings.filter((finding) => matches(finding, filter)).length;
             const label = filter === "all" ? "Tất cả" : filter === "unverified" || filter === "referral" ? filterLabels[filter] : issueDisplay[filter].label;
             return (
-              <button key={filter} type="button" className={styles.filterButton} aria-pressed={groupFilter === filter} onClick={() => { setGroupFilter(filter); setExpandedFinding(null); }}>
+              <button key={filter} type="button" className={styles.filterButton} aria-pressed={groupFilter === filter}
+                disabled={filter !== "all" && count === 0 && groupFilter !== filter} onClick={() => { setGroupFilter(filter); setExpandedFinding(null); }}>
                 {label} <span className={styles.filterCount}>{count}</span>
               </button>
             );
           })}
         </div>
-        {findings.length > 0 && <p className="m-0 text-ui-meta leading-5 text-muted-foreground">Theo thứ tự điều khoản trong hợp đồng. Mở từng mục để đối chiếu bằng chứng và hướng xử lý.</p>}
         {visibleFindings.length ? <ul className={styles.findingsList}>{visibleFindings.map((finding) => {
           const clauseIndex = findingClauseIndex(finding, clauses);
           const canJump = clauseIndex !== null && clauses.some((clause) => clause.index === clauseIndex);

@@ -5,7 +5,7 @@ import type { ClauseCategory } from '../../models/clauseTypeTaxonomy.model';
 import { generateJson } from '../ai/llm.service';
 import { placeholderInstruction, Redactor } from '../ai/redaction.service';
 import { describeReviewContext, ReviewContext } from '../contract/contractProfile.service';
-import { applicableChecks, fieldsUsedBy, getClausePlaybook, getContractPlaybook } from './playbook.service';
+import { applicableChecks, CLAUSE_PLAYBOOKS, fieldsUsedBy, getClausePlaybook, getContractPlaybook } from './playbook.service';
 import {
   CONTRACT_FACTS,
   ClausePlaybook,
@@ -580,6 +580,14 @@ export async function collectContractEvidence({
       if (!group.clauses.includes(clause)) group.clauses.push(clause);
     }
   }
+  const searchedOnly = new Set<ClausePlaybook>();
+  for (const playbook of CLAUSE_PLAYBOOKS) {
+    if (groups.has(playbook) || !playbook.clauseTypes.some((type) => context.clauseCategories.includes(type))) continue;
+    const checks = applicableChecks(playbook.checks, contractType);
+    if (checks.length === 0) continue;
+    groups.set(playbook, { clauses: [], fields: neededFields(playbook.fields, checks), checks });
+    searchedOnly.add(playbook);
+  }
 
   let itemId = 0;
   const items: ClauseItem[] = [];
@@ -751,13 +759,14 @@ export async function collectContractEvidence({
     for (const claim of claims) claim.apply(verdictById.get(claim.id) ?? 'unclear');
   }
 
-  const playbooks: PlaybookEvidence[] = [...groups].map(([playbook, group]) => {
+  const playbooks: PlaybookEvidence[] = [...groups].flatMap(([playbook, group]) => {
     const found = candidatesByGroup.get(playbook);
-    return {
-      playbook,
-      clauseIndexes: group.clauses.map((clause) => clause.index),
-      fields: Object.fromEntries(group.fields.map((field) => [field.key, mergeFieldEvidence(field.key, found?.get(field.key) ?? [])])),
-    };
+    const fields = Object.fromEntries(group.fields.map((field) => [field.key, mergeFieldEvidence(field.key, found?.get(field.key) ?? [])]));
+    if (!searchedOnly.has(playbook)) return [{ playbook, clauseIndexes: group.clauses.map((clause) => clause.index), fields }];
+    const located = Object.values(fields).filter((field) => field.state !== 'absent' || field.blank);
+    if (located.length === 0) return [];
+    const clauseIndexes = [...new Set(located.flatMap((field) => (field.clauseIndex === undefined ? [] : [field.clauseIndex])))].sort((a, b) => a - b);
+    return [{ playbook, clauseIndexes, fields }];
   });
   for (const field of contractFieldList) contractFields[field.key] ??= { key: field.key, state: 'absent' };
 

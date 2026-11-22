@@ -113,6 +113,20 @@ export const PAYMENT_PLAYBOOK: ClausePlaybook = {
       extraction:
         'The total share of the contract value the buyer must pay before the ownership certificate ("Giấy chứng nhận", "sổ hồng") is issued.',
     },
+    {
+      key: 'price_adjustable',
+      label: 'Giá có thể được điều chỉnh',
+      aspect: 'condition',
+      kind: 'boolean',
+      extraction: 'true when the contract lets the price, fee or rent change during the contract (for example "giá thuê được điều chỉnh", "giá có thể thay đổi").',
+    },
+    {
+      key: 'price_adjustment_method',
+      label: 'Cách điều chỉnh giá',
+      aspect: 'how',
+      kind: 'text',
+      extraction: 'When and how the price or rent changes: the timing and the rate, cap or formula (for example "tăng không quá 5% mỗi năm").',
+    },
     ...percentageBaseFields({
       keyPrefix: 'price',
       label: 'Giá tính theo tỷ lệ phần trăm',
@@ -422,6 +436,27 @@ export const PAYMENT_PLAYBOOK: ClausePlaybook = {
         status: 'approved',
         note: 'Quy định nằm trong Điều 25 về nhà ở hình thành trong tương lai; rule cũ áp dụng cho mọi trường hợp bên bán là chủ đầu tư, kể cả nhà đã hoàn thành.',
       },
+    },
+    {
+      code: 'TT-14',
+      group: 'clarity',
+      title: 'Giá có thể điều chỉnh thì phải nêu thời điểm và mức điều chỉnh',
+      appliesTo: { contractTypes: PAID_CONTRACTS },
+      test: {
+        kind: 'fails_when_all',
+        conditions: [
+          { field: 'price_adjustable', op: 'is_true' },
+          { field: 'price_adjustment_method', op: 'not_stated' },
+        ],
+      },
+      basis: {
+        kind: 'criterion',
+        statement: 'Giá chỉ xác định được trong suốt hợp đồng khi biết khi nào được điều chỉnh và điều chỉnh theo mức hoặc công thức nào.',
+      },
+      question: 'Giá được điều chỉnh khi nào, theo mức tối đa hoặc công thức nào, và có cần bên kia đồng ý không?',
+      whyItMatters: 'Một bên có thể tăng giá bất kỳ lúc nào với mức tuỳ ý nếu hợp đồng không giới hạn.',
+      suggestion: 'Giá được điều chỉnh [mỗi năm một lần] kể từ [thời điểm], mức tăng không quá [tỷ lệ]% và phải thông báo bằng văn bản trước [số] ngày.',
+      review: APPROVED,
     },
     percentageBaseCheck({
       code: 'TT-13',

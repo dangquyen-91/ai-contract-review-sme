@@ -2,7 +2,7 @@
 
 import { ReviewVerification } from "@/components/expert-verification/review-verification";
 import { IssueSummary } from "@/components/review/results/issue-summary";
-import { ContractSummary } from "@/components/review/results/contract-summary";
+import { ExecutiveSummary } from "@/components/review/results/executive-summary";
 import { ReviewCoverage } from "@/components/review/results/review-coverage";
 import { activeRiskFindings } from "@/lib/review/verification-findings";
 import { reviewIssueCounts } from "@/lib/review/issue-counts";
@@ -39,12 +39,8 @@ export function ContractOverviewTab({ result, role, onOpenRisks, onSource }: {
       {contractId && <ReviewVerification key={`${contractId}:${version?._id ?? version?.id ?? "current"}`}
         contractId={contractId} versionId={version?._id ?? version?.id ?? result.contract.reviewBilling?.versionId}
         title={result.contract.title} complete={complete} findingCount={findings.length} role={role} />}
-      <div className="grid gap-6 border-t border-border pt-6 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <ContractSummary points={version?.summaryPoints} sources={version?.summarySources} clauses={result.clauses} complete={version?.summaryStatus === "completed"} onSource={onSource} />
-        <section className={`${styles.overviewAssessment} min-w-0 self-start p-5`}>
-          <h3 className={styles.sectionHeading}>Đánh giá tổng quan</h3>
-          {version?.overallAssessment?.length ? <ul className={`${styles.assessmentList} space-y-3`}>{version.overallAssessment.map((point, index) => <li key={index}>{point}</li>)}</ul> : <p className="mb-0 mt-3 text-ui-meta text-muted-foreground">Chưa có đánh giá tổng quan.</p>}
-        </section>
+      <div className="border-t border-border pt-6">
+        <ExecutiveSummary points={version?.summaryPoints} assessment={version?.overallAssessment} complete={version?.summaryStatus === "completed"} />
       </div>
     </div>
   );

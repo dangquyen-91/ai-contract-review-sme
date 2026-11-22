@@ -1,7 +1,7 @@
 import type { ClauseCategory } from '../../models/clauseTypeTaxonomy.model';
 import type { LegalSourceCode } from '../legal/legalSourceCatalog.data';
 
-export const PLAYBOOK_VERSION = '1.1.0';
+export const PLAYBOOK_VERSION = '1.2.0';
 
 export const CHECK_GROUPS = ['clarity', 'completeness', 'balance', 'compliance'] as const;
 export type CheckGroup = (typeof CHECK_GROUPS)[number];
@@ -135,6 +135,10 @@ export const CONTRACT_FACTS = {
   labor_contract_12_to_36_months: fact(
     'Hợp đồng lao động từ 12 đến 36 tháng',
     'The labor contract has a fixed term from 12 to 36 months.',
+  ),
+  insurance_term_over_one_year: fact(
+    'Hợp đồng bảo hiểm có thời hạn trên 01 năm',
+    'The insurance contract term (the period of cover) is longer than one year.',
   ),
   labor_contract_under_12_months: fact(
     'Hợp đồng lao động dưới 12 tháng',

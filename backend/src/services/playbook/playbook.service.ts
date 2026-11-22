@@ -42,6 +42,13 @@ import {
   PlaybookField,
 } from './playbookSchema';
 import { TERM_PLAYBOOK } from './termPlaybook.data';
+import {
+  CONFIDENTIALITY_PLAYBOOK,
+  DISPUTE_PLAYBOOK,
+  FORCE_MAJEURE_PLAYBOOK,
+  SUBJECT_SCOPE_PLAYBOOK,
+  WARRANTY_PLAYBOOK,
+} from './commonPlaybooks.data';
 import { TERMINATION_PLAYBOOK } from './terminationPlaybook.data';
 
 export const CLAUSE_PLAYBOOKS: ClausePlaybook[] = [
@@ -61,6 +68,11 @@ export const CLAUSE_PLAYBOOKS: ClausePlaybook[] = [
   OWNERSHIP_TRANSFER_PLAYBOOK,
   INSURANCE_EXCLUSIONS_PLAYBOOK,
   CLAIMS_PLAYBOOK,
+  SUBJECT_SCOPE_PLAYBOOK,
+  WARRANTY_PLAYBOOK,
+  CONFIDENTIALITY_PLAYBOOK,
+  FORCE_MAJEURE_PLAYBOOK,
+  DISPUTE_PLAYBOOK,
 ];
 
 export const CONTRACT_PLAYBOOKS: ContractPlaybook[] = [

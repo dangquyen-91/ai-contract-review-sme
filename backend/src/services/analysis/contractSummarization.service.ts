@@ -26,6 +26,7 @@ export interface ContractSummary {
 }
 
 const MAX_POINTS = 5;
+const QUOTE_BREAK = /\s*(?:\.{3,}|…)\s*|\n+/u;
 
 const pointsParser = z.object({
   points: z.array(
@@ -64,18 +65,23 @@ const pointsResponse: Schema = {
 const GROUNDING_RULES = `Rules for every point:
 - State only what the contract text says. Plain rewording is fine, but never add a condition, consequence or fact, and never make vague wording precise: keep words such as "hợp lý" or "kịp thời" as they are.
 - Keep every number exactly as the contract writes it.
-- "sources": 1-3 items, each with the "clauseIndex" and a "quote" copied word for word from that clause (one continuous passage) that states what the point says.
+- "sources": 1-4 items, each with the "clauseIndex" and a "quote" copied word for word from that clause (one continuous passage) that states what the point says. When a point draws on separate passages, give each passage as its own source item; never join passages with "...".
 - Do not analyze risk here (that is done separately).`;
 
 function summaryPrompt(context: ReviewContext, clauses: SummaryClause[], analysisFocus: string | undefined, redactor: Redactor) {
   const focusBlock = analysisFocus
     ? `\nThe user asked for this analysis direction, so emphasize the parts relevant to it: "${redactor.mask(analysisFocus)}"`
     : '';
-  return `You write a plain-language overview of a Vietnamese contract for a reader with no legal background.
+  return `You write a plain-language overview of a Vietnamese contract for a reader with no legal background. The key figures (amounts, dates, rates) are listed separately, so explain what the contract is about instead of restating its terms one by one.
 
 ${describeReviewContext(context)}
 
-Write 3-${MAX_POINTS} Vietnamese points with full diacritics ("points"), each one or two short sentences, covering: the purpose of the contract and the parties, the money involved (value, price, deposit, payment schedule), the duration and key dates, and how the contract ends or renews if stated.${focusBlock}
+Write 3-${MAX_POINTS} Vietnamese points with full diacritics ("points"). Each point is one or two short sentences that combine related clauses into one idea, in this order when the contract covers them:
+- what the contract is for and between whom;
+- what each party mainly commits to, and what it gets in return (give the main amount or period only when it is essential to the idea);
+- the main working, delivery or service arrangements typical of this kind of contract;
+- how long the contract lasts and how it can end or be renewed.
+Do not copy clauses one by one and do not list every figure - synthesize. When the user's party is known, address the user as "bạn" for that party (for example "Bạn được hưởng ...", "Bạn phải ..."); otherwise name the parties.${focusBlock}
 
 ${GROUNDING_RULES}${placeholderInstruction(redactor)}
 
@@ -91,7 +97,7 @@ function rewritePrompt(
   rejected: { text: string; problems: string[] }[],
   redactor: Redactor,
 ) {
-  return `Some points of a plain-language overview of a Vietnamese contract were rejected because they did not match the contract text. Write one replacement point for each rejected point, about the same topic, that states only what the contract says.
+  return `Some points of a plain-language overview of a Vietnamese contract were rejected because they did not match the contract text. Write one replacement point for each rejected point, about the same topic and in the same plain, synthesized style, that states only what the contract says and cites every passage it relies on.
 
 ${describeReviewContext(context)}
 
@@ -116,8 +122,15 @@ function locateSources(
   clauses: SummaryClause[],
   redactor: Redactor,
 ): Candidate {
-  const sources = (raw.sources ?? []).flatMap((source) => {
-    const quote = redactor.unmask(source.quote).trim();
+  const fragments = (raw.sources ?? []).flatMap((source) =>
+    redactor
+      .unmask(source.quote)
+      .split(QUOTE_BREAK)
+      .map((quote) => ({ clauseIndex: source.clauseIndex, quote: quote.trim() }))
+      .filter((fragment) => fragment.quote.length > 0),
+  );
+  const sources = fragments.flatMap((source) => {
+    const quote = source.quote;
     const preferred = clauses.find((clause) => clause.index === source.clauseIndex);
     const ordered = preferred ? [preferred, ...clauses.filter((clause) => clause !== preferred)] : clauses;
     for (const clause of ordered) {
@@ -138,12 +151,17 @@ function locateSources(
   return { text: redactor.unmask(raw.text).trim(), sources };
 }
 
-async function screen(candidates: Candidate[], redactor: Redactor, signal?: AbortSignal) {
+async function screen(candidates: Candidate[], clauses: SummaryClause[], redactor: Redactor, signal?: AbortSignal) {
   const withSources = candidates.map((candidate, i) => ({ id: String(i), candidate }));
+  const preamble = clauses[0];
+  const citedText = (candidate: Candidate) => {
+    const indexes = new Set([preamble?.index, ...candidate.sources.map((source) => source.clauseIndex)]);
+    return clauses.filter((clause) => indexes.has(clause.index)).map((clause) => clause.text);
+  };
   const problems = await checkFaithfulness(
     withSources
       .filter(({ candidate }) => candidate.sources.length > 0)
-      .map(({ id, candidate }) => ({ id, text: candidate.text, sources: candidate.sources.map((source) => source.quote) })),
+      .map(({ id, candidate }) => ({ id, text: candidate.text, sources: citedText(candidate) })),
     redactor,
     signal,
   );
@@ -163,6 +181,7 @@ export async function summarizeContract(
   const first = await askJson(summaryPrompt(context, clauses, analysisFocus, redactor), pointsResponse, pointsParser, signal);
   const screened = await screen(
     first.points.slice(0, MAX_POINTS).map((point) => locateSources(point, clauses, redactor)),
+    clauses,
     redactor,
     signal,
   );
@@ -179,6 +198,7 @@ export async function summarizeContract(
     );
     replacements = await screen(
       second.points.slice(0, rejected.length).map((point) => locateSources(point, clauses, redactor)),
+      clauses,
       redactor,
       signal,
     );

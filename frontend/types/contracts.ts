@@ -26,6 +26,8 @@ export type CheckCoverage = {
   documentChecks: number;
   clauseTypesWithoutPlaybook: string[];
   notCheckedItems: { code: string; title: string; reason?: string }[];
+  passedItems?: { code: string; title: string }[];
+  uncoveredTopics?: { code: string; name: string }[];
 };
 export type ContractQuote = {
   clauseIndex: number;

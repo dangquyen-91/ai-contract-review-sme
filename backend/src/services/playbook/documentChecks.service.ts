@@ -36,9 +36,10 @@ const OBLIGATION_TYPES = new Set<ClauseCategory>([
 const ARTICLE_HEADING = /^\s*(?:Điều|ĐIỀU|Ðiều)\s+(\d+)/u;
 const ARTICLE_MENTION = /(?<![\p{L}\d])(?:Điều|điều)\s+(\d{1,3})(?![\d])/gu;
 const LAW_NAME_AFTER =
-  /^(?:\s|[\d.,;:]|khoản)*(?:của\s+|tại\s+)?(?:Bộ\s+luật|Luật|Nghị\s+định|Thông\s+tư|Pháp\s+lệnh|Quyết\s+định|BLDS|BLLĐ|LTM|Hiến\s+pháp)/iu;
+  /^(?:\s|[\d.,;:\-–]|khoản|điểm|và|hoặc|đến|tới|Điều)*(?:của\s+|tại\s+|theo\s+)?(?:Bộ\s+luật|Luật|Nghị\s+định|Thông\s+tư|Pháp\s+lệnh|Quyết\s+định|BLDS|BLLĐ|LTM|Hiến\s+pháp)/iu;
 const APPENDIX_MENTION =
   /(?<![\p{L}])phụ\s+lục\s+(?:(?:số\s+)?([0-9]+|[IVXLC]+)(?![\p{L}\d])|(?:đính\s+kèm|kèm\s+theo))/giu;
+const NEGATED_BEFORE = /(?:không|chưa)\s+(?:có|kèm|cần|lập)(?:\s+\p{L}+)?\s*$/iu;
 const APPENDIX_HEADING = /^\s*PH[ỤU]\s+L[ỤU]C\b/mu;
 const AMOUNT_WITH_WORDS =
   /(\d{1,3}(?:[.,]\d{3})+|\d{4,})\s*(?:đồng|VNĐ|VND|vnđ|đ)?\s*\(\s*(?:bằng\s+chữ\s*:?\s*)?([^()]{4,200})\)/giu;
@@ -116,6 +117,7 @@ function missingAppendixFindings(clauses: EvidenceClause[]): DocumentFinding[] {
   const reported = new Set<string>();
   for (const clause of clauses) {
     for (const match of clause.text.matchAll(APPENDIX_MENTION)) {
+      if (NEGATED_BEFORE.test(clause.text.slice(Math.max(0, (match.index ?? 0) - 30), match.index ?? 0))) continue;
       const key = (match[1] ?? '').toUpperCase();
       if (reported.has(key)) continue;
       reported.add(key);
