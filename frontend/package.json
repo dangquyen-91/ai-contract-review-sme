@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "test:expert-lists:browser": "node scripts/expert-lists-browser-check.mjs",
     "test:expert-consultation": "node --test scripts/expert-consultation.test.mjs",
     "test:expert-consultation:browser": "node scripts/expert-consultation-browser-check.mjs",
     "test:dashboard": "node --test scripts/dashboard-insights.test.mjs scripts/reports.test.mjs scripts/no-organization-dashboard.test.mjs",

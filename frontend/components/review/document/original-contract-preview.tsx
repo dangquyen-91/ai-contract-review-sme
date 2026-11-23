@@ -163,7 +163,7 @@ export function ContractFilePreview({ fileQuery, mimeType, fileName, target, red
 
   const errorMessage = error && <div role="alert" className="m-4 rounded-xl border border-[#e4e8ef] bg-white p-5 text-ui text-[#607087]">
     <p className="m-0">{redacted ? "Chưa thể hiển thị bản DOCX đã che. Tài liệu chứa ảnh hoặc nội dung nhúng có thể chưa được hỗ trợ. Bạn có thể xem văn bản đã che." : onTextFallback ? "Không thể hiển thị file gốc." : "Không thể hiển thị file gốc. Bạn vẫn có thể chọn “Văn bản đầy đủ” để xem nội dung."}</p>
-    {onTextFallback && <Button variant="outline" size="sm" type="button" onClick={onTextFallback} className="mt-3 mr-2">Xem văn bản đã che</Button>}
+    {onTextFallback && <Button variant="outline" size="sm" type="button" onClick={onTextFallback} className="mt-3 mr-2">{redacted ? "Xem văn bản đã che" : "Xem văn bản đầy đủ"}</Button>}
     <Button variant="outline" size="sm" type="button" disabled={fileQuery.isFetching} onClick={() => { void fileQuery.refetch().then((response) => { if (!response.isError) setAttempt((value) => value + 1); }); }} className="mt-3">{fileQuery.isFetching ? "Đang tải lại…" : "Thử tải lại file"}</Button>
   </div>;
   const loadingMessage = !error && !rendered && <p role="status" className="m-4 text-ui text-[#607087]">{redacted ? "Đang chuẩn bị bản DOCX đã che…" : "Đang tải file gốc…"}</p>;

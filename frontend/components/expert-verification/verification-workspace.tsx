@@ -17,7 +17,7 @@ import { ExpertChatLauncher } from "@/components/expert-consultation/expert-chat
 export function VerificationWorkspace({ reviewId, expertId, attempt }: { reviewId: string; expertId: string; attempt?: number }) {
   const controller = useVerificationController(reviewId, expertId, attempt);
   const { query, workspace, command, dialog, closeDialog, pane, setPane, viewMode, selection, editable, execute, decide } = controller;
-  if (query.isPending) return <p role="status" className="py-12 text-ui text-muted-foreground">Đang tải workspace đã che thông tin…</p>;
+  if (query.isPending) return <p role="status" className="py-12 text-ui text-muted-foreground">Đang tải yêu cầu xác minh…</p>;
   if (!workspace) {
     return (
       <section role="alert" className="space-y-4 rounded-xl border border-border bg-card p-6">
@@ -46,7 +46,7 @@ export function VerificationWorkspace({ reviewId, expertId, attempt }: { reviewI
             selectedTitle={workspace.findings.find((finding) => verificationFindingId(finding) === controller.findingSelection?.id)?.title} />
         </section>
       </div>
-      <VerificationHistory history={workspace.actions} />
+      <VerificationHistory key={`${reviewId}:${workspace.verification.attempt}`} history={workspace.actions} />
       {dialog && editable && (dialog.mode === "add" || dialog.mode === "edit") && (
         <FindingEditorDialog
           key={dialog.mode === "edit" ? verificationFindingId(dialog.finding) : "add"}

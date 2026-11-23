@@ -90,12 +90,12 @@ test('sending never retries POST automatically and always reconciles server stat
   assert.deepEqual(invalidated, ['contracts/list', 'verification/review', 'runs/contract']);
 });
 
-test('document modes stay visible before acceptance and unlock for the assigned expert', () => {
+test('expert document exposes only full text and original file and keeps access locked until allowed', () => {
   const { VerificationDocument } = load('../components/expert-verification/verification-document.tsx', {
     'lucide-react': { Crosshair: () => null, ShieldCheck: () => null },
     '@/components/ui/button': { Button: ({ children, ...props }) => { delete props.variant; delete props.size; delete props.loading; return React.createElement('button', props, children); } },
     './expert-original-file': { ExpertOriginalFile: () => null },
-    './expert-full-text': { ExpertFullText: () => null },
+    './expert-full-text': { ExpertFullText: () => React.createElement('p', null, 'Full text loaded') },
   });
   const workspace = { verification: { reviewId: 'review', attempt: 1, status: 'requested', shareOriginalFile: true }, document: { text: 'Masked text' }, clauses: [] };
   const render = (status, allowed) => renderToStaticMarkup(React.createElement(VerificationDocument, {
@@ -103,13 +103,40 @@ test('document modes stay visible before acceptance and unlock for the assigned 
     selection: null, canViewOriginal: allowed,
   }));
   const waiting = render('requested', false);
-  assert.match(waiting, />Văn bản đã che<\/button>/);
+  assert.doesNotMatch(waiting, /Văn bản đã che|Masked text|Full text loaded/);
   assert.match(waiting, /disabled=""[^>]*>Văn bản đầy đủ<\/button>/);
   assert.match(waiting, /disabled=""[^>]*>Xem file gốc<\/button>/);
   assert.doesNotMatch(waiting, />Nhận xác minh<\/button>/);
+  assert.match(waiting, /Nhận xác minh ở thanh phía trên/);
   const accepted = render('in_progress', true);
   assert.doesNotMatch(accepted, /disabled=""/);
   assert.doesNotMatch(accepted, />Nhận xác minh<\/button>/);
+  assert.match(accepted, /Full text loaded/);
+  assert.doesNotMatch(accepted, /Văn bản đã che|Masked text/);
+  for (const status of ['approved', 'returned']) {
+    const closed = render(status, false);
+    assert.doesNotMatch(closed, /Masked text|Full text loaded/);
+    assert.match(closed, /chỉ mở trong thời gian/);
+  }
+});
+
+test('full text locates an unambiguous clause without using masked offsets', () => {
+  let response = { isPending: false, isError: false, data: { text: 'Điều 1. Thanh toán\nNguyễn Minh An thanh toán trong 15 ngày.' } };
+  const { ExpertFullText } = load('../components/expert-verification/expert-full-text.tsx', {
+    '@/components/ui/button': { Button: ({ children }) => React.createElement('button', null, children) },
+    '@/hooks/expert-verification/use-expert-original-file': { useExpertFullText: () => response },
+  });
+  const render = (clause) => renderToStaticMarkup(React.createElement(ExpertFullText, {
+    reviewId: 'review', attempt: 1, clause, selection: { request: 1 },
+  }));
+  const html = render({ index: 1, title: 'Điều 1. Thanh toán', text: 'Điều 1. Thanh toán\nCá nhân 1 thanh toán trong 15 ngày.' });
+  assert.match(html, /<mark[^>]*>Điều 1\. Thanh toán<\/mark>/);
+  assert.match(html, /Nguyễn Minh An/);
+  assert.doesNotMatch(html, /Cá nhân 1/);
+  response = { ...response, data: { text: 'Điều 1. Thanh toán\nNội dung khác\nĐiều 1. Thanh toán' } };
+  const ambiguous = render({ index: 1, title: 'Điều 1. Thanh toán', text: 'Không trùng với văn bản đầy đủ' });
+  assert.doesNotMatch(ambiguous, /<mark/);
+  assert.match(ambiguous, /Chưa định vị được chính xác/);
 });
 
 test('request form starts with consent unchecked and submit disabled', () => {
