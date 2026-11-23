@@ -2,8 +2,11 @@
 
 import dynamic from "next/dynamic";
 import { reportSeriesKeys } from "@/lib/reports/report-columns";
-import type { OperationalReport } from "@/types/reports";
-import { formatReportDuration } from "@/lib/reports/report-format";
+import type { OperationalReport, ReportMetricChange } from "@/types/reports";
+import {
+  formatReportDuration,
+  formatReportPercent,
+} from "@/lib/reports/report-format";
 import { ReportDetailTable } from "./report-detail-table";
 import { ReportRiskDistribution } from "./report-risk-distribution";
 import type { ReportChartSeries } from "./report-series-chart";
@@ -17,25 +20,147 @@ const ReportSeriesChart = dynamic(
   { ssr: false, loading: () => <ChartLoading /> },
 );
 
-const kinds = [
-  {
-    key: "completed",
-    label: "Thành công",
-    color: "#2563eb",
-    previous: "#93c5fd",
-  },
-  { key: "failed", label: "Thất bại", color: "#e11d48", previous: "#fda4af" },
-  { key: "cancelled", label: "Đã hủy", color: "#64748b", previous: "#cbd5e1" },
-] as const;
-const usageKinds = [
-  { key: "analysis", label: "Rà soát", color: "#2563eb", previous: "#93c5fd" },
-  { key: "chat", label: "Chat", color: "#059669", previous: "#6ee7b7" },
-  { key: "drafting", label: "Soạn AI", color: "#7c3aed", previous: "#c4b5fd" },
-] as const;
+// Validated categorical slots (light surface): adjacent pairs clear CVD ΔE ≥ 8.
+const BLUE = "#2a78d6";
+const reviewKinds: ReportChartSeries[] = [
+  { key: "completed", label: "Thành công", color: BLUE },
+  { key: "failed", label: "Thất bại", color: "#e34948" },
+  { key: "cancelled", label: "Đã hủy", color: "#eda100" },
+];
+const usageKinds: ReportChartSeries[] = [
+  { key: "analysis", label: "Rà soát", color: BLUE },
+  { key: "chat", label: "Chat", color: "#1baf7a" },
+  { key: "drafting", label: "Soạn AI", color: "#6250d6" },
+];
+
+const formatCount = (value: number) => value.toLocaleString("vi-VN");
+const formatMoney = (value: number) =>
+  `${value.toLocaleString("vi-VN", {
+    notation: value >= 1_000_000 ? "compact" : "standard",
+    maximumFractionDigits: 1,
+  })} đ`;
+const formatShare = (value: number) =>
+  `${value.toLocaleString("vi-VN", { maximumFractionDigits: 1 })}%`;
+
+/** Sums several comparable changes into one (used for total AI usage). */
+function combinedChange(
+  changes: (ReportMetricChange | undefined)[],
+): ReportMetricChange | undefined {
+  if (changes.some((change) => !change || change.previous === null))
+    return undefined;
+  const current = changes.reduce(
+    (sum, change) => sum + (change?.current ?? 0),
+    0,
+  );
+  const previous = changes.reduce(
+    (sum, change) => sum + (change?.previous ?? 0),
+    0,
+  );
+  return {
+    current,
+    previous,
+    difference: current - previous,
+    changePercent: previous ? ((current - previous) / previous) * 100 : null,
+    unit: "percent",
+    status: previous ? "comparable" : "no_baseline",
+  };
+}
+
+function WorkspaceRanking({ report }: { report: OperationalReport }) {
+  const max = Math.max(1, ...report.usage.map((item) => item.total));
+  const total = report.usage.reduce((sum, item) => sum + item.total, 0);
+  return (
+    <section className={`${styles.panel} ${styles.chart} xl:col-span-2`}>
+      <div className={styles.chartHeader}>
+        <div className="min-w-0">
+          <h3 className={styles.chartTitle}>
+            10 không gian có nhiều lượt rà soát nhất
+          </h3>
+          <p className={styles.chartDescription}>
+            Theo tổng lượt thành công và thất bại trong kỳ này.
+          </p>
+        </div>
+        {report.usage.length > 0 && (
+          <ul className={styles.chartLegend} aria-label="Chú giải">
+            {reviewKinds.slice(0, 2).map((kind) => (
+              <li key={kind.key}>
+                <span
+                  aria-hidden="true"
+                  className={styles.legendDot}
+                  style={{ background: kind.color }}
+                />
+                {kind.label}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {!report.usage.length && (
+        <p className="py-10 text-sm text-slate-500">Chưa có dữ liệu</p>
+      )}
+      <ol className="mt-3 divide-y divide-slate-100">
+        {report.usage.map((row, index) => (
+          <li key={row.id} className={`${styles.rankRow} text-sm`}>
+            <span className={styles.rankNumber} data-top={index < 3}>
+              {index + 1}
+            </span>
+            <div className="min-w-0">
+              <div className="flex items-baseline justify-between gap-3">
+                <p
+                  className="truncate text-xs font-medium text-slate-700"
+                  title={row.name}
+                >
+                  {row.name}
+                </p>
+                <span className="shrink-0 text-[11px] tabular-nums text-slate-400">
+                  {formatCount(row.completed)} thành công ·{" "}
+                  {formatCount(row.failed)} thất bại
+                </span>
+              </div>
+              <div
+                className={styles.rankTrack}
+                role="img"
+                aria-label={`${row.completed} thành công, ${row.failed} thất bại`}
+                style={{ width: `${(row.total / max) * 100}%` }}
+              >
+                {row.completed > 0 && (
+                  <span
+                    style={{
+                      flexGrow: row.completed,
+                      background: reviewKinds[0].color,
+                    }}
+                  />
+                )}
+                {row.failed > 0 && (
+                  <span
+                    style={{
+                      flexGrow: row.failed,
+                      background: reviewKinds[1].color,
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+            <div className="text-right">
+              <strong className="block text-base font-semibold tabular-nums text-slate-800">
+                {formatCount(row.total)}
+              </strong>
+              <span className="text-[10px] tabular-nums text-slate-400">
+                {total ? formatShare((row.total / total) * 100) : "—"}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 
 export function ReportCharts({ report }: { report: OperationalReport }) {
   const features = operationalReportFeatures(report.role);
   const compare = !!report.comparison?.period;
+  const changes = report.comparison?.changes ?? {};
+  const granularity = report.trend?.granularity ?? "day";
   const buckets = report.trend?.buckets ?? [];
   const rows = buckets.map((bucket) => {
     const result: { label: string; [key: string]: string | number | null } = {
@@ -49,131 +174,90 @@ export function ReportCharts({ report }: { report: OperationalReport }) {
     }
     return result;
   });
-  const groupedSeries = (
-    items: readonly {
-      key: string;
-      label: string;
-      color: string;
-      previous: string;
-    }[],
-  ): ReportChartSeries[] =>
-    items.flatMap((item) => [
-      {
-        key: item.key,
-        label: `${item.label} · kỳ này`,
-        color: item.color,
-        stack: "current",
-      },
-      ...(compare
-        ? [
-            {
-              key: `previous_${item.key}`,
-              label: `${item.label} · so sánh`,
-              color: item.previous,
-              stack: "previous",
-            },
-          ]
-        : []),
-    ]);
-  const pair = (key: string): ReportChartSeries[] => [
-    { key, label: "Kỳ này", color: "#2563eb" },
-    ...(compare
-      ? [{ key: `previous_${key}`, label: "Kỳ so sánh", color: "#a5b4fc" }]
-      : []),
+  const single = (key: string, label: string): ReportChartSeries[] => [
+    { key, label, color: BLUE },
   ];
-  const interval = { day: "ngày", week: "tuần", month: "tháng" }[
-    report.trend?.granularity ?? "day"
-  ];
-  const description = `Gộp theo ${interval}. Các cột so sánh được ghép theo thứ tự nhóm trong kỳ.`;
+  const interval = { day: "ngày", week: "tuần", month: "tháng" }[granularity];
+  const description = compare
+    ? `Gộp theo ${interval}; kỳ so sánh được ghép theo thứ tự nhóm trong kỳ.`
+    : `Gộp theo ${interval}.`;
+  const shared = { rows, compare, granularity };
+  const units = report.consumedUnits;
   return (
     <div className="grid min-w-0 gap-5 xl:grid-cols-2">
       <ReportSeriesChart
+        {...shared}
         title="Hợp đồng tải lên"
         chartType="line"
         description={description}
-        rows={rows}
-        series={pair("uploads")}
+        series={single("uploads", "Hợp đồng tải lên")}
         unit="hợp đồng"
+        summary={{
+          value: formatCount(report.uploadedContracts),
+          caption: "hợp đồng trong kỳ",
+          change: changes.uploads,
+        }}
       />
       <ReportSeriesChart
+        {...shared}
         title="Kết quả rà soát"
         description={description}
-        rows={rows}
-        series={groupedSeries(kinds)}
+        series={reviewKinds}
         unit="lượt"
+        summary={{
+          value: formatReportPercent(report.reviews.successRate),
+          caption: `thành công · ${formatCount(report.reviews.finished)} lượt kết thúc`,
+          change: changes.success,
+        }}
       />
       {features.payments && report.payments && (
         <ReportSeriesChart
+          {...shared}
           title="Thanh toán đã nhận"
           description="Tiền VND đã được xác nhận, theo ngày thanh toán; không phải lợi nhuận."
-          rows={rows}
-          series={pair("receivedAmount")}
-          unit="đ"
+          series={single("receivedAmount", "Thanh toán đã nhận")}
+          formatValue={formatMoney}
+          summary={{
+            value: `${report.payments.amount.toLocaleString("vi-VN")} đ`,
+            caption: `${formatCount(report.payments.count)} giao dịch`,
+            change: changes.payments,
+          }}
         />
       )}
       <ReportSeriesChart
+        {...shared}
         title="Hạn mức AI đã sử dụng"
         description={description}
-        rows={rows}
-        series={groupedSeries(usageKinds)}
+        series={usageKinds}
         unit="lượt"
+        summary={{
+          value: formatCount(units.analysis + units.chat + units.drafting),
+          caption: "lượt đã dùng",
+          change: combinedChange([
+            changes.units,
+            changes.chat,
+            changes.drafting,
+          ]),
+          goodDirection: "neutral",
+        }}
       />
       <ReportSeriesChart
+        {...shared}
         title="Thời gian xử lý trung bình"
         wide={!features.issues}
         chartType="line"
         description="Trung bình có trọng số theo số lượt có thời gian hợp lệ; không gồm thời gian chờ."
-        rows={rows}
-        series={pair("averageDurationMs")}
+        series={single("averageDurationMs", "Thời gian xử lý")}
         formatValue={formatReportDuration}
+        summary={{
+          value: formatReportDuration(report.reviews.averageDurationMs),
+          caption: `trung bình · ${formatCount(report.reviews.timedReviews)} lượt`,
+          change: changes.duration,
+          goodDirection: "down",
+        }}
       />
       {features.issues && <ReportRiskDistribution report={report} />}
-      {features.workspaceRanking && (
-        <section className={`${styles.panel} ${styles.chart} xl:col-span-2`}>
-          <div className={styles.chartHeader}>
-            <h3 className={styles.chartTitle}>
-              10 không gian có nhiều lượt rà soát nhất
-            </h3>
-            <span className={styles.chartBadge}>XẾP HẠNG</span>
-          </div>
-          <p className="mt-2 text-xs text-slate-500">
-            Theo tổng lượt thành công và thất bại trong kỳ này.
-          </p>
-          {!report.usage.length && (
-            <p className="py-10 text-sm text-slate-500">Chưa có dữ liệu</p>
-          )}
-          <ol className="mt-4 divide-y divide-slate-100">
-            {report.usage.map((row, index) => (
-              <li key={row.id} className={`${styles.rankRow} text-sm`}>
-                <span className={styles.rankNumber}>
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <div className="min-w-0">
-                  <p
-                    className="truncate text-xs font-medium text-slate-600"
-                    title={row.name}
-                  >
-                    {row.name}
-                  </p>
-                  <div className={styles.rankTrack} aria-hidden="true">
-                    <span
-                      style={{
-                        width: `${(row.total / Math.max(1, ...report.usage.map((item) => item.total))) * 100}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-                <strong className="text-base font-semibold tabular-nums text-slate-700">
-                  {row.total.toLocaleString("vi-VN")}{" "}
-                  <span className="text-[10px] font-normal text-slate-400">
-                    lượt
-                  </span>
-                </strong>
-              </li>
-            ))}
-          </ol>
-        </section>
-      )}
+      {features.workspaceRanking && <WorkspaceRanking report={report} />}
       <ReportDetailTable report={report} />
     </div>
   );

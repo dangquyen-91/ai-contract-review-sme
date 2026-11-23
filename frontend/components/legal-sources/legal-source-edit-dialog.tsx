@@ -8,6 +8,7 @@ import { useLegalSourceEdit } from "@/hooks/legal-sources/use-legal-source-edit"
 import { legalSourceFormValues } from "@/schemas/legal-source.schema";
 import type { LegalSource } from "@/types/legal-sources";
 import { legalSourceFieldClass as field } from "./legal-source-file-fields";
+import { LegalSourceOriginFields } from "./legal-source-origin-fields";
 
 export function LegalSourceEditDialog({ source, onClose }: { source: LegalSource; onClose: () => void }) {
   const edit = useLegalSourceEdit(source, onClose);
@@ -41,6 +42,7 @@ export function LegalSourceEditDialog({ source, onClose }: { source: LegalSource
                 <input name="expectedArticleCount" type="number" min={1} max={5000} step={1} defaultValue={values.expectedArticleCount} className={field} />
                 <span className="text-ui-meta text-muted-foreground">Dùng để đối chiếu độ đầy đủ; hệ thống tính lại sau khi lưu.</span>
               </label>
+              <LegalSourceOriginFields defaults={values} required={Boolean(source.origin?.publisher)} />
             </fieldset>
             {edit.error && <p role="alert" className="text-ui text-destructive">{edit.error}</p>}
           </div>

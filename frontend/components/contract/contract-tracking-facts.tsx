@@ -34,8 +34,8 @@ function PulseDot() {
 
 function Fact({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="min-w-0 space-y-1.5 lg:border-l lg:border-border lg:pl-5">
-      <p className="m-0 text-ui-caption font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+    <div className="min-w-0 space-y-1.5">
+      <p className="m-0 text-ui-caption font-semibold uppercase tracking-wide text-muted-foreground lg:sr-only">{label}</p>
       {children}
     </div>
   );
