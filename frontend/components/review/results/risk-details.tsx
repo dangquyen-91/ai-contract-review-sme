@@ -7,6 +7,8 @@ import { isApiClientError } from "@/lib/api/client";
 import { useRemoveProposedRevisionMutation, useUpdateProposedRevisionMutation } from "@/hooks/contracts/use-contracts";
 import type { ContractQuote, ContractReviewResult, RiskFinding } from "@/types/contracts";
 import { clauseLabel } from "@/lib/review/clause-label";
+import { legalBasisLinks, legalSourceLink } from "@/lib/review/legal-source-links";
+import { LegalSourceLink } from "./legal-source-link";
 import styles from "@/styles/review/review-design.module.css";
 
 function errorMessage(error: unknown) {
@@ -21,6 +23,22 @@ function DetailList({ title, points, recommendation = false }: { title: string; 
       <ul>{points.map((point, index) => <li key={index} className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{point}</li>)}</ul>
     </section>
   );
+}
+
+function LegalBasisLinks({ chunkIds, citations }: { chunkIds?: string[]; citations?: RiskFinding["citations"] }) {
+  const links = legalBasisLinks(chunkIds, citations);
+  if (!links.length) return null;
+  return (
+    <span className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+      {links.map((link) => <LegalSourceLink key={link.url} link={link} showLabel={links.length > 1} />)}
+    </span>
+  );
+}
+
+function CitationLink({ citation }: { citation: RiskFinding["citations"][number] }) {
+  const link = legalSourceLink(citation);
+  if (!link) return null;
+  return <> · <LegalSourceLink link={link} className="text-xs" /></>;
 }
 
 export function RiskDetails({ contractId, finding, clauses, allowProposalEditing = false, onSource }: {
@@ -109,6 +127,7 @@ export function RiskDetails({ contractId, finding, clauses, allowProposalEditing
                   {item.verification === "verified" ? " · Đã xác minh" : item.verification === "partially_verified" ? " · Xác minh một phần" : item.verification === "not_in_knowledge_base" ? " · Chưa xác minh trong kho pháp lý" : item.verification === "unreferenced" ? " · Chưa có nguồn đối chiếu" : ""}
                 </span>
                 {item.text}
+                <LegalBasisLinks chunkIds={item.legalKnowledgeChunkIds} citations={finding.citations} />
               </li>
             ))}
           </ul>
@@ -123,6 +142,7 @@ export function RiskDetails({ contractId, finding, clauses, allowProposalEditing
                 <strong className="font-medium text-[#292c28]">{citation.citationLabel || citation.sourceTitle}</strong>
                 {citation.articleRef && ` · ${citation.articleRef}`}
                 {citation.inKnowledgeBase === false && <span data-citation-removed className="text-xs text-[#93988e]"> (văn bản đã gỡ khỏi kho pháp lý)</span>}
+                <CitationLink citation={citation} />
                 {citation.chunkText && <p className="mb-0 mt-1 whitespace-pre-wrap">{citation.chunkText}</p>}
               </li>
             ))}

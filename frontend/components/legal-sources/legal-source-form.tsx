@@ -9,6 +9,7 @@ import type { useLegalSourceUpload } from "@/hooks/legal-sources/use-legal-sourc
 import { LegalSourcePreview } from "./legal-source-preview";
 import { LegalSourceFileFields, legalSourceFieldClass as field } from "./legal-source-file-fields";
 import { LegalSourceCodeField } from "./legal-source-code-field";
+import { LegalSourceOriginFields } from "./legal-source-origin-fields";
 
 export function LegalSourceForm({ upload, defaultCode, onCancel, onChange }: {
   upload: ReturnType<typeof useLegalSourceUpload>; defaultCode?: string; onCancel: () => void; onChange: () => void;
@@ -34,6 +35,7 @@ export function LegalSourceForm({ upload, defaultCode, onCancel, onChange }: {
       <label className="grid gap-2 text-ui">Ngày ban hành<input name="issuedDate" type="date" className={field} /></label>
       <label className="grid gap-2 text-ui">Ngày hiệu lực<input name="effectiveDate" type="date" className={field} /></label>
       <label className="grid gap-2 text-ui">Ngày hết hiệu lực<input name="expiryDate" type="date" className={field} /></label>
+      <LegalSourceOriginFields required />
       <LegalSourceFileFields />
     </fieldset>
     </div>

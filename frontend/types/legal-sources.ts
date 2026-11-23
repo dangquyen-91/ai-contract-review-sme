@@ -12,10 +12,15 @@ export type LegalSource = {
   status?: "in_force" | "amended" | "repealed" | "not_yet_effective";
   issuedDate?: string;
   expiryDate?: string;
+  gazette?: string;
+  origin?: LegalSourceOrigin;
   coverage?: LegalCoverage;
   ingestion?: { status: "queued" | "running" | "paused" | "completed" | "failed"; totalChunks: number; embeddedChunks: number; error?: string; resumeAt?: string };
   parts?: { fileName?: string; articleFrom?: number; articleTo?: number; chunkCount: number; skippedArticles: string[]; uploadedAt: string }[];
 };
+
+export type LegalSourcePublisher = "official_gazette" | "national_database" | "issuing_authority" | "other";
+export type LegalSourceOrigin = { publisher: LegalSourcePublisher; url?: string; retrievedAt?: string };
 
 export type LegalCoverage = { structured: boolean; articleCount: number; expectedArticleCount?: number; missingArticleCount: number; missingRanges: string[]; complete: boolean; warnings: string[]; chunkCount: number };
 export type LegalSourcePreview = { documentNumber?: string; coverage: LegalCoverage; chunks: { order: number; articleRef?: string; articleTitle?: string; characters: number; preview: string }[] };
@@ -30,6 +35,8 @@ export type LegalSourceUpdate = Partial<{
   issuedDate: string | null;
   effectiveDate: string | null;
   expiryDate: string | null;
+  gazette: string | null;
+  origin: LegalSourceOrigin | null;
   expectedArticleCount: number | null;
 }>;
 

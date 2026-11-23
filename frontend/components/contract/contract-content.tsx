@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { FileText, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useContractTrackingList } from "@/hooks/contracts/use-contract-tracking-list";
-import { ContractTrackingCard } from "./contract-tracking-card";
+import { ContractTrackingTable } from "./contract-tracking-table";
 import { ContractTrackingFilters } from "./contract-tracking-filters";
 import { ContractTrackingPagination } from "./contract-tracking-pagination";
 import { ContractTrackingSkeleton } from "./contract-tracking-skeleton";
@@ -61,14 +61,21 @@ export function ContractContent({ data, access, onReview, isReviewing = false }:
           <Button variant="link" size="sm" onClick={() => { void query.refetch(); }}>Thử lại</Button>
         </div>}
         <div key={`${scopeId}:${controller.state.page}:${controller.state.search}:${controller.state.status}:${controller.state.issues}:${controller.state.verificationStatus}`}
-          aria-busy={query.isFetching} className="space-y-4 p-4 sm:p-5">
+          aria-busy={query.isFetching} className="p-4 sm:p-5 lg:p-0">
           {!scopeId ? <p className="py-8 text-center text-ui text-muted-foreground">Chưa có không gian làm việc để tải danh sách hợp đồng.</p>
             : query.isPending ? <ContractTrackingSkeleton />
-            : query.data?.items.length ? <div className="space-y-4 animate-in fade-in duration-200 motion-reduce:animate-none">{query.data.items.map((contract) => (
-              <ContractTrackingCard key={contract.id ?? contract._id} contract={contract}
-                highlighted={(contract.id ?? contract._id) === highlightId} canReview={access.review}
-                canDelete={canDelete} isReviewing={isReviewing} onReview={openReview} />
-            ))}</div> : !query.isError && <div className="py-8 text-center">
+            : query.data?.items.length ? (
+              <div className="animate-in fade-in duration-200 motion-reduce:animate-none">
+                <ContractTrackingTable
+                  contracts={query.data.items}
+                  highlightId={highlightId}
+                  canReview={access.review}
+                  canDelete={canDelete}
+                  isReviewing={isReviewing}
+                  onReview={openReview}
+                />
+              </div>
+            ) : !query.isError && <div className="py-8 text-center">
               <FileText aria-hidden="true" className="mx-auto size-9 text-primary" />
               <h2 className="mt-3 text-ui-section font-semibold">{filtered ? "Không có hợp đồng phù hợp" : "Chưa có hợp đồng"}</h2>
               <p className="mt-2 text-ui text-muted-foreground">{filtered ? "Thử thay đổi từ khóa hoặc bộ lọc." : "Hợp đồng bạn tải lên sẽ xuất hiện tại đây."}</p>

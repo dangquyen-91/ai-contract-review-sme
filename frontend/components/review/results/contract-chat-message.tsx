@@ -4,6 +4,14 @@ import { BookOpen, Copy, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { ContractChatMessage } from "@/types/contracts";
+import { legalSourceLink } from "@/lib/review/legal-source-links";
+import { LegalSourceLink } from "./legal-source-link";
+
+function ChatSourceLink({ source }: { source: NonNullable<ContractChatMessage["legalSources"]>[number] }) {
+  const link = legalSourceLink(source);
+  if (!link) return null;
+  return <> · <LegalSourceLink link={link} /></>;
+}
 
 function ChatLegalSources({ sources = [] }: { sources?: ContractChatMessage["legalSources"] }) {
   const items = sources.filter((source, index) => sources.findIndex((other) =>
@@ -25,6 +33,7 @@ function ChatLegalSources({ sources = [] }: { sources?: ContractChatMessage["leg
             <span className="min-w-0 break-words [overflow-wrap:anywhere]">
               {source.citationLabel || source.sourceTitle}
               {source.articleRef && <span className="text-slate-500"> · {source.articleRef}</span>}
+              <ChatSourceLink source={source} />
             </span>
           </li>
         ))}

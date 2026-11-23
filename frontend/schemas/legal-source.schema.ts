@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { LegalSource, LegalSourceUpdate } from "@/types/legal-sources";
+import type { LegalSource, LegalSourceOrigin, LegalSourcePublisher, LegalSourceUpdate } from "@/types/legal-sources";
 
 const calendarDate = z
   .string()
@@ -52,6 +52,42 @@ export const legalSourceSchema = z
     },
   );
 
+const publishers: readonly string[] = ["official_gazette", "national_database", "issuing_authority", "other"] satisfies LegalSourcePublisher[];
+
+const httpUrl = z.string().max(500).url().regex(/^https?:\/\//i);
+
+export const legalOriginFields = ["originPublisher", "originUrl", "originRetrievedAt"] as const;
+
+type OriginValues = Partial<Record<(typeof legalOriginFields)[number] | "gazette", string>>;
+
+// Mirrors the backend rule: a source needs a publisher and a link, except a
+// printed Công báo issue, which may give the gazette number instead.
+export function readLegalOrigin(values: OriginValues, required: boolean): LegalSourceOrigin | undefined {
+  const publisher = values.originPublisher?.trim() ?? "";
+  const url = values.originUrl?.trim() ?? "";
+  const retrievedAt = values.originRetrievedAt?.trim() ?? "";
+  const gazette = values.gazette?.trim() ?? "";
+  if (!publisher && !url && !retrievedAt) {
+    if (required) throw new Error("Chọn nơi lấy văn bản và nhập đường link văn bản.");
+    return undefined;
+  }
+  if (!publishers.includes(publisher)) throw new Error("Chọn nơi lấy văn bản.");
+  if (url && !httpUrl.safeParse(url).success)
+    throw new Error("Đường link văn bản phải bắt đầu bằng http:// hoặc https:// và không quá 500 ký tự.");
+  if (!url && !(publisher === "official_gazette" && gazette))
+    throw new Error("Nhập đường link văn bản. Nếu lấy từ Công báo bản in, ghi số Công báo thay cho đường link.");
+  if (retrievedAt) {
+    const date = calendarDate.safeParse(retrievedAt);
+    if (!date.success) throw new Error("Ngày truy cập không hợp lệ.");
+    if (date.data.getTime() > Date.now()) throw new Error("Ngày truy cập không được sau hôm nay.");
+  }
+  return {
+    publisher: publisher as LegalSourcePublisher,
+    ...(url ? { url } : {}),
+    ...(retrievedAt ? { retrievedAt } : {}),
+  };
+}
+
 export function prepareLegalUpload(form: HTMLFormElement, metadata: boolean) {
   const body = new FormData(form);
   const file = body.get("file");
@@ -78,10 +114,18 @@ export function prepareLegalUpload(form: HTMLFormElement, metadata: boolean) {
     if (!Number.isInteger(count) || count < 1 || count > 5000)
       throw new Error("Số điều dự kiến phải từ 1 đến 5000.");
   }
+  const originValues: OriginValues = { gazette: String(body.get("gazette") ?? "") };
+  for (const key of legalOriginFields) {
+    originValues[key] = String(body.get(key) ?? "");
+    body.delete(key);
+  }
   if (metadata) {
     const parsed = legalSourceSchema.safeParse(Object.fromEntries(body));
     if (!parsed.success) throw new Error(parsed.error.issues[0].message);
     body.set("code", parsed.data.code);
+    if (String(body.get("gazette") ?? "").length > 200)
+      throw new Error("Số Công báo tối đa 200 ký tự.");
+    body.set("origin", JSON.stringify(readLegalOrigin(originValues, true)));
   }
   return body;
 }
@@ -99,6 +143,10 @@ export function legalSourceFormValues(source: LegalSource) {
     issuedDate: dateInput(source.issuedDate),
     effectiveDate: dateInput(source.effectiveDate),
     expiryDate: dateInput(source.expiryDate),
+    gazette: source.gazette ?? "",
+    originPublisher: source.origin?.publisher ?? "",
+    originUrl: source.origin?.url ?? "",
+    originRetrievedAt: dateInput(source.origin?.retrievedAt),
     expectedArticleCount:
       source.coverage?.expectedArticleCount?.toString() ?? "",
   };
@@ -135,9 +183,17 @@ export function prepareLegalSourceUpdate(
     if (!Number.isInteger(count) || count < 1 || count > 5000)
       throw new Error("Số điều dự kiến phải từ 1 đến 5000.");
   }
+  if (next.gazette.length > 200) throw new Error("Số Công báo tối đa 200 ký tự.");
   const update: Record<string, unknown> = {};
+  const originChanged = legalOriginFields.some((key) => next[key] !== current[key]);
+  if (originChanged || next.gazette !== current.gazette) {
+    // A source that already has an origin cannot lose it; older sources may stay without one.
+    const origin = readLegalOrigin(next, Boolean(source.origin?.publisher));
+    if (originChanged && origin) update.origin = origin;
+  }
+  const originKeys: readonly string[] = legalOriginFields;
   for (const key of Object.keys(current) as (keyof typeof current)[]) {
-    if (next[key] === current[key]) continue;
+    if (next[key] === current[key] || originKeys.includes(key)) continue;
     if (key === "expectedArticleCount")
       update[key] = next[key] ? Number(next[key]) : null;
     else update[key] = next[key] || null;

@@ -20,9 +20,9 @@ type InsightConfig = {
   actions: Action[];
 };
 const reviewSeries = [
-  { key: "uploads", label: "Hợp đồng tải lên", color: "#2563eb" },
-  { key: "completed", label: "Rà soát thành công", color: "#059669" },
-  { key: "failed", label: "Rà soát thất bại", color: "#be123c" },
+  { key: "uploads", label: "Hợp đồng tải lên", color: "#2a78d6" },
+  { key: "completed", label: "Rà soát thành công", color: "#1baf7a" },
+  { key: "failed", label: "Rà soát thất bại", color: "#eb6834" },
 ];
 const contractLabels = {
   uploaded: "Đã tải lên",
@@ -141,8 +141,8 @@ export const dashboardInsightConfig: Record<DashboardRole, InsightConfig> = {
       },
     ],
     series: [
-      { key: "approved", label: "Đã duyệt", color: "#2563eb" },
-      { key: "returned", label: "Đã trả lại", color: "#b45309" },
+      { key: "approved", label: "Đã duyệt", color: "#2a78d6" },
+      { key: "returned", label: "Đã trả lại", color: "#eb6834" },
     ],
     trendNote:
       "Kết quả những lần xác minh của bạn, theo ngày kết thúc; kỳ dài được gộp theo tháng.",
@@ -172,7 +172,7 @@ export const dashboardInsightConfig: Record<DashboardRole, InsightConfig> = {
       { key: "inForce", label: "Nguồn đang hiệu lực", current: true },
       { key: "updated", label: "Nguồn có cập nhật trong kỳ" },
     ],
-    series: [{ key: "updated", label: "Nguồn có cập nhật", color: "#2563eb" }],
+    series: [{ key: "updated", label: "Nguồn có cập nhật", color: "#2a78d6" }],
     trendNote:
       "Số nguồn có lần cập nhật gần nhất trong từng nhóm thời gian; kỳ dài được gộp theo tháng.",
     distributionTitle: "Hiệu lực nguồn pháp lý hiện tại",

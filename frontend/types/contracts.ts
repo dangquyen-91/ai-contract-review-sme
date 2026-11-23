@@ -3,6 +3,13 @@ export type ReviewBillingConfirmation = { versionId: string; units: number };
 export const ISSUE_GROUPS = ["compliance", "clarity", "completeness", "balance", "drafting"] as const;
 export type IssueGroup = (typeof ISSUE_GROUPS)[number];
 export type FindingGroup = IssueGroup | "referral";
+// Where a cited legal text was published; `url` opens the official text.
+export type LegalSourceReference = {
+  legalSourceId?: string;
+  documentNumber?: string;
+  origin?: { publisher: string; url?: string; retrievedAt?: string };
+  provenance?: "official" | "declared" | "unverified";
+};
 export type FindingOutcome = "failed" | "unverified" | "referral";
 export type ContractIssueFilter = "violations" | "any" | "none";
 export type IssueCounts = {
@@ -230,7 +237,7 @@ export type RiskFinding = {
   status?: "open" | "acknowledged" | "dismissed" | "resolved";
   detectedBy?: "playbook" | "document_check" | "expert_referral" | "expert";
   verification?: FindingVerification | null;
-  citations: {
+  citations: ({
     legalKnowledgeChunkId: string;
     citationLabel: string;
     sourceTitle: string;
@@ -238,7 +245,7 @@ export type RiskFinding = {
     chunkText: string;
     relevanceScore: number;
     inKnowledgeBase?: boolean;
-  }[];
+  } & LegalSourceReference)[];
   clause?: {
     index: number;
     title?: string;
@@ -320,7 +327,7 @@ export type ContractChatMessage = {
   contractVersionId: string;
   role: "user" | "assistant";
   content: string;
-  legalSources?: { legalKnowledgeChunkId: string; citationLabel: string; sourceTitle: string; articleRef?: string }[];
+  legalSources?: ({ legalKnowledgeChunkId: string; citationLabel: string; sourceTitle: string; articleRef?: string } & LegalSourceReference)[];
   createdAt: string;
   updatedAt: string;
 };
