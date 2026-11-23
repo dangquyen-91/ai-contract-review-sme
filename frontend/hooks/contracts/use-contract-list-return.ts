@@ -1,4 +1,4 @@
-"use client";
+ "use client";
 
 import { useEffect } from "react";
 import { consumeContractListReturn, readContractListReturn, saveContractListReturn } from "@/lib/contracts/contract-list-return";

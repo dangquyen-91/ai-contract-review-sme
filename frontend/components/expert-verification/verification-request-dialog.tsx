@@ -1,12 +1,13 @@
 "use client";
 
 import { Check, Clock3, CornerUpLeft, RefreshCw } from "lucide-react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { verificationDate, verificationStatuses } from "@/lib/review/verification-display";
 import type { ExpertVerification } from "@/types/expert-verification";
 
-export function VerificationRequestDialog({ title, verification, refreshing, error, onClose, onRefresh, onResend, resendLabel = "Gửi lại yêu cầu" }: {
+export function VerificationRequestDialog({ title, verification, refreshing, error, onClose, onRefresh, onResend, documentSharing, resendLabel = "Gửi lại yêu cầu" }: {
   title: string;
   verification: ExpertVerification;
   refreshing: boolean;
@@ -15,6 +16,7 @@ export function VerificationRequestDialog({ title, verification, refreshing, err
   onRefresh: () => void;
   onResend: () => void;
   resendLabel?: string;
+  documentSharing?: ReactNode;
 }) {
   const { status } = verification;
   const finished = status === "approved" || status === "returned";
@@ -62,6 +64,7 @@ export function VerificationRequestDialog({ title, verification, refreshing, err
             <h3 className="m-0 text-ui font-semibold">Ghi chú đã gửi</h3>
             <p className="mb-0 mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{verification.requestNote || "Bạn không gửi kèm ghi chú."}</p>
           </section>
+          {!finished && documentSharing}
           {finished && (
             <section className={`rounded-lg border p-3 ${verificationStatuses[status].tone}`}>
               <h3 className="m-0 text-ui font-semibold">{status === "returned" ? "Lý do trả lại" : "Kết luận của chuyên gia"}</h3>

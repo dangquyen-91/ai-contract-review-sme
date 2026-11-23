@@ -2,14 +2,14 @@
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { FilePenLine, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { issueDisplay, issueGroups } from "@/config/issue-display";
+import { FindingEditorFields } from "./finding-editor-fields";
 import { verificationFindingSchema, type VerificationFindingForm } from "@/schemas/verification-finding.schema";
 import { changedFindingFields } from "@/lib/review/verification-workspace";
 import type { ExpertCommand, ExpertWorkspace, VerifiedFinding } from "@/types/verification-workspace";
 
-const field = "w-full rounded-lg border border-input bg-card px-3 py-2 text-ui leading-6 text-card-foreground placeholder:text-muted-foreground [color-scheme:light] outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60";
 const points = (value: string) => value.split("\n").map((line) => line.trim()).filter(Boolean);
 
 export function FindingEditorDialog({ finding, clauses, pending, error, onClose, onCommand }: {
@@ -44,23 +44,32 @@ export function FindingEditorDialog({ finding, clauses, pending, error, onClose,
   }
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
-      <DialogContent busy={busy} className="flex flex-col overflow-hidden [color-scheme:light] sm:max-w-2xl">
-        <DialogHeader className="shrink-0">
-          <DialogTitle>{finding ? "Điều chỉnh vấn đề" : "Bổ sung vấn đề"}</DialogTitle>
-          <DialogDescription className="leading-6">Chỉ lưu khi bạn xác nhận. Mỗi ý trong các ô nội dung đặt trên một dòng.</DialogDescription>
+      <DialogContent busy={busy} className="flex max-h-[calc(100dvh-2rem)] flex-col gap-0 overflow-hidden border-[#e4e6df] bg-white p-0 text-[#292c28] [color-scheme:light] sm:max-w-[800px]">
+        <DialogHeader className="shrink-0 border-b border-[#e4e6df] px-5 py-5 pr-12 text-left sm:px-6">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#edf1f7] text-[#315eac]">
+              {finding ? <FilePenLine aria-hidden="true" className="size-5" /> : <Plus aria-hidden="true" className="size-5" />}
+            </span>
+            <div className="min-w-0 space-y-1">
+              <DialogTitle className="text-lg font-semibold tracking-tight">{finding ? "Điều chỉnh vấn đề" : "Bổ sung vấn đề"}</DialogTitle>
+              <DialogDescription className="text-sm leading-5 text-[#73766f]">Ghi nhận đánh giá của bạn vào kết quả xác minh hợp đồng.</DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(save)} className="flex min-h-0 flex-col gap-4">
-          <fieldset disabled={busy} className="min-h-0 space-y-4 overflow-y-auto border-0 p-0 pr-1 text-ui">
-            <label className="grid gap-2 font-medium">Tiêu đề<input {...form.register("title")} maxLength={300} className={field} aria-invalid={Boolean(form.formState.errors.title)} /></label>
-            <label className="grid gap-2 font-medium">Nhóm vấn đề<select {...form.register("checkGroup")} className={field}>{issueGroups.map((group) => <option key={group} value={group}>{issueDisplay[group].label}</option>)}</select></label>
-            {!finding && <label className="grid gap-2 font-medium">Điều khoản liên quan<select {...form.register("clauseIndex")} className={field}><option value="">Toàn hợp đồng / thiếu điều khoản</option>{clauses.map((clause) => <option key={clause._id} value={clause.index}>{clause.title || `Điều khoản ${clause.index}`}</option>)}</select></label>}
-            {([{ key: "problem", label: "Vấn đề" }, { key: "consequences", label: "Hậu quả (không bắt buộc)" }, { key: "recommendations", label: "Khuyến nghị (không bắt buộc)" }, { key: "reason", label: "Lý do điều chỉnh / bổ sung (không bắt buộc)" }] as const).map(({ key, label }) => (
-              <label key={key} className="grid gap-2 font-medium">{label}<textarea {...form.register(key)} rows={3} maxLength={key === "reason" ? 2000 : 40020} className={`${field} resize-y font-normal`} aria-invalid={Boolean(form.formState.errors[key])} /></label>
-            ))}
-            {Object.entries(form.formState.errors).map(([key, value]) => <p key={key} role="alert" className="m-0 text-rose-800">{value?.message}</p>)}
-            {error && <p role="alert" className="rounded-lg bg-rose-50 p-3 text-rose-900">{error}</p>}
-          </fieldset>
-          <DialogFooter className="shrink-0 border-t border-border pt-4"><Button variant="outline" disabled={busy} onClick={onClose}>Hủy</Button><Button type="submit" loading={busy}>Lưu thay đổi</Button></DialogFooter>
+        <form onSubmit={form.handleSubmit(save)} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
+            <FindingEditorFields form={form} clauses={clauses} editing={Boolean(finding)} busy={busy} />
+          </div>
+          <div className="shrink-0 border-t border-[#e4e6df] bg-[#fafbf9] px-5 py-3 sm:px-6">
+            {(error || form.formState.errors.root) && <p role="alert" className="mb-3 mt-0 text-sm leading-5 text-rose-700">{error || form.formState.errors.root?.message}</p>}
+            <DialogFooter className="flex-row items-center gap-3 sm:justify-between">
+              <p className="m-0 mr-auto text-xs text-[#73766f]"><span className="text-rose-600">*</span> Bắt buộc</p>
+              <div className="flex gap-2">
+                <Button variant="outline" disabled={busy} onClick={onClose}>Hủy</Button>
+                <Button type="submit" loading={busy} className="bg-[#315eac] text-white hover:bg-[#264d90]">Lưu thay đổi</Button>
+              </div>
+            </DialogFooter>
+          </div>
         </form>
       </DialogContent>
     </Dialog>

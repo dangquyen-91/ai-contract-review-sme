@@ -39,7 +39,6 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
     { key: "verification", href: routes.expertVerification, label: "Yêu cầu xác minh", icon: "shield", mobile: true },
     { key: "expert-my-work", href: routes.expertMyWork, label: "Công việc của tôi", icon: "briefcase", mobile: true },
     ...reports,
-    { key: "profile", href: "/ho-so", label: "Hồ sơ cá nhân", icon: "user", mobile: true },
   ];
   if (role === "manager") return [
     { key: "overview", href: "/management", label: "Tổng quan", icon: "chart", group: "Không gian quản lý", mobile: true },

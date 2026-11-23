@@ -8,6 +8,7 @@ export type ExpertVerification = {
   contractId: string;
   status: ExpertVerificationStatus;
   attempt: number;
+  shareOriginalFile?: boolean;
   requestedBy: string | VerificationPerson;
   requestedAt: string;
   requestNote?: string;

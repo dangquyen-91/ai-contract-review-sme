@@ -20,25 +20,25 @@ export function ExpertChatComposer({ draft, onChange, onSend, sending, error, va
     }
   }
   return (
-    <form className="shrink-0 space-y-2 border-t border-border bg-card p-4" onSubmit={(event) => { event.preventDefault(); onSend(); }}>
-      <label htmlFor={id} className="text-ui-meta font-semibold">Tin nhắn của bạn</label>
+    <form className="shrink-0 space-y-2 border-t border-slate-200 bg-white p-3 sm:px-6 sm:py-4" onSubmit={(event) => { event.preventDefault(); onSend(); }}>
+      <label htmlFor={id} className="sr-only">Tin nhắn của bạn</label>
       <textarea
         id={id}
         value={draft}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={keyDown}
         maxLength={2000}
-        rows={3}
+        rows={2}
         readOnly={sending}
         aria-invalid={Boolean(validationError)}
         aria-describedby={`${id}-help`}
         placeholder="Nhập nội dung muốn trao đổi về hợp đồng…"
-        className="block max-h-40 min-h-20 w-full resize-y rounded-xl border border-input bg-white px-3 py-2.5 text-ui leading-6 text-slate-800 outline-none placeholder:text-slate-400 [color-scheme:light] focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="block max-h-28 min-h-16 w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-ui leading-6 text-slate-900 outline-none placeholder:text-slate-500 focus-visible:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-200"
       />
       {(error || validationError) && <p role="alert" className="m-0 text-ui-meta leading-5 text-rose-800">{validationError || error}</p>}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p id={`${id}-help`} className="m-0 text-ui-caption text-muted-foreground">
-          {draft.length.toLocaleString("vi-VN")} / 2.000 · Enter để gửi, Shift + Enter để xuống dòng
+        <p id={`${id}-help`} className="m-0 text-ui-caption tabular-nums text-slate-600">
+          {draft.length.toLocaleString("vi-VN")} / 2.000 <span className="hidden sm:inline">· Enter để gửi, Shift + Enter để xuống dòng</span>
         </p>
         <Button type="submit" size="sm" loading={sending} disabled={!draft.trim() || Boolean(validationError)}>
           <Send aria-hidden="true" className="size-4" />

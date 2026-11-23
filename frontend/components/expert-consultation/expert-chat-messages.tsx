@@ -38,7 +38,7 @@ export function ExpertChatMessages({ messages, participant, hasOlder, loadingOld
   return (
     <div
       ref={viewport}
-      className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-muted/20 p-4 sm:p-5"
+      className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-slate-50 p-4 sm:px-6 sm:py-5"
       onScroll={(event) => {
         const element = event.currentTarget;
         following.current = element.scrollHeight - element.scrollTop - element.clientHeight < 80;
@@ -69,12 +69,12 @@ export function ExpertChatMessages({ messages, participant, hasOlder, loadingOld
           const own = message.senderType === participant;
           return (
             <li key={message.id} className={`flex min-w-0 ${own ? "justify-end" : "justify-start"}`}>
-              <article className={`max-w-[90%] rounded-2xl border px-4 py-3 sm:max-w-[80%] ${own ? "rounded-br-md border-primary/15 bg-primary/10" : "rounded-bl-md border-border bg-card"}`}>
-                <p className={`m-0 text-ui-caption font-semibold ${own ? "text-primary" : "text-card-foreground"}`}>
+              <article className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 sm:max-w-[80%] ${own ? "rounded-br-sm bg-blue-700 text-white" : "rounded-bl-sm border border-slate-200 bg-white text-slate-900"}`}>
+                <p className={`m-0 text-ui-caption font-semibold ${own ? "text-blue-100" : "text-slate-600"}`}>
                   {own ? "Bạn" : message.senderName?.trim() || (message.senderType === "expert" ? "Chuyên gia LawScan" : "Người gửi yêu cầu")}
                 </p>
-                <p className="mb-0 mt-1.5 whitespace-pre-wrap break-words text-ui leading-6 text-card-foreground [overflow-wrap:anywhere]">{message.content}</p>
-                <time dateTime={message.createdAt} className="mt-2 block text-[11px] text-muted-foreground">
+                <p className="mb-0 mt-0.5 whitespace-pre-wrap break-words text-ui leading-6 [overflow-wrap:anywhere]">{message.content}</p>
+                <time dateTime={message.createdAt} className={`mt-1 block text-right text-[11px] ${own ? "text-blue-100" : "text-slate-500"}`}>
                   {new Date(message.createdAt).toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", hour: "2-digit", minute: "2-digit", day: "2-digit", month: "2-digit" })}
                 </time>
               </article>

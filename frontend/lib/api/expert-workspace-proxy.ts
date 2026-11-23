@@ -15,13 +15,15 @@ export async function proxyExpertWorkspace(request: NextRequest, reviewId?: stri
     suffix = `verification-queue?status=${status}`;
   } else {
     const operation = path.join("/");
-    const allowed = (request.method === "GET" && operation === "workspace")
+    const protectedDocument = ["original-file", "full-text"].includes(operation);
+    const allowed = (request.method === "GET" && (operation === "workspace" || protectedDocument))
       || (request.method === "POST" && ["start", "findings", "approve", "return"].includes(operation))
       || (["PUT", "DELETE"].includes(request.method) && path.length === 2 && path[0] === "findings" && idPattern.test(path[1]));
     if (!idPattern.test(reviewId) || !allowed) return NextResponse.json({ success: false, error: { message: "Thao tác xác minh không hợp lệ." } }, { status: 400 });
     suffix = `${reviewId}/verification/${operation}`;
-    if (request.method === "GET" && operation === "workspace") {
+    if (request.method === "GET" && (operation === "workspace" || protectedDocument)) {
       const attempt = request.nextUrl.searchParams.get("attempt");
+      if (protectedDocument && attempt === null) return NextResponse.json({ success: false, error: { message: "Lần xác minh không hợp lệ." } }, { status: 400 });
       if (attempt !== null) {
         if (!/^[1-9]\d{0,5}$/.test(attempt) || Number(attempt) > 100000) return NextResponse.json({ success: false, error: { message: "Lần xác minh không hợp lệ." } }, { status: 400 });
         suffix += `?attempt=${attempt}`;
@@ -35,8 +37,16 @@ export async function proxyExpertWorkspace(request: NextRequest, reviewId?: stri
       headers: { Authorization: `Bearer ${session.accessToken}`, ...(request.method !== "GET" ? { "Content-Type": "application/json" } : {}) },
       ...(["POST", "PUT"].includes(request.method) ? { body: (await request.text()) || "{}" } : {}),
       cache: "no-store",
-      signal: AbortSignal.timeout(20000),
+      signal: path[0] === "original-file" ? AbortSignal.any([request.signal, AbortSignal.timeout(60000)]) : AbortSignal.timeout(20000),
     });
+    if (path[0] === "original-file" && upstream.ok && upstream.body) {
+      return new Response(upstream.body, { headers: {
+        "Content-Type": upstream.headers.get("Content-Type") ?? "application/octet-stream",
+        "Content-Disposition": upstream.headers.get("Content-Disposition") ?? "attachment",
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      } });
+    }
     // Mutation responses may contain original finding text. Only the dedicated
     // redacted workspace is returned to the browser; reload it after writes.
     const payload = upstream.ok && request.method !== "GET" ? { success: true, data: null } : await upstream.json();

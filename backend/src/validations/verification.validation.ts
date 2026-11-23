@@ -10,9 +10,16 @@ export const verificationFindingParamSchema = reviewIdParamSchema.extend({
   findingId: z.string().regex(/^[a-f\d]{24}$/i, 'Invalid finding id'),
 });
 
+export const expertOriginalFileQuerySchema = z.object({ attempt: z.coerce.number().int().min(1).max(100000) }).strict();
+export const shareVerificationOriginalBodySchema = z.object({
+  attempt: z.number().int().min(1).max(100000),
+  consent: z.literal(true),
+}).strict();
+
 export const requestVerificationBodySchema = z
   .object({
     note: note.optional(),
+    shareOriginalFile: z.boolean().optional(),
     consent: z.literal(true, {
       errorMap: () => ({ message: 'Consent to share the contract with LawScan experts is required' }),
     }),

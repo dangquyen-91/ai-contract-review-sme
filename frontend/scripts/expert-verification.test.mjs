@@ -90,6 +90,55 @@ test('sending never retries POST automatically and always reconciles server stat
   assert.deepEqual(invalidated, ['contracts/list', 'verification/review', 'runs/contract']);
 });
 
+test('expert document exposes only full text and original file and keeps access locked until allowed', () => {
+  const { VerificationDocument } = load('../components/expert-verification/verification-document.tsx', {
+    'lucide-react': { Crosshair: () => null, ShieldCheck: () => null },
+    '@/components/ui/button': { Button: ({ children, ...props }) => { delete props.variant; delete props.size; delete props.loading; return React.createElement('button', props, children); } },
+    './expert-original-file': { ExpertOriginalFile: () => null },
+    './expert-full-text': { ExpertFullText: () => React.createElement('p', null, 'Full text loaded') },
+  });
+  const workspace = { verification: { reviewId: 'review', attempt: 1, status: 'requested', shareOriginalFile: true }, document: { text: 'Masked text' }, clauses: [] };
+  const render = (status, allowed) => renderToStaticMarkup(React.createElement(VerificationDocument, {
+    workspace: { ...workspace, verification: { ...workspace.verification, status } },
+    selection: null, canViewOriginal: allowed,
+  }));
+  const waiting = render('requested', false);
+  assert.doesNotMatch(waiting, /Văn bản đã che|Masked text|Full text loaded/);
+  assert.match(waiting, /disabled=""[^>]*>Văn bản đầy đủ<\/button>/);
+  assert.match(waiting, /disabled=""[^>]*>Xem file gốc<\/button>/);
+  assert.doesNotMatch(waiting, />Nhận xác minh<\/button>/);
+  assert.match(waiting, /Nhận xác minh ở thanh phía trên/);
+  const accepted = render('in_progress', true);
+  assert.doesNotMatch(accepted, /disabled=""/);
+  assert.doesNotMatch(accepted, />Nhận xác minh<\/button>/);
+  assert.match(accepted, /Full text loaded/);
+  assert.doesNotMatch(accepted, /Văn bản đã che|Masked text/);
+  for (const status of ['approved', 'returned']) {
+    const closed = render(status, false);
+    assert.doesNotMatch(closed, /Masked text|Full text loaded/);
+    assert.match(closed, /chỉ mở trong thời gian/);
+  }
+});
+
+test('full text locates an unambiguous clause without using masked offsets', () => {
+  let response = { isPending: false, isError: false, data: { text: 'Điều 1. Thanh toán\nNguyễn Minh An thanh toán trong 15 ngày.' } };
+  const { ExpertFullText } = load('../components/expert-verification/expert-full-text.tsx', {
+    '@/components/ui/button': { Button: ({ children }) => React.createElement('button', null, children) },
+    '@/hooks/expert-verification/use-expert-original-file': { useExpertFullText: () => response },
+  });
+  const render = (clause) => renderToStaticMarkup(React.createElement(ExpertFullText, {
+    reviewId: 'review', attempt: 1, clause, selection: { request: 1 },
+  }));
+  const html = render({ index: 1, title: 'Điều 1. Thanh toán', text: 'Điều 1. Thanh toán\nCá nhân 1 thanh toán trong 15 ngày.' });
+  assert.match(html, /<mark[^>]*>Điều 1\. Thanh toán<\/mark>/);
+  assert.match(html, /Nguyễn Minh An/);
+  assert.doesNotMatch(html, /Cá nhân 1/);
+  response = { ...response, data: { text: 'Điều 1. Thanh toán\nNội dung khác\nĐiều 1. Thanh toán' } };
+  const ambiguous = render({ index: 1, title: 'Điều 1. Thanh toán', text: 'Không trùng với văn bản đầy đủ' });
+  assert.doesNotMatch(ambiguous, /<mark/);
+  assert.match(ambiguous, /Chưa định vị được chính xác/);
+});
+
 test('request form starts with consent unchecked and submit disabled', () => {
   const wrapper = ({ children }) => React.createElement('div', null, children);
   const dialog = Object.fromEntries(['Dialog', 'DialogContent', 'DialogDescription', 'DialogFooter', 'DialogHeader', 'DialogTitle'].map((name) => [name, wrapper]));
@@ -104,8 +153,19 @@ test('request form starts with consent unchecked and submit disabled', () => {
   }));
   assert.match(html, /type="submit" disabled=""/);
   assert.match(html, /maxLength="2000"/);
-  assert.doesNotMatch(html, /checked=""/);
-  assert.match(html, /đồng ý chia sẻ/);
+  assert.doesNotMatch(html.match(/<input\b[^>]*type="checkbox"[^>]*>/)?.[0] ?? '', /checked=""/);
+  assert.doesNotMatch(html, /type="radio"/);
+  assert.match(html, /đồng ý chia sẻ hợp đồng, gồm cả file gốc/);
+});
+
+test('new verification request sends permission for the original file in the same submission', () => {
+  const { expertVerificationApi } = load('../lib/api/expert-verification.ts', {
+    '@/lib/api/client': { apiRequest: (request) => request },
+  });
+  const request = expertVerificationApi.request('review', { consent: true, note: 'Kiểm tra điều khoản' });
+  assert.equal(request.url, '/reviews/review/verification/request');
+  assert.equal(request.method, 'POST');
+  assert.deepEqual({ ...request.data }, { consent: true, note: 'Kiểm tra điều khoản', shareOriginalFile: true });
 });
 
 test('verification detail dialog reflects server states without implying approval on return', () => {
@@ -175,4 +235,34 @@ test('proxy forwards consent and returns backend error codes without exposing to
   assert.equal(response.status, 409);
   assert.equal(response.body.error.code, 'NO_EXPERT');
   assert.doesNotMatch(JSON.stringify(response.body), /server-token/);
+});
+test('original file proxy requires an Expert and forwards bytes for the explicit attempt', async () => {
+  let role = 'staff';
+  const calls = [];
+  const { proxyExpertWorkspace } = load('../lib/api/expert-workspace-proxy.ts', {
+    'next/server': { NextResponse: Response },
+    '@/lib/auth/api-session': { getApiSession: async () => ({ user: { role }, accessToken: 'fixture-token' }) },
+    './request-origin': { isSameOriginRequest: () => true },
+  }, {
+    Response,
+    AbortSignal,
+    process: { env: {} },
+    fetch: async (url, options) => {
+      calls.push([url, options]);
+      return new Response('original bytes', { headers: { 'Content-Type': 'application/pdf' } });
+    },
+  });
+  const reviewId = 'a'.repeat(24);
+  const request = new Request('http://localhost/original-file?attempt=2');
+  const invoke = (search = request.url) => proxyExpertWorkspace({ method: request.method, signal: request.signal, nextUrl: new URL(search) }, reviewId, ['original-file']);
+  assert.equal((await invoke()).status, 403);
+  role = 'expert';
+  assert.equal((await invoke('http://localhost/original-file')).status, 400);
+  assert.equal(calls.length, 0);
+  const response = await invoke();
+  assert.match(calls[0][0], /original-file\?attempt=2$/);
+  assert.equal(calls[0][1].headers.Authorization, 'Bearer fixture-token');
+  assert.equal(response.headers.get('Cache-Control'), 'private, no-store');
+  assert.equal(response.headers.get('Content-Type'), 'application/pdf');
+  assert.equal(await response.text(), 'original bytes');
 });

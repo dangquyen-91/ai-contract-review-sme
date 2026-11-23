@@ -11,6 +11,8 @@ export function lineItemAmount(item: DraftLineItem): bigint | null {
   const scaled = (value: string, decimals: number) => { const [whole, fraction = ''] = value.split('.'); return BigInt(whole) * BigInt(10 ** decimals) + BigInt(fraction.padEnd(decimals, '0')); };
   return (scaled(item.quantity, 3) * scaled(item.unitPrice, 2) + BigInt(500)) / BigInt(1000);
 }
+
+
 export function centsToMoney(value: bigint) {
   const fraction = (value % BigInt(100)).toString().padStart(2, '0');
   return `${value / BigInt(100)}${fraction === '00' ? '' : `.${fraction}`}`;

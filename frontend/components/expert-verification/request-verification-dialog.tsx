@@ -50,15 +50,16 @@ export function RequestVerificationDialog({ title, findingCount, pending, submit
                 className="min-h-24 w-full resize-y rounded-lg border border-input bg-card px-3 py-2 text-ui font-normal leading-6 text-card-foreground placeholder:text-muted-foreground [color-scheme:light] outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-60" />
             </label>
             <div className="rounded-lg border border-border bg-muted/50 p-3 text-ui-meta leading-6 text-card-foreground">
-              <p className="m-0 flex items-start gap-2"><ShieldCheck className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" /><span>Chuyên gia nhận bản văn bản đã che thông tin được hệ thống nhận diện.</span></p>
-              <details className="mt-2 text-muted-foreground">
-                <summary className="w-fit cursor-pointer rounded-sm text-primary outline-none focus-visible:ring-2 focus-visible:ring-ring">Thông tin chia sẻ</summary>
-                <p className="mb-0 mt-2">Yêu cầu chia sẻ nội dung hợp đồng và kết quả rà soát với chuyên gia LawScan. Việc nhận diện có thể chưa bao phủ hết dữ liệu; hãy tránh ghi thêm thông tin cá nhân không cần thiết trong ghi chú.</p>
-              </details>
+              <p className="m-0 flex items-start gap-2">
+                <ShieldCheck className="mt-1 size-4 shrink-0 text-primary" aria-hidden="true" />
+                <span>Chuyên gia có thể đối chiếu bản đã che với văn bản đầy đủ và file gốc sau khi tiếp nhận yêu cầu.</span>
+              </p>
             </div>
             <div className="flex items-start gap-3">
               <Checkbox id={`${id}-consent`} checked={consent} onCheckedChange={(value) => setConsent(value === true)} disabled={pending} required className="mt-1" />
-              <label htmlFor={`${id}-consent`} className="cursor-pointer text-ui leading-6 text-card-foreground">Tôi đồng ý chia sẻ nội dung hợp đồng và kết quả rà soát với chuyên gia LawScan để xác minh.</label>
+              <label htmlFor={`${id}-consent`} className="cursor-pointer text-ui leading-6 text-card-foreground">
+                Tôi đồng ý chia sẻ hợp đồng, gồm cả file gốc có thể chứa thông tin chưa che, và kết quả rà soát với chuyên gia LawScan tiếp nhận yêu cầu.
+              </label>
             </div>
             {error && <p role="alert" className="m-0 rounded-lg border border-rose-200 bg-rose-50 p-3 text-ui leading-6 text-rose-900">{error}</p>}
           </div>

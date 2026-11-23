@@ -1,21 +1,17 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { Search } from "lucide-react";
+import { CalendarDays, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { contractTypeLabels } from "@/config/contract-display";
 import type { MyVerificationsController } from "@/hooks/expert-verification/use-my-verifications";
-import type { ExpertWorkStatus } from "@/types/expert-work";
 
-const statuses: { value: ExpertWorkStatus; label: string }[] = [
-  { value: "all", label: "Tất cả" },
-  { value: "in_progress", label: "Đang xử lý" },
-  { value: "approved", label: "Đã hoàn tất" },
-  { value: "returned", label: "Đã trả lại" },
-];
-
-export function MyWorkFilters({ controller }: { controller: MyVerificationsController }) {
+export function MyWorkFilters({
+  controller,
+}: {
+  controller: MyVerificationsController;
+}) {
   const { filter, applyFilters, resetFilters } = controller;
   const [search, setSearch] = useState(filter.search);
   const [from, setFrom] = useState(filter.from);
@@ -34,48 +30,111 @@ export function MyWorkFilters({ controller }: { controller: MyVerificationsContr
   }
 
   function reset() {
-    setSearch(""); setFrom(""); setTo(""); setType(""); setDateError("");
+    setSearch("");
+    setFrom("");
+    setTo("");
+    setType("");
+    setDateError("");
     resetFilters();
   }
 
   return (
-    <div className="space-y-4 border-b border-border p-4 sm:p-5">
-      <div role="group" aria-label="Trạng thái công việc" className="flex flex-wrap gap-2">
-        {statuses.map((status) => (
-          <Button key={status.value} size="sm" variant={filter.status === status.value ? "secondary" : "ghost"}
-            aria-pressed={filter.status === status.value} onClick={() => applyFilters({ status: status.value })}>
-            {status.label}
-          </Button>
-        ))}
-      </div>
-      <form onSubmit={submit} className="space-y-3">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <label className="space-y-1.5 text-ui-meta font-medium">
+    <div className="border-b border-[#e9edf3] px-5 py-4 sm:px-6">
+      <form
+        onSubmit={submit}
+        role="search"
+        aria-label="Tìm và lọc công việc"
+        className="space-y-3"
+      >
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-[1.3fr_1fr_0.85fr_0.85fr]">
+          <label className="col-span-2 min-w-0 space-y-2 text-xs font-medium text-[#65738a] sm:col-span-1">
             <span>Tìm hợp đồng</span>
-            <Input value={search} maxLength={100} onChange={(event) => setSearch(event.target.value)} placeholder="Nhập tên hợp đồng" />
+            <span className="relative block">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 z-10 size-4 -translate-y-1/2 text-[#8a97aa]"
+                aria-hidden="true"
+              />
+              <Input
+                value={search}
+                maxLength={100}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Nhập tên hợp đồng…"
+                className="h-11 border-[#dce3ed] bg-white pl-10 text-sm text-[#28364c] focus-visible:border-[#8caad6] focus-visible:ring-[#315eac]/15"
+              />
+            </span>
           </label>
-          <label className="space-y-1.5 text-ui-meta font-medium">
+          <label className="col-span-2 min-w-0 space-y-2 text-xs font-medium text-[#65738a] sm:col-span-1">
             <span>Loại hợp đồng</span>
-            <select value={type} onChange={(event) => setType(event.target.value)}
-              className="h-11 w-full rounded-lg border border-input bg-card px-3 text-sm text-card-foreground [color-scheme:light] focus-visible:outline-2 focus-visible:outline-primary">
+            <select
+              value={type}
+              onChange={(event) => setType(event.target.value)}
+              className="h-11 w-full rounded-lg border border-[#dce3ed] bg-white px-3 text-sm text-[#28364c] [color-scheme:light] focus-visible:outline-2 focus-visible:outline-[#315eac]"
+            >
               <option value="">Tất cả loại</option>
-              {Object.entries(contractTypeLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              {Object.entries(contractTypeLabels).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
             </select>
           </label>
-          <label className="space-y-1.5 text-ui-meta font-medium">
+          <label className="min-w-0 space-y-2 text-xs font-medium text-[#65738a]">
             <span>Ngày nhận từ</span>
-            <Input type="date" value={from} onChange={(event) => setFrom(event.target.value)} className="[color-scheme:light]" aria-describedby={dateError ? "work-date-error" : undefined} />
+            <Input
+              type="date"
+              value={from}
+              onChange={(event) => setFrom(event.target.value)}
+              className="h-11 border-[#dce3ed] bg-white text-sm text-[#28364c] [color-scheme:light] focus-visible:ring-[#315eac]/15"
+              aria-invalid={Boolean(dateError)}
+              aria-describedby={dateError ? "work-date-error" : undefined}
+            />
           </label>
-          <label className="space-y-1.5 text-ui-meta font-medium">
+          <label className="min-w-0 space-y-2 text-xs font-medium text-[#65738a]">
             <span>Đến ngày</span>
-            <Input type="date" value={to} onChange={(event) => setTo(event.target.value)} className="[color-scheme:light]" aria-describedby={dateError ? "work-date-error" : undefined} />
+            <Input
+              type="date"
+              value={to}
+              onChange={(event) => setTo(event.target.value)}
+              className="h-11 border-[#dce3ed] bg-white text-sm text-[#28364c] [color-scheme:light] focus-visible:ring-[#315eac]/15"
+              aria-invalid={Boolean(dateError)}
+              aria-describedby={dateError ? "work-date-error" : undefined}
+            />
           </label>
         </div>
-        {dateError && <p id="work-date-error" role="alert" className="m-0 text-ui-meta text-destructive">{dateError}</p>}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" type="submit" variant="outline"><Search aria-hidden="true" />Áp dụng bộ lọc</Button>
-          <Button size="sm" type="button" variant="ghost" onClick={reset}>Xóa bộ lọc</Button>
-          <span className="text-ui-meta font-normal text-muted-foreground">Ngày nhận theo giờ Việt Nam (GMT+7).</span>
+        {dateError && (
+          <p
+            id="work-date-error"
+            role="alert"
+            className="m-0 text-ui-meta text-destructive"
+          >
+            {dateError}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="flex items-center gap-1.5 text-xs leading-5 text-[#7a8698]">
+            <CalendarDays className="size-3.5 shrink-0" aria-hidden="true" />
+            Lọc theo ngày nhận việc · Giờ Việt Nam (GMT+7)
+          </span>
+          <div className="flex w-full items-center gap-2 sm:w-auto">
+            <Button
+              size="sm"
+              type="button"
+              variant="ghost"
+              onClick={reset}
+              className="h-10 flex-1 text-xs text-[#315eac] sm:flex-none"
+            >
+              <X className="size-3.5" aria-hidden="true" />
+              Xóa bộ lọc
+            </Button>
+            <Button
+              size="sm"
+              type="submit"
+              className="h-10 flex-1 bg-[#315eac] text-xs text-white hover:bg-[#244d8b] sm:flex-none"
+            >
+              <Search className="size-3.5" aria-hidden="true" />
+              Áp dụng bộ lọc
+            </Button>
+          </div>
         </div>
       </form>
     </div>
