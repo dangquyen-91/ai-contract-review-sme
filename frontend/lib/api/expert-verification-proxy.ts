@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 import { isSameOriginRequest } from "@/lib/api/request-origin";
 
-export async function proxyExpertVerification(request: NextRequest, reviewId: string, action: "get" | "request") {
+export async function proxyExpertVerification(request: NextRequest, reviewId: string, action: "get" | "request" | "share-original") {
   const session = await getApiSession();
   if (session.error) return session.error;
   if (!["owner", "staff", "user"].includes(session.user.role)) {
@@ -11,16 +11,17 @@ export async function proxyExpertVerification(request: NextRequest, reviewId: st
   if (!/^[a-f\d]{24}$/i.test(reviewId)) {
     return NextResponse.json({ success: false, error: { message: "Mã lượt rà soát không hợp lệ." } }, { status: 400 });
   }
-  if (action === "request" && !isSameOriginRequest(request)) {
+  const writing = action !== "get";
+  if (writing && !isSameOriginRequest(request)) {
     return NextResponse.json({ success: false, error: { message: "Nguồn yêu cầu không hợp lệ." } }, { status: 403 });
   }
   try {
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/reviews/${reviewId}/verification${action === "request" ? "/request" : ""}`,
+      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/reviews/${reviewId}/verification${writing ? `/${action}` : ""}`,
       {
-        method: action === "request" ? "POST" : "GET",
-        headers: { Authorization: `Bearer ${session.accessToken}`, ...(action === "request" ? { "Content-Type": "application/json" } : {}) },
-        ...(action === "request" ? { body: await request.text() } : {}),
+        method: writing ? "POST" : "GET",
+        headers: { Authorization: `Bearer ${session.accessToken}`, ...(writing ? { "Content-Type": "application/json" } : {}) },
+        ...(writing ? { body: await request.text() } : {}),
         cache: "no-store",
       },
     );

@@ -1,8 +1,17 @@
-import { apiRequest } from "./client";
+import { apiClient, apiRequest } from "./client";
 import type { ExpertCommand, ExpertWorkspace, VerificationQueueFilter, VerificationQueueItem } from "@/types/verification-workspace";
 import type { ExpertWorkFilter, ExpertWorkResult } from "@/types/expert-work";
 
 export const expertWorkspaceApi = {
+  fullText(reviewId: string, attempt: number, signal?: AbortSignal) {
+    return apiRequest<{ text: string }>({ url: `/reviews/${reviewId}/verification/full-text`, params: { attempt }, signal });
+  },
+  async originalFile(reviewId: string, attempt: number, signal?: AbortSignal) {
+    const response = await apiClient.get<Blob>(`/reviews/${reviewId}/verification/original-file`, {
+      params: { attempt }, responseType: "blob", signal, timeout: 60_000,
+    });
+    return response.data;
+  },
   myWork(filter: ExpertWorkFilter, signal?: AbortSignal) {
     return apiRequest<ExpertWorkResult>({ url: "/reviews/my-verifications", params: Object.fromEntries(Object.entries(filter).filter(([, value]) => value !== "")), signal });
   },

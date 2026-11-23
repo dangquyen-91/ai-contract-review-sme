@@ -17,6 +17,7 @@ const expertReviewSchema = new Schema(
     requestedAt: { type: Date, required: true },
     consentedAt: { type: Date },
     consentedBy: { type: Types.ObjectId, ref: 'User' },
+    shareOriginalFile: { type: Boolean, default: false },
     expertId: { type: Types.ObjectId, ref: 'User' },
     assignedAt: { type: Date },
     completedAt: { type: Date },

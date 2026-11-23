@@ -7,6 +7,7 @@ import type { ExpertVerification } from "@/types/expert-verification";
 
 import { verificationDate, verificationStatuses } from "@/lib/review/verification-display";
 import { VerificationRequestDialog } from "./verification-request-dialog";
+import { VerificationDocumentSharing } from "./verification-document-sharing";
 import { RequesterChatLauncher } from "@/components/expert-consultation/requester-chat-launcher";
 
 export function VerificationStatus({ title, verification, refreshing, error, onRefresh, onResend }: {
@@ -40,7 +41,8 @@ export function VerificationStatus({ title, verification, refreshing, error, onR
         </div>
       </section>
       {detailsOpen && (
-        <VerificationRequestDialog title={title} verification={verification} refreshing={refreshing} error={error} onClose={() => setDetailsOpen(false)} onRefresh={onRefresh} onResend={onResend} />
+        <VerificationRequestDialog title={title} verification={verification} refreshing={refreshing} error={error} onClose={() => setDetailsOpen(false)} onRefresh={onRefresh} onResend={onResend}
+          documentSharing={<VerificationDocumentSharing verification={verification} />} />
       )}
     </>
   );

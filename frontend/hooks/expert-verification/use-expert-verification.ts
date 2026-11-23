@@ -51,3 +51,20 @@ export function useRequestExpertVerification(reviewId: string, contractId: strin
     ]),
   });
 }
+
+export function useShareVerificationOriginal(reviewId: string, attempt: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => expertVerificationApi.shareOriginal(reviewId, attempt),
+    onSuccess: async () => {
+      const key = expertVerificationKeys.detail(reviewId);
+      await client.cancelQueries({ queryKey: key, exact: true });
+      client.setQueryData<ExpertVerificationResult>(key, (current) => {
+        if (current?.verification?.attempt !== attempt) return current;
+        return { ...current, verification: { ...current.verification, shareOriginalFile: true } };
+      });
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: expertVerificationKeys.detail(reviewId) }),
+    retry: false,
+  });
+}

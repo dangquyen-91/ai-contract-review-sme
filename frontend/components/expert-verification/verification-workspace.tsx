@@ -41,8 +41,8 @@ export function VerificationWorkspace({ reviewId, expertId, attempt }: { reviewI
       <VerificationViewControls controller={controller} />
       <div data-view-mode={viewMode} className={`grid min-w-0 gap-4 lg:h-[min(76dvh,900px)] lg:min-h-96 ${viewMode === "split" ? "lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]" : "lg:grid-cols-1"}`}>
         <VerificationFindingsPane controller={controller} />
-        <section id="verification-document" aria-label="Văn bản đối chiếu đã che" className={`${pane === "document" ? "flex" : "hidden"} h-[70dvh] min-h-96 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card ${viewMode === "findings" ? "lg:hidden" : "lg:flex"} lg:h-auto lg:min-h-0`}>
-          <VerificationDocument workspace={workspace} selection={selection} active={pane === "document"} layout={viewMode}
+        <section id="verification-document" aria-label="Văn bản đối chiếu" className={`${pane === "document" ? "flex" : "hidden"} h-[70dvh] min-h-96 min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card ${viewMode === "findings" ? "lg:hidden" : "lg:flex"} lg:h-auto lg:min-h-0`}>
+          <VerificationDocument key={`${reviewId}:${workspace.verification.attempt}`} workspace={workspace} selection={selection} active={pane === "document"} layout={viewMode} canViewOriginal={editable && workspace.verification.shareOriginalFile === true}
             selectedTitle={workspace.findings.find((finding) => verificationFindingId(finding) === controller.findingSelection?.id)?.title} />
         </section>
       </div>

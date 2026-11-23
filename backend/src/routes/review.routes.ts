@@ -14,6 +14,9 @@ import {
   approveVerificationHandler,
   decideFindingHandler,
   getExpertWorkspaceHandler,
+  getExpertOriginalFileHandler,
+  getExpertFullTextHandler,
+  shareVerificationOriginalHandler,
   getVerificationHandler,
   listVerificationQueueHandler,
   listExpertWorkHandler,
@@ -36,6 +39,8 @@ import {
   verificationQueueQuerySchema,
   expertWorkQuerySchema,
   expertWorkspaceQuerySchema,
+  expertOriginalFileQuerySchema,
+  shareVerificationOriginalBodySchema,
 } from '../validations/verification.validation';
 
 const router = Router();
@@ -96,6 +101,27 @@ router.get(
   requireRole('expert'),
   validate({ params: reviewIdParamSchema, query: expertWorkspaceQuerySchema }),
   getExpertWorkspaceHandler,
+);
+
+router.get(
+  '/:reviewId/verification/original-file',
+  requireRole('expert'),
+  validate({ params: reviewIdParamSchema, query: expertOriginalFileQuerySchema }),
+  getExpertOriginalFileHandler,
+);
+
+router.get(
+  '/:reviewId/verification/full-text',
+  requireRole('expert'),
+  validate({ params: reviewIdParamSchema, query: expertOriginalFileQuerySchema }),
+  getExpertFullTextHandler,
+);
+
+router.post(
+  '/:reviewId/verification/share-original',
+  requireRole('owner', 'staff', 'user'),
+  validate({ params: reviewIdParamSchema, body: shareVerificationOriginalBodySchema }),
+  shareVerificationOriginalHandler,
 );
 
 router.post(

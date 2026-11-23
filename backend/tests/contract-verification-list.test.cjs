@@ -14,6 +14,8 @@ const { ExpertReviewModel } = require('../dist/models/expertReview.model');
 const { listContracts } = require('../dist/services/contract/contract.service');
 const { listContractsQuerySchema } = require('../dist/validations/contract.validation');
 const { listVerificationQueue } = require('../dist/services/review/verification.service');
+const { getExpertOriginalFile, getExpertFullText, shareVerificationOriginal } = require('../dist/services/review/verification.service');
+const storage = require('../dist/services/contract/storage.service');
 const { ExpertWorkRecordModel } = require('../dist/models/expertWorkRecord.model');
 const { listExpertWork } = require('../dist/services/review/expertWork.service');
 const oid = () => new mongoose.Types.ObjectId();
@@ -42,6 +44,46 @@ beforeAll(async () => {
   ]);
 });
 afterAll(async () => { await mongoose.disconnect(); if (replica) await replica.stop(); });
+
+test('original file access requires the assigned expert, the current attempt and explicit sharing', async () => {
+  const versionId = oid(), newerVersionId = oid(), reviewId = oid(), expertId = oid();
+  await ContractVersionModel.collection.insertMany([
+    { _id: versionId, contractId: unsent, versionNumber: 1, fileKey: 'reviewed-file', fileResourceType: 'raw', mimeType: 'application/pdf', extractedText: 'Reviewed unmasked text' },
+    { _id: newerVersionId, contractId: unsent, versionNumber: 2, fileKey: 'newer-file', fileResourceType: 'raw', extractedText: 'Newer text' },
+  ]);
+  await ReviewModel.collection.insertOne({ _id: reviewId, orgId: org, contractId: unsent, versionId });
+  const verification = await ExpertReviewModel.create({ reviewId, contractId: unsent, orgId: org, expertId, requestedBy: oid(), requestedAt: new Date(), attempt: 2, status: 'in_progress' });
+  const download = jest.spyOn(storage, 'downloadContractFile').mockResolvedValue(Buffer.from('reviewed bytes'));
+  const view = (viewer = expertId, attempt = 2) => getExpertOriginalFile(String(viewer), String(reviewId), attempt);
+  const text = (viewer = expertId) => getExpertFullText(String(viewer), String(reviewId), 2);
+  const grant = (sender = verification.requestedBy, attempt = 2) => shareVerificationOriginal(String(org), String(sender), String(reviewId), attempt);
+  try {
+    await expect(view()).rejects.toMatchObject({ statusCode: 404 });
+    await expect(text()).rejects.toMatchObject({ statusCode: 404 });
+    await expect(grant(oid())).rejects.toMatchObject({ statusCode: 404 });
+    await expect(grant(verification.requestedBy, 1)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(grant()).resolves.toBeUndefined();
+    await verification.updateOne({ status: 'requested' });
+    await expect(view()).rejects.toMatchObject({ statusCode: 404 });
+    await verification.updateOne({ status: 'in_progress' });
+    await expect(view(oid())).rejects.toMatchObject({ statusCode: 404 });
+    await expect(text(oid())).rejects.toMatchObject({ statusCode: 404 });
+    await expect(view(expertId, 1)).rejects.toMatchObject({ statusCode: 404 });
+    expect(download).not.toHaveBeenCalled();
+    await expect(view()).resolves.toMatchObject({ mimeType: 'application/pdf', buffer: Buffer.from('reviewed bytes') });
+    await expect(text()).resolves.toEqual({ text: 'Reviewed unmasked text' });
+    expect(download).toHaveBeenCalledWith(expect.objectContaining({ key: 'reviewed-file' }));
+    await verification.updateOne({ status: 'approved' });
+    await expect(view()).rejects.toMatchObject({ statusCode: 404 });
+    await expect(text()).rejects.toMatchObject({ statusCode: 404 });
+    await expect(grant()).rejects.toMatchObject({ statusCode: 404 });
+  } finally {
+    download.mockRestore();
+    await ExpertReviewModel.deleteOne({ _id: verification._id });
+    await ReviewModel.deleteOne({ _id: reviewId });
+    await ContractVersionModel.deleteMany({ _id: { $in: [versionId, newerVersionId] } });
+  }
+});
 
 test('list returns latest request metadata without text, notes or other organization data', async () => {
   const result = await listContracts(String(org), {}, pagination);

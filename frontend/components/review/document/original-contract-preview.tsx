@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 
 import { useEffect, useRef, useState } from "react";
 import { useContractFile } from "@/hooks/contracts/use-contracts";
+import type { UseQueryResult } from "@tanstack/react-query";
 
 function normalizeText(value: string) {
   return value.normalize("NFKC").replace(/[\u00ad\u200b-\u200d\ufeff]/g, "").replace(/\s+/g, " ").trim();
@@ -45,6 +46,18 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
   redacted?: boolean;
   onTextFallback?: () => void;
 }) {
+  const fileQuery = useContractFile(contractId, version, redacted);
+  return <ContractFilePreview fileQuery={fileQuery} mimeType={mimeType} fileName={fileName} target={target} redacted={redacted} onTextFallback={onTextFallback} />;
+}
+
+export function ContractFilePreview({ fileQuery, mimeType, fileName, target, redacted = false, onTextFallback }: {
+  fileQuery: UseQueryResult<Blob, Error>;
+  mimeType: string;
+  fileName?: string;
+  target?: { text: string; context?: string; requestId: number } | null;
+  redacted?: boolean;
+  onTextFallback?: () => void;
+}) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const [renderError, setRenderError] = useState(false);
@@ -53,7 +66,6 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
   const [fileUrl, setFileUrl] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const isDocx = mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-  const fileQuery = useContractFile(contractId, version, redacted);
   const blob = fileQuery.isError ? undefined : fileQuery.data;
   const error = fileQuery.isError || renderError;
 
@@ -150,8 +162,8 @@ export function OriginalContractPreview({ contractId, mimeType, fileName, target
   }, [redacted, isDocx, rendered, target]);
 
   const errorMessage = error && <div role="alert" className="m-4 rounded-xl border border-[#e4e8ef] bg-white p-5 text-ui text-[#607087]">
-    <p className="m-0">{redacted ? "Chưa thể hiển thị bản DOCX đã che. Tài liệu chứa ảnh hoặc nội dung nhúng có thể chưa được hỗ trợ. Bạn có thể xem văn bản đã che." : "Không thể hiển thị file gốc. Bạn vẫn có thể chọn “Văn bản đầy đủ” để xem nội dung."}</p>
-    {redacted && onTextFallback && <Button variant="outline" size="sm" type="button" onClick={onTextFallback} className="mt-3 mr-2">Xem văn bản đã che</Button>}
+    <p className="m-0">{redacted ? "Chưa thể hiển thị bản DOCX đã che. Tài liệu chứa ảnh hoặc nội dung nhúng có thể chưa được hỗ trợ. Bạn có thể xem văn bản đã che." : onTextFallback ? "Không thể hiển thị file gốc." : "Không thể hiển thị file gốc. Bạn vẫn có thể chọn “Văn bản đầy đủ” để xem nội dung."}</p>
+    {onTextFallback && <Button variant="outline" size="sm" type="button" onClick={onTextFallback} className="mt-3 mr-2">Xem văn bản đã che</Button>}
     <Button variant="outline" size="sm" type="button" disabled={fileQuery.isFetching} onClick={() => { void fileQuery.refetch().then((response) => { if (!response.isError) setAttempt((value) => value + 1); }); }} className="mt-3">{fileQuery.isFetching ? "Đang tải lại…" : "Thử tải lại file"}</Button>
   </div>;
   const loadingMessage = !error && !rendered && <p role="status" className="m-4 text-ui text-[#607087]">{redacted ? "Đang chuẩn bị bản DOCX đã che…" : "Đang tải file gốc…"}</p>;

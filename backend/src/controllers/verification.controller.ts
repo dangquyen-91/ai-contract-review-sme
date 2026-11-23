@@ -18,7 +18,32 @@ export const getVerificationHandler = asyncHandler(async (req: Request, res: Res
 
 export const requestVerificationHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);
-  ok(res, await verificationService.requestVerification(user.orgId, user.sub, req.params.reviewId, req.body.note), 201);
+  ok(res, await verificationService.requestVerification(user.orgId, user.sub, req.params.reviewId, req.body.note, req.body.shareOriginalFile), 201);
+});
+
+export const getExpertOriginalFileHandler = asyncHandler(async (req: Request, res: Response) => {
+  const file = await verificationService.getExpertOriginalFile(req.user!.sub, req.params.reviewId, Number(req.query.attempt));
+  const supported = ['application/pdf', 'image/png', 'image/jpeg', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+  const mimeType = supported.find((type) => type === file.mimeType) ?? 'application/octet-stream';
+  const name = encodeURIComponent((file.fileName ?? 'contract').replace(/['()]/g, '_'));
+  res.set({
+    'Content-Type': mimeType,
+    'Content-Disposition': `attachment; filename="contract"; filename*=UTF-8''${name}`,
+    'Cache-Control': 'private, no-store',
+    'X-Content-Type-Options': 'nosniff',
+  }).send(file.buffer);
+});
+
+export const getExpertFullTextHandler = asyncHandler(async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  ok(res, await verificationService.getExpertFullText(req.user!.sub, req.params.reviewId, Number(req.query.attempt)));
+});
+
+export const shareVerificationOriginalHandler = asyncHandler(async (req: Request, res: Response) => {
+  const actor = getContractUser(req);
+  await verificationService.shareVerificationOriginal(actor.orgId, actor.sub, req.params.reviewId, req.body.attempt);
+  res.setHeader('Cache-Control', 'private, no-store');
+  ok(res, null);
 });
 
 export const getExpertWorkspaceHandler = asyncHandler(async (req: Request, res: Response) => {

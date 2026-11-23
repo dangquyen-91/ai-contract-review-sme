@@ -18,6 +18,7 @@ import { AddFindingInput, DecideFindingInput } from '../../validations/verificat
 import { createRedactor } from '../ai/redaction.service';
 import { listReviewFindings } from '../analysis/risk.service';
 import { getCurrentVersion } from '../contract/contractVersion.service';
+import { downloadContractFile, storedFileOf } from '../contract/storage.service';
 import { redactionPolicyFor } from '../contract/redactionPolicy.service';
 import { archiveExpertWork, historicalExpertWork } from './expertWork.service';
 import { FAILED_CHECK_LABELS } from '../playbook/playbookSchema';
@@ -90,11 +91,11 @@ async function assertExpertAvailable() {
   }
 }
 
-export async function requestVerification(orgId: string, userId: string, reviewId: string, note?: string) {
+export async function requestVerification(orgId: string, userId: string, reviewId: string, note?: string, shareOriginalFile = false) {
   const review = await loadVerifiableReview(orgId, reviewId);
   await assertExpertAvailable();
   const now = new Date();
-  const consent = { consentedAt: now, consentedBy: userId };
+  const consent = { consentedAt: now, consentedBy: userId, shareOriginalFile };
   const existing = await ExpertReviewModel.findOne({ reviewId: review._id });
   if (existing) {
     if (existing.status !== 'returned') {
@@ -454,4 +455,35 @@ export async function getExpertWorkspace(expertId: string, reviewId: string, att
       };
     }),
   };
+}
+
+export async function shareVerificationOriginal(orgId: string, userId: string, reviewId: string, attempt: number) {
+  const updated = await ExpertReviewModel.updateOne({
+    orgId, requestedBy: userId, reviewId, attempt, status: { $in: OPEN_EXPERT_REVIEW_STATUSES },
+  }, { $set: { shareOriginalFile: true } });
+  if (!updated.matchedCount) throw AppError.notFound('Không thể chia sẻ file gốc cho yêu cầu xác minh này.');
+}
+
+async function resolveSharedExpertVersion(expertId: string, reviewId: string, attempt: number, withText = false) {
+  const request = await ExpertReviewModel.findOne({ reviewId, expertId, attempt, status: 'in_progress', shareOriginalFile: true });
+  if (!request) throw AppError.notFound('Bản đầy đủ chưa được chia sẻ cho lần xác minh này.');
+
+  const review = await ReviewModel.findOne({ _id: reviewId, contractId: request.contractId, orgId: request.orgId }).select('versionId');
+  const query = review && ContractVersionModel.findOne({ _id: review.versionId, contractId: request.contractId });
+  if (withText) query?.select('+extractedText');
+  const version = await query;
+  if (!version) throw AppError.notFound('Không tìm thấy phiên bản hợp đồng đã rà soát.');
+  return version;
+}
+
+export async function getExpertFullText(expertId: string, reviewId: string, attempt: number) {
+  const version = await resolveSharedExpertVersion(expertId, reviewId, attempt, true);
+  return { text: version.extractedText ?? '' };
+}
+
+export async function getExpertOriginalFile(expertId: string, reviewId: string, attempt: number) {
+  const version = await resolveSharedExpertVersion(expertId, reviewId, attempt);
+  const file = storedFileOf(version);
+  if (!file) throw AppError.notFound('Không tìm thấy file gốc của phiên bản đã rà soát.');
+  return { buffer: await downloadContractFile(file), mimeType: version.mimeType, fileName: version.fileName };
 }

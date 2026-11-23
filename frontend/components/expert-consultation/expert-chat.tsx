@@ -13,10 +13,11 @@ export function ExpertChat({ reviewId, attempt, participant }: { reviewId: strin
   const { query, metadata, mutation } = chat;
   const inaccessible = query.isError && !query.data;
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-4 py-2">
-        <p role="status" className="m-0 text-ui-meta text-muted-foreground">
-          {query.isPending ? "Đang tải cuộc trao đổi…" : metadata?.canSend ? "Tự cập nhật tin nhắn mỗi 5 giây" : metadata?.status === "requested" ? "Chờ chuyên gia tiếp nhận để bắt đầu trao đổi" : "Lịch sử trao đổi"}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-1.5 sm:px-6">
+        <p role="status" className="m-0 flex items-center gap-2 text-ui-meta text-slate-600">
+          <span aria-hidden="true" className={`size-2 rounded-full ${chat.canSend ? "bg-emerald-500" : "bg-slate-400"}`} />
+          {query.isPending ? "Đang tải cuộc trao đổi…" : query.isError ? "Cần làm mới" : metadata?.canSend ? "Đang trao đổi" : metadata?.status === "requested" ? "Chờ chuyên gia tiếp nhận" : "Lịch sử trao đổi"}
         </p>
         <Button variant="ghost" size="sm" loading={query.isFetching && !query.isFetchingNextPage} onClick={() => { void query.refetch(); }}>
           <RefreshCw aria-hidden="true" className="size-3.5" />Làm mới
