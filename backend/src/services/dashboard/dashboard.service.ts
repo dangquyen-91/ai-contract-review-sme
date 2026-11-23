@@ -7,8 +7,10 @@ import { UserModel } from '../../models/user.model';
 import { listContracts } from '../contract/contract.service';
 import { getOrganization } from '../organization/organization.service';
 
+type IssueBucket = 'withViolations' | 'withIssues' | 'noIssues' | null;
+
 type ContractCount = {
-  _id: { status: string; risk: string | null };
+  _id: { status: string; issues: IssueBucket };
   count: number;
 };
 
@@ -23,16 +25,26 @@ async function countContracts(scopeId: string) {
           { $match: { $expr: { $eq: ['$contractId', '$$contractId'] } } },
           { $sort: { versionNumber: -1 } },
           { $limit: 1 },
-          { $project: { overallRiskLevel: 1 } },
+          { $project: { issueCounts: 1 } },
         ],
         as: 'version',
       },
     },
+    { $set: { version: { $arrayElemAt: ['$version', 0] } } },
     {
       $group: {
         _id: {
           status: '$status',
-          risk: { $ifNull: [{ $arrayElemAt: ['$version.overallRiskLevel', 0] }, null] },
+          issues: {
+            $switch: {
+              branches: [
+                { case: { $gt: [{ $ifNull: ['$version.issueCounts.violations', 0] }, 0] }, then: 'withViolations' },
+                { case: { $gt: [{ $ifNull: ['$version.issueCounts.total', 0] }, 0] }, then: 'withIssues' },
+                { case: { $ifNull: ['$version.issueCounts', false] }, then: 'noIssues' },
+              ],
+              default: null,
+            },
+          },
         },
         count: { $sum: 1 },
       },
@@ -55,12 +67,12 @@ export async function getDashboard(actor: AccessTokenPayload) {
     UserModel.findById(actor.sub).select('name email').lean(),
   ]);
   const statuses = { uploaded: 0, processing: 0, reviewed: 0, archived: 0 };
-  const risks = { high: 0, medium: 0, low: 0, none: 0 };
+  const issues = { withViolations: 0, withIssues: 0, noIssues: 0 };
   let totalContracts = 0;
   for (const { _id, count } of counts) {
     totalContracts += count;
     if (Object.hasOwn(statuses, _id.status)) statuses[_id.status as keyof typeof statuses] += count;
-    if (_id.risk && Object.hasOwn(risks, _id.risk)) risks[_id.risk as keyof typeof risks] += count;
+    if (_id.issues) issues[_id.issues] += count;
   }
   return {
     contractScopeId: scopeId,
@@ -78,12 +90,16 @@ export async function getDashboard(actor: AccessTokenPayload) {
       : { id: '', name: 'Tài khoản cá nhân', taxCode: null, address: null },
     contracts: recent.items.map((contract) => ({
       ...contract,
-      overallRiskLevel: contract.currentVersion?.overallRiskLevel ?? 'none',
+      issueCounts: contract.currentVersion?.issueCounts ?? null,
       fileName: contract.currentVersion?.fileName,
     })),
     totalContracts,
-    ...(actor.role === 'staff' ? { distribution: { statuses, risks } } : {}),
-    stats: { processing: statuses.processing, reviewed: statuses.reviewed, highRisk: risks.high },
+    ...(actor.role === 'staff' ? { distribution: { statuses, issues } } : {}),
+    stats: {
+      processing: statuses.processing,
+      reviewed: statuses.reviewed,
+      withViolations: issues.withViolations,
+    },
     role: actor.role,
     user: user ? { name: user.name, email: user.email } : null,
   };

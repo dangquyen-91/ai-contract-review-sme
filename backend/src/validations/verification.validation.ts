@@ -1,6 +1,7 @@
 import { z } from 'zod';
-import { RISK_CODES, RISK_SEVERITIES } from '../models/riskFinding.model';
 import { reviewIdParamSchema } from './review.validation';
+
+export const EXPERT_FINDING_GROUPS = ['clarity', 'completeness', 'balance', 'compliance', 'drafting'] as const;
 
 const note = z.string().trim().min(1).max(2000);
 const points = z.array(z.string().trim().min(1).max(2000)).max(20);
@@ -19,8 +20,7 @@ export const requestVerificationBodySchema = z
   .strict();
 
 const findingContent = {
-  severity: z.enum(RISK_SEVERITIES).optional(),
-  riskCode: z.enum(RISK_CODES).optional(),
+  checkGroup: z.enum(EXPERT_FINDING_GROUPS).optional(),
   title: z.string().trim().min(1).max(300).optional(),
   problem: points.optional(),
   consequences: points.optional(),
@@ -54,8 +54,7 @@ export const decideFindingBodySchema = z
 export const addFindingBodySchema = z
   .object({
     clauseIndex: z.number().int().min(0).optional(),
-    severity: z.enum(RISK_SEVERITIES),
-    riskCode: z.enum(RISK_CODES),
+    checkGroup: z.enum(EXPERT_FINDING_GROUPS),
     title: z.string().trim().min(1).max(300),
     problem: points.min(1),
     consequences: points.default([]),

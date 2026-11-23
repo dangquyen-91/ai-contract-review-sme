@@ -1,8 +1,15 @@
 import Link from "next/link";
 import { ChevronRight, Download, Info, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { contractRiskLabels, contractRiskTones } from "@/config/contract-display";
+import { findingDisplay } from "@/config/issue-display";
+import { compareFindings, countFindingIssues } from "@/lib/review/issue-counts";
+import { IssueSummary } from "@/components/review/results/issue-summary";
+import { ReviewCoverage } from "@/components/review/results/review-coverage";
+import { ExecutiveSummary } from "@/components/review/results/executive-summary";
+import { RiskDetails } from "@/components/review/results/risk-details";
+import { FindingVerificationBadge } from "@/components/expert-verification/finding-verification-info";
 import { routes } from "@/config/routes";
+import { clauseLabel } from "@/lib/review/clause-label";
 import type { ContractReviewRun, ContractVersionSummary, RiskFinding } from "@/types/contracts";
 
 const statusLabels: Record<ContractReviewRun["status"], string> = {
@@ -12,8 +19,6 @@ const statusLabels: Record<ContractReviewRun["status"], string> = {
   failed: "Chưa hoàn tất",
   cancelled: "Đã dừng",
 };
-
-const severityOrder = { high: 0, medium: 1, low: 2 } as const;
 
 function formatDateTime(value?: string) {
   if (!value) return null;
@@ -56,15 +61,17 @@ function HistoryBanner({ contractId, run, version, current }: {
 
 function FindingItem({ finding }: { finding: RiskFinding }) {
   const clause = finding.clause;
+  const display = findingDisplay(finding);
   return (
     <li className="space-y-2 rounded-lg border border-border bg-white p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Badge variant={contractRiskTones[finding.severity]}>{contractRiskLabels[finding.severity]}</Badge>
+        <Badge variant={display.tone}>{display.label}</Badge>
+        <FindingVerificationBadge verification={finding.verification} />
         <h3 className="m-0 min-w-0 text-ui-section font-semibold [overflow-wrap:anywhere]">{finding.title}</h3>
       </div>
       {clause && (
         <p className="m-0 text-ui-meta text-muted-foreground">
-          Điều khoản {clause.index + 1}{clause.title ? ` · ${clause.title}` : ""}
+          {clause.title || clauseLabel(clause)}
         </p>
       )}
       {finding.findingType === "missing_clause" && !clause && (
@@ -75,12 +82,7 @@ function FindingItem({ finding }: { finding: RiskFinding }) {
           {finding.problem.map((point, index) => <li key={index}>{point}</li>)}
         </ul>
       )}
-      {finding.recommendations.length > 0 && (
-        <p className="m-0 text-ui leading-6 text-slate-700">
-          <span className="font-medium text-slate-900">Đề xuất: </span>
-          {finding.recommendations[0]}
-        </p>
-      )}
+      <RiskDetails finding={finding} />
     </li>
   );
 }
@@ -93,9 +95,9 @@ export function ReviewVersionResult({ contractId, title, run, version, current, 
   current?: ContractVersionSummary;
   findings: RiskFinding[];
 }) {
-  const counts = run.result?.findingCounts;
-  const sorted = [...findings].sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
-  const expected = counts ? counts.high + counts.medium + counts.low : 0;
+  const counts = run.result?.issueCounts ? findings.length ? countFindingIssues(findings) : run.result.issueCounts : undefined;
+  const sorted = [...findings].sort(compareFindings);
+  const expected = counts ? counts.total + counts.unverified + counts.referrals : 0;
   const detailsMissing = run.status === "completed" && expected > 0 && sorted.length === 0;
   const started = formatDateTime(run.startedAt);
   const finished = formatDateTime(run.finishedAt);
@@ -122,20 +124,11 @@ export function ReviewVersionResult({ contractId, title, run, version, current, 
       </header>
       <HistoryBanner contractId={contractId} run={run} version={version} current={current} />
       {run.error && <p role="alert" className="m-0 rounded-lg border border-red-200 bg-red-50 p-3 text-ui text-red-800">{run.error}</p>}
-      {run.result?.summaryPoints && run.result.summaryPoints.length > 0 && (
-        <div className="rounded-xl border border-border bg-white p-4">
-          <h2 className="m-0 mb-2 text-ui-section font-semibold">Tóm tắt</h2>
-          <ul className="m-0 list-disc space-y-1 pl-5 text-ui leading-6 text-slate-700">
-            {run.result.summaryPoints.map((point, index) => <li key={index}>{point}</li>)}
-          </ul>
-        </div>
-      )}
+      <ExecutiveSummary points={run.result?.summaryPoints} assessment={run.result?.overallAssessment} complete={run.status === "completed"} />
+      <ReviewCoverage coverage={run.result?.checkCoverage} />
+      <IssueSummary counts={counts} />
       {counts && (
         <div className="flex flex-wrap items-center gap-2 text-ui">
-          <span className="font-semibold">Rủi ro phát hiện:</span>
-          <Badge variant="danger">Cao {counts.high}</Badge>
-          <Badge variant="warning">Trung bình {counts.medium}</Badge>
-          <Badge variant="success">Thấp {counts.low}</Badge>
           {version && (
             <a
               className="ml-auto inline-flex items-center gap-1.5 font-medium text-blue-700 hover:underline"
@@ -149,7 +142,7 @@ export function ReviewVersionResult({ contractId, title, run, version, current, 
       )}
       {detailsMissing && (
         <p className="m-0 rounded-lg border border-border bg-slate-50 p-3 text-ui leading-6 text-slate-700">
-          Chi tiết từng rủi ro không có sẵn cho lượt rà soát này vì lượt được tạo trước khi hệ thống lưu kết quả theo từng lượt. Số liệu tổng hợp ở trên vẫn đúng.
+          Chi tiết từng mục chưa có sẵn cho lượt rà soát này. Số liệu tổng hợp phía trên là kết quả đã lưu của lượt này.
         </p>
       )}
       {sorted.length > 0 && (

@@ -11,7 +11,7 @@ const params = {
   page: paginationPageParser,
   search: parseAsString.withDefault(""),
   status: parseAsString.withDefault(""),
-  riskLevel: parseAsString.withDefault(""),
+  issues: parseAsString.withDefault(""),
   verificationStatus: parseAsString.withDefault(""),
 };
 
@@ -22,7 +22,7 @@ export function useContractTrackingList(scope: string, enabled: boolean) {
   const searchParams = useSearchParams();
   const filter: DashboardContractFilter = {
     ...(["uploaded", "processing", "reviewed", "archived", "unsupported"].includes(state.status) ? { status: state.status as DashboardContractFilter["status"] } : {}),
-    ...(["high", "medium", "low", "none"].includes(state.riskLevel) ? { riskLevel: state.riskLevel as DashboardContractFilter["riskLevel"] } : {}),
+    ...(["violations", "any", "none"].includes(state.issues) ? { issues: state.issues as DashboardContractFilter["issues"] } : {}),
     ...(["not_sent", "requested", "in_progress", "approved", "returned"].includes(state.verificationStatus) ? { verificationStatus: state.verificationStatus as DashboardContractFilter["verificationStatus"] } : {}),
   };
   const query = useContractsList({ ...filter, page: state.page, search: state.search || undefined }, { scope, enabled, pollProcessing: true });
@@ -41,12 +41,12 @@ export function useContractTrackingList(scope: string, enabled: boolean) {
   return {
     query, state, filter, total, pages,
     highlightId: searchParams.get("uploaded") ?? undefined,
-    filtered: Boolean(state.search || filter.status || filter.riskLevel || filter.verificationStatus),
+    filtered: Boolean(state.search || filter.status || filter.issues || filter.verificationStatus),
     setSearch: (search: string) => setState({ search, page: 1 }),
-    setFilter: (next: DashboardContractFilter) => setState({ page: 1, status: next.status ?? "", riskLevel: next.riskLevel ?? "", verificationStatus: next.verificationStatus ?? "" }),
+    setFilter: (next: DashboardContractFilter) => setState({ page: 1, status: next.status ?? "", issues: next.issues ?? "", verificationStatus: next.verificationStatus ?? "" }),
     setVerification: (verificationStatus: string) => setState({ page: 1, verificationStatus }),
     setPage: (page: number) => setState({ page }),
-    resetFilters: () => setState({ page: 1, search: "", status: "", riskLevel: "", verificationStatus: "" }),
+    resetFilters: () => setState({ page: 1, search: "", status: "", issues: "", verificationStatus: "" }),
     dismissUpload,
   };
 }

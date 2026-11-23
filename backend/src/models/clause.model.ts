@@ -13,6 +13,7 @@ const clauseSchema = new Schema(
     endOffset: { type: Number, required: true },
     clauseTypeId: { type: Types.ObjectId, ref: 'ClauseTypeTaxonomy', required: true, index: true },
     summary: { type: String, required: true },
+    summaryKind: { type: String, enum: ['ai_verified', 'excerpt'] },
   },
   { timestamps: true, ...decryptOnSerialize },
 );

@@ -6,20 +6,21 @@ import { verificationStatuses } from "@/lib/review/verification-display";
 import type { VerificationController } from "@/hooks/expert-verification/use-verification-controller";
 import { VerificationBackButton } from "./verification-back-button";
 import { VerificationRequestInfo } from "./verification-request-info";
+import styles from "@/styles/review/review-design.module.css";
 
 export function VerificationWorkspaceHeader({ controller }: { controller: VerificationController }) {
   const { workspace, query, command, editable, disabled, pendingCount, execute, openDialog } = controller;
   if (!workspace) return null;
   const session = workspace.verification;
   return (
-    <header className="space-y-3 rounded-xl border border-border bg-card p-4 sm:p-5">
+    <header className={`${styles.scope} space-y-4 rounded-lg border border-[#e4e6df] bg-white p-5 sm:p-6`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <VerificationBackButton historical={workspace.historical} />
         <span role="status" className={`rounded-full border px-3 py-1 text-ui-meta font-semibold ${verificationStatuses[session.status].tone}`}>{verificationStatuses[session.status].label}</span>
       </div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1 basis-72">
-          <h1 className="m-0 break-words text-ui-dialog font-bold [overflow-wrap:anywhere]">{workspace.contract.title}</h1>
+          <h1 className="m-0 max-w-[50ch] break-words text-xl font-semibold tracking-[-0.035em] [overflow-wrap:anywhere]">{workspace.contract.title}</h1>
         </div>
       </div>
       {workspace.historical && <p className="m-0 rounded-lg border border-blue-200 bg-blue-50 p-3 text-ui text-blue-950">Bản lưu lần xác minh {session.attempt} · Chỉ đọc. Nội dung phản ánh thời điểm kết thúc lần xác minh này, có thể khác phiên bản hợp đồng hiện tại.</p>}
@@ -32,7 +33,7 @@ export function VerificationWorkspaceHeader({ controller }: { controller: Verifi
           {editable && (
             <>
               <Button variant="outline" size="sm" disabled={disabled} onClick={() => openDialog({ mode: "return" })}>Trả lại yêu cầu</Button>
-              <Button size="sm" disabled={disabled || pendingCount > 0} title={pendingCount ? `Còn ${pendingCount} rủi ro chưa được xử lý` : undefined} onClick={() => openDialog({ mode: "approve" })}>Hoàn tất kiểm tra</Button>
+              <Button size="sm" disabled={disabled || pendingCount > 0} title={pendingCount ? `Còn ${pendingCount} vấn đề chưa được xử lý` : undefined} onClick={() => openDialog({ mode: "approve" })}>Hoàn tất kiểm tra</Button>
             </>
           )}
         </div>

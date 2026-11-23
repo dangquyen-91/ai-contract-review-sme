@@ -10,8 +10,7 @@ function StatusBadge({ contract }: { contract: DashboardContract }) {
   if (contract.status === "processing") return <Badge variant="info">AI đang rà soát</Badge>;
   if (contract.status === "unsupported") return <Badge variant="warning">Chưa hỗ trợ</Badge>;
   if (contract.status !== "reviewed") return <Badge variant="neutral">Chưa rà soát</Badge>;
-  const risk = contract.currentVersion?.overallRiskLevel ?? contract.overallRiskLevel ?? "none";
-  return <RiskBadge risk={risk} />;
+  return <RiskBadge contract={contract} />;
 }
 
 function RecentRow({ contract }: { contract: DashboardContract }) {

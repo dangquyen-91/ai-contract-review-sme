@@ -1,26 +1,46 @@
 export type ContractStatus = "uploaded" | "processing" | "reviewed" | "archived" | "unsupported";
 export type ReviewBillingConfirmation = { versionId: string; units: number };
-export type ContractRiskLevel = "high" | "medium" | "low" | "none";
-export type LegalRetrievalStatus = "ok" | "degraded" | "no_sources" | "unavailable";
-export type RuleCheckStatus = "ok" | "skipped" | "not_applicable";
-export type RiskCode =
-  | "UNLAWFUL_TERM"
-  | "MISSING_MANDATORY_FORM"
-  | "UNILATERAL_TERMINATION"
-  | "AUTO_RENEWAL"
-  | "EXCESSIVE_PENALTY"
-  | "LIABILITY_LIMITATION"
-  | "ONE_SIDED_INDEMNITY"
-  | "UNFAVORABLE_PAYMENT"
-  | "ONE_SIDED_OBLIGATION"
-  | "BROAD_EXCLUSION"
-  | "IP_DATA_RISK"
-  | "UNFAVORABLE_DISPUTE_FORUM"
-  | "VAGUE_SCOPE"
-  | "AMBIGUOUS_TERM"
-  | "MISSING_CLAUSE"
-  | "MISSING_PROTECTION"
-  | "OTHER";
+export const ISSUE_GROUPS = ["compliance", "clarity", "completeness", "balance", "drafting"] as const;
+export type IssueGroup = (typeof ISSUE_GROUPS)[number];
+export type FindingGroup = IssueGroup | "referral";
+export type FindingOutcome = "failed" | "unverified" | "referral";
+export type ContractIssueFilter = "violations" | "any" | "none";
+export type IssueCounts = {
+  violations: number;
+  unclear: number;
+  missing: number;
+  negotiable: number;
+  drafting: number;
+  unverified: number;
+  referrals: number;
+  total: number;
+};
+export type CheckCoverage = {
+  playbookVersion?: string;
+  checks: number;
+  passed: number;
+  failed: number;
+  notApplicable: number;
+  notChecked: number;
+  unverified: number;
+  documentChecks: number;
+  clauseTypesWithoutPlaybook: string[];
+  notCheckedItems: { code: string; title: string; reason?: string }[];
+  passedItems?: { code: string; title: string }[];
+  uncoveredTopics?: { code: string; name: string }[];
+};
+export type ContractQuote = {
+  clauseIndex: number;
+  quote: string;
+  startOffset?: number;
+  endOffset?: number;
+};
+export type SummarySource = ContractQuote & { pointIndex: number };
+export type FindingEvidence = Partial<ContractQuote> & {
+  fieldKey?: string;
+  label?: string;
+  value?: string | number | boolean | null;
+};
 
 export type ClassificationOutcome = "supported" | "unsupported_type" | "not_contract" | "not_allowed_for_account";
 
@@ -61,12 +81,14 @@ export type DashboardContract = {
   industry?: string;
   classification?: ContractClassification;
   status: ContractStatus;
-  overallRiskLevel: ContractRiskLevel;
+  issueCounts?: IssueCounts | null;
   currentVersion?: {
     _id?: string;
     id?: string;
     updatedAt?: string;
-    overallRiskLevel?: ContractRiskLevel;
+    issueCounts?: IssueCounts | null;
+    checkCoverage?: CheckCoverage | null;
+    summarySources?: SummarySource[];
     overallAssessment?: string[];
     summaryPoints?: string[];
     extractionStatus?: "pending" | "processing" | "completed" | "failed" | "unsupported";
@@ -82,8 +104,6 @@ export type DashboardContract = {
     riskDetectionStatus?: "pending" | "processing" | "completed" | "failed";
     riskDetectionError?: string;
     riskDetectionStartedAt?: string;
-    legalRetrievalStatus?: LegalRetrievalStatus;
-    ruleCheckStatus?: RuleCheckStatus;
     analysisFocus?: string;
     fileName?: string;
     mimeType?: string;
@@ -114,8 +134,7 @@ export type ContractVersionSummary = {
     id: string;
     status: ContractReviewRun["status"];
     finishedAt: string | null;
-    overallRiskLevel: ContractRiskLevel | null;
-    findingCounts: { high: number; medium: number; low: number } | null;
+    issueCounts?: IssueCounts | null;
     verificationStatus: "requested" | "in_progress" | "approved" | "returned" | null;
   } | null;
 };
@@ -143,7 +162,7 @@ export type DuplicateFileMatch = {
 export type ContractShareSummary = {
   text: string;
   redacted: true;
-  findingCounts: { high: number; medium: number; low: number };
+  issueCounts?: IssueCounts;
 };
 
 export type ContractTextResult = {
@@ -157,19 +176,21 @@ export type ContractTextResult = {
 };
 
 export type ContractClause = {
+  label?: string;
   _id?: string;
   id?: string;
   index: number;
   title?: string;
   text: string;
   summary?: string;
+  summaryKind?: "ai_verified" | "excerpt";
   startOffset: number;
   endOffset: number;
 };
 
 export type FindingVerification = {
   verdict: "confirmed" | "adjusted" | "rejected" | "added";
-  originalSeverity?: "high" | "medium" | "low";
+  originalGroup?: FindingGroup;
   reason?: string;
   verifiedBy?: string;
   verifiedAt?: string;
@@ -180,19 +201,35 @@ export type RiskFinding = {
   id?: string;
   clauseId?: string | null;
   expectedClauseTypeId?: { _id: string; code: string; name: string; description: string } | null;
-  findingType?: "clause_risk" | "missing_clause";
-  severity: Exclude<ContractRiskLevel, "none">;
+  findingType?: "clause_risk" | "missing_clause" | "referral";
+  checkCode?: string;
+  checkGroup: FindingGroup;
+  outcome: FindingOutcome;
+  label?: string;
+  playbookVersion?: string;
+  neutral?: boolean;
+  evidence?: FindingEvidence[];
+  observed?: unknown;
+  limit?: number;
+  vagueTerm?: string;
+  reason?: string;
+  question?: string;
+  basis?: { kind: "criterion" | "practice" | "policy" | "law"; statement: string };
+  noVerifiedLegalBasis?: boolean;
   title: string;
   problem: string[];
   consequences: string[];
-  legalBasis: { text: string; legalKnowledgeChunkIds: string[] }[];
+  legalBasis: {
+    text: string;
+    legalKnowledgeChunkIds: string[];
+    verification?: "verified" | "partially_verified" | "not_in_knowledge_base" | "unreferenced";
+    role?: "basis" | "fallback" | "reference";
+  }[];
   recommendations: string[];
   proposedRevision?: { originalText?: string; revisedText: string; reason?: string; isEdited: boolean };
   status?: "open" | "acknowledged" | "dismissed" | "resolved";
-  detectedBy?: "rule" | "llm" | "hybrid" | "checklist" | "expert";
+  detectedBy?: "playbook" | "document_check" | "expert_referral" | "expert";
   verification?: FindingVerification | null;
-  riskCode?: RiskCode;
-  ruleCode?: string;
   citations: {
     legalKnowledgeChunkId: string;
     citationLabel: string;
@@ -215,7 +252,7 @@ export type ProposedRevisionUpdate = { revisedText?: string; reason?: string };
 export type ContractReviewResult = {
   contract: DashboardContract;
   findings: RiskFinding[];
-  clauses: Pick<ContractClause, "id" | "_id" | "index" | "startOffset" | "endOffset">[];
+  clauses: Pick<ContractClause, "id" | "_id" | "index" | "label" | "startOffset" | "endOffset">[];
 };
 
 export type ReviewErrorCode =
@@ -238,9 +275,11 @@ export type ContractReviewRun = {
     partial?: boolean;
     summaryPoints?: string[];
     clauseCount?: number;
-    findingCounts?: { high: number; medium: number; low: number };
-    legalRetrievalStatus?: LegalRetrievalStatus;
-    ruleCheckStatus?: RuleCheckStatus;
+    issueCounts?: IssueCounts;
+    checkCoverage?: CheckCoverage;
+    summarySources?: SummarySource[];
+    overallAssessment?: string[];
+    findings?: Pick<RiskFinding, "findingType" | "checkCode" | "checkGroup" | "outcome" | "label" | "title" | "detectedBy">[];
   };
   aiModel?: string;
   currentStage?: "waiting_for_extraction" | "segmentation" | "summary" | "risk_detection";
@@ -269,8 +308,8 @@ export type ContractKeyTerms = {
     key: string;
     label: string;
     unit?: string | null;
-    value: number | boolean | null;
-    inferredFromSilence: boolean;
+    value: number | boolean | string | null;
+    deferred: boolean;
     clause: { index: number; title: string | null } | null;
     quote: string | null;
   }[];

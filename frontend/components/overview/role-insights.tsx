@@ -3,7 +3,9 @@
 import { useId, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ArrowUpRight, RefreshCw } from "lucide-react";
+import { ArrowUpRight, RefreshCw, CalendarDays } from "lucide-react";
+import { ReportPageHeader } from "@/components/reports/report-page-header";
+import styles from "@/components/reports/reports.module.css";
 import { ReportExportActions } from "@/components/reports/report-export-actions";
 import { Button } from "@/components/ui/button";
 import { dashboardInsightConfig } from "@/config/dashboard-insights";
@@ -73,38 +75,71 @@ export function RoleInsights({
   }
 
   return (
-    <section className="grid min-w-0 gap-5" aria-label={title}>
-      <header className="flex flex-wrap items-end justify-between gap-5">
-        <div className="max-w-2xl">
-          {heading && (
-            <p className="mb-2 text-xs font-semibold tracking-wide text-primary">
-              LawScan · {reportPage ? "Báo cáo" : "Tổng quan"}
+    <section
+      className={reportPage ? styles.page : "grid min-w-0 gap-5"}
+      aria-label={title}
+    >
+      {reportPage ? (
+        <ReportPageHeader
+          title={title}
+          description={reportConfig.description}
+          scope={
+            role === "manager"
+              ? "Kho pháp lý & tổ chức"
+              : role === "expert"
+                ? "Không gian chuyên gia"
+                : "Không gian tổ chức"
+          }
+        />
+      ) : (
+        <header className="flex flex-wrap items-end justify-between gap-5">
+          <div className="max-w-2xl">
+            {heading && (
+              <p className="mb-2 text-xs font-semibold tracking-wide text-primary">
+                LawScan · {reportPage ? "Báo cáo" : "Tổng quan"}
+              </p>
+            )}
+            <Title
+              className={
+                heading
+                  ? "text-balance text-3xl font-semibold leading-tight tracking-tight sm:text-4xl"
+                  : "text-xl font-semibold tracking-tight"
+              }
+            >
+              {title}
+            </Title>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {reportPage ? reportConfig.description : config.description}
             </p>
+          </div>
+          {!reportPage && permissions.reports(role) && (
+            <Button asChild variant="outline">
+              <Link href={reportConfig.href}>
+                Báo cáo chi tiết <ArrowUpRight className="size-4" />
+              </Link>
+            </Button>
           )}
-          <Title
-            className={
-              heading
-                ? "text-balance text-3xl font-semibold leading-tight tracking-tight sm:text-4xl"
-                : "text-xl font-semibold tracking-tight"
-            }
-          >
-            {title}
-          </Title>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {reportPage ? reportConfig.description : config.description}
-          </p>
-        </div>
-        {!reportPage && permissions.reports(role) && (
-          <Button asChild variant="outline">
-            <Link href={reportConfig.href}>
-              Báo cáo chi tiết <ArrowUpRight className="size-4" />
-            </Link>
-          </Button>
-        )}
-      </header>
-      <div className="flex flex-wrap items-end justify-between gap-3 rounded-xl bg-muted/40 p-3 sm:px-4">
+        </header>
+      )}
+      <div
+        className={
+          reportPage
+            ? `${styles.panel} ${styles.filters} flex flex-wrap items-center justify-between gap-4`
+            : "flex flex-wrap items-end justify-between gap-3 rounded-xl bg-muted/40 p-3 sm:px-4"
+        }
+      >
         <div className="flex flex-wrap items-center gap-3">
-          <label htmlFor={inputId} className="text-xs font-medium">
+          <label
+            htmlFor={inputId}
+            className="flex items-center gap-2 text-xs font-medium"
+          >
+            {reportPage && (
+              <CalendarDays
+                size={16}
+                aria-hidden="true"
+                className="text-blue-600"
+              />
+            )}
             Kỳ thống kê
           </label>
           <select
@@ -169,19 +204,38 @@ export function RoleInsights({
         </div>
       ) : (
         <>
-          <p role="status" className="text-xs leading-5 text-muted-foreground">
-            {query.isFetching ? "Đang cập nhật… " : ""}Cập nhật{" "}
-            {new Date(data.computedAt).toLocaleString("vi-VN", {
-              timeZone: data.timezone,
-            })}{" "}
-            · Giờ Việt Nam.
-            {data.period.partial ? " Kỳ chưa kết thúc." : ""} Chỉ số “Hiện tại”
-            không thay đổi theo bộ lọc kỳ.
-          </p>
-          <InsightMetrics data={data} />
+          <div
+            role="status"
+            className={
+              reportPage
+                ? styles.period
+                : "text-xs leading-5 text-muted-foreground"
+            }
+          >
+            <p>
+              {query.isFetching ? "Đang cập nhật… " : ""}Cập nhật{" "}
+              {new Date(data.computedAt).toLocaleString("vi-VN", {
+                timeZone: data.timezone,
+              })}{" "}
+              · Giờ Việt Nam.
+              {data.period.partial ? " Kỳ chưa kết thúc." : ""} Chỉ số “Hiện
+              tại” không thay đổi theo bộ lọc kỳ.
+            </p>
+          </div>
+          {reportPage && (
+            <div className={styles.sectionTitle}>
+              <h2>Tổng quan trong kỳ</h2>
+              <p>Chỉ số hoạt động & tình trạng công việc</p>
+            </div>
+          )}
+          <InsightMetrics data={data} reportPage={reportPage} />
           {(role === "staff" || role === "user") && (
             <section
-              className="rounded-xl bg-muted/40 px-5 py-4"
+              className={
+                reportPage
+                  ? `${styles.panel} p-5`
+                  : "rounded-xl bg-muted/40 px-5 py-4"
+              }
               aria-label="Lượt AI đã dùng trong kỳ"
             >
               <h3 className="text-sm font-semibold">
@@ -210,7 +264,11 @@ export function RoleInsights({
           {config.actions.length > 0 && (
             <nav
               aria-label="Công việc cần theo dõi"
-              className="flex flex-wrap gap-x-6 gap-y-3 rounded-xl border border-border px-5 py-4 text-sm"
+              className={
+                reportPage
+                  ? `${styles.panel} flex flex-wrap gap-x-6 gap-y-3 px-5 py-4 text-sm`
+                  : "flex flex-wrap gap-x-6 gap-y-3 rounded-xl border border-border px-5 py-4 text-sm"
+              }
             >
               {config.actions.map((action) => (
                 <Link
@@ -227,10 +285,20 @@ export function RoleInsights({
               ))}
             </nav>
           )}
+          {reportPage && (
+            <div className={styles.sectionTitle}>
+              <h2>Phân tích hoạt động</h2>
+              <p>Xu hướng & phân bố kết quả</p>
+            </div>
+          )}
           {sparse ? (
             <section
               aria-label="Tóm tắt hoạt động"
-              className="rounded-xl border border-border px-5 py-4 text-sm"
+              className={
+                reportPage
+                  ? `${styles.panel} px-5 py-8 text-sm`
+                  : "rounded-xl border border-border px-5 py-4 text-sm"
+              }
             >
               <p className="text-muted-foreground">
                 Chưa đủ hoạt động trong kỳ để vẽ biểu đồ xu hướng.
@@ -251,13 +319,25 @@ export function RoleInsights({
               )}
             </section>
           ) : (
-            <InsightCharts data={data} />
+            <InsightCharts data={data} reportPage={reportPage} />
           )}
-          <details className="rounded-xl border border-border p-4 text-sm">
+          <details
+            className={
+              reportPage
+                ? `${styles.panel} ${styles.table}`
+                : "rounded-xl border border-border p-4 text-sm"
+            }
+          >
             <summary className="cursor-pointer font-medium focus-visible:outline-2 focus-visible:outline-ring">
               Xem bảng số liệu
             </summary>
-            <div className="mt-4 overflow-x-auto">
+            <div
+              className={
+                reportPage
+                  ? "max-h-96 overflow-auto border-t border-slate-100"
+                  : "mt-4 overflow-x-auto"
+              }
+            >
               <table className="w-full text-left text-xs tabular-nums">
                 <caption className="sr-only">Dữ liệu xu hướng trong kỳ</caption>
                 <thead>
@@ -298,7 +378,7 @@ export function RoleInsights({
                 </tbody>
               </table>
             </div>
-            <dl className="mt-4 grid gap-2 border-t border-border pt-4">
+            <dl className="mt-4 grid gap-2 border-t border-border p-4">
               {data.distribution.map((row) => (
                 <div key={row.key} className="flex justify-between gap-4">
                   <dt>{insightLabel(config.labels, row)}</dt>

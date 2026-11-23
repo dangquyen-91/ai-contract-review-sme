@@ -1,18 +1,25 @@
 import { visibleReportColumns } from "@/lib/reports/report-columns";
 import type { OperationalReport, ReportSeries } from "@/types/reports";
 import { formatReportDuration } from "@/lib/reports/report-format";
+import styles from "./reports.module.css";
 
 export function ReportDetailTable({ report }: { report: OperationalReport }) {
   const columns = visibleReportColumns(report);
   const compare = !!report.comparison?.period;
   const buckets = report.trend?.buckets ?? [];
   return (
-    <details className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 xl:col-span-2">
-      <summary className="cursor-pointer font-semibold text-blue-700">
+    <details className={`${styles.panel} ${styles.table} xl:col-span-2`}>
+      <summary>
         Xem bảng số liệu biểu đồ
+        <span className="ml-2 text-[10px] font-normal text-slate-400">
+          {buckets.length} nhóm dữ liệu
+        </span>
       </summary>
-      <div className="mt-4 max-h-96 overflow-auto">
+      <div className="max-h-96 overflow-auto border-t border-slate-100">
         <table className="w-full min-w-[850px] text-left text-xs">
+          <caption className="sr-only">
+            Số liệu biểu đồ theo nhóm và kỳ báo cáo
+          </caption>
           <thead>
             <tr>
               {[
@@ -22,13 +29,23 @@ export function ReportDetailTable({ report }: { report: OperationalReport }) {
                 ...columns.map((column) => column.label),
                 "Xử lý TB",
               ].map((label) => (
-                <th key={label} className="p-2">
+                <th key={label} scope="col" className="p-2">
                   {label}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
+            {!buckets.length && (
+              <tr>
+                <td
+                  colSpan={columns.length + 4}
+                  className="text-center text-slate-500"
+                >
+                  Chưa có dữ liệu trong kỳ đã chọn.
+                </td>
+              </tr>
+            )}
             {buckets.flatMap((bucket) =>
               (compare ? ["current", "previous"] : ["current"]).map((side) => {
                 const item: ReportSeries | null =

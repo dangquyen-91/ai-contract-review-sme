@@ -23,6 +23,8 @@ export function useVerificationResultSync(contractId: string, result?: ExpertVer
       client.invalidateQueries({ queryKey: contractKeys.result(contractId) }, { throwOnError: true }),
       client.invalidateQueries({ queryKey: contractKeys.findings(contractId) }),
       client.invalidateQueries({ queryKey: contractKeys.detail(contractId) }),
+      client.invalidateQueries({ queryKey: contractKeys.versions(contractId) }),
+      client.invalidateQueries({ queryKey: ["reports"] }),
       client.invalidateQueries({ queryKey: ["contracts", contractId, "share-summary"] }),
       client.invalidateQueries({ queryKey: contractKeys.chat(contractId) }),
       client.invalidateQueries({ queryKey: contractKeys.lists }),

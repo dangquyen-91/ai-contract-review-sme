@@ -4,7 +4,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { riskCodeLabels } from "@/config/risk-display";
+import { issueDisplay, issueGroups } from "@/config/issue-display";
 import { verificationFindingSchema, type VerificationFindingForm } from "@/schemas/verification-finding.schema";
 import { changedFindingFields } from "@/lib/review/verification-workspace";
 import type { ExpertCommand, ExpertWorkspace, VerifiedFinding } from "@/types/verification-workspace";
@@ -23,14 +23,14 @@ export function FindingEditorDialog({ finding, clauses, pending, error, onClose,
   const form = useForm<VerificationFindingForm>({
     resolver: zodResolver(verificationFindingSchema),
     defaultValues: {
-      title: finding?.title ?? "", severity: finding?.severity ?? "medium", riskCode: finding?.riskCode ?? "OTHER",
+      title: finding?.title ?? "", checkGroup: finding?.checkGroup && finding.checkGroup !== "referral" ? finding.checkGroup : "clarity",
       problem: finding?.problem.join("\n") ?? "", consequences: finding?.consequences.join("\n") ?? "", recommendations: finding?.recommendations.join("\n") ?? "",
       reason: "", clauseIndex: finding?.clause ? String(finding.clause.index) : "",
     },
   });
   const busy = pending || form.formState.isSubmitting;
   async function save(values: VerificationFindingForm) {
-    const input = { title: values.title, severity: values.severity, riskCode: values.riskCode, problem: points(values.problem), consequences: points(values.consequences), recommendations: points(values.recommendations) };
+    const input = { title: values.title, checkGroup: values.checkGroup, problem: points(values.problem), consequences: points(values.consequences), recommendations: points(values.recommendations) };
     const reason = values.reason ? { reason: values.reason } : {};
     let command: ExpertCommand;
     if (finding) {
@@ -46,16 +46,13 @@ export function FindingEditorDialog({ finding, clauses, pending, error, onClose,
     <Dialog open onOpenChange={(open) => { if (!open && !busy) onClose(); }}>
       <DialogContent busy={busy} className="flex flex-col overflow-hidden [color-scheme:light] sm:max-w-2xl">
         <DialogHeader className="shrink-0">
-          <DialogTitle>{finding ? "Điều chỉnh rủi ro" : "Bổ sung rủi ro"}</DialogTitle>
+          <DialogTitle>{finding ? "Điều chỉnh vấn đề" : "Bổ sung vấn đề"}</DialogTitle>
           <DialogDescription className="leading-6">Chỉ lưu khi bạn xác nhận. Mỗi ý trong các ô nội dung đặt trên một dòng.</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(save)} className="flex min-h-0 flex-col gap-4">
           <fieldset disabled={busy} className="min-h-0 space-y-4 overflow-y-auto border-0 p-0 pr-1 text-ui">
             <label className="grid gap-2 font-medium">Tiêu đề<input {...form.register("title")} maxLength={300} className={field} aria-invalid={Boolean(form.formState.errors.title)} /></label>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-2 font-medium">Mức độ<select {...form.register("severity")} className={field}><option value="high">Cao</option><option value="medium">Trung bình</option><option value="low">Thấp</option></select></label>
-              <label className="grid gap-2 font-medium">Loại rủi ro<select {...form.register("riskCode")} className={field}>{Object.entries(riskCodeLabels).map(([code, name]) => <option key={code} value={code}>{name}</option>)}</select></label>
-            </div>
+            <label className="grid gap-2 font-medium">Nhóm vấn đề<select {...form.register("checkGroup")} className={field}>{issueGroups.map((group) => <option key={group} value={group}>{issueDisplay[group].label}</option>)}</select></label>
             {!finding && <label className="grid gap-2 font-medium">Điều khoản liên quan<select {...form.register("clauseIndex")} className={field}><option value="">Toàn hợp đồng / thiếu điều khoản</option>{clauses.map((clause) => <option key={clause._id} value={clause.index}>{clause.title || `Điều khoản ${clause.index}`}</option>)}</select></label>}
             {([{ key: "problem", label: "Vấn đề" }, { key: "consequences", label: "Hậu quả (không bắt buộc)" }, { key: "recommendations", label: "Khuyến nghị (không bắt buộc)" }, { key: "reason", label: "Lý do điều chỉnh / bổ sung (không bắt buộc)" }] as const).map(({ key, label }) => (
               <label key={key} className="grid gap-2 font-medium">{label}<textarea {...form.register(key)} rows={3} maxLength={key === "reason" ? 2000 : 40020} className={`${field} resize-y font-normal`} aria-invalid={Boolean(form.formState.errors[key])} /></label>

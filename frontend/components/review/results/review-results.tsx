@@ -7,17 +7,20 @@ import { Button } from "@/components/ui/button";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useContractText } from "@/hooks/contracts/use-contracts";
 import workspaceStyles from "@/styles/review/review-workspace.module.css";
+import styles from "@/styles/review/review-design.module.css";
 import { Icon } from "@/components/ui/icon";
 import { OriginalContractPreview } from "@/components/review/document/original-contract-preview";
 import { RedactedDocument } from "@/components/review/document/redacted-document";
 import { DocumentDisclosureDialog } from "@/components/review/document/document-disclosure-dialog";
-import type { ContractReviewResult } from "@/types/contracts";
+import type { ContractQuote, ContractReviewResult } from "@/types/contracts";
 
-export function ReviewWorkbench({ result, showSummary = true }: { result: ContractReviewResult; showSummary?: boolean }) {
+export function ReviewWorkbench({ result, showSummary = true, initialSource }: { result: ContractReviewResult; showSummary?: boolean; initialSource?: ContractQuote }) {
   const [activeClause, setActiveClause] = useState<number | null>(null);
-  const [originalTarget, setOriginalTarget] = useState<{ index: number; requestId: number } | null>(null);
+  const [activeSource, setActiveSource] = useState<ContractQuote | undefined>(undefined);
+  const [navigationRequest, setNavigationRequest] = useState(0);
+  const [originalTarget, setOriginalTarget] = useState<{ index: number; requestId: number; quote?: string } | null>(null);
   const [viewMode, setViewMode] = useState<"original" | "text" | "redacted">("redacted");
-  const [disclosure, setDisclosure] = useState<{ mode: "text" | "original"; clauseIndex?: number } | null>(null);
+  const [disclosure, setDisclosure] = useState<{ mode: "text" | "original"; clauseIndex?: number; source?: ContractQuote } | null>(initialSource ? { mode: result.contract.currentVersion?.mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ? "original" : "text", clauseIndex: initialSource.clauseIndex, source: initialSource } : null);
   const [docxTextFallback, setDocxTextFallback] = useState(false);
   const sectionId = useId();
   const contractBodyRef = useRef<HTMLDivElement>(null);
@@ -39,7 +42,9 @@ export function ReviewWorkbench({ result, showSummary = true }: { result: Contra
   const text = fullQuery.isError ? "" : fullQuery.data?.text ?? "";
   const originalClause = originalTarget ? clauses.find((clause) => clause.index === originalTarget.index) : undefined;
   const previewTarget = originalClause && originalTarget && text ? {
-    text: text.slice(originalClause.startOffset, originalClause.endOffset), requestId: originalTarget.requestId,
+    text: originalTarget.quote ?? text.slice(originalClause.startOffset, originalClause.endOffset),
+    context: text.slice(originalClause.startOffset, originalClause.endOffset),
+    requestId: originalTarget.requestId,
   } : null;
   const mimeType = result.contract.currentVersion?.mimeType;
   const isDocx = mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -51,15 +56,16 @@ export function ReviewWorkbench({ result, showSummary = true }: { result: Contra
   ].includes(mimeType));
   const showOriginal = canShowOriginal && viewMode === "original";
 
-  function applyDocumentMode(mode: typeof viewMode, clauseIndex?: number) {
+  function applyDocumentMode(mode: typeof viewMode, clauseIndex?: number, source?: ContractQuote) {
     if (mode === "redacted") setDocxTextFallback(false);
     const body = contractBodyRef.current;
     if (body) savedScroll.current = body.scrollTop / Math.max(1, body.scrollHeight - body.clientHeight);
     restoreScroll.current = savedScroll.current;
     setActiveClause(clauseIndex ?? null);
-    setOriginalTarget((current) => mode === "original" && clauseIndex !== undefined ? { index: clauseIndex, requestId: (current?.requestId ?? 0) + 1 } : null);
+    setActiveSource(source);
+    setOriginalTarget((current) => mode === "original" && clauseIndex !== undefined ? { index: clauseIndex, requestId: (current?.requestId ?? 0) + 1, quote: source?.quote } : null);
     setViewMode(mode);
-    if (mode === "text" && clauseIndex !== undefined && !fullQuery.isPending) scrollToClause(clauseIndex);
+    if (clauseIndex !== undefined) setNavigationRequest((current) => current + 1);
   }
 
   function selectDocumentMode(mode: typeof viewMode) {
@@ -78,7 +84,8 @@ export function ReviewWorkbench({ result, showSummary = true }: { result: Contra
   }, [viewMode, showOriginal, redactedQuery.isPending, fullQuery.isPending]);
 
   function scrollToClause(index: number) {
-    const target = contractBodyRef.current?.querySelector<HTMLElement>(`[data-clause-index="${index}"]`);
+    const clause = contractBodyRef.current?.querySelector<HTMLElement>(`[data-clause-index="${index}"]`);
+    const target = clause?.querySelector<HTMLElement>("[data-source-quote]") ?? clause;
     target?.scrollIntoView({ behavior: "smooth", block: "center" });
     target?.focus({ preventScroll: true });
   }
@@ -86,7 +93,7 @@ export function ReviewWorkbench({ result, showSummary = true }: { result: Contra
   useEffect(() => {
     if (viewMode !== "text" || activeClause === null) return;
     scrollToClause(activeClause);
-  }, [activeClause, viewMode, text]);
+  }, [activeClause, activeSource, viewMode, text, navigationRequest]);
 
   function jumpToClause(index: number) {
     const mode = isDocx && canShowOriginal ? "original" : "text";
@@ -94,17 +101,23 @@ export function ReviewWorkbench({ result, showSummary = true }: { result: Contra
     else applyDocumentMode(mode, index);
   }
 
+  function jumpToSource(source: ContractQuote) {
+    const mode = isDocx && canShowOriginal ? "original" : "text";
+    if (viewMode !== mode) setDisclosure({ mode, clauseIndex: source.clauseIndex, source });
+    else applyDocumentMode(mode, source.clauseIndex, source);
+  }
+
   return (
     <>
       
-      <div className={`${workspaceStyles.resultColumns} grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-stretch [@media_(max-width:_1080px)]:grid-cols-[1fr] ${workspaceStyles.splitPane}`}>
-        <ReviewAnalysisPane result={result} sectionId={sectionId} isDocx={isDocx} showSummary={showSummary} onJumpToClause={jumpToClause} />
+      <div className={`${styles.scope} ${workspaceStyles.resultColumns} grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] items-stretch [@media_(max-width:_1080px)]:grid-cols-[1fr] ${workspaceStyles.splitPane}`}>
+        <ReviewAnalysisPane result={result} sectionId={sectionId} isDocx={isDocx} showSummary={showSummary} onJumpToClause={jumpToClause} onJumpToSource={jumpToSource} />
         <section className={`${workspaceStyles.documentPane} min-w-0 min-h-0 grid grid-rows-[auto_auto_minmax(0,1fr)] [@media_(max-width:_1080px)]:block`} id={`${sectionId}-document`} aria-label="Nội dung hợp đồng">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e4e8ef] bg-[#fbfcfe] px-4 py-2.5">
-            <div className="min-w-0"><h3 className="m-0 text-ui-section font-semibold">Nội dung hợp đồng</h3><p className="mb-0 mt-1 max-w-[360px] truncate text-ui-meta text-[#778398]">{result.contract.currentVersion?.fileName ?? result.contract.title}</p></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#e4e6df] bg-[#fbfcfa] px-5 py-4">
+            <div className="min-w-0"><h3 className={styles.sectionHeading}>Nội dung hợp đồng</h3><p className="mb-0 mt-1 max-w-[360px] truncate text-[11px] text-[#93988e]">{result.contract.currentVersion?.fileName ?? result.contract.title}</p></div>
 
           </div>
-          <div className="border-b border-[#e4e8ef] bg-white px-4 py-2.5">
+          <div className="border-b border-[#e4e6df] bg-white px-5 py-3">
             <div className="flex flex-wrap items-center gap-2">
               <div className="inline-flex max-w-full flex-wrap gap-1" role="group" aria-label="Chế độ xem văn bản">
                 {(["redacted", "text"] as const).map((mode) => <Button variant={viewMode === mode ? "default" : "outline"} size="sm" type="button" key={mode} aria-pressed={viewMode === mode} onClick={() => selectDocumentMode(mode)} >{mode === "redacted" ? (isDocx ? "Bản DOCX đã che" : "Văn bản đã che") : "Văn bản đầy đủ"}</Button>)}
@@ -121,12 +134,12 @@ export function ReviewWorkbench({ result, showSummary = true }: { result: Contra
           <div className={`${workspaceStyles.documentBody} min-h-0 overflow-hidden [@media_(max-width:_1080px)]:h-[min(58vh,650px)] [@media_(max-width:_1080px)]:min-h-[390px]`}>
             {viewMode === "redacted" && isDocx && contractId && !docxTextFallback ? <OriginalContractPreview key="redacted-docx" redacted version={result.contract.updatedAt} contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} onTextFallback={() => setDocxTextFallback(true)} /> : showOriginal && contractId && mimeType ? originalTarget ? <FullDocument query={fullQuery}><OriginalContractPreview key="original-docx" version={result.contract.updatedAt} contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} target={previewTarget} /></FullDocument> : <OriginalContractPreview key="original-file" version={result.contract.updatedAt} contractId={contractId} mimeType={mimeType} fileName={result.contract.currentVersion?.fileName} /> :
               <div ref={contractBodyRef} className="h-full overflow-y-auto scroll-smooth p-[26px] [@media_(max-width:_580px)]:p-[18px] motion-reduce:scroll-auto">
-                {viewMode === "redacted" ? <RedactedDocument data={redactedQuery.data} isPending={redactedQuery.isPending && Boolean(contractId)} isError={redactedQuery.isError} isFetching={redactedQuery.isFetching} onRetry={() => { void redactedQuery.refetch(); }} /> : <FullDocument query={fullQuery}><ContractDocumentText clauses={clauses} text={text} activeClause={activeClause} /></FullDocument>}
+                {viewMode === "redacted" ? <RedactedDocument data={redactedQuery.data} isPending={redactedQuery.isPending && Boolean(contractId)} isError={redactedQuery.isError} isFetching={redactedQuery.isFetching} onRetry={() => { void redactedQuery.refetch(); }} /> : <FullDocument query={fullQuery}><ContractDocumentText clauses={clauses} text={text} activeClause={activeClause} activeSource={activeSource} /></FullDocument>}
               </div>}
           </div>
         </section>
       </div>
-      {disclosure && <DocumentDisclosureDialog mode={disclosure.mode} onCancel={() => setDisclosure(null)} onConfirm={() => { applyDocumentMode(disclosure.mode, disclosure.clauseIndex); setDisclosure(null); }} />}
+      {disclosure && <DocumentDisclosureDialog mode={disclosure.mode} onCancel={() => setDisclosure(null)} onConfirm={() => { applyDocumentMode(disclosure.mode, disclosure.clauseIndex, disclosure.source); setDisclosure(null); }} />}
     </>
   );
 }

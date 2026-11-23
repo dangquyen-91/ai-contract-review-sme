@@ -1,4 +1,3 @@
-import { Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { ClauseModel } from '../../models/clause.model';
 import { ContractModel } from '../../models/contract.model';
@@ -7,11 +6,6 @@ import { summarizeContract } from './contractSummarization.service';
 import { claimStage, getCurrentVersion, getCurrentVersionWithText } from '../contract/contractVersion.service';
 import { buildReviewContext } from '../contract/contractProfile.service';
 import { createRedactor } from '../ai/redaction.service';
-
-interface PopulatedClauseType {
-  _id: Types.ObjectId;
-  code: string;
-}
 
 export async function generateContractSummary(
   orgId: string,
@@ -35,22 +29,21 @@ export async function generateContractSummary(
   const claimed = await claimStage(version._id, 'summary', {
     requireSegmented: true,
     set: analysisFocus ? { analysisFocus } : {},
+    reviewId,
   });
   if (!claimed) {
     throw AppError.conflict('Summary is already running or clauses are being re-segmented');
   }
 
   try {
-    const clauses = await ClauseModel.find({ contractVersionId: version._id, reviewId })
-      .sort({ index: 1 })
-      .populate<{ clauseTypeId: PopulatedClauseType }>('clauseTypeId');
+    const clauses = await ClauseModel.find({ contractVersionId: version._id, reviewId }).sort({ index: 1 });
     if (clauses.length === 0) {
       throw AppError.badRequest('Contract has no clauses to summarize');
     }
 
-    const summaryPoints = await summarizeContract(
+    const summary = await summarizeContract(
       reviewContext,
-      clauses.map((c) => ({ category: c.clauseTypeId.code, summary: c.summary })),
+      clauses.map((c) => ({ index: c.index, text: c.text, startOffset: c.startOffset })),
       claimed.analysisFocus ?? undefined,
       redactor,
       signal,
@@ -59,7 +52,10 @@ export async function generateContractSummary(
 
     await ContractVersionModel.updateOne(
       { _id: version._id },
-      { $set: { summaryPoints, summaryStatus: 'completed' }, $unset: { summaryError: '' } },
+      {
+        $set: { summaryPoints: summary.points, summarySources: summary.sources, summaryStatus: 'completed' },
+        $unset: { summaryError: '' },
+      },
     );
   } catch (err) {
     await ContractVersionModel.updateOne(

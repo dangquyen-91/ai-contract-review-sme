@@ -80,10 +80,10 @@ async function buildContractContext(
   };
   const findingLines = findings.flatMap((f) => {
     if (!f.clauseId)
-      return [`- (${f.severity}, missing clause) ${f.title}: ${f.problem.join(' ')}${legalBasisOf(f)}`];
+      return [`- (${f.label}, whole contract) ${f.title}: ${f.problem.join(' ')}${legalBasisOf(f)}`];
     const clauseIndex = clauseIndexById.get(f.clauseId.toString());
     if (clauseIndex === undefined) return [];
-    return [`- (${f.severity}, clause ${clauseIndex + 1}) ${f.title}: ${f.problem.join(' ')}${legalBasisOf(f)}`];
+    return [`- (${f.label}, clause ${clauseIndex + 1}) ${f.title}: ${f.problem.join(' ')}${legalBasisOf(f)}`];
   });
   const findingBlock =
     findingLines.length > 0 ? findingLines.join('\n') : '(no risk findings recorded)';

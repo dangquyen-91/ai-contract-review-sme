@@ -93,19 +93,17 @@ export const dashboardInsightConfig: Record<DashboardRole, InsightConfig> = {
     metrics: [
       { key: "uploads", label: "Hợp đồng tải lên" },
       { key: "completed", label: "Rà soát thành công" },
-      { key: "highRisk", label: "Hợp đồng rủi ro cao" },
+      { key: "withViolations", label: "Hợp đồng có vi phạm" },
       { key: "successRate", label: "Tỷ lệ thành công", format: "percent" },
     ],
     series: reviewSeries,
-    distributionTitle: "Phân bố rủi ro trong kỳ",
+    distributionTitle: "Kết quả rà soát trong kỳ",
     distributionNote:
-      "Mỗi hợp đồng lấy kết quả thành công mới nhất trong kỳ; thiếu kết quả được ghi riêng.",
+      "Mỗi hợp đồng lấy kết quả thành công mới nhất trong kỳ có dữ liệu phân loại vấn đề.",
     labels: {
-      high: "Rủi ro cao",
-      medium: "Trung bình",
-      low: "Rủi ro thấp",
-      none: "Không phát hiện rủi ro",
-      unknown: "Thiếu kết quả",
+      withViolations: "Có vi phạm",
+      withIssues: "Có vấn đề khác",
+      noIssues: "Không phát hiện vấn đề",
     },
     actions: [
       {

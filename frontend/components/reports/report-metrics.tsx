@@ -1,6 +1,16 @@
+import type { CSSProperties } from "react";
 import type { OperationalReport } from "@/types/reports";
 import { ReportChange } from "./report-change";
 import { operationalReportFeatures } from "@/config/report-profiles";
+import {
+  FileText,
+  CircleCheck,
+  ShieldAlert,
+  Timer,
+  Sparkles,
+  Wallet,
+} from "lucide-react";
+import styles from "./reports.module.css";
 import {
   formatReportDuration,
   formatReportPercent,
@@ -11,6 +21,8 @@ export function ReportMetrics({ report }: { report: OperationalReport }) {
   const metrics = [
     {
       id: "uploads",
+      icon: FileText,
+      color: "#4479ce",
       label: "Hợp đồng tải lên",
       value: report.uploadedContracts.toLocaleString("vi-VN"),
       detail: "Hợp đồng mới được tạo trong kỳ",
@@ -18,6 +30,8 @@ export function ReportMetrics({ report }: { report: OperationalReport }) {
     },
     {
       id: "success",
+      icon: CircleCheck,
+      color: "#268473",
       label: "Rà soát thành công",
       value: formatReportPercent(report.reviews.successRate),
       detail: `${report.reviews.completed} thành công / ${report.reviews.finished} lượt đã kết thúc`,
@@ -25,15 +39,19 @@ export function ReportMetrics({ report }: { report: OperationalReport }) {
         "Thành công ÷ (Thành công + Thất bại) × 100%. Không tính lượt đang chạy, đang chờ hoặc đã hủy.",
     },
     {
-      id: "risk",
-      label: "Tỷ lệ rủi ro cao",
-      value: formatReportPercent(report.risks.highRiskRate),
-      detail: `${report.risks.high} / ${report.risks.assessedContracts} hợp đồng có kết quả`,
+      id: "violations",
+      icon: ShieldAlert,
+      color: "#c16b53",
+      label: "Tỷ lệ hợp đồng có vi phạm",
+      value: formatReportPercent(report.issues.violationRate),
+      detail: `${report.issues.withViolations} / ${report.issues.checkedContracts} hợp đồng có kết quả`,
       formula:
-        "Hợp đồng rủi ro cao ÷ hợp đồng có kết quả hợp lệ × 100%. Mỗi hợp đồng lấy kết quả thành công mới nhất trong kỳ.",
+        "Hợp đồng có vi phạm ÷ hợp đồng có dữ liệu phân loại vấn đề × 100%. Mỗi hợp đồng lấy lượt rà soát thành công mới nhất có dữ liệu này trong kỳ.",
     },
     {
       id: "duration",
+      icon: Timer,
+      color: "#6783b3",
       label: "Xử lý trung bình",
       value: formatReportDuration(report.reviews.averageDurationMs),
       detail: `${report.reviews.timedReviews} lượt có mốc thời gian hợp lệ`,
@@ -42,6 +60,8 @@ export function ReportMetrics({ report }: { report: OperationalReport }) {
     },
     {
       id: "units",
+      icon: Sparkles,
+      color: "#8b70bc",
       label: "Lượt rà soát đã dùng",
       value: report.consumedUnits.analysis.toLocaleString("vi-VN"),
       detail: "1 lượt / 5 trang; làm tròn lên mỗi yêu cầu",
@@ -52,6 +72,8 @@ export function ReportMetrics({ report }: { report: OperationalReport }) {
       ? [
           {
             id: "payments",
+            icon: Wallet,
+            color: "#268473",
             label: "Thanh toán đã nhận",
             value: report.payments.amount.toLocaleString("vi-VN") + " đ",
             detail: `${report.payments.count} giao dịch · ${report.payments.unfulfilled} chờ kích hoạt`,
@@ -62,38 +84,38 @@ export function ReportMetrics({ report }: { report: OperationalReport }) {
       : []),
   ];
   return (
-    <section
-      aria-label="Chỉ số báo cáo"
-      className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
-    >
+    <section aria-label="Chỉ số báo cáo" className={styles.metrics}>
       {metrics
-        .filter((metric) => features.risks || metric.id !== "risk")
-        .map((metric) => (
-          <article
-            key={metric.id}
-            data-report-metric={metric.id}
-            className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
-          >
-            <h2 className="text-sm font-medium text-slate-600">
-              {metric.label}
-            </h2>
-            <p className="mt-3 break-words text-2xl font-bold tracking-tight text-slate-900">
-              {metric.value}
-            </p>
-            <p className="mt-2 text-xs leading-5 text-slate-500">
-              {metric.detail}
-            </p>
-            {report.comparison?.mode !== "none" && (
-              <ReportChange change={report.comparison?.changes[metric.id]} />
-            )}
-            <details className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-600">
-              <summary className="cursor-pointer font-medium text-blue-700">
-                Cách tính
-              </summary>
-              <p className="mt-2 leading-5">{metric.formula}</p>
-            </details>
-          </article>
-        ))}
+        .filter((metric) => features.issues || metric.id !== "violations")
+        .map((metric) => {
+          const Icon = metric.icon;
+          return (
+            <article
+              key={metric.id}
+              data-report-metric={metric.id}
+              className={styles.metric}
+              style={{ "--metric-color": metric.color } as CSSProperties}
+            >
+              <div className={styles.metricTop}>
+                <h3 className={styles.metricLabel}>{metric.label}</h3>
+                <span className={styles.metricIcon}>
+                  <Icon aria-hidden="true" size={16} />
+                </span>
+              </div>
+              <p className={styles.metricValue}>{metric.value}</p>
+              <p className={styles.metricDetail}>{metric.detail}</p>
+              {report.comparison?.mode !== "none" && (
+                <ReportChange change={report.comparison?.changes[metric.id]} />
+              )}
+              <details className={styles.metricFoot}>
+                <summary className="w-fit cursor-pointer hover:text-blue-600">
+                  Cách tính
+                </summary>
+                <p className="mt-2 leading-5">{metric.formula}</p>
+              </details>
+            </article>
+          );
+        })}
     </section>
   );
 }

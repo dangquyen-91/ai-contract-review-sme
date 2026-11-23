@@ -69,9 +69,9 @@ export function reportExcel(report: OperationalReport) {
         format: "percent",
       },
       {
-        key: "risk",
-        label: "Tỷ lệ rủi ro cao",
-        value: report.risks.highRiskRate,
+        key: "violations",
+        label: "Tỷ lệ hợp đồng có vi phạm",
+        value: report.issues.violationRate,
         format: "percent",
       },
       {
@@ -106,7 +106,7 @@ export function reportExcel(report: OperationalReport) {
           ]
         : []),
     ] satisfies Metric[]
-  ).filter((metric) => features.risks || metric.key !== "risk");
+  ).filter((metric) => features.issues || metric.key !== "violations");
   const summary = workbook.getWorksheet("Tổng quan")!;
   writeExcelTable(
     summary,
@@ -177,25 +177,23 @@ export function reportExcel(report: OperationalReport) {
     { state: "frozen", ySplit: 5, xSplit: 3, showGridLines: false },
   ];
   const details = workbook.getWorksheet("Chi tiết")!;
-  const riskLabels = {
-    high: "Rủi ro cao",
-    medium: "Trung bình",
-    low: "Rủi ro thấp",
-    none: "Không phát hiện rủi ro",
-    unknown: "Thiếu kết quả",
+  const issueLabels = {
+    withViolations: "Có vi phạm",
+    withIssues: "Có vấn đề khác",
+    noIssues: "Không phát hiện vấn đề",
   };
-  let next = features.risks
+  let next = features.issues
     ? writeExcelTable(
         details,
-        "LawScanRisks",
+        "LawScanIssues",
         5,
         [
-          { label: "Mức rủi ro", width: 48 },
+          { label: "Kết quả rà soát", width: 48 },
           { label: "Số hợp đồng", kind: "count" },
         ],
-        Object.entries(riskLabels).map(([key, label]) => [
+        Object.entries(issueLabels).map(([key, label]) => [
           label,
-          report.risks[key as keyof typeof riskLabels],
+          report.issues[key as keyof typeof issueLabels],
         ]),
       )
     : 5;

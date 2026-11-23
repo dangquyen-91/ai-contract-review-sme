@@ -1,12 +1,6 @@
 import { Schema, model, Types, InferSchemaType } from 'mongoose';
-import {
-  keyTermSchema,
-  legalCoverageSnapshotSchema,
-  LEGAL_RETRIEVAL_STATUSES,
-  RISK_LEVELS,
-  RULE_CHECK_STATUSES,
-} from './contractVersion.model';
-import { RISK_CODES, RISK_DETECTED_BY, RISK_FINDING_TYPES, RISK_SEVERITIES } from './riskFinding.model';
+import { assessmentSourceSchema, checkCoverageSchema, issueCountsSchema, keyTermSchema, summarySourceSchema } from './contractVersion.model';
+import { FINDING_GROUPS, FINDING_OUTCOMES, RISK_DETECTED_BY, RISK_FINDING_TYPES } from './riskFinding.model';
 
 export const REVIEW_STATUSES = ['queued', 'running', 'completed', 'failed', 'cancelled'] as const;
 
@@ -34,32 +28,28 @@ const stageStatus = { type: String, enum: REVIEW_STAGE_STATUSES, default: 'pendi
 const findingSnapshotSchema = new Schema(
   {
     findingType: { type: String, enum: RISK_FINDING_TYPES, required: true },
-    severity: { type: String, enum: RISK_SEVERITIES, required: true },
+    checkCode: { type: String },
+    checkGroup: { type: String, enum: FINDING_GROUPS, required: true },
+    outcome: { type: String, enum: FINDING_OUTCOMES, required: true },
+    label: { type: String, required: true },
     title: { type: String, required: true },
     clauseIndex: { type: Number },
     clauseTitle: { type: String },
     detectedBy: { type: String, enum: RISK_DETECTED_BY },
-    riskCode: { type: String, enum: RISK_CODES },
-    ruleCode: { type: String },
   },
   { _id: false },
 );
 
 const reviewResultSchema = new Schema(
   {
-    overallRiskLevel: { type: String, enum: RISK_LEVELS, required: true },
+    issueCounts: { type: issueCountsSchema, default: undefined },
+    checkCoverage: { type: checkCoverageSchema, default: undefined },
     overallAssessment: { type: [String], default: [] },
+    assessmentSources: { type: [assessmentSourceSchema], default: undefined },
     summaryPoints: { type: [String], default: [] },
+    summarySources: { type: [summarySourceSchema], default: undefined },
     clauseCount: { type: Number, required: true },
-    findingCounts: {
-      high: { type: Number, default: 0 },
-      medium: { type: Number, default: 0 },
-      low: { type: Number, default: 0 },
-    },
     findings: { type: [findingSnapshotSchema], default: [] },
-    legalRetrievalStatus: { type: String, enum: LEGAL_RETRIEVAL_STATUSES },
-    ruleCheckStatus: { type: String, enum: RULE_CHECK_STATUSES },
-    legalCoverage: { type: legalCoverageSnapshotSchema },
     keyTerms: { type: [keyTermSchema], default: undefined },
     partial: { type: Boolean, default: false },
   },

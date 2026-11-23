@@ -40,18 +40,18 @@ function formatDateTime(value: string) {
 function ReviewSummary({ contractId, version }: { contractId: string; version: ContractVersionSummary }) {
   const review = version.latestReview;
   if (!review) return <p className="m-0 text-ui-meta text-muted-foreground">Chưa rà soát phiên bản này.</p>;
-  const counts = review.findingCounts;
+  const counts = review.issueCounts;
   const verification = review.verificationStatus ? trackingPresentation[review.verificationStatus] : null;
   return (
     <div className="flex flex-wrap items-center gap-2 text-ui-meta">
-      {review.status === "completed" && review.overallRiskLevel ? (
-        <RiskBadge risk={review.overallRiskLevel} />
+      {review.status === "completed" ? (
+        <RiskBadge counts={review.issueCounts} />
       ) : (
         <span className="text-muted-foreground">{reviewStatusLabels[review.status]}</span>
       )}
-      {review.status === "completed" && counts && (
+      {review.status === "completed" && counts && (counts.unverified > 0 || counts.referrals > 0) && (
         <span className="text-muted-foreground">
-          Cao {counts.high} · Trung bình {counts.medium} · Thấp {counts.low}
+          {[counts.unverified > 0 ? `${counts.unverified} chưa xác minh` : "", counts.referrals > 0 ? `${counts.referrals} đề nghị chuyên gia` : ""].filter(Boolean).join(" · ")}
         </span>
       )}
       {verification && (

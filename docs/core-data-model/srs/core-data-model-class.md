@@ -194,41 +194,57 @@ classDiagram
     }
     class RiskService {
         <<service>>
-        +detectRisks(orgId: string, contractId: string, analysisFocus: string, onProgress: Function, signal: AbortSignal) RiskSummary
         +listRiskFindings(orgId: string, contractId: string) RiskFinding[]
         +updateProposedRevision(orgId: string, contractId: string, findingId: string, input: RevisionInput) RiskFinding
         +removeProposedRevision(orgId: string, contractId: string, findingId: string) RiskFinding
     }
-    class KeyTermExtractionService {
+    class PlaybookReviewService {
         <<service>>
-        +extractKeyTerms(context: ReviewContext, clauses: ClauseText[], redactor: Redactor, signal: AbortSignal) ExtractedKeyTerm[]
+        +runPlaybookReview(orgId: string, contractId: string, reviewId: string, analysisFocus: string, onProgress: Function, signal: AbortSignal) ReviewOutcome
+        -findReferrals() Referral[]
+        -draftSuggestions() Map
     }
-    class LegalRulesService {
+    class PlaybookEvidenceService {
         <<service>>
-        +evaluateLegalRules(context: ReviewContext, keyTerms: ExtractedKeyTerm[]) RuleFinding[]
-        +resolveRuleCitations(findings: RuleFinding[]) Map
+        +collectContractEvidence(context: ReviewContext, clauses: EvidenceClause[], redactor: Redactor, signal: AbortSignal) ContractEvidence
+    }
+    class PlaybookEvaluationService {
+        <<service>>
+        +evaluateContract(contractType: string, userParty: string, clauses: EvidenceClause[], evidence: ContractEvidence) PlaybookEvaluation
+    }
+    class DocumentCheckService {
+        <<service>>
+        +runDocumentChecks(clauses: EvidenceClause[], conflictFields: FieldEvidence[]) DocumentFinding[]
+    }
+    class PlaybookService {
+        <<service>>
+        +getClausePlaybook(clauseType: ClauseCategory) ClausePlaybook
+        +getContractPlaybook(contractType: string) ContractPlaybook
+        +verifyPlaybookArticleRefs(refs: ArticleRef[]) ArticleRefResult[]
+        +checkPlaybooksOnStartup() void
+    }
+    class ClausePlaybook {
+        <<data>>
+        +clauseTypes: ClauseCategory[]
+        +fields: PlaybookField[]
+        +checks: PlaybookCheck[]
+    }
+    class PlaybookCheck {
+        <<data>>
+        +code: String
+        +group: CheckGroup
+        +appliesTo: Applicability
+        +test: CheckTest
+        +basis: CheckBasis
+        +fallbackRules: FallbackRule[]
+        +review: CheckReview
     }
     class LegalRetrievalService {
         <<service>>
         +searchLegalChunks(queryTexts: string[], topKPerQuery: number, options: LegalSearchOptions) LegalChunkMatch[][]
-        +verifyLegalBasis(items: LegalBasisToVerify[]) VerifiedLegalBasis[]
         -vectorSearch(queryVector: number[], limit: number, legalSourceIds: ObjectId[]) ChunkHit[]
         -textSearch(query: string, limit: number, legalSourceIds: ObjectId[]) ChunkHit[]
         -fuseByReciprocalRank(lists: RankedHits[], topK: number) LegalChunkMatch[]
-    }
-    class RiskDetectionService {
-        <<service>>
-        +detectContractRisks(context: ReviewContext, clauses: ClauseInput[], legalExcerpts: LegalExcerptInput[], missingClauses: MissingClauseInput[], ruleFindings: RuleFindingInput[], analysisFocus: string, redactor: Redactor, signal: AbortSignal) RiskDetectionResult
-        -buildPrompt() String
-    }
-    class LegalRule {
-        +code: String
-        +version: Number
-        +profiles: String[]
-        +severity: Severity
-        +legalBasis: String
-        +citations: RuleCitation[]
-        +evaluate(terms: Terms, context: ReviewContext) RuleOutcome
     }
     class Redactor {
         <<interface>>
@@ -260,21 +276,25 @@ classDiagram
 
     ReviewWorker ..> UsageService : finishUsage
     ReviewWorker ..> Review
-    ReviewWorker ..> RiskService : risk_detection stage
+    ReviewWorker ..> PlaybookReviewService : risk_detection stage
     UsageService ..> UsageRun
-    RiskService ..> ContractProfile : buildReviewContext
-    RiskService ..> LegalRetrievalService
-    RiskService ..> KeyTermExtractionService
-    RiskService ..> RiskDetectionService
-    RiskService ..> LegalRulesService
-    RiskService ..> RiskFinding : saves
-    RiskService ..> Redactor : createRedactor
+    PlaybookReviewService ..> ContractProfile : buildReviewContext
+    PlaybookReviewService ..> PlaybookEvidenceService : 1. evidence
+    PlaybookReviewService ..> PlaybookEvaluationService : 2. evaluate
+    PlaybookReviewService ..> LegalRetrievalService : referral hints
+    PlaybookReviewService ..> RiskFinding : saves
+    PlaybookReviewService ..> Redactor : createRedactor
+    PlaybookEvidenceService ..> PlaybookService
+    PlaybookEvidenceService ..> LlmService : generateJson
+    PlaybookEvidenceService ..> Redactor : mask / unmask
+    PlaybookEvaluationService ..> PlaybookService : verify articles
+    PlaybookEvaluationService ..> DocumentCheckService
+    PlaybookService "1" o-- "0..*" ClausePlaybook
+    ClausePlaybook "1" *-- "1..*" PlaybookCheck
+    PlaybookService ..> LegalKnowledgeChunk : exact article lookup
     LegalRetrievalService ..> LegalKnowledgeChunk : vectorSearch + search
     LegalRetrievalService ..> LlmService : embedTexts
-    KeyTermExtractionService ..> LlmService : generateJson
-    RiskDetectionService ..> LlmService : generateJson
-    RiskDetectionService ..> Redactor : mask / unmask
-    LegalRulesService "1" o-- "0..*" LegalRule : evaluates
+    RiskService ..> RiskFinding : reads
 ```
 
 ### Classes — Pipeline
@@ -282,8 +302,13 @@ classDiagram
 | Class | Vai trò |
 | --- | --- |
 | `ReviewWorker` | Worker BullMQ chạy 3 stage của 1 `Review`; khi kết thúc gọi `finishUsage` để chốt hoặc hoàn credit |
-| `RiskService` | Điều phối stage risk detection: dựng `ReviewContext`, tạo `Redactor`, gọi các service con, lưu `RiskFinding` |
-| `LegalRule` | Luật kiểm tra cố định theo profile hợp đồng, chạy trên key term trích xuất |
+| `PlaybookReviewService` | Điều phối stage risk detection: thu thập bằng chứng, chấm phép kiểm, đề nghị chuyên gia xem xét, gợi ý sửa, lưu `RiskFinding` và thống kê phạm vi |
+| `PlaybookEvidenceService` | AI điền các trường của playbook kèm câu trích; backend kiểm câu trích tồn tại và hỗ trợ giá trị; xác định tình tiết của hợp đồng |
+| `PlaybookEvaluationService` | Chấm từng phép kiểm bằng quy tắc cố định; AI không kết luận |
+| `DocumentCheckService` | Kiểm tra tất định trên toàn văn: chỗ trống, dẫn chiếu sai, số ≠ chữ, từ mơ hồ, giá trị mâu thuẫn |
+| `PlaybookService` | Đăng ký playbook, kiểm tra cấu trúc khi khởi động, đối chiếu điều luật trong kho luật |
+| `PlaybookCheck` | Tiêu chí có mã, nhóm, điều kiện áp dụng, căn cứ và trạng thái duyệt; chỉ phép kiểm đã duyệt mới chạy |
+| `RiskService` | Đọc phát hiện kèm trích dẫn; sửa hoặc xoá đề xuất sửa |
 | `Redactor` | Che dữ liệu nhạy cảm trước khi gửi LLM và khôi phục sau khi nhận kết quả |
 | `LlmService` | Cổng duy nhất gọi Gemini: sinh JSON/text và tạo embedding |
 
@@ -291,10 +316,10 @@ classDiagram
 
 | From | To | Kiểu | Ý nghĩa |
 | --- | --- | --- | --- |
-| `RiskService` | `LegalRetrievalService`, `KeyTermExtractionService`, `LegalRulesService`, `RiskDetectionService` | dependency | Thứ tự: tìm đoạn luật + trích key term, chạy rule, gọi LLM, đối chiếu căn cứ pháp lý, lưu finding |
-| `LegalRulesService` | `LegalRule` | aggregation | Danh sách rule cố định được đánh giá trên key term |
-| `RiskDetectionService` | `Redactor` | dependency | Che dữ liệu trước khi dựng prompt, khôi phục trong kết quả trả về |
-| `LegalRetrievalService` | `LegalKnowledgeChunk` | dependency | Tìm kiếm kết hợp vector + full-text trên kho đoạn luật |
+| `PlaybookReviewService` | `PlaybookEvidenceService`, `PlaybookEvaluationService` | dependency | Thứ tự: thu thập bằng chứng, chấm, đề nghị chuyên gia, gợi ý sửa, lưu |
+| `ClausePlaybook` | `PlaybookCheck` | composition | Mỗi loại điều khoản có bộ phép kiểm riêng |
+| `PlaybookService` | `LegalKnowledgeChunk` | dependency | Tra đúng Điều luật mà phép kiểm dẫn chiếu và kiểm cụm từ neo |
+| `PlaybookReviewService` | `LegalRetrievalService` | dependency | RAG chỉ gắn điều luật tham khảo cho mục đề nghị chuyên gia xem xét |
 
 ## Sơ đồ 2b — Dữ liệu review và rủi ro
 
@@ -313,19 +338,18 @@ classDiagram
         +segment: String
         +governingLaws: String[]
         +legalSourceCodes: String[]
-        +mandatoryClauses: ClauseCategory[]
-        +industryRules: IndustryRule[]
         +redactionPolicy: SensitiveDataType[]
     }
     class ReviewContext {
         <<value object>>
         +profileCode: String
         +contractLabel: String
+        +governingLaws: String[]
         +legalSourceCodes: String[]
+        +partyCode: String
         +partyName: String
         +industryName: String
-        +industryChecks: String[]
-        +mandatoryClauses: ClauseCategory[]
+        +clauseCategories: ClauseCategory[]
         +redactionPolicy: SensitiveDataType[]
     }
     class ContractVersion {
@@ -334,7 +358,11 @@ classDiagram
         +segmentationStatus: String
         +analysisFocus: String
         +overallAssessment: String[]
-        +overallRiskLevel: RiskLevel
+        +issueCounts: IssueCounts
+        +checkCoverage: CheckCoverage
+        +summaryPoints: String[]
+        +summarySources: SummarySource[]
+        +keyTerms: KeyTerm[]
     }
     class Review {
         +contractId: ObjectId
@@ -351,21 +379,26 @@ classDiagram
         +result: ReviewResult
     }
     class ReviewResult {
-        +overallRiskLevel: RiskLevel
+        +issueCounts: IssueCounts
+        +checkCoverage: CheckCoverage
         +overallAssessment: String[]
         +summaryPoints: String[]
+        +summarySources: SummarySource[]
         +clauseCount: Number
-        +findingCounts: FindingCounts
+        +keyTerms: KeyTerm[]
         +findings: FindingSnapshot[]
         +partial: Boolean
     }
     class FindingSnapshot {
         +findingType: String
-        +severity: Severity
+        +checkCode: String
+        +checkGroup: String
+        +outcome: String
+        +label: String
         +title: String
         +clauseIndex: Number
+        +clauseTitle: String
         +detectedBy: String
-        +ruleCode: String
     }
     class Clause {
         +contractVersionId: ObjectId
@@ -375,6 +408,7 @@ classDiagram
         +text: String
         +clauseTypeId: ObjectId
         +summary: String
+        +summaryKind: String
     }
     class ClauseTypeTaxonomy {
         +code: ClauseCategory
@@ -387,7 +421,14 @@ classDiagram
         +clauseId: ObjectId
         +expectedClauseTypeId: ObjectId
         +findingType: String
-        +severity: Severity
+        +checkCode: String
+        +checkGroup: String
+        +outcome: String
+        +label: String
+        +playbookVersion: String
+        +evidence: FindingEvidence[]
+        +basis: FindingBasis
+        +noVerifiedLegalBasis: Boolean
         +title: String
         +problem: String[]
         +consequences: String[]
@@ -396,13 +437,12 @@ classDiagram
         +proposedRevision: ProposedRevision
         +status: String
         +detectedBy: String
-        +ruleCode: String
-        +ruleVersion: Number
     }
     class LegalBasis {
         +text: String
         +legalKnowledgeChunkIds: ObjectId[]
         +verification: String
+        +role: String
     }
     class ProposedRevision {
         +originalText: String
@@ -433,7 +473,6 @@ classDiagram
     }
 
     ContractProfile ..> ReviewContext : builds
-    ContractProfile ..> ClauseTypeTaxonomy : mandatoryClauses
     ContractVersion "1" -- "0..*" Review : reviewed by
     UsageRun "1" -- "1" Review : charges
     Review "1" *-- "0..1" ReviewResult
@@ -455,7 +494,7 @@ classDiagram
 | --- | --- |
 | `Review` | 1 lần rà soát gồm 3 stage segmentation / summary / riskDetection, gắn với 1 `UsageRun` |
 | `ReviewContext` | Ngữ cảnh rà soát dựng từ `ContractProfile` + ngành của tổ chức (luật áp dụng, điều khoản bắt buộc, chính sách che dữ liệu) |
-| `RiskFinding` | Rủi ro trên 1 điều khoản (`clause_risk`) hoặc điều khoản bắt buộc bị thiếu (`missing_clause`); nguồn `rule` / `llm` / `hybrid` |
+| `RiskFinding` | Một phép kiểm không đạt trên 1 điều khoản (`clause_risk`), nội dung bị thiếu (`missing_clause`) hoặc một điểm đề nghị chuyên gia xem xét (`referral`); có mã phép kiểm, nhóm, nhãn cố định, bằng chứng trích nguyên văn và căn cứ. Nguồn `playbook` / `document_check` / `expert_referral` / `expert`; không có mức độ nghiêm trọng |
 | `LegalBasis` | Căn cứ pháp lý, có trạng thái đối chiếu kho luật (`verified` … `unreferenced`) |
 | `RiskCitation` | Liên kết finding với đoạn luật kèm điểm liên quan |
 

@@ -31,13 +31,13 @@ export function StaffOverview({
 }) {
   const headingId = expertMode ? "expert-heading" : "staff-heading";
   const overview = expertMode ? [
-    { label: "Rủi ro cao", value: data.stats.highRisk, icon: "shield" as const, tone: "rose" },
+    { label: "Hợp đồng có vi phạm", value: data.stats.withViolations, icon: "shield" as const, tone: "rose" },
     { label: "Đã rà soát bằng AI", value: data.stats.reviewed, icon: "check" as const, tone: "blue" },
     { label: "AI đang xử lý", value: data.stats.processing, icon: "sparkle" as const, tone: "amber" },
   ] : [
     { label: "Hợp đồng", value: data.totalContracts, icon: "document" as const, tone: "blue" },
     { label: "Đang xử lý", value: data.stats.processing, icon: "sparkle" as const, tone: "amber" },
-    { label: "Rủi ro cao", value: data.stats.highRisk, icon: "shield" as const, tone: "rose" },
+    { label: "Hợp đồng có vi phạm", value: data.stats.withViolations, icon: "shield" as const, tone: "rose" },
   ];
 
   return (
@@ -48,8 +48,8 @@ export function StaffOverview({
           <h1 id={headingId}>{expertMode ? "Kiểm tra rủi ro hợp đồng" : "Không gian làm việc"}</h1>
           <p>{expertMode ? "Xem kết quả AI, đối chiếu căn cứ pháp lý và chỉnh sửa đề xuất cho hợp đồng của tổ chức." : "Tải hợp đồng, theo dõi kết quả rà soát và ưu tiên những rủi ro cần xem xét."}</p>
           <div className={"flex flex-wrap gap-[10px] mt-[16px] max-[650px]:[&_>_button]:w-[100%]"}>
-            <Button variant="default" size="default" type="button"  onClick={expertMode ? () => onViewContracts({ riskLevel: "high", status: "reviewed" }) : onUpload} disabled={expertMode && isReviewing}>
-              <Icon name={expertMode ? "shield" : "upload"} className={"w-[17px] h-[17px]"} /> {expertMode ? "Kiểm tra rủi ro cao" : "Tải hợp đồng mới"}
+            <Button variant="default" size="default" type="button"  onClick={expertMode ? () => onViewContracts({ issues: "violations", status: "reviewed" }) : onUpload} disabled={expertMode && isReviewing}>
+              <Icon name={expertMode ? "shield" : "upload"} className={"w-[17px] h-[17px]"} /> {expertMode ? "Xem hợp đồng có vi phạm" : "Tải hợp đồng mới"}
             </Button>
             <Button variant="outline" size="default" type="button"  onClick={() => onViewContracts()}>
               Xem hợp đồng <Icon name="arrow" className={"w-[17px] h-[17px]"} />
@@ -78,7 +78,7 @@ export function StaffOverview({
 
       <div className={"flex flex-wrap gap-[8px] [&_button:not([data-slot=button])]:min-h-[36px] [&_button:not([data-slot=button])]:[border:1px_solid_#dce5f2] [&_button:not([data-slot=button])]:rounded-[20px] [&_button:not([data-slot=button])]:p-[6px_13px] [&_button:not([data-slot=button])]:[background:#fff] [&_button:not([data-slot=button])]:text-[#536881] [&_button:not([data-slot=button])]:text-[12px] [&_button:not([data-slot=button])]:font-semibold [&_button:not([data-slot=button])]:cursor-pointer [&_button:not([data-slot=button]):hover]:[border-color:#a9c5f4] [&_button:not([data-slot=button]):hover]:[background:#eaf2ff] [&_button:not([data-slot=button]):hover]:text-[#245bd6] [&_button:not([data-slot=button])[aria-pressed=true]]:[border-color:#a9c5f4] [&_button:not([data-slot=button])[aria-pressed=true]]:[background:#eaf2ff] [&_button:not([data-slot=button])[aria-pressed=true]]:text-[#245bd6]"} aria-label="Lọc nhanh hợp đồng">
         {expertMode ? <>
-          <Button variant="outline" size="sm" type="button" onClick={() => onViewContracts({ riskLevel: "high" })}>Rủi ro cao · {data.stats.highRisk}</Button>
+          <Button variant="outline" size="sm" type="button" onClick={() => onViewContracts({ issues: "violations" })}>Có vi phạm · {data.stats.withViolations}</Button>
           <Button variant="outline" size="sm" type="button" onClick={() => onViewContracts({ status: "reviewed" })}>Đã có kết quả · {data.stats.reviewed}</Button>
         </> : <Button variant="outline" size="sm" type="button" onClick={() => onViewContracts({ status: "uploaded" })}>Chờ rà soát · {data.distribution?.statuses.uploaded ?? "—"}</Button>}
         <Button variant="outline" size="sm" type="button" onClick={() => onViewContracts({ status: "processing" })}>AI đang xử lý · {data.stats.processing}</Button>

@@ -15,6 +15,7 @@ import {
 import { getTaxonomyByCodes, getTaxonomyIdByCode } from './clauseTypeTaxonomy.service';
 import { buildReviewContext } from '../contract/contractProfile.service';
 import { createRedactor } from '../ai/redaction.service';
+import { groundClauseSummaries } from './summaryGrounding.service';
 
 export async function segmentClauses(
   orgId: string,
@@ -39,6 +40,7 @@ export async function segmentClauses(
   const versionId = versionWithText._id;
   const claimed = await claimStage(versionId, 'segmentation', {
     blockedBy: ['summary', 'riskDetection'],
+    reviewId,
   });
   if (!claimed) {
     throw AppError.conflict('Contract analysis is already running for this contract');
@@ -46,12 +48,15 @@ export async function segmentClauses(
   await setContractStatus(contractId, orgId, 'processing');
 
   try {
+    const redactor = createRedactor(extractedText, reviewContext.redactionPolicy);
     const clauses = await segmentContractClauses(extractedText, {
       contractLabel: reviewContext.contractLabel,
       categories: categories.map(({ code, name, description }) => ({ code, name, description })),
-      redactor: createRedactor(extractedText, reviewContext.redactionPolicy),
+      redactor,
       signal,
     });
+    signal?.throwIfAborted();
+    const grounded = await groundClauseSummaries(clauses, redactor, signal);
     signal?.throwIfAborted();
     const taxonomyIdByCode = await getTaxonomyIdByCode();
 
@@ -70,7 +75,8 @@ export async function segmentClauses(
         startOffset: clause.startOffset,
         endOffset: clause.endOffset,
         clauseTypeId: taxonomyIdByCode.get(clause.category),
-        summary: clause.summary,
+        summary: grounded.get(clause.index)?.summary ?? clause.summary,
+        summaryKind: grounded.get(clause.index)?.kind,
       })),
     );
 
@@ -89,17 +95,17 @@ export async function segmentClauses(
           segmentationStatus: 'completed',
           summaryStatus: 'pending',
           summaryPoints: [],
+          summarySources: [],
           riskDetectionStatus: 'pending',
           overallAssessment: [],
-          overallRiskLevel: 'none',
+          assessmentSources: [],
         },
         $unset: {
           segmentationError: '',
           summaryError: '',
           riskDetectionError: '',
-          legalRetrievalStatus: '',
-          ruleCheckStatus: '',
-          legalCoverage: '',
+          issueCounts: '',
+          checkCoverage: '',
         },
       },
     );

@@ -3,7 +3,7 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok } from '../utils/ApiResponse';
 import { getContractUser } from '../middlewares/auth.middleware';
 import * as riskService from '../services/analysis/risk.service';
-import { listKeyTerms } from '../services/analysis/keyTermExtraction.service';
+import { listKeyTerms } from '../services/analysis/keyTerms.service';
 
 export const listRiskFindingsHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getContractUser(req);

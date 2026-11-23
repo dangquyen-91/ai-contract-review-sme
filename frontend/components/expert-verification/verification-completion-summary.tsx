@@ -1,5 +1,6 @@
 import { verificationSummary } from "@/lib/review/verification-summary";
 import type { VerifiedFinding } from "@/types/verification-workspace";
+import { IssueSummary } from "@/components/review/results/issue-summary";
 
 export function VerificationCompletionSummary({ findings }: { findings: VerifiedFinding[] }) {
   const totals = verificationSummary(findings);
@@ -11,9 +12,9 @@ export function VerificationCompletionSummary({ findings }: { findings: Verified
           <div key={key} className="rounded-lg border border-border bg-card p-3"><dt className="text-muted-foreground">{label}</dt><dd className="mb-0 ml-0 mt-1 text-ui-section font-bold tabular-nums">{totals[key]}</dd></div>
         ))}
       </dl>
-      <p className="m-0 text-ui-meta">Rủi ro còn được giữ lại: <strong className="text-rose-800">{totals.high} cao</strong> · <strong className="text-amber-900">{totals.medium} trung bình</strong> · <strong className="text-blue-800">{totals.low} thấp</strong>.</p>
+      <IssueSummary counts={totals.issues} />
       {totals.pending > 0 && <p role="alert" className="m-0 text-ui-meta text-rose-800">Còn {totals.pending} mục chưa xử lý. Kiểm tra lại trước khi hoàn tất.</p>}
-      <p className="m-0 text-ui-meta text-muted-foreground">Hoàn tất kiểm tra không có nghĩa hợp đồng không còn rủi ro. Các mục bị bác bỏ được giữ trong lịch sử, không tính vào số rủi ro trên.</p>
+      <p className="m-0 text-ui-meta leading-6 text-muted-foreground">Hoàn tất kiểm tra không có nghĩa đã kiểm tra mọi vấn đề của hợp đồng. Các mục bị bác bỏ được giữ trong lịch sử và không tính vào số vấn đề trên.</p>
     </section>
   );
 }

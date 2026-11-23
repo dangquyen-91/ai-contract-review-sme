@@ -1,5 +1,5 @@
 import { AppError } from '../../errors/AppError';
-import { LEGAL_RULES } from './legalRules.data';
+import { playbookAnchorsForSource } from '../playbook/playbook.service';
 import { ArticleDifference, compareArticles } from './legalCrossCheck';
 import type { LegalArticleText } from './legalDocumentParser.service';
 
@@ -81,7 +81,7 @@ export interface AnchorFailure {
   article: number;
   clause?: number;
   verifyText: string;
-  rules: string[];
+  checks: string[];
   message: string;
 }
 
@@ -94,26 +94,12 @@ export interface AnchorCheck {
 const normalizeForMatch = (value: string) => value.normalize('NFC').replace(/\s+/g, ' ').toLowerCase();
 
 export function checkAnchors(sourceCode: string | null | undefined, chunks: AnchorChunk[]): AnchorCheck {
-  const anchors = new Map<string, Omit<AnchorFailure, 'message'>>();
-  for (const rule of LEGAL_RULES) {
-    for (const citation of rule.citations) {
-      if (citation.sourceCode !== sourceCode) continue;
-      const key = `${citation.article}:${citation.clause ?? ''}:${citation.verifyText}`;
-      const anchor = anchors.get(key) ?? {
-        article: citation.article,
-        clause: citation.clause,
-        verifyText: citation.verifyText,
-        rules: [],
-      };
-      anchor.rules.push(`${rule.code} v${rule.version}`);
-      anchors.set(key, anchor);
-    }
-  }
-  if (anchors.size === 0) return { result: 'not_applicable', checked: 0, failures: [] };
+  const anchors = playbookAnchorsForSource(sourceCode);
+  if (anchors.length === 0) return { result: 'not_applicable', checked: 0, failures: [] };
 
   let checked = 0;
   const failures: AnchorFailure[] = [];
-  for (const anchor of anchors.values()) {
+  for (const anchor of anchors) {
     const articleText = chunks
       .filter((chunk) => chunk.articleNumber === anchor.article)
       .map((chunk) => normalizeForMatch(chunk.chunkText))
@@ -123,7 +109,7 @@ export function checkAnchors(sourceCode: string | null | undefined, chunks: Anch
     if (articleText.includes(normalizeForMatch(anchor.verifyText))) continue;
     failures.push({
       ...anchor,
-      message: `Điều ${anchor.article} does not contain "${anchor.verifyText}", which ${anchor.rules.join(', ')} relies on; the file may be an outdated or misread text. If the law really changed, update the rule first.`,
+      message: `Điều ${anchor.article} does not contain "${anchor.verifyText}", which playbook checks ${anchor.checks.join(', ')} rely on; the file may be an outdated or misread text. If the law really changed, update the playbook first.`,
     });
   }
   if (checked === 0) return { result: 'not_applicable', checked, failures };
@@ -133,7 +119,7 @@ export function checkAnchors(sourceCode: string | null | undefined, chunks: Anch
 export function assertAnchors(check: AnchorCheck) {
   if (check.result !== 'failed') return;
   throw new AppError(
-    `${check.failures.length} article(s) do not contain the wording the legal rules rely on: ${check.failures
+    `${check.failures.length} article(s) do not contain the wording the review playbook relies on: ${check.failures
       .map((failure) => `Điều ${failure.article} ("${failure.verifyText}")`)
       .join(', ')}`,
     400,

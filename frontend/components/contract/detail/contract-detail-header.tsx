@@ -30,9 +30,8 @@ const itemClass = "flex cursor-pointer items-center gap-2 rounded-lg px-3 py-2.5
 
 function AiStatus({ contract, review }: { contract?: DashboardContract; review?: Review | null }) {
   if (contract?.status === "processing") return <Badge variant="info">AI đang rà soát</Badge>;
-  if (review?.status === "completed" && review.overallRiskLevel) {
-    return <RiskBadge risk={review.overallRiskLevel} />;
-  }
+  if (contract?.status === "reviewed") return <RiskBadge contract={contract} />;
+  if (review?.status === "completed") return <RiskBadge counts={review.issueCounts} />;
   if (contract?.status === "unsupported") return <Badge variant="warning">Chưa hỗ trợ rà soát</Badge>;
   return <Badge variant="neutral">Chưa rà soát</Badge>;
 }

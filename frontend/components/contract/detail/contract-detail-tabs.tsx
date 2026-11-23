@@ -5,7 +5,7 @@ import { contractDetailTabs, type ContractDetailTab } from "@/hooks/contracts/us
 
 const tabLabels: Record<ContractDetailTab, string> = {
   overview: "Tổng quan",
-  risks: "Rủi ro & văn bản",
+  risks: "Vấn đề & văn bản",
   terms: "Thông tin chính",
   chat: "Chat với AI",
   versions: "Phiên bản",

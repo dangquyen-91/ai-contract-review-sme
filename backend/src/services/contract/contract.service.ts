@@ -255,7 +255,7 @@ export async function listContractVersions(orgId: string, contractId: string) {
       .lean(),
     ReviewModel.find({ contractId, orgId })
       .sort({ createdAt: -1 })
-      .select('versionId status finishedAt result.overallRiskLevel result.findingCounts')
+      .select('versionId status finishedAt result.issueCounts')
       .lean(),
   ]);
   const latestReviewByVersion = new Map<string, (typeof reviews)[number]>();
@@ -296,8 +296,7 @@ export async function listContractVersions(orgId: string, contractId: string) {
             id: String(review._id),
             status: review.status,
             finishedAt: review.finishedAt ?? null,
-            overallRiskLevel: review.result?.overallRiskLevel ?? null,
-            findingCounts: review.result?.findingCounts ?? null,
+            issueCounts: review.result?.issueCounts ?? null,
             verificationStatus: verificationByReview.get(String(review._id)) ?? null,
           }
         : null,
@@ -368,31 +367,27 @@ export async function listContracts(
       : { 'expertVerification.status': query.verificationStatus } });
   }
 
-  if (query.riskLevel) {
-    pipeline.push({ $match: { 'currentVersion.overallRiskLevel': query.riskLevel } });
-  }
+  if (query.issues === 'violations') pipeline.push({ $match: { 'currentVersion.issueCounts.violations': { $gt: 0 } } });
+  if (query.issues === 'any') pipeline.push({ $match: { 'currentVersion.issueCounts.total': { $gt: 0 } } });
+  if (query.issues === 'none') pipeline.push({ $match: { 'currentVersion.issueCounts.total': 0 } });
 
-  const sortByRisk = pagination.sortBy === 'overallRiskLevel';
-  const sortStages: PipelineStage[] = sortByRisk
-    ? [
-        {
-          $addFields: {
-            _riskRank: {
-              $switch: {
-                branches: [
-                  { case: { $eq: ['$currentVersion.overallRiskLevel', 'high'] }, then: 3 },
-                  { case: { $eq: ['$currentVersion.overallRiskLevel', 'medium'] }, then: 2 },
-                  { case: { $eq: ['$currentVersion.overallRiskLevel', 'low'] }, then: 1 },
+  const sortStages: PipelineStage[] =
+    pagination.sortBy === 'issueCount'
+      ? [
+          {
+            $addFields: {
+              _issueRank: {
+                $add: [
+                  { $multiply: [{ $ifNull: ['$currentVersion.issueCounts.violations', 0] }, 1000] },
+                  { $ifNull: ['$currentVersion.issueCounts.total', 0] },
                 ],
-                default: 0,
               },
             },
           },
-        },
-        { $sort: { _riskRank: pagination.sortOrder, _id: pagination.sortOrder } },
-        { $project: { _riskRank: 0 } },
-      ]
-    : [{ $sort: { [pagination.sortBy]: pagination.sortOrder, _id: pagination.sortOrder } }];
+          { $sort: { _issueRank: pagination.sortOrder, _id: pagination.sortOrder } },
+          { $project: { _issueRank: 0 } },
+        ]
+      : [{ $sort: { [pagination.sortBy]: pagination.sortOrder, _id: pagination.sortOrder } }];
 
   const [items, totalResult] = await Promise.all([
     ContractModel.aggregate([

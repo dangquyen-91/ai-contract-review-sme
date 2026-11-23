@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button";
 import { ContractVersionsPanel } from "@/components/contract/contract-versions-panel";
 import { ContractChat } from "@/components/review/results/contract-chat";
 import { KeyTerms } from "@/components/review/results/key-terms";
+import { ClauseSummaries } from "@/components/review/results/clause-summaries";
 import { ReviewWorkbench } from "@/components/review/results/review-results";
 import { ShareSummaryDialog } from "@/components/review/sharing/share-summary-dialog";
 import { ReviewProgressStrip } from "@/components/review/timeline/review-progress-strip";
 import { routes } from "@/config/routes";
-import { useContract, useContractKeyTerms, useContractVersions } from "@/hooks/contracts/use-contracts";
+import { useContract, useContractVersions } from "@/hooks/contracts/use-contracts";
 import { useContractDetailTab } from "@/hooks/contracts/use-contract-detail-tab";
 import { activeRiskFindings } from "@/lib/review/verification-findings";
 import { useDashboardReviewWorkflow } from "@/providers/review-workflow-provider";
@@ -23,7 +24,7 @@ import { ContractOverviewTab } from "./contract-overview-tab";
 import { VersionMismatchNotice } from "./version-mismatch-notice";
 import type { DashboardWorkspaceContext } from "@/components/layouts/dashboard/dashboard-shell";
 import { canBuyTopUp } from "@/lib/subscription/quota-error";
-import type { ContractReviewResult, ContractVersionSummary, DashboardContract } from "@/types/contracts";
+import type { ContractQuote, ContractReviewResult, ContractVersionSummary, DashboardContract } from "@/types/contracts";
 
 const deletableRoles = ["administrator", "owner", "manager", "staff", "user"];
 
@@ -32,10 +33,12 @@ function idOf(contract?: DashboardContract) {
 }
 
 function TermsPanel({ contractId }: { contractId: string }) {
-  const terms = useContractKeyTerms(contractId);
-  if (terms.isPending) return <p className="m-0 p-6 text-ui text-muted-foreground">Đang tải thông tin chính…</p>;
-  if (!terms.data?.terms.length) return <p className="m-0 p-6 text-ui text-muted-foreground">AI chưa trích được thông tin chính cho loại hợp đồng này.</p>;
-  return <KeyTerms contractId={contractId} />;
+  return (
+    <div className="grid gap-7 bg-card p-5 sm:p-6">
+      <KeyTerms contractId={contractId} />
+      <ClauseSummaries contractId={contractId} />
+    </div>
+  );
 }
 
 function NotReviewed({ contract, contractId, versions, canReview, busy, onStart }: {
@@ -86,16 +89,17 @@ function ResultTabs({ result, contractId, role, canAsk, canUpload, versionCount 
   versionCount?: number;
 }) {
   const [tab, selectTab] = useContractDetailTab();
+  const [sourceRequest, setSourceRequest] = useState<{ source: ContractQuote; id: number }>();
   return (
     <ContractDetailTabs
       tab={tab}
       onSelect={selectTab}
       counts={{ risks: activeRiskFindings(result.findings).length, versions: versionCount }}
       panels={{
-        overview: () => <ContractOverviewTab result={result} role={role} onOpenRisks={() => selectTab("risks")} />,
+        overview: () => <ContractOverviewTab result={result} role={role} onOpenRisks={() => selectTab("risks")} onSource={(source) => { setSourceRequest((current) => ({ source, id: (current?.id ?? 0) + 1 })); selectTab("risks"); }} />,
         risks: () => (
           <div className="[container:review-result_/_inline-size]">
-            <ReviewWorkbench result={result} showSummary={false} />
+            <ReviewWorkbench key={sourceRequest?.id ?? "default"} result={result} showSummary={false} initialSource={sourceRequest?.source} />
           </div>
         ),
         terms: () => <TermsPanel contractId={contractId} />,

@@ -66,7 +66,6 @@ erDiagram
     USER ||--o{ CHAT_MESSAGE : ""
     CHAT_MESSAGE }o--o{ LEGAL_CHUNK : ""
     CT_PROFILE }o--o{ CLAUSE_TYPE : ""
-    CT_PROFILE }o--o{ INDUSTRY : ""
     CT_PROFILE }o--o{ LEGAL_SOURCE : ""
     LEGAL_SOURCE ||--o{ LEGAL_CHUNK : ""
     RISK_FINDING ||--o{ RISK_CITATION : ""
@@ -295,15 +294,14 @@ erDiagram
         String riskDetectionStatus
         String riskDetectionError
         Date riskDetectionStartedAt
-        String legalRetrievalStatus
-        String ruleCheckStatus
-        LegalCoverageSnapshot legalCoverage "embedded"
         String summaryStatus
         String summaryError
         Date summaryStartedAt
-        String overallRiskLevel
+        IssueCounts issueCounts "embedded"
+        CheckCoverage checkCoverage "embedded"
         String[] overallAssessment
         String[] summaryPoints
+        SummarySource[] summarySources "embedded"
         KeyTerm[] keyTerms "embedded"
         Date keyTermsExtractedAt
         String analysisFocus
@@ -341,8 +339,6 @@ erDiagram
         String[] governingLaws
         String[] legalSourceCodes FK
         String[] clauseCategories FK
-        String[] mandatoryClauses FK
-        IndustryRule[] industryRules FK "embedded"
         String[] redactionPolicy
     }
 
@@ -360,7 +356,14 @@ erDiagram
         ObjectId clauseId FK
         ObjectId expectedClauseTypeId FK
         String findingType
-        String severity
+        String checkCode
+        String checkGroup
+        String outcome
+        String label
+        String playbookVersion
+        FindingEvidence[] evidence "embedded"
+        FindingBasis basis "embedded"
+        Boolean noVerifiedLegalBasis
         String title
         String[] problem
         String[] consequences
@@ -369,9 +372,6 @@ erDiagram
         ProposedRevision proposedRevision "embedded"
         String status
         String detectedBy
-        String riskCode
-        String ruleCode
-        Number ruleVersion
         FindingVerification verification "embedded"
     }
 
@@ -635,7 +635,7 @@ erDiagram
 | CONTRACT_VER | ContractVersion | Contracts & Analysis | Implemented | One version of a contract file and its processing results |
 | CLAUSE | Clause | Contracts & Analysis | Implemented | Clause segmented from the contract text by one review |
 | CLAUSE_TYPE | ClauseTypeTaxonomy | Contracts & Analysis | Implemented | Catalog of 30 clause types |
-| CT_PROFILE | ContractProfile | Contracts & Analysis | Implemented | Contract type configuration: applicable laws, mandatory clauses, industry rules, redaction policy |
+| CT_PROFILE | ContractProfile | Contracts & Analysis | Implemented | Contract type configuration: parties, applicable laws, clause categories, redaction policy. Expected clauses come from the contract playbook in code |
 | INDUSTRY | Industry | Contracts & Analysis | Implemented | Industry catalog |
 | RISK_FINDING | RiskFinding | Contracts & Analysis | Implemented | Risk detected by one review of a contract version |
 | REVIEW | Review | Contracts & Analysis | Implemented | One AI review run and its result snapshot |
@@ -658,9 +658,9 @@ erDiagram
 
 - **Types follow the mongoose models:** every entity is a MongoDB collection keyed by `ObjectId _id`; field names are the camelCase names used in code; `Number` covers both integers and decimals (VND amounts are whole numbers); `Mixed` is free-form data. A type marked `"embedded"` (e.g. `LegalBasis[]`, `ReviewResult`) is a sub-document stored inside the parent, not a separate collection.
 - **Every entity has `createdAt` / `updatedAt` timestamps** — not repeated in each entity.
-- **Links matched by code, not by `ObjectId`:** `CONTRACT.type` matches `CT_PROFILE.code` or one of its aliases; `CONTRACT.industry` and `ORGANIZATION.industry` match `INDUSTRY.code`; `CT_PROFILE` points to `LEGAL_SOURCE`, `CLAUSE_TYPE` and `INDUSTRY` via code lists; `PAYMENT.planCode`, `SUBSCRIPTION.scheduledDowngrade.planCode` and `SUB_PERIOD.plan.code` match `PLAN.code`; `USER.platformRole` and `MEMBERSHIP.role` match `ROLE.code`; `REVIEW_PURCHASE.orderCode` matches `PAYMENT.orderCode`. These fields are marked `FK` but hold a `String` (or `Number`) code. Changing a code in a catalog entity breaks these links.
+- **Links matched by code, not by `ObjectId`:** `CONTRACT.type` matches `CT_PROFILE.code` or one of its aliases; `CONTRACT.industry` and `ORGANIZATION.industry` match `INDUSTRY.code`; `CT_PROFILE` points to `LEGAL_SOURCE` and `CLAUSE_TYPE` via code lists; `PAYMENT.planCode`, `SUBSCRIPTION.scheduledDowngrade.planCode` and `SUB_PERIOD.plan.code` match `PLAN.code`; `USER.platformRole` and `MEMBERSHIP.role` match `ROLE.code`; `REVIEW_PURCHASE.orderCode` matches `PAYMENT.orderCode`. These fields are marked `FK` but hold a `String` (or `Number`) code. Changing a code in a catalog entity breaks these links.
 - **SUB_PERIOD snapshots the full plan details** (`plan`: code, price, limits) at grant time — changing price/limits on PLAN does not affect running periods.
-- **N:N relationships drawn without a junction table:** `CT_PROFILE` with `LEGAL_SOURCE` / `CLAUSE_TYPE` / `INDUSTRY` is stored as code lists inside `CT_PROFILE`; `RISK_FINDING` with `LEGAL_CHUNK` is stored as `legalKnowledgeChunkIds` inside each `RISK_FINDING.legalBasis` item; `CONTRACT_DRAFT` with `LEGAL_SOURCE` is stored as `legalSourceIds`. Only `RISK_CITATION` is a real link entity, with an extra relevance score.
+- **N:N relationships drawn without a junction table:** `CT_PROFILE` with `LEGAL_SOURCE` / `CLAUSE_TYPE` is stored as code lists inside `CT_PROFILE`; `RISK_FINDING` with `LEGAL_CHUNK` is stored as `legalKnowledgeChunkIds` inside each `RISK_FINDING.legalBasis` item; `CONTRACT_DRAFT` with `LEGAL_SOURCE` is stored as `legalSourceIds`. Only `RISK_CITATION` is a real link entity, with an extra relevance score.
 - **Embedded sub-documents:** extraction progress/quality, redaction summary and key terms on `CONTRACT_VER`; automatic classification on `CONTRACT`; legal basis, proposed revision and latest expert decision (`verification`) on `RISK_FINDING`; finding snapshots (`before`/`after`) on `EXPERT_ACTION`; legal coverage snapshot on `CONTRACT_VER` and `REVIEW.result`; stage statuses and result snapshot on `REVIEW`; cited legal sources on `CHAT_MESSAGE`; origin (publisher, URL) on `LEGAL_SOURCE`, `RISK_CITATION` and `CHAT_MESSAGE.legalSources`; coverage, ingestion progress, uploaded parts (with cleanup, extraction and cross-check results) and replaced parts on `LEGAL_SOURCE`; address details on `ORGANIZATION`; parent headings on `LEGAL_CHUNK`; parties and industry rules on `CT_PROFILE`; scheduled downgrade on `SUBSCRIPTION`; plan snapshot on `SUB_PERIOD`.
 - **`CONTRACT_VER.keyTerms[].clauseId` points to `CLAUSE`** of the same version — not drawn as a separate line to keep the diagram readable.
 - **`orgId` is repeated on CLAUSE, RISK_FINDING, REVIEW, CHAT_MESSAGE, USAGE_RUN, EXPERT_REVIEW, EXPERT_ACTION, REVIEW_PURCHASE and DRAFT_PROPOSAL** to scope data per account; the diagram only draws the main ownership relationships.

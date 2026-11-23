@@ -32,7 +32,7 @@ export function reportCsv(report: OperationalReport) {
   const metricValue = (key: string, value: number | null) => {
     if (value == null) return "Chưa có dữ liệu";
     if (key === "duration") return formatReportDuration(value);
-    if (key === "success" || key === "risk") return formatReportPercent(value);
+    if (key === "success" || key === "violations") return formatReportPercent(value);
     if (key === "payments") return formatCsvMoney(value);
     return value;
   };
@@ -54,11 +54,13 @@ export function reportCsv(report: OperationalReport) {
     ["Lượt rà soát thất bại", report.reviews.failed],
     ["Lượt đã hủy", report.reviews.cancelled],
     ["Tỷ lệ thành công", formatReportPercent(report.reviews.successRate)],
-    ...(features.risks
+    ...(features.issues
       ? [
-          ["Hợp đồng có kết quả rủi ro hợp lệ", report.risks.assessedContracts],
-          ["Hợp đồng rủi ro cao", report.risks.high],
-          ["Tỷ lệ rủi ro cao", formatReportPercent(report.risks.highRiskRate)],
+          ["Hợp đồng có dữ liệu phân loại vấn đề", report.issues.checkedContracts],
+          ["Hợp đồng có vi phạm", report.issues.withViolations],
+          ["Hợp đồng có vấn đề khác", report.issues.withIssues],
+          ["Không phát hiện vấn đề", report.issues.noIssues],
+          ["Tỷ lệ hợp đồng có vi phạm", formatReportPercent(report.issues.violationRate)],
         ]
       : []),
     [
@@ -125,7 +127,7 @@ export function reportCsv(report: OperationalReport) {
       completed: "Rà soát thành công",
       failed: "Rà soát thất bại",
       success: "Tỷ lệ thành công",
-      risk: "Tỷ lệ rủi ro cao",
+      violations: "Tỷ lệ hợp đồng có vi phạm",
       duration: "Xử lý trung bình",
       units: "Lượt rà soát đã dùng",
       chat: "Chat",
@@ -134,7 +136,7 @@ export function reportCsv(report: OperationalReport) {
     };
     for (const [key, change] of Object.entries(report.comparison.changes)) {
       if (
-        (key === "risk" && !features.risks) ||
+        (key === "violations" && !features.issues) ||
         (key === "payments" && (!features.payments || !report.payments))
       )
         continue;

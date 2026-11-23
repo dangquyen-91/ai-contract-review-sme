@@ -4,6 +4,8 @@ import { RecentContractList } from "@/components/contract/recent-contract-list";
 import type { DashboardData } from "@/types/dashboard";
 import { RoleInsights } from "./role-insights";
 import { AccountAllowance } from "./account-allowance";
+import { metricDisplay } from "@/config/metric-display";
+import styles from "@/styles/review/review-design.module.css";
 
 export function OwnerOverview({
   data,
@@ -15,19 +17,19 @@ export function OwnerOverview({
   onMembers: () => void;
 }) {
   const currentMetrics = [
-    { label: "Tổng hợp đồng", value: data.totalContracts },
-    { label: "Đang xử lý", value: data.stats.processing },
-    { label: "Rủi ro cao", value: data.stats.highRisk },
-    { label: "Đã rà soát", value: data.stats.reviewed },
+    { id: "uploads", label: "Tổng hợp đồng", value: data.totalContracts },
+    { id: "processing", label: "Đang xử lý", value: data.stats.processing },
+    { id: "violations", label: "Hợp đồng có vi phạm", value: data.stats.withViolations },
+    { id: "success", label: "Đã rà soát", value: data.stats.reviewed },
   ];
   return (
-    <div className="grid min-w-0 gap-7">
+    <div className={`${styles.scope} grid min-w-0 gap-7`}>
       <header className="flex flex-wrap items-end justify-between gap-5">
         <div>
-          <p className="mb-2 text-xs font-semibold tracking-wide text-primary">
+          <p className="mb-2 text-xs font-medium text-[#73766f]">
             {data.organization.name}
           </p>
-          <h1 className="text-3xl font-semibold leading-tight tracking-tight sm:text-4xl">
+          <h1 className="text-[1.75rem] font-semibold leading-tight tracking-[-0.045em] sm:text-[2rem]">
             Tổng quan tổ chức
           </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -40,26 +42,28 @@ export function OwnerOverview({
         </Button>
       </header>
       <dl
-        className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border lg:grid-cols-4"
+        className={styles.metricStrip}
         aria-label="Chỉ số hợp đồng hiện tại"
       >
-        {currentMetrics.map((metric) => (
-          <div key={metric.label} className="bg-card px-5 py-5">
-            <dt className="text-xs font-medium text-muted-foreground">
-              {metric.label}
-            </dt>
-            <dd className="mt-2 text-3xl font-semibold tracking-tight tabular-nums">
-              {metric.value.toLocaleString("vi-VN")}
-            </dd>
-            <dd className="mt-2 text-xs text-muted-foreground">
-              Toàn tổ chức · Hiện tại
-            </dd>
-          </div>
-        ))}
+        {currentMetrics.map((metric) => {
+          const display = metricDisplay[metric.id];
+          return (
+            <div key={metric.label} className={styles.metric}>
+              <dt className={styles.metricLabel}>{metric.label}</dt>
+              <dd className={`${styles.metricValue} ${metric.value > 0 ? display.accent : "text-[#93988e]"}`}>
+                {metric.value.toLocaleString("vi-VN")}
+              </dd>
+              <dd className={styles.metricCaption}>
+                <span aria-hidden="true" className={`mr-1.5 inline-block size-1.5 rounded-full ${metric.value > 0 ? display.marker : "bg-[#d5d9cf]"}`} />
+                Toàn tổ chức · Hiện tại
+              </dd>
+            </div>
+          );
+        })}
       </dl>
       <div className="grid min-w-0 items-start gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(0,0.8fr)]">
         <RecentContractList contracts={data.contracts.slice(0, 5)} />
-        <aside className="rounded-xl border border-border bg-card p-5 sm:p-6">
+        <aside className="rounded-lg border border-[#e4e6df] bg-white p-5 sm:p-6">
           <h2 className="text-base font-semibold">Thông tin tổ chức</h2>
           <dl className="mt-4 grid gap-3 text-sm">
             <div>
