@@ -100,9 +100,12 @@ export function fieldsUsedBy(test: CheckTest): { field: string; need: FieldNeed 
   switch (test.kind) {
     case 'stated':
       return [{ field: test.field, need: 'any' }];
+    case 'all_stated':
+      return test.fields.map((field) => ({ field, need: 'any' as const }));
     case 'at_most':
     case 'at_least':
     case 'at_most_tiered':
+    case 'at_least_tiered':
       return [{ field: test.field, need: 'numeric' }];
     case 'fails_when_all':
       return test.conditions.map((condition) => ({
@@ -144,12 +147,16 @@ function findCheckProblems(check: PlaybookCheck, scope: CheckScope): string[] {
       problems.push(`${at}: field "${field}" of kind ${definition.kind} cannot be tested as ${need}`);
     }
   }
-  if (check.test.kind === 'at_most_tiered') {
-    const { tiers, absoluteLimit } = check.test;
-    if (tiers.length === 0) problems.push(`${at}: at_most_tiered needs at least one tier`);
-    if (absoluteLimit !== undefined && tiers.some((tier) => tier.limit > absoluteLimit)) {
-      problems.push(`${at}: a tier limit is above absoluteLimit`);
+  if (check.test.kind === 'at_most_tiered' || check.test.kind === 'at_least_tiered') {
+    const { kind, tiers, absoluteLimit } = check.test;
+    if (tiers.length === 0) problems.push(`${at}: ${kind} needs at least one tier`);
+    const outside = (limit: number, bound: number) => (kind === 'at_most_tiered' ? limit > bound : limit < bound);
+    if (absoluteLimit !== undefined && tiers.some((tier) => outside(tier.limit, absoluteLimit))) {
+      problems.push(`${at}: a tier limit is ${kind === 'at_most_tiered' ? 'above' : 'below'} absoluteLimit`);
     }
+  }
+  if (check.test.kind === 'all_stated' && new Set(check.test.fields).size < 2) {
+    problems.push(`${at}: all_stated needs at least two different fields; use stated for one`);
   }
   if (check.test.kind === 'clause_present' && !scope.contractType) {
     problems.push(`${at}: clause_present is only allowed in contract playbooks`);
@@ -241,6 +248,42 @@ export function findPlaybookProblems(
       problems.push(...findCheckProblems(check, { label, contractType: playbook.contractType, fields }));
     }
   }
+
+  const checkByCode = new Map(allPlaybookChecks(clausePlaybooks, contractPlaybooks).map((check) => [check.code, check]));
+  for (const playbook of contractPlaybooks) {
+    problems.push(...findRequiredContentProblems(playbook, checkByCode));
+  }
+  return problems;
+}
+
+const citedRefs = (check: PlaybookCheck) => [
+  ...(check.basis.kind === 'law' ? check.basis.articles : (check.basis.references ?? [])),
+  ...(check.fallbackRules ?? []).map((rule) => rule.article),
+];
+
+function findRequiredContentProblems(playbook: ContractPlaybook, checkByCode: Map<string, PlaybookCheck>): string[] {
+  const problems: string[] = [];
+  if (playbook.requiredContent.length === 0) problems.push(`contract ${playbook.contractType}: requiredContent is empty`);
+  for (const item of playbook.requiredContent) {
+    const at = `contract ${playbook.contractType} required content "${item.content}"`;
+    if (item.checks.length === 0 && !item.notChecked) problems.push(`${at}: no check covers it and no notChecked reason is given`);
+    if (item.checks.length > 0 && item.notChecked) problems.push(`${at}: has checks, so notChecked must be left out`);
+    const checks = item.checks.flatMap((code) => {
+      const check = checkByCode.get(code);
+      if (!check) problems.push(`${at}: unknown check ${code}`);
+      else if (check.review.status !== 'approved') problems.push(`${at}: check ${code} is not approved`);
+      else if (!check.appliesTo.contractTypes.includes(playbook.contractType)) {
+        problems.push(`${at}: check ${code} does not apply to ${playbook.contractType}`);
+      } else return [check];
+      return [];
+    });
+    if (item.binding === 'law' && checks.length > 0) {
+      const cites = checks.some((check) =>
+        citedRefs(check).some((ref) => ref.sourceCode === item.ref.sourceCode && ref.article === item.ref.article),
+      );
+      if (!cites) problems.push(`${at}: none of its checks cites ${item.ref.sourceCode} Điều ${item.ref.article}`);
+    }
+  }
   return problems;
 }
 
@@ -306,13 +349,13 @@ export function allPlaybookChecks(
 }
 
 export function playbookArticleRefs(checks: PlaybookCheck[] = allPlaybookChecks()) {
-  return checks.flatMap((check) =>
-    [
-      ...(check.basis.kind === 'law' ? check.basis.articles : (check.basis.references ?? [])),
-      ...(check.fallbackRules ?? []).map((rule) => rule.article),
-    ].map((ref) => ({ checkCode: check.code, ref })),
-  );
+  return checks.flatMap((check) => citedRefs(check).map((ref) => ({ checkCode: check.code, ref })));
 }
+
+export const requiredContentRefs = (contractPlaybooks: ContractPlaybook[] = CONTRACT_PLAYBOOKS) =>
+  contractPlaybooks.flatMap((playbook) =>
+    playbook.requiredContent.map((item) => ({ checkCode: `${playbook.contractType} nội dung bắt buộc`, ref: item.ref as LegalArticleRef })),
+  );
 
 export type ArticleRefStatus = 'verified' | 'source_unavailable' | 'article_not_found' | 'anchor_not_found';
 
@@ -416,7 +459,7 @@ export async function checkPlaybooksOnStartup(): Promise<void> {
     throw new Error(`Invalid review playbook ${PLAYBOOK_VERSION}:\n- ${problems.join('\n- ')}`);
   }
 
-  const results = await verifyPlaybookArticleRefs();
+  const results = await verifyPlaybookArticleRefs([...playbookArticleRefs(), ...requiredContentRefs()]);
   const unverified = results.filter((result) => result.status !== 'verified');
   if (unverified.length > 0) {
     logger.warn('Some playbook legal references cannot be verified in the legal knowledge base', {

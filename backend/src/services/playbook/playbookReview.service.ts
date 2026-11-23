@@ -404,19 +404,15 @@ function describeProblem(result: CheckResult, missingClause: boolean): string[] 
   }
   if (result.conditions) return [...result.conditions.map((condition) => describeCondition(result, condition)), ...question];
   const blank = result.evidence.filter((field) => field.blank);
-  if (blank.length > 0) {
-    return [
-      ...blank.map((field) => `${result.fields[field.key]?.label ?? field.key} còn để trống: "${field.quote}".`),
-      ...question,
-    ];
-  }
-  const absent = result.evidence.filter((field) => field.state === 'absent');
-  if (absent.length > 0 && absent.length === result.evidence.length) {
+  const absent = result.evidence.filter((field) => field.state === 'absent' && !field.blank);
+  if (blank.length === 0 && absent.length === 0) return question.length ? question : [result.title];
+  const lines = blank.map((field) => `${result.fields[field.key]?.label ?? field.key} còn để trống: "${field.quote}".`);
+  if (absent.length > 0) {
     const labels = absent.map((field) => lowerFirst(result.fields[field.key]?.label ?? field.key));
     const missingWhat = `Không tìm thấy nội dung về ${labels.join(', ')} ở bất kỳ điều khoản nào của hợp đồng.`;
-    return [result.group === 'completeness' ? [missingWhat, ...requiredBy].join(' ') : missingWhat, ...question];
+    lines.push(result.group === 'completeness' ? [missingWhat, ...requiredBy].join(' ') : missingWhat);
   }
-  return question.length ? question : [result.title];
+  return [...lines, ...question];
 }
 
 function evidenceEntries(fields: FieldEvidence[]) {

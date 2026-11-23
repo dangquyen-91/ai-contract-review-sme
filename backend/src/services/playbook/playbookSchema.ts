@@ -1,7 +1,7 @@
 import type { ClauseCategory } from '../../models/clauseTypeTaxonomy.model';
 import type { LegalSourceCode } from '../legal/legalSourceCatalog.data';
 
-export const PLAYBOOK_VERSION = '1.2.0';
+export const PLAYBOOK_VERSION = '1.3.0';
 
 export const CHECK_GROUPS = ['clarity', 'completeness', 'balance', 'compliance'] as const;
 export type CheckGroup = (typeof CHECK_GROUPS)[number];
@@ -96,6 +96,14 @@ export const CONTRACT_FACTS = {
     'Bên bán là tổ chức kinh tế có vốn đầu tư nước ngoài',
     'The seller is an economic organization with foreign investment capital.',
   ),
+  housing_sale_agreement: fact(
+    'Văn bản là hợp đồng mua bán nhà ở',
+    'This document is itself the contract to buy and sell the home ("hợp đồng mua bán nhà ở", "hợp đồng mua bán căn hộ"), not only a deposit agreement ("hợp đồng đặt cọc") to sign the sale contract later.',
+  ),
+  apartment_purchase: fact(
+    'Nhà ở mua bán là căn hộ chung cư',
+    'The home sold is an apartment in an apartment building ("căn hộ chung cư").',
+  ),
   seller_not_real_estate_business: fact(
     'Bên bán không kinh doanh bất động sản',
     'The seller is an individual or an organization that does not run a real estate business, so the sale is not a real estate business transaction.',
@@ -167,9 +175,11 @@ export interface LimitTier {
 
 export type CheckTest =
   | { kind: 'stated'; field: string }
+  | { kind: 'all_stated'; fields: string[] }
   | { kind: 'at_most'; field: string; limit: number }
   | { kind: 'at_least'; field: string; limit: number }
   | { kind: 'at_most_tiered'; field: string; tiers: LimitTier[]; absoluteLimit?: number }
+  | { kind: 'at_least_tiered'; field: string; tiers: LimitTier[]; absoluteLimit?: number }
   | { kind: 'fails_when_all'; conditions: FieldCondition[] }
   | { kind: 'clause_present'; clauseType: ClauseCategory };
 
@@ -215,9 +225,18 @@ export interface ClausePlaybook {
   checks: PlaybookCheck[];
 }
 
+export interface RequiredContentItem {
+  ref: LegalArticleRef & { point?: string };
+  content: string;
+  binding: 'law' | 'practice';
+  checks: string[];
+  notChecked?: string;
+}
+
 export interface ContractPlaybook {
   contractType: string;
   title: string;
   fields: PlaybookField[];
   checks: PlaybookCheck[];
+  requiredContent: RequiredContentItem[];
 }

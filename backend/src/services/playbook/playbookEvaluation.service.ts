@@ -172,6 +172,12 @@ function runTest(
         kind && TEXT_KINDS.has(kind) ? (vagueTermIn(String(field.value ?? '')) ?? vagueTermIn(field.quote ?? '')) : undefined;
       return vague ? { status: 'fail', used: [field], observed: field.value, vagueTerm: vague } : { status: 'pass', used: [field], observed: field.value };
     }
+    case 'all_stated': {
+      const used = test.fields.map(fieldOf);
+      if (used.some((field) => field.state === 'absent')) return { status: 'fail', used };
+      if (used.some((field) => field.state === 'uncertain')) return { status: 'unknown', used, reason: UNCERTAIN_REASON };
+      return { status: 'pass', used };
+    }
     case 'at_most':
     case 'at_least': {
       const field = fieldOf(test.field);
@@ -181,23 +187,27 @@ function runTest(
       const exceeded = test.kind === 'at_most' ? value > test.limit : value < test.limit;
       return { status: exceeded ? 'fail' : 'pass', used: [field], observed: value, limit: test.limit };
     }
-    case 'at_most_tiered': {
+    case 'at_most_tiered':
+    case 'at_least_tiered': {
       const field = fieldOf(test.field);
       const value = numericValue(field);
       if (value === 'unknown') return { status: 'unknown', used: [field], reason: UNCERTAIN_REASON };
       if (value === 'absent') return { status: 'na', used: [field] };
-      if (test.absoluteLimit !== undefined && value > test.absoluteLimit) {
+      const atMost = test.kind === 'at_most_tiered';
+      const breaches = (limit: number) => (atMost ? value > limit : value < limit);
+      if (test.absoluteLimit !== undefined && breaches(test.absoluteLimit)) {
         return { status: 'fail', used: [field], observed: value, limit: test.absoluteLimit };
       }
       const possible: LimitTier[] = [];
       for (const tier of test.tiers) {
         const states = tier.facts.map(factOf);
         if (states.every((state) => state === true)) {
-          return { status: value > tier.limit ? 'fail' : 'pass', used: [field], observed: value, limit: tier.limit };
+          return { status: breaches(tier.limit) ? 'fail' : 'pass', used: [field], observed: value, limit: tier.limit };
         }
         if (!states.includes(false)) possible.push(tier);
       }
-      if (possible.length === 0 || value <= Math.min(...possible.map((tier) => tier.limit))) {
+      const limits = possible.map((tier) => tier.limit);
+      if (possible.length === 0 || !breaches(atMost ? Math.min(...limits) : Math.max(...limits))) {
         return { status: 'pass', used: [field], observed: value, limit: test.absoluteLimit };
       }
       const unit = UNIT_SUFFIX[definitionOf(test.field)?.kind ?? 'text'] ?? '';
@@ -208,7 +218,7 @@ function runTest(
         status: 'unknown',
         used: [field],
         observed: value,
-        reason: `Hợp đồng ghi ${value.toLocaleString('vi-VN')}${unit}. Mức tối đa tuỳ trường hợp: ${tiers}. Hợp đồng chưa cho biết trường hợp nào áp dụng.`,
+        reason: `Hợp đồng ghi ${value.toLocaleString('vi-VN')}${unit}. Mức tối ${atMost ? 'đa' : 'thiểu'} tuỳ trường hợp: ${tiers}. Hợp đồng chưa cho biết trường hợp nào áp dụng.`,
       };
     }
     case 'fails_when_all': {
@@ -315,7 +325,8 @@ function evaluateCheck(check: PlaybookCheck, ctx: CheckContext): CheckResult {
       }),
     ),
     conditions: check.test.kind === 'fails_when_all' ? check.test.conditions : undefined,
-    limitKind: check.test.kind === 'at_least' ? 'at_least' : raw.limit !== undefined ? 'at_most' : undefined,
+    limitKind:
+      check.test.kind === 'at_least' || check.test.kind === 'at_least_tiered' ? 'at_least' : raw.limit !== undefined ? 'at_most' : undefined,
     facts: factEvidence,
     legalArticles: [...lawArticles, ...references],
   };

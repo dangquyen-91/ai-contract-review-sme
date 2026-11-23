@@ -282,6 +282,21 @@ export const WORKING_TIME_PLAYBOOK: ClausePlaybook = {
       kind: 'days',
       extraction: 'Paid annual leave days per full year of work.',
     },
+    {
+      key: 'weekly_rest_hours',
+      label: 'Thời gian nghỉ hằng tuần liên tục',
+      aspect: 'when',
+      kind: 'hours',
+      extraction:
+        'The continuous weekly rest the contract gives, in hours (one full day off = 24, two days in a row = 48). Only when the contract states the weekly rest itself; do not derive it from the number of working days.',
+    },
+    {
+      key: 'lunar_new_year_days',
+      label: 'Số ngày nghỉ Tết Âm lịch',
+      aspect: 'how_much',
+      kind: 'days',
+      extraction: 'Paid days off for the Lunar New Year ("Tết Âm lịch", "Tết Nguyên đán") stated in the contract.',
+    },
   ],
   notApplicable: [
     { aspect: 'who', reason: 'Thời giờ làm việc áp dụng cho người lao động trong hợp đồng.' },
@@ -400,6 +415,39 @@ export const WORKING_TIME_PLAYBOOK: ClausePlaybook = {
         status: 'approved',
         note: 'Chỉ kiểm mức tối thiểu 12 ngày; mức 14 và 16 ngày cho công việc nặng nhọc, độc hại hoặc người lao động đặc thù chưa được kiểm tra.',
       },
+    },
+    {
+      code: 'TG-07',
+      group: 'compliance',
+      title: 'Nghỉ hằng tuần ít nhất 24 giờ liên tục',
+      appliesTo: { contractTypes: LABOR },
+      test: { kind: 'at_least', field: 'weekly_rest_hours', limit: 24 },
+      basis: {
+        kind: 'law',
+        statement: 'Mỗi tuần, người lao động được nghỉ ít nhất 24 giờ liên tục.',
+        articles: [{ sourceCode: BLLD, article: 111, clause: 1, verifyText: 'người lao động được nghỉ ít nhất 24 giờ liên tục' }],
+      },
+      whyItMatters: 'Người lao động không được nghỉ đủ một ngày trọn vẹn mỗi tuần như luật bảo đảm.',
+      suggestion: 'Người lao động được nghỉ hằng tuần ít nhất 24 giờ liên tục, vào ngày [Chủ nhật/ngày khác].',
+      review: {
+        status: 'approved',
+        note: 'Trường hợp đặc biệt do chu kỳ lao động không thể nghỉ hằng tuần thì được tính bình quân 04 ngày mỗi tháng; phép kiểm chỉ so với mức 24 giờ khi hợp đồng ghi rõ thời gian nghỉ hằng tuần.',
+      },
+    },
+    {
+      code: 'TG-08',
+      group: 'compliance',
+      title: 'Nghỉ Tết Âm lịch ít nhất 05 ngày hưởng nguyên lương',
+      appliesTo: { contractTypes: LABOR },
+      test: { kind: 'at_least', field: 'lunar_new_year_days', limit: 5 },
+      basis: {
+        kind: 'law',
+        statement: 'Người lao động được nghỉ làm việc, hưởng nguyên lương 05 ngày Tết Âm lịch.',
+        articles: [{ sourceCode: BLLD, article: 112, clause: 1, verifyText: 'Tết Âm lịch: 05 ngày' }],
+      },
+      whyItMatters: 'Người lao động bị cắt bớt ngày nghỉ Tết có lương mà luật bảo đảm.',
+      suggestion: 'Người lao động được nghỉ Tết Âm lịch 05 ngày, hưởng nguyên lương, theo lịch nghỉ do Thủ tướng Chính phủ quyết định.',
+      review: APPROVED,
     },
   ],
 };

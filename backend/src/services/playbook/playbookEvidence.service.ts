@@ -97,7 +97,7 @@ export function factsUsedBy(checks: PlaybookCheck[], contractType: string): Cont
   const facts = new Set<ContractFact>();
   for (const check of checks) {
     for (const fact of check.appliesTo.facts ?? []) facts.add(fact);
-    if (check.test.kind === 'at_most_tiered') for (const tier of check.test.tiers) for (const fact of tier.facts) facts.add(fact);
+    if (check.test.kind === 'at_most_tiered' || check.test.kind === 'at_least_tiered') for (const tier of check.test.tiers) for (const fact of tier.facts) facts.add(fact);
     for (const rule of check.fallbackRules ?? []) {
       if (rule.contractTypes.includes(contractType)) for (const fact of rule.facts ?? []) facts.add(fact);
     }

@@ -413,6 +413,21 @@ export const DISPUTE_PLAYBOOK: ClausePlaybook = {
       kind: 'text',
       extraction: 'The name of the arbitration centre chosen (for example "Trung tâm Trọng tài Quốc tế Việt Nam (VIAC)").',
     },
+    {
+      key: 'court_chosen',
+      label: 'Đưa tranh chấp ra Toà án',
+      aspect: 'where',
+      kind: 'boolean',
+      extraction: 'true when the contract says disputes are resolved by a court ("Toà án").',
+    },
+    {
+      key: 'labor_conciliation',
+      label: 'Hoà giải viên lao động, Hội đồng trọng tài lao động',
+      aspect: 'how',
+      kind: 'text',
+      extraction:
+        'What the contract says about conciliation by a labor mediator ("hoà giải viên lao động"), the labor arbitration council ("Hội đồng trọng tài lao động"), or resolving disputes under the procedure of the Labor Code. Negotiation or conciliation between the parties themselves does NOT count.',
+    },
   ],
   notApplicable: [
     { aspect: 'how_much', reason: 'Chi phí giải quyết tranh chấp do luật tố tụng hoặc quy tắc trọng tài điều chỉnh.' },
@@ -450,6 +465,37 @@ export const DISPUTE_PLAYBOOK: ClausePlaybook = {
       whyItMatters: 'Thoả thuận trọng tài không rõ ràng có thể bị coi là không thực hiện được, làm mất thời gian khi có tranh chấp.',
       suggestion: 'Tranh chấp được giải quyết tại [tên trung tâm trọng tài] theo Quy tắc tố tụng trọng tài của Trung tâm này.',
       review: APPROVED,
+    },
+    {
+      code: 'GQ-03',
+      group: 'completeness',
+      title: 'Điều khoản tranh chấp lao động phải nêu bước hoà giải viên lao động trước khi khởi kiện',
+      appliesTo: { contractTypes: ['labor'] },
+      test: {
+        kind: 'fails_when_all',
+        conditions: [
+          { field: 'court_chosen', op: 'is_true' },
+          { field: 'labor_conciliation', op: 'not_stated' },
+        ],
+      },
+      basis: {
+        kind: 'practice',
+        statement:
+          'Thông lệ: tranh chấp lao động cá nhân phải qua hoà giải viên lao động trước khi yêu cầu Hội đồng trọng tài lao động hoặc Toà án giải quyết (trừ một số loại tranh chấp), nên điều khoản giải quyết tranh chấp nêu đủ các bước này.',
+        references: [
+          { sourceCode: BLLD, article: 187, verifyText: 'Hòa giải viên lao động' },
+          { sourceCode: BLLD, article: 188, clause: 1, verifyText: 'phải được giải quyết thông qua thủ tục hòa giải của hòa giải viên lao động' },
+        ],
+      },
+      question: 'Khi có tranh chấp, các bên có phải qua hoà giải viên lao động trước khi đưa ra Hội đồng trọng tài lao động hoặc Toà án không?',
+      whyItMatters:
+        'Điều khoản chỉ nêu Toà án dễ khiến các bên bỏ qua bước hoà giải bắt buộc với phần lớn tranh chấp lao động, mất thời gian khi cần giải quyết tranh chấp.',
+      suggestion:
+        'Tranh chấp được giải quyết theo trình tự của Bộ luật Lao động: qua hoà giải viên lao động, sau đó Hội đồng trọng tài lao động hoặc Toà án nhân dân có thẩm quyền, trừ các tranh chấp không bắt buộc hoà giải theo khoản 1 Điều 188.',
+      review: {
+        status: 'approved',
+        note: 'Thoả thuận chọn một Toà án cố định (ví dụ nơi người sử dụng lao động đặt trụ sở) chưa được kiểm tra vì Bộ luật Tố tụng dân sự chưa có trong kho luật.',
+      },
     },
   ],
 };
