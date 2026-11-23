@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Icon } from "@/components/ui/icon";
 import { findingDisplay } from "@/config/issue-display";
 import { findingVerdictLabels } from "@/lib/review/verification-workspace";
+import { verificationClauseLabel } from "@/lib/review/verification-display";
 import type { VerifiedFinding } from "@/types/verification-workspace";
 import { FindingProposedRevision } from "./finding-proposed-revision";
 import styles from "@/styles/review/review-design.module.css";
@@ -60,7 +61,7 @@ export function VerificationFindingCard({ finding, editable, readOnly = false, s
       )}
       {finding.clause && (
         <button type="button" className={`${styles.textAction} mt-2`} onClick={onLocate}>
-          {finding.clause.title || `Điều khoản ${finding.clause.index}`} <span aria-hidden="true">↗</span> Xem vị trí
+          {verificationClauseLabel(finding.clause)} <span aria-hidden="true">↗</span> Xem vị trí
         </button>
       )}
       <details className={styles.expertDisclosure}>

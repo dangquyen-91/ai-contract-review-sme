@@ -5,6 +5,7 @@ import { useWatch, type UseFormReturn } from "react-hook-form";
 import { FileText, MessageSquareText } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { issueDisplay, issueGroups } from "@/config/issue-display";
+import { verificationClauseLabel } from "@/lib/review/verification-display";
 import type { VerificationFindingForm } from "@/schemas/verification-finding.schema";
 import type { ExpertWorkspace } from "@/types/verification-workspace";
 
@@ -54,6 +55,7 @@ export function FindingEditorFields({ form, clauses, editing, busy }: {
   const id = useId();
   const title = useWatch({ control: form.control, name: "title" });
   const errors = form.formState.errors;
+  const selectableClauses = clauses.filter((clause) => clause.index !== 0 || Boolean(clause.title?.trim()));
   return (
     <fieldset disabled={busy} className="m-0 min-w-0 space-y-5 border-0 p-0">
       <section className="space-y-4" aria-labelledby={`${id}-context`}>
@@ -88,11 +90,24 @@ export function FindingEditorFields({ form, clauses, editing, busy }: {
           {!editing && (
             <div className="min-w-0 space-y-1.5">
               <label htmlFor={`${id}-clause`} className="text-sm font-medium">Điều khoản liên quan</label>
-              <select {...form.register("clauseIndex")} id={`${id}-clause`} className={`${field} truncate`} aria-invalid={Boolean(errors.clauseIndex)}>
-                <option value="">Toàn hợp đồng / thiếu điều khoản</option>
-                {clauses.map((clause) => <option key={clause._id} value={clause.index}>{clause.title || `Điều khoản ${clause.index}`}</option>)}
+              <select
+                {...form.register("clauseIndex")}
+                id={`${id}-clause`}
+                className={`${field} truncate`}
+                aria-invalid={Boolean(errors.clauseIndex)}
+                aria-describedby={`${id}-clause-hint${errors.clauseIndex ? ` ${id}-clause-error` : ""}`}
+              >
+                <option value="">Thiếu điều khoản / chưa có mục tương ứng</option>
+                {selectableClauses.map((clause) => (
+                  <option key={clause._id} value={clause.index}>
+                    {verificationClauseLabel(clause)}
+                  </option>
+                ))}
               </select>
-              {errors.clauseIndex && <p role="alert" className="m-0 text-xs text-rose-700">{errors.clauseIndex.message}</p>}
+              <p id={`${id}-clause-hint`} className="m-0 text-xs leading-5 text-[#73766f]">
+                Danh sách được lấy từ các phần đã tách trong hợp đồng này.
+              </p>
+              {errors.clauseIndex && <p id={`${id}-clause-error`} role="alert" className="m-0 text-xs text-rose-700">{errors.clauseIndex.message}</p>}
             </div>
           )}
         </div>

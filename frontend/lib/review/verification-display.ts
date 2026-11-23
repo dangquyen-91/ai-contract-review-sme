@@ -12,3 +12,9 @@ export function verificationDate(value?: string) {
     ? `${date.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" })} (GMT+7)`
     : "Chưa có thời gian";
 }
+
+export function verificationClauseLabel(clause: { index: number; title?: string | null }) {
+  return clause.title?.trim() || (clause.index === 0
+    ? "Phần đầu hợp đồng (chưa có tiêu đề)"
+    : `Điều khoản ${clause.index}`);
+}
