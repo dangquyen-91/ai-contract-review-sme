@@ -30,8 +30,13 @@ export function ReviewCoverage({ coverage }: { coverage?: CheckCoverage | null }
     <details className={`${styles.scope} ${styles.coverage}`}>
       <summary className={styles.coverageSummary}>
         <span className="ml-1 inline-flex max-w-full flex-wrap items-center gap-x-3 gap-y-1 align-middle">
-          <span>Phạm vi rà soát <span className="text-muted-foreground">/</span> đã kiểm {applicable} tiêu chí</span>
-          {shown.map((item) => <span key={item.label} className={`font-medium tabular-nums ${item.text}`}>{item.value} {item.label}</span>)}
+          <span>Đã kiểm {applicable} tiêu chí:</span>
+          {shown.map((item, i) => (
+            <span key={item.label} className={`font-medium tabular-nums ${item.text}`}>
+              {i > 0 && <span aria-hidden="true" className="mr-3 font-normal text-muted-foreground">·</span>}
+              {item.value} {item.label}
+            </span>
+          ))}
         </span>
       </summary>
       <div className="mt-4 space-y-4">

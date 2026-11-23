@@ -21,7 +21,10 @@ export function RiskFindingCard({ finding, clauseIndex: anchoredClauseIndex, cla
   const display = findingDisplay(finding);
   const rejected = finding.verification?.verdict === "rejected";
   const referral = finding.outcome === "referral" || finding.findingType === "referral";
-  const preview = finding.problem?.find((point) => point.trim());
+  const unverifiedReason = finding.outcome === "unverified"
+    ? finding.reason || "Chưa xác minh đủ căn cứ hoặc điều kiện áp dụng để kết luận."
+    : undefined;
+  const preview = finding.problem?.find((point) => point.trim() && point.trim() !== unverifiedReason?.trim());
   const clauseIndex = anchoredClauseIndex !== undefined ? anchoredClauseIndex
     : finding.clause?.index ?? finding.evidence?.find((item) => item.clauseIndex != null)?.clauseIndex;
   const reference = clauseIndex == null ? undefined : anchoredClauseLabel ?? clauseLabel({
@@ -43,11 +46,7 @@ export function RiskFindingCard({ finding, clauseIndex: anchoredClauseIndex, cla
       <FindingVerificationInfo verification={finding.verification} checkGroup={finding.checkGroup} />
       {finding.findingType === "missing_clause" && <p className={styles.findingPreview}>Điều khoản này chưa có trong hợp đồng.</p>}
       {referral && <p className={styles.findingPreview}>Câu hỏi cần chuyên gia xem xét thêm, chưa phải kết luận vi phạm.</p>}
-      {finding.outcome === "unverified" && (
-        <p className="mb-0 mt-2 text-ui-meta leading-6 text-[#856222]">
-          {finding.reason || "Chưa xác minh đủ căn cứ hoặc điều kiện áp dụng để kết luận."}
-        </p>
-      )}
+      {unverifiedReason && <p className="mb-0 mt-2 text-ui-meta leading-6 text-[#856222]">{unverifiedReason}</p>}
       {!expanded && preview && preview !== finding.title && <p className={`${styles.findingPreview} line-clamp-3 whitespace-pre-wrap`}>{preview}</p>}
       <div className={styles.findingActions}>
         <button type="button" className={styles.findingExpand} aria-expanded={expanded} aria-controls={expanded ? detailId : undefined} onClick={onToggle}>

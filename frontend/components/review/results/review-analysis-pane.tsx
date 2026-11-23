@@ -51,10 +51,15 @@ export function ReviewAnalysisPane({ result, sectionId, isDocx, showSummary = tr
     const index = [...issueGroups, "referral"].indexOf(group);
     return index < 0 ? 9 : index;
   };
+  const tier = (finding: RiskFinding) => finding.outcome === "referral" ? 2 : finding.outcome === "unverified" ? 1 : 0;
   const visibleFindings = findings.filter((finding) => matches(finding, groupFilter)).sort((a, b) =>
-    (findingClauseIndex(a, clauses) ?? Number.MAX_SAFE_INTEGER) - (findingClauseIndex(b, clauses) ?? Number.MAX_SAFE_INTEGER)
+    tier(a) - tier(b)
+    || (findingClauseIndex(a, clauses) ?? Number.MAX_SAFE_INTEGER) - (findingClauseIndex(b, clauses) ?? Number.MAX_SAFE_INTEGER)
     || rank(a.checkGroup) - rank(b.checkGroup));
-  const filters: FindingFilter[] = ["all", ...issueGroups, "unverified", "referral"];
+  const filters = (["all", ...issueGroups, "unverified", "referral"] as FindingFilter[]).filter((filter) =>
+    filter === "all" || filter === groupFilter || findings.some((finding) => matches(finding, filter)));
+  const issueCount = findings.filter((finding) => tier(finding) === 0).length;
+  const openCount = findings.length - issueCount;
   const headingId = `${sectionId}-findings-heading`;
 
   return (
@@ -65,7 +70,10 @@ export function ReviewAnalysisPane({ result, sectionId, isDocx, showSummary = tr
       <section className={`${styles.analysisSection} space-y-4 bg-white`} aria-labelledby={headingId}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h3 id={headingId} className={styles.sectionHeading}>{verificationFilter === "rejected" ? "Các mục đã bác bỏ" : "Kết quả kiểm tra"}</h3>
-          <span className="text-ui-meta tabular-nums text-muted-foreground">{visibleFindings.length}/{findings.length} mục{findings.length > 1 ? " · theo điều khoản" : ""}</span>
+          {findings.length > 0 && <span className="text-ui-meta tabular-nums text-muted-foreground">
+            {groupFilter !== "all" ? `${visibleFindings.length}/${findings.length} mục`
+              : [issueCount ? `${issueCount} vấn đề` : "", openCount ? `${openCount} điểm cần xem thêm` : ""].filter(Boolean).join(" · ")}
+          </span>}
         </div>
         <ReviewCoverage coverage={version?.checkCoverage} />
         {!version?.issueCounts && <p role="note" className="m-0 text-ui-meta leading-6 text-muted-foreground">{risksComplete ? "Kết quả trước đây chưa có phân loại theo tiêu chí mới. Hãy rà soát lại để cập nhật." : "Rà soát chưa hoàn tất, chưa có số liệu phân loại vấn đề."}</p>}
@@ -82,7 +90,7 @@ export function ReviewAnalysisPane({ result, sectionId, isDocx, showSummary = tr
             const label = filter === "all" ? "Tất cả" : filter === "unverified" || filter === "referral" ? filterLabels[filter] : issueDisplay[filter].label;
             return (
               <button key={filter} type="button" className={styles.filterButton} aria-pressed={groupFilter === filter}
-                disabled={filter !== "all" && count === 0 && groupFilter !== filter} onClick={() => { setGroupFilter(filter); setExpandedFinding(null); }}>
+                onClick={() => { setGroupFilter(filter); setExpandedFinding(null); }}>
                 {label} <span className={styles.filterCount}>{count}</span>
               </button>
             );
