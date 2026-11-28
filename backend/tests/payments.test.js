@@ -944,3 +944,103 @@ test('a paid shortfall that the plan can no longer cover is topped up instead of
   const { run } = await reserveUsage(reviewUsage(w));
   expect(run).toMatchObject({ units: 4, planUnits: 1 });
 });
+
+// --- Orders payOS never created, and links payOS will no longer cancel -------------------
+const { AppError } = require('../dist/errors/AppError');
+const rejected = () => new AppError('rejected', 502, true, provider.PROVIDER_REJECTED);
+const unreachable = () => new AppError('unreachable', 502);
+const openOrder = (w) => PaymentModel.findOne({ orgId: w.org.id, isOpen: true });
+const expire = (code) => PaymentModel.updateOne({ orderCode: code }, { $set: { expiresAt: new Date(Date.now() - 1000) } });
+async function unconfirmedOrder(w) {
+  provider.createPaymentLink.mockRejectedValueOnce(new Error('timeout'));
+  expect((await create(w)).status).toBe(502);
+  return (await openOrder(w)).orderCode;
+}
+
+test('an order payOS never created is closed after its checkout window and stops blocking purchases', async () => {
+  const w = await workspace();
+  const code = await unconfirmedOrder(w);
+  provider.getPaymentLink.mockRejectedValueOnce(rejected());
+  const early = await sync(w, code);
+  expect(early.status).toBe(409);
+  expect(early.body.error.code).toBe('PAYMENT_NOT_CREATED_YET');
+  expect(early.body.error.message).toMatch(/chưa có khoản tiền nào bị trừ/);
+  expect((await openOrder(w)).orderCode).toBe(code);
+  await expire(code);
+  provider.getPaymentLink.mockRejectedValueOnce(rejected());
+  const closed = await sync(w, code);
+  expect(closed.status).toBe(200);
+  expect(closed.body.data).toMatchObject({ status: 'failed', providerError: null, paidAt: null });
+  expect(await openOrder(w)).toBeNull();
+  expect((await create(w)).status).toBe(201);
+});
+
+test('an unreachable payOS never closes an unconfirmed order, which keeps blocking a new charge', async () => {
+  const w = await workspace();
+  const code = await unconfirmedOrder(w);
+  await expire(code);
+  provider.getPaymentLink.mockRejectedValueOnce(unreachable());
+  expect((await sync(w, code)).status).toBe(502);
+  expect((await openOrder(w)).orderCode).toBe(code);
+  provider.getPaymentLink.mockRejectedValueOnce(unreachable());
+  const blocked = await create(w);
+  expect(blocked.status).toBe(409);
+  expect(blocked.body.error).toMatchObject({ code: 'PAYMENT_IN_PROGRESS' });
+  expect(blocked.body.error.message).toMatch(/^Đang có đơn thanh toán chưa hoàn tất/);
+});
+
+test('an unconfirmed order that payOS did create is settled from payOS, not closed', async () => {
+  const w = await workspace();
+  provider.createPaymentLink.mockImplementationOnce(async (input) => {
+    remoteOrders.set(input.orderCode, { id: `link-${input.orderCode}`, orderCode: input.orderCode, amount: input.amount, amountPaid: 0, amountRemaining: input.amount, status: 'PENDING' });
+    throw new Error('timeout after payOS stored the link');
+  });
+  expect((await create(w)).status).toBe(502);
+  const code = (await openOrder(w)).orderCode;
+  await expire(code);
+  paid(code);
+  const settled = await sync(w, code);
+  expect(settled.status).toBe(200);
+  expect(settled.body.data.fulfilledAt).toBeTruthy();
+});
+
+test('a new checkout closes an expired order payOS never created by itself', async () => {
+  const w = await workspace();
+  const code = await unconfirmedOrder(w);
+  await expire(code);
+  provider.getPaymentLink.mockRejectedValueOnce(rejected());
+  const next = await create(w);
+  expect(next.status).toBe(201);
+  expect((await PaymentModel.findOne({ orderCode: code })).status).toBe('failed');
+});
+
+test('an expired link payOS will not cancel is read back, closed and replaced by a new checkout', async () => {
+  const w = await workspace();
+  const first = (await create(w)).body.data.orderCode;
+  remoteOrders.get(first).status = 'EXPIRED';
+  provider.cancelPaymentLink.mockRejectedValueOnce(rejected());
+  const next = await create(w);
+  expect(next.status).toBe(201);
+  expect((await PaymentModel.findOne({ orderCode: first })).toObject()).toMatchObject({ status: 'expired', isOpen: false });
+});
+
+test('cancelling a link that already expired reports it as expired', async () => {
+  const w = await workspace();
+  const code = (await create(w)).body.data.orderCode;
+  remoteOrders.get(code).status = 'EXPIRED';
+  provider.cancelPaymentLink.mockRejectedValueOnce(rejected());
+  const response = await cancelOrder(w, code);
+  expect(response.status).toBe(200);
+  expect(response.body.data.status).toBe('expired');
+});
+
+test('retrying the same checkout never cancels its own payment link', async () => {
+  const w = await workspace();
+  const key = randomUUID();
+  const first = await create(w, 'business_starter', 'purchase', key);
+  const calls = provider.cancelPaymentLink.mock.calls.length;
+  const retry = await create(w, 'business_starter', 'purchase', key);
+  expect(retry.body.data.orderCode).toBe(first.body.data.orderCode);
+  expect(provider.cancelPaymentLink.mock.calls.length).toBe(calls);
+  expect(remoteOrders.get(first.body.data.orderCode).status).toBe('PENDING');
+});

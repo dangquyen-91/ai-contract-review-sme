@@ -161,7 +161,7 @@ export function SubscriptionConfirmation({
           </div>
           <div className="mt-5 flex items-end justify-between gap-3 border-t border-[#edf1f7] pt-5">
             <span className="pb-1 text-[12px] text-[#71809a]">
-              Tổng thanh toán
+              Giá gói
             </span>
             <div className="text-right">
               <p className="whitespace-nowrap text-[30px] font-semibold leading-tight tracking-[-1px] tabular-nums">

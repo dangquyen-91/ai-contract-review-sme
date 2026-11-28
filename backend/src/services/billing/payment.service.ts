@@ -133,7 +133,7 @@ export async function createPayment(
         'Phí hoặc phiên bản hợp đồng đã thay đổi. Hãy kiểm tra lại trước khi thanh toán.',
         'REVIEW_QUOTE_CHANGED',
       );
-  } else if (!plan || plan.price <= 0) throw AppError.badRequest('Choose a paid plan');
+  } else if (!plan || plan.price <= 0) throw AppError.badRequest('Vui lòng chọn gói trả phí.');
   const amount = reviewQuote?.amount ?? topUp?.pack.price ?? planQuote!.amount!;
   const itemName = reviewQuote
     ? 'Rà soát hợp đồng LawScan'
@@ -163,7 +163,7 @@ export async function createPayment(
       }
     : input;
   const orderCode = randomInt(1_000_000_000_000, 10_000_000_000_000);
-  await releaseAbandonedOrder(orgId);
+  await releaseAbandonedOrder(orgId, idempotencyKey);
   const { order, created } = await mongoose.connection.transaction(async (session) => {
     await lockSubscriptionOrganization(orgId, session);
     if (
@@ -178,7 +178,10 @@ export async function createPayment(
     const existing = await PaymentModel.findOne({ orgId, idempotencyKey }).session(session);
     if (existing) return { order: existing, created: false };
     if (await PaymentModel.exists({ orgId, isOpen: true }).session(session)) {
-      throw AppError.conflict('An unfinished payment exists. Synchronize or cancel it first.');
+      throw AppError.conflict(
+        'Đang có đơn thanh toán chưa hoàn tất. Hãy kiểm tra hoặc hủy đơn đó trước khi tạo đơn mới.',
+        'PAYMENT_IN_PROGRESS',
+      );
     }
     const [order] = await PaymentModel.create(
       [
@@ -209,7 +212,7 @@ export async function createPayment(
       expiredAt: Math.floor(order.expiresAt.getTime() / 1000),
     });
     if (link.orderCode !== orderCode || link.amount !== order.amount || link.currency !== 'VND') {
-      throw new AppError('payOS returned mismatched order information', 502);
+      throw new AppError('Cổng thanh toán trả về thông tin đơn không khớp.', 502);
     }
     // A webhook may arrive before the create request returns. Never overwrite its state.
     await PaymentModel.updateOne(
@@ -233,11 +236,14 @@ export async function createPayment(
       { _id: order._id, status: 'creating' },
       {
         $set: {
-          providerError: 'Payment creation was not confirmed. Synchronize or cancel this order.',
+          providerError: 'Chưa xác nhận được việc tạo đơn ở cổng thanh toán. Hãy kiểm tra hoặc hủy đơn này.',
         },
       },
     );
-    throw new AppError(`Payment creation was not confirmed. Synchronize order ${orderCode}.`, 502);
+    throw new AppError(
+      `Chưa xác nhận được đơn #${orderCode} ở cổng thanh toán. Hãy kiểm tra lại đơn trước khi thanh toán.`,
+      502,
+    );
   }
 }
 
@@ -245,14 +251,24 @@ export async function createPayment(
  * A new checkout replaces an unpaid order whose payment link was confirmed, e.g. a
  * payOS tab the owner closed. payOS is asked to cancel it first; if it was paid in
  * the meantime it is settled instead and the new checkout stops, so nothing is
- * charged twice. Orders in an uncertain state (link creation unconfirmed, partial
- * payment) keep blocking until they are synchronized or cancelled explicitly.
+ * charged twice. A link payOS will no longer cancel (it expired) is read back
+ * instead, and an order payOS never created is closed once its checkout window has
+ * passed. Anything still uncertain (unreachable payOS, partial payment) keeps
+ * blocking until it is synchronized or cancelled explicitly.
  */
-async function releaseAbandonedOrder(orgId: string) {
+async function releaseAbandonedOrder(orgId: string, idempotencyKey: string) {
   const open = await PaymentModel.findOne({ orgId, isOpen: true });
-  if (!open || !isReplaceableOrder(open)) return;
+  // A retry of this same checkout returns that order; never cancel its own link.
+  if (!open || open.idempotencyKey === idempotencyKey) return;
   try {
-    await reconcile(open, await provider.cancelPaymentLink(open.orderCode));
+    if (isReplaceableOrder(open)) {
+      try {
+        await reconcile(open, await provider.cancelPaymentLink(open.orderCode));
+      } catch {
+        await refresh(open);
+      }
+    } else if (neverConfirmed(open) && open.expiresAt <= new Date()) await refresh(open);
+    else return;
   } catch {
     return; // Leave it open; the transaction below reports the unfinished order.
   }
@@ -277,15 +293,48 @@ function repeat(order: Payment, input: Purchase) {
       : (order.purpose ?? 'subscription') === 'subscription' &&
         order.planCode === input.planCode;
   if (!matches || order.action !== input.action) {
-    throw AppError.conflict('Idempotency-Key was already used for another purchase');
+    throw AppError.conflict('Mã yêu cầu thanh toán đã được dùng cho giao dịch khác. Vui lòng tải lại trang.');
   }
   return view(order);
+}
+
+const neverConfirmed = (order: Payment) => !order.paidAt && !order.paymentLinkId;
+
+/**
+ * payOS answered that it has no such order: creating its link failed or timed out
+ * before payOS stored it. Nothing can be paid on it, so once its checkout window has
+ * passed it is closed instead of blocking every later purchase of the account.
+ */
+async function closeNeverCreated(order: Payment, error: unknown) {
+  if (!(error instanceof AppError) || error.code !== provider.PROVIDER_REJECTED || !neverConfirmed(order))
+    throw error;
+  if (order.expiresAt > new Date())
+    throw AppError.conflict(
+      `Cổng thanh toán chưa ghi nhận đơn #${order.orderCode}; chưa có khoản tiền nào bị trừ. Hãy kiểm tra lại sau ${order.expiresAt.toLocaleTimeString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' })} để đóng đơn.`,
+      'PAYMENT_NOT_CREATED_YET',
+    );
+  await PaymentModel.updateOne(
+    { _id: order._id, paidAt: null, paymentLinkId: null },
+    { $set: { status: 'failed', isOpen: false }, $unset: { providerError: 1 } },
+  );
+  return view((await PaymentModel.findById(order._id))!);
+}
+
+/** Reads the order back from payOS and applies its state. */
+async function refresh(order: Payment) {
+  let remote: PaymentLink;
+  try {
+    remote = await provider.getPaymentLink(order.orderCode);
+  } catch (error) {
+    return closeNeverCreated(order, error);
+  }
+  return reconcile(order, remote);
 }
 
 async function ownedOrder(userId: string, orgId: string, orderCode: number) {
   await requireSubscriptionAccess(userId, orgId, true);
   const order = await PaymentModel.findOne({ orgId, orderCode });
-  if (!order) throw AppError.notFound('Payment not found');
+  if (!order) throw AppError.notFound('Không tìm thấy đơn thanh toán.');
   return order;
 }
 
@@ -336,7 +385,7 @@ async function fulfill(order: Payment) {
       );
       return;
     }
-    if (!order.planCode) throw AppError.conflict('Missing subscription plan');
+    if (!order.planCode) throw AppError.conflict('Đơn thanh toán thiếu thông tin gói dịch vụ.');
     const period = await activatePaidSubscription(
       {
         orgId: order.orgId.toString(),
@@ -362,11 +411,14 @@ async function fulfill(order: Payment) {
       {
         $set: {
           fulfillmentError:
-            error instanceof AppError ? error.message : 'Activation failed; retry synchronization.',
+            error instanceof AppError ? error.message : 'Kích hoạt chưa thành công; hãy kiểm tra lại đơn.',
         },
       },
     );
-    throw new AppError('Payment received, but activation is pending. Retry synchronization.', 503);
+    throw new AppError(
+      'Đã nhận thanh toán nhưng chưa kích hoạt xong. Hãy bấm kiểm tra lại; không thanh toán thêm.',
+      503,
+    );
   }
 }
 
@@ -376,13 +428,11 @@ async function reconcile(order: Payment, remote: PaymentLink) {
     remote.amount !== order.amount ||
     (order.paymentLinkId && remote.id !== order.paymentLinkId)
   ) {
-    throw AppError.conflict('payOS order information does not match the stored purchase');
+    throw AppError.conflict('Thông tin đơn ở cổng thanh toán không khớp với đơn đã lưu.');
   }
   if (remote.status === 'PAID') {
     if (remote.amountPaid !== order.amount || remote.amountRemaining !== 0) {
-      throw AppError.conflict(
-        'Paid amount does not match the stored purchase; manual review required',
-      );
+      throw AppError.conflict('Số tiền đã thanh toán không khớp với đơn; cần bộ phận hỗ trợ kiểm tra.');
     }
     // Serialize concurrent notifications; preserve the time first confirmed as paid.
     await PaymentModel.updateOne(
@@ -438,14 +488,21 @@ async function reconcile(order: Payment, remote: PaymentLink) {
 export async function syncPayment(userId: string, orgId: string, orderCode: number) {
   const order = await ownedOrder(userId, orgId, orderCode);
   if (order.fulfilledAt) return view(order);
-  return reconcile(order, await provider.getPaymentLink(orderCode));
+  return refresh(order);
 }
 
 export async function cancelPayment(userId: string, orgId: string, orderCode: number) {
   const order = await ownedOrder(userId, orgId, orderCode);
-  if (order.paidAt) throw AppError.conflict('A paid order cannot be cancelled here');
+  if (order.paidAt) throw AppError.conflict('Đơn đã thanh toán không thể hủy.');
+  let remote: PaymentLink;
+  try {
+    remote = await provider.cancelPaymentLink(orderCode);
+  } catch {
+    // payOS refuses to cancel a link that expired or was never created; read its real state.
+    return refresh(order);
+  }
   // Cancellation can race with payment; the authoritative response may already be PAID.
-  return reconcile(order, await provider.cancelPaymentLink(orderCode));
+  return reconcile(order, remote);
 }
 
 export async function receivePaymentWebhook(body: Webhook) {
