@@ -115,7 +115,7 @@ test('ratios preserve precision, empty denominators are unknown, and Vietnam day
   ).toBe(5);
 });
 
-test('reports count attempts separately from unique latest-risk contracts, paid receipts and committed billing units', async () => {
+test('reports count attempts separately from unique latest-issue contracts, paid receipts and committed billing units', async () => {
   const org = await OrganizationModel.create({ name: 'Reports company' });
   const orgId = org._id;
   const a = id(),
@@ -128,7 +128,13 @@ test('reports count attempts separately from unique latest-risk contracts, paid 
     { _id: c, orgId, title: 'Last second', createdAt: new Date(end.getTime() - 1) },
     { _id: d, orgId, title: 'Tomorrow', createdAt: end },
   ]);
-  function review(contractId, status, finishedAt, risk, duration) {
+  // Review outcome: a legal violation, another issue, or no issue.
+  const outcomes = {
+    violation: { violations: 1, total: 1 },
+    issue: { unclear: 1, total: 1 },
+    clean: { total: 0 },
+  };
+  function review(contractId, status, finishedAt, outcome, duration) {
     return {
       _id: id(),
       orgId,
@@ -138,19 +144,19 @@ test('reports count attempts separately from unique latest-risk contracts, paid 
       finishedAt,
       createdAt: start,
       ...(duration === undefined ? {} : { startedAt: new Date(finishedAt.getTime() - duration) }),
-      ...(risk ? { result: { overallRiskLevel: risk } } : {}),
+      ...(outcome ? { result: { issueCounts: outcomes[outcome] } } : {}),
     };
   }
   await ReviewModel.collection.insertMany([
-    review(a, 'completed', start, 'high', 30_000),
-    review(a, 'completed', inside, 'low', 60_000),
-    review(b, 'completed', inside, 'none', 90_000),
-    review(c, 'completed', inside, 'high'),
+    review(a, 'completed', start, 'violation', 30_000),
+    review(a, 'completed', inside, 'issue', 60_000),
+    review(b, 'completed', inside, 'clean', 90_000),
+    review(c, 'completed', inside, 'violation'),
     review(d, 'completed', inside, undefined, -1000),
     review(a, 'failed', inside),
     review(b, 'cancelled', inside),
-    review(b, 'completed', outside, 'high', 1000),
-    review(a, 'completed', end, 'high', 1000),
+    review(b, 'completed', outside, 'violation', 1000),
+    review(a, 'completed', end, 'violation', 1000),
     { _id: id(), orgId, idempotencyKey: 'queued', status: 'queued', createdAt: start },
     { _id: id(), orgId, idempotencyKey: 'running', status: 'running', createdAt: inside },
   ]);
@@ -199,14 +205,14 @@ test('reports count attempts separately from unique latest-risk contracts, paid 
     averageDurationMs: 60_000,
   });
   expect(report.reviews.successRate).toBeCloseTo((5 / 6) * 100);
-  expect(report.risks).toMatchObject({
-    high: 1,
-    low: 1,
-    none: 1,
-    unknown: 1,
-    assessedContracts: 3,
+  // Only the latest completed review of each contract in the period counts; d has no result.
+  expect(report.issues).toMatchObject({
+    withViolations: 1,
+    withIssues: 1,
+    noIssues: 1,
+    checkedContracts: 3,
   });
-  expect(report.risks.highRiskRate).toBeCloseTo(100 / 3);
+  expect(report.issues.violationRate).toBeCloseTo(100 / 3);
   expect(report.payments).toMatchObject({ amount: 109_000, count: 2, unfulfilled: 1 });
   expect(report.consumedUnits).toEqual({ analysis: 3, chat: 2, drafting: 1 });
   expect(report.daily).toEqual([{ date: '2026-11-10', completed: 5, failed: 1 }]);
@@ -236,7 +242,7 @@ test('reports count attempts separately from unique latest-risk contracts, paid 
   });
   expect(calendar.comparison.changes.payments.current).toBe(calendar.payments.amount);
   expect(calendar.comparison.changes.payments.status).toBe('no_baseline');
-  expect(calendar.risks.percentages.none).toBeCloseTo(100 / 3);
+  expect(calendar.issues.percentages.noIssues).toBeCloseTo(100 / 3);
 });
 
 test('Owner is isolated from other organizations and system receipts, and empty periods never invent ratios', async () => {
@@ -249,7 +255,7 @@ test('Owner is isolated from other organizations and system receipts, and empty 
   expect(report.uploadedContracts).toBe(0);
   expect(report.reviews.successRate).toBeNull();
   expect(report.reviews.averageDurationMs).toBeNull();
-  expect(report.risks.highRiskRate).toBeNull();
+  expect(report.issues.violationRate).toBeNull();
   expect(report.payments).toBeNull();
   expect(report.organizations.map((org) => org.id)).toEqual([own.id]);
   await expect(getReports(owner, 1, other.id, now)).rejects.toMatchObject({ statusCode: 403 });

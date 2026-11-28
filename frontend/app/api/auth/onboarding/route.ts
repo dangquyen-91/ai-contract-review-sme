@@ -3,16 +3,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { encodeSessionUser, userSessionCookie } from "@/lib/auth/auth-session";
 import { rememberedCookieAge } from "@/lib/auth/token-expiry";
 import type { AuthSession } from "@/types/auth";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function POST(request: NextRequest) {
   const session = await getApiSession();
   if (session.error) return session.error;
   const accessToken = session.accessToken;
 
-  const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
   try {
-    const upstream = await fetch(`${apiBaseUrl}/api/v1/auth/onboarding/complete`, {
+    const upstream = await fetch(backendApiUrl("/auth/onboarding/complete"), {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}` },
       cache: "no-store",

@@ -9,12 +9,13 @@ import * as icons from 'lucide-react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { JSDOM } from 'jsdom';
 import { z } from 'zod';
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
 
 function load(file, dependencies = {}, globals = {}) {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText;
+  }).outputText);
   vm.runInNewContext(source, { exports, require: name => {
     if (name in dependencies) return dependencies[name];
     if (name === 'react') return React;

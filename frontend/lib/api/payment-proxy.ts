@@ -1,6 +1,7 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 import { isSameOriginRequest } from "@/lib/api/request-origin";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function proxyPayment(request: NextRequest, orgId: string, orderCode?: string, action?: "sync" | "cancel") {
   const session = await getApiSession();
@@ -22,7 +23,7 @@ export async function proxyPayment(request: NextRequest, orgId: string, orderCod
       if (!key || !/^[a-zA-Z0-9_-]{8,128}$/.test(key)) return NextResponse.json({ success: false, error: { message: "Thiếu mã yêu cầu thanh toán." } }, { status: 400 });
       headers["Idempotency-Key"] = key;
     }
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/organizations/${orgId}/payments${suffix}${query}`, {
+    const upstream = await fetch(backendApiUrl(`/organizations/${orgId}/payments${suffix}${query}`), {
       method: request.method, headers,
       ...(request.method === "POST" && !orderCode ? { body: await request.text() } : {}),
       signal: AbortSignal.timeout(30_000), cache: "no-store",

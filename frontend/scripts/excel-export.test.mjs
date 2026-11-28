@@ -102,15 +102,15 @@ test('operational export includes exact comparisons, numeric point differences a
   assert.equal(trend.getRow(5).getCell(8).value, 'Tiền nhận (VND)');
   assert.equal(trend.getRow(6).getCell(3).value.toISOString().slice(0, 10), report.trend.buckets[0].current.date);
   assert.equal(trend.rowCount - 5, report.trend.buckets.length * 2);
-  assert.ok(!text(book).includes('Tỷ lệ rủi ro cao'));
-  assert.ok(!text(book).includes('Mức rủi ro'));
+  assert.ok(!text(book).includes('Tỷ lệ hợp đồng có vi phạm'));
+  assert.ok(!text(book).includes('Kết quả rà soát'));
   report.role = 'owner';
   report.payments = null;
   const owner = await reopen(reportExcel(report));
   assert.ok(!text(owner).includes('Thanh toán đã nhận'));
   assert.ok(!text(owner).includes('Tiền nhận (VND)'));
-  assert.ok(text(owner).includes('Tỷ lệ rủi ro cao'));
-  assert.ok(text(owner).includes('Mức rủi ro'));
+  assert.ok(text(owner).includes('Tỷ lệ hợp đồng có vi phạm'));
+  assert.ok(text(owner).includes('Kết quả rà soát'));
   assert.ok(!text(owner).includes('Không gian\n'));
 });
 

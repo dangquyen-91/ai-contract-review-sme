@@ -12,7 +12,7 @@ function load(file, dependencies = {}) {
   vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? (name === "@/components/ui/button" ? { Button: "button" } : {}), Date });
   return exports;
 }
-const helpers = load('../lib/review/review-timeline.ts');
+const helpers = load('../lib/review/review-timeline.ts', { './review-progress': load('../lib/review/review-progress.ts') });
 const { buildReviewTimeline, reviewElapsed } = helpers;
 const base = { _id: 'run', contractId: 'contract', status: 'running', stages: { segmentation: 'pending', summary: 'pending', riskDetection: 'pending' } };
 const step = (model, key) => model.steps.find((item) => item.key === key).state;

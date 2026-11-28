@@ -1,207 +1,160 @@
 "use client";
-import Link from "next/link";
-import { useState } from "react";
-import { FileText, Sparkles } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import {
-  useDraftCatalog,
-  useDraftList,
-} from "@/hooks/contract-drafts/use-contract-drafts";
-import type { AuthUser } from "@/types/auth";
+
+import { useState, type ReactNode } from "react";
+import { CircleHelp, Clock3, FileText, Plus } from "lucide-react";
+import { Popover } from "radix-ui";
+import { useDraftCatalog } from "@/hooks/contract-drafts/use-contract-drafts";
 import { useCreateContractDraft } from "@/hooks/contract-drafts/use-create-contract-draft";
+import type { AuthUser } from "@/types/auth";
+import { QuotaScopePicker } from "@/components/workspace/quota-scope-picker";
 import { DraftShell } from "./draft-shell";
-import { DraftListRow } from "./draft-list-row";
-import { DraftTemplateCard } from "./draft-template-card";
+import { DraftHistoryDialog } from "./draft-history-dialog";
+import { DraftImportDialog } from "./draft-import-dialog";
+import { DraftLibraryDialog } from "./draft-library-dialog";
+
+type Panel = "library" | "import" | "history" | null;
 
 export function DraftWorkspace({ user }: { user: AuthUser }) {
   const catalog = useDraftCatalog();
-  const [page, setPage] = useState(1);
-  const [parties, setParties] = useState<Record<string, string>>({});
-  const drafts = useDraftList(page);
   const create = useCreateContractDraft();
+  const [panel, setPanel] = useState<Panel>(null);
+  const templates = catalog.data?.templates ?? [];
+  const toggle = (name: Exclude<Panel, null>) => (open: boolean) => setPanel(open ? name : null);
+
   return (
     <DraftShell
       user={user}
       organizationName={catalog.data?.organization.name}
       blockNavigation={create.isPending}
     >
-      <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">
-            {user.role === "user"
-              ? "Soạn thảo cá nhân"
-              : "Soạn thảo cho doanh nghiệp"}
-          </p>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight">
-            Bắt đầu từ mẫu. Hoàn thiện theo cách của bạn.
-          </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
-            Mở mẫu và chỉnh ngay trên trang hợp đồng. Trợ lý AI giúp bạn thay
-            đổi từng điều khoản bằng chat hoặc giọng nói; bạn quyết định nội
-            dung được áp dụng.
-          </p>
-          <p className="mt-3 text-sm font-medium text-blue-700">
-            {user.role === "user"
-              ? "3 loại hợp đồng cá nhân · Lao động ở góc nhìn người lao động"
-              : "4 loại hợp đồng dành cho doanh nghiệp"}
-          </p>
+      <div className="flex min-h-[calc(100dvh-10rem)] flex-col">
+        <div className="flex items-center justify-end gap-2">
+          <HelpButton />
+          <button
+            type="button"
+            onClick={() => setPanel("history")}
+            className="inline-flex h-9 items-center gap-2 rounded-full bg-slate-100/80 px-3.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200/70 hover:text-slate-900"
+          >
+            <Clock3 size={16} aria-hidden="true" />
+            Lịch sử
+          </button>
         </div>
-        <Link className="text-sm font-medium text-blue-600" href="/contract">
-          Hợp đồng đã lưu →
-        </Link>
-      </header>
-      <div className="mb-8 flex flex-wrap gap-x-8 gap-y-3 rounded-xl border border-blue-100 bg-blue-50/70 px-5 py-4 text-sm text-blue-800">
-        {[
-          "Mở mẫu có sẵn",
-          "Chỉnh trực tiếp hoặc nhờ AI",
-          "Hoàn tất & xuất hợp đồng",
-        ].map((label, index) => (
-          <span key={label} className="inline-flex items-center gap-2">
-            <span className="grid size-6 place-items-center rounded-full bg-white text-xs font-bold">
-              {index + 1}
-            </span>
-            {label}
-          </span>
-        ))}
+        <h1 className="sr-only">Soạn thảo hợp đồng</h1>
+        <div className="flex flex-1 flex-col items-center justify-center gap-6 py-10">
+          <div className="w-full max-w-[880px]">
+            <QuotaScopePicker kind="drafting" disabled={create.isPending} />
+          </div>
+          <div className="grid w-full max-w-[880px] gap-6 sm:grid-cols-2">
+            <StartCard
+              icon={<Plus size={26} strokeWidth={1.6} aria-hidden="true" />}
+              title="Tạo mới"
+              description="Tạo Hợp đồng, văn bản bằng cách mô tả yêu cầu hoặc tải lên file tham khảo của bạn"
+              onClick={() => setPanel("library")}
+              footer={
+                <button
+                  type="button"
+                  onClick={() => setPanel("library")}
+                  className="relative z-10 mt-4 text-sm font-medium text-blue-600 hover:text-blue-700 hover:underline focus-visible:underline focus-visible:outline-none"
+                >
+                  Kho hợp đồng, văn bản mẫu
+                </button>
+              }
+            />
+            <StartCard
+              icon={<FileText size={24} strokeWidth={1.6} aria-hidden="true" />}
+              title="Chỉnh sửa"
+              description="Tải file tài liệu để chỉnh sửa trực tiếp trên hợp đồng mẫu sẵn của bạn."
+              onClick={() => setPanel("import")}
+            />
+          </div>
+        </div>
       </div>
-      <h2 className="mb-4 text-lg font-semibold">Bắt đầu với một mẫu</h2>
-      {catalog.isLoading ? (
-        <p role="status" className="py-8 text-sm text-slate-500">
-          Đang tải mẫu hợp đồng…
-        </p>
-      ) : catalog.error ? (
-        <div role="alert">
-          <p>{catalog.error.message}</p>
-          <Button
-            className="mt-3"
-            variant="outline"
-            onClick={() => void catalog.refetch()}
-          >
-            Thử lại
-          </Button>
-        </div>
-      ) : (
-        <div className="@container/templates">
-          <div
-            className={
-              catalog.data?.templates.length === 3
-                ? "grid gap-4 @min-[640px]/templates:grid-cols-2 @min-[1000px]/templates:grid-cols-3"
-                : "grid gap-4 @min-[640px]/templates:grid-cols-2"
-            }
-          >
-            {catalog.data?.templates.map((template) => (
-              <DraftTemplateCard
-                key={template.id ?? template.code}
-                template={template}
-                party={parties[template.id ?? template.code] ?? template.parties[0].code}
-                pending={create.isPending}
-                onPartyChange={(value) =>
-                  setParties((current) => ({
-                    ...current,
-                    [template.id ?? template.code]: value,
-                  }))
-                }
-                onOpen={() =>
-                  void create.start(template, parties[template.id ?? template.code] ?? template.parties[0].code)
-                }
-              />
-            ))}
-          </div>
-        </div>
+      <DraftLibraryDialog
+        open={panel === "library"}
+        onOpenChange={toggle("library")}
+        templates={templates}
+        loading={catalog.isLoading}
+        error={catalog.error}
+        onRetry={() => void catalog.refetch()}
+        pending={create.isPending}
+        createError={create.error}
+        onOpenTemplate={(template, party) => void create.start(template, party)}
+      />
+      <DraftImportDialog open={panel === "import"} onOpenChange={toggle("import")} templates={templates} />
+      {panel === "history" && (
+        <DraftHistoryDialog open onOpenChange={toggle("history")} user={user} templates={templates} />
       )}
-      {create.error && (
-        <p role="alert" className="mt-4 text-sm text-red-600">
-          {create.error.message}
-        </p>
-      )}
-      <section className="mt-10 overflow-hidden rounded-2xl border border-slate-200 bg-white">
-        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-6 py-5">
-          <div>
-            <h2 className="font-semibold">
-              {user.role === "owner"
-                ? "Bản nháp trong tổ chức"
-                : "Bản nháp của bạn"}
-            </h2>
-            <p className="mt-1 text-xs text-slate-500">
-              {drafts.data?.total ?? 0} bản nháp · tự cập nhật mỗi phút
-            </p>
-          </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => void drafts.refetch()}
-          >
-            Làm mới
-          </Button>
-        </header>
-        {drafts.isLoading ? (
-          <p role="status" className="p-8 text-sm text-slate-500">
-            Đang tải bản nháp…
-          </p>
-        ) : drafts.error ? (
-          <p role="alert" className="p-8 text-sm text-red-600">
-            {drafts.error.message}
-          </p>
-        ) : !drafts.data?.items.length ? (
-          <div className="px-6 py-12 text-center">
-            <FileText className="mx-auto mb-3 text-slate-300" size={32} />
-            <h3 className="font-medium">Chưa có bản nháp</h3>
-            <p className="mt-2 text-sm text-slate-500">
-              Chọn một mẫu phía trên để tạo hợp đồng đầu tiên.
-            </p>
-          </div>
-        ) : (
-          <ul className="divide-y divide-slate-100">
-            {drafts.data.items.map((draft) => (
-              <DraftListRow
-                key={draft.id}
-                draft={draft}
-                templateName={
-                  catalog.data?.templates.find(
-                    (template) => template.code === draft.templateCode,
-                  )?.name
-                }
-                userId={user.id}
-                onPinned={() => setPage(1)}
-                onDeleted={() => {
-                  if (drafts.data?.items.length === 1 && page > 1)
-                    setPage(page - 1);
-                }}
-              />
-            ))}
-          </ul>
-        )}
-        {drafts.data && drafts.data.pages > 1 && (
-          <footer className="flex items-center justify-between border-t border-slate-100 px-6 py-4 text-sm">
-            <span>
-              Trang {page}/{drafts.data.pages}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={page === 1}
-                onClick={() => setPage(page - 1)}
-              >
-                Trước
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={page >= drafts.data.pages}
-                onClick={() => setPage(page + 1)}
-              >
-                Sau
-              </Button>
-            </div>
-          </footer>
-        )}
-      </section>
-      <p className="mt-5 flex items-start gap-2 text-xs leading-5 text-slate-400">
-        <Sparkles size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-        Các khung là tài liệu tham khảo cho giao dịch thông thường tại Việt Nam.
-        Nội dung AI cần được người có trách nhiệm kiểm tra trước khi sử dụng.
-      </p>
     </DraftShell>
+  );
+}
+
+function StartCard({
+  icon,
+  title,
+  description,
+  footer,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  description: string;
+  footer?: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <div className="group relative flex min-h-[266px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-8 py-8 text-center shadow-[0_2px_10px_rgba(15,23,42,0.08)] transition-[border-color,box-shadow] hover:border-slate-300 hover:shadow-[0_6px_20px_rgba(15,23,42,0.12)] has-[>button:first-child:focus-visible]:ring-2 has-[>button:first-child:focus-visible]:ring-blue-300">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={`${title}: ${description}`}
+        className="absolute inset-0 rounded-2xl focus-visible:outline-none"
+      />
+      <span className="grid size-16 place-items-center rounded-full bg-slate-100 text-slate-700 transition-colors group-hover:bg-slate-200/70">
+        {icon}
+      </span>
+      <h2 className="mt-5 text-xl font-semibold text-slate-900">{title}</h2>
+      <p className="mt-3 max-w-[340px] text-sm leading-6 text-slate-600">{description}</p>
+      {footer}
+    </div>
+  );
+}
+
+function HelpButton() {
+  return (
+    <Popover.Root>
+      <Popover.Trigger asChild>
+        <button
+          type="button"
+          aria-label="Hướng dẫn soạn thảo"
+          className="grid size-9 place-items-center rounded-full text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
+        >
+          <CircleHelp size={19} aria-hidden="true" />
+        </button>
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Content
+          align="end"
+          sideOffset={8}
+          className="z-[90] w-[min(340px,calc(100vw-2rem))] rounded-xl border border-slate-200 bg-white p-4 text-sm leading-6 text-slate-600 shadow-xl"
+        >
+          <p className="font-semibold text-slate-900">Bắt đầu soạn thảo</p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            <li>
+              <strong className="font-medium text-slate-800">Tạo mới:</strong> chọn một mẫu trong kho, sau đó chỉnh trực tiếp hoặc nhờ trợ lý AI.
+            </li>
+            <li>
+              <strong className="font-medium text-slate-800">Chỉnh sửa:</strong> tải lên hợp đồng Word, PDF có chữ hoặc TXT để chỉnh ngay trên trình soạn thảo.
+            </li>
+            <li>
+              <strong className="font-medium text-slate-800">Lịch sử:</strong> mở lại, ghim hoặc xóa các bản nháp đã tạo.
+            </li>
+          </ul>
+          <p className="mt-3 text-xs leading-5 text-slate-400">
+            Các mẫu là tài liệu tham khảo cho giao dịch thông thường tại Việt Nam. Nội dung AI cần được người có trách nhiệm kiểm tra trước khi sử dụng.
+          </p>
+          <Popover.Arrow className="fill-white" />
+        </Popover.Content>
+      </Popover.Portal>
+    </Popover.Root>
   );
 }

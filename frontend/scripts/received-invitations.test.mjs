@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as jsx from 'react/jsx-runtime';
 import { NextRequest, NextResponse } from 'next/server.js';
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
 
 function harness({ data = [], error, request = async () => ({ user: { role: 'staff' } }) } = {}) {
   const calls = [];
@@ -34,9 +35,9 @@ function harness({ data = [], error, request = async () => ({ user: { role: 'sta
     '@/lib/routing/workspace-path': { workspacePath: () => '/dashboard/staff' },
   };
   function load(file) {
-    const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
+    const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
       compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-    }).outputText;
+    }).outputText);
     const exports = {};
     vm.runInNewContext(source, { exports, Intl, Date, Error, require: name => {
       if (!(name in deps)) throw new Error(`Unexpected dependency: ${name}`);
@@ -113,9 +114,9 @@ test('failed inbox actions preserve the session and allow retry', async () => {
 
 function proxyRoute(file, fetch, authenticated = true) {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
+  }).outputText);
   const dependencies = {
     'next/server': { NextRequest, NextResponse },
     '@/lib/auth/api-session': { getApiSession: async () => authenticated ? { accessToken: 'old-access' } : { error: NextResponse.json({ success: false }, { status: 401 }) } },

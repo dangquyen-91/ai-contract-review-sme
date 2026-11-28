@@ -1,0 +1,1 @@
+export const DRAFT_IMPORT_MAX_BYTES = 10 * 1024 * 1024;

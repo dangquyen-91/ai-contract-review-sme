@@ -8,6 +8,7 @@ import { DuplicateUploadDialog } from "@/components/review/upload/duplicate-uplo
 import { ReviewAllowanceCard } from "@/components/review/upload/review-allowance-card";
 import type { DuplicateUpload } from "@/hooks/review/use-review-workflow";
 import type { DashboardData } from "@/types/dashboard";
+import { QuotaScopePicker } from "@/components/workspace/quota-scope-picker";
 
 const nextSteps = [
   { title: "Xác nhận loại hợp đồng", detail: "AI tự nhận diện loại hợp đồng và vai trò của bạn, bạn chỉ cần kiểm tra lại." },
@@ -77,6 +78,11 @@ export function ReviewUploadPage({ data, access, formProps, duplicateUpload, upl
           <header className="border-b border-[color:var(--line)] px-5 py-4">
             <h2 className="m-0 text-ui-card font-semibold">Tải hợp đồng</h2>
             <p className="mb-0 mt-1 text-ui-meta text-[color:var(--muted)]">PDF, DOCX, PNG hoặc JPG · Tối đa 20 MB</p>
+            {access.upload && (
+              <div className="mt-4">
+                <QuotaScopePicker kind="analysis" disabled={uploading || formProps.isReviewing} />
+              </div>
+            )}
           </header>
           {access.upload ? <ContractUploadForm {...formProps} /> : <NoUploadPermission canReview={access.review} />}
         </section>

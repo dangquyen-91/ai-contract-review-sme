@@ -29,6 +29,10 @@ export const createDraftHandler = asyncHandler(async (req, res) => {
   ok(res, await service.createDraft(req.user!, req.body), 201);
 });
 
+export const importDraftHandler = asyncHandler(async (req, res) => {
+  ok(res, await service.importDraft(req.user!, req.body, req.file), 201);
+});
+
 export const getDraftHandler = asyncHandler(async (req, res) => {
   ok(res, await service.getDraft(req.user!, req.params.id));
 });

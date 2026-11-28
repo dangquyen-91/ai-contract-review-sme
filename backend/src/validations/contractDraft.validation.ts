@@ -49,3 +49,12 @@ export const draftDecisionSchema = revisionSchema
   })
   .strict();
 export type DraftInput = z.infer<typeof createDraftSchema>;
+export const draftImportSchema = z
+  .object({
+    templateCode: z.enum(TEMPLATE_CODES),
+    templateId: z.string().regex(/^[a-f\d]{24}$/i).optional(),
+    title: z.string().trim().max(200).optional(),
+    ourParty: z.string().min(1).max(30),
+  })
+  .strict();
+export type DraftImportInput = z.infer<typeof draftImportSchema>;

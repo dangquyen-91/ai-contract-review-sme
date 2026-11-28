@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function GET() {
   try {
@@ -11,7 +12,7 @@ export async function GET() {
         { status: 403 },
       );
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/health`,
+      backendApiUrl(`/health`),
       { cache: "no-store", signal: AbortSignal.timeout(10000) },
     );
     const payload = await upstream.json();

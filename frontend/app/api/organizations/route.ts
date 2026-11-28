@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { encodeSessionUser, userSessionCookie } from "@/lib/auth/auth-session";
 import { rememberedCookieAge } from "@/lib/auth/token-expiry";
 import { getApiSession } from "@/lib/auth/api-session";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
       if (value !== null) query.set(key, value);
     }
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/organizations?${query}`,
+      backendApiUrl(`/organizations?${query}`),
       {
         headers: { Authorization: `Bearer ${session.accessToken}` },
         cache: "no-store",
@@ -38,10 +39,9 @@ export async function POST(request: NextRequest) {
   if (session.error) return session.error;
   const accessToken = session.accessToken;
 
-  const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
 
   try {
-    const upstream = await fetch(`${apiBaseUrl}/api/v1/organizations`, {
+    const upstream = await fetch(backendApiUrl("/organizations"), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,

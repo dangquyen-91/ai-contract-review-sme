@@ -116,7 +116,7 @@ test('owner shares report formulas without financial data; administrator has act
       status: 'completed',
       startedAt: new Date(inside - 1000),
       finishedAt: inside,
-      result: { overallRiskLevel: 'high' },
+      result: { issueCounts: { violations: 1, total: 1 } },
     },
     {
       orgId: org,
@@ -124,7 +124,7 @@ test('owner shares report formulas without financial data; administrator has act
       status: 'completed',
       startedAt: inside,
       finishedAt: new Date(inside.getTime() + 1000),
-      result: { overallRiskLevel: 'low' },
+      result: { issueCounts: { unclear: 1, total: 1 } },
     },
     { orgId: org, status: 'running', createdAt: new Date(start - 10000) },
     { orgId: other, contractId: id(), status: 'failed', finishedAt: inside },
@@ -141,11 +141,12 @@ test('owner shares report formulas without financial data; administrator has act
   expect(owner.metrics).toMatchObject({
     uploads: 1,
     completed: 2,
-    highRisk: 0,
+    withViolations: 0,
     running: 1,
     successRate: 100,
   });
-  expect(owner.distribution.find((row) => row.key === 'low').value).toBe(1);
+  // The later review of the same contract replaces the earlier violation.
+  expect(owner.distribution.find((row) => row.key === 'withIssues').value).toBe(1);
   expect(owner.metrics.receivedAmount).toBeUndefined();
   expect(owner.metrics.unfulfilled).toBeUndefined();
   const admin = await getDashboardInsights(

@@ -19,7 +19,7 @@ export type AuthUser = {
   orgId: string | null;
   hasCompletedOnboarding: boolean;
   avatarUrl?: string | null;
-  workspace?: "personal" | "organization";
+  workspace?: Workspace;
   organizationMembership?: { orgId: string; role: "owner" | "staff" } | null;
 };
 
@@ -67,3 +67,16 @@ export type RefreshTokenResult = {
 export type AuthMutationVariables =
   | { mode: "login"; data: LoginInput }
   | { mode: "register"; data: RegisterInput };
+
+export type Workspace = "personal" | "organization";
+
+export type WorkspaceSummary = {
+  key: Workspace;
+  id: string;
+  name: string;
+  role: "owner" | "staff" | null;
+  status: "active" | "expired" | "unsubscribed";
+  plan: { code: string; name: string } | null;
+  analysis: { available: number; limit: number };
+  drafting: { available: number; limit: number };
+};

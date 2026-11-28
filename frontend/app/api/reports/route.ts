@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 import { reportQuerySchema } from "@/schemas/report.schema";
 import { permissions } from "@/config/permissions";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function GET(request: NextRequest) {
   const session = await getApiSession();
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
     if (value !== undefined) query.set(key, String(value));
   try {
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/reports?${query}`,
+      backendApiUrl(`/reports?${query}`),
       {
         headers: { Authorization: `Bearer ${session.accessToken}` },
         cache: "no-store",

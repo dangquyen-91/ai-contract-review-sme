@@ -6,13 +6,16 @@ import ts from "typescript";
 import { NextRequest, NextResponse } from "next/server.js";
 import * as jsxRuntime from "react/jsx-runtime";
 import { renderToStaticMarkup } from "react-dom/server";
-import { Building2, ChevronDown, LoaderCircle, UserRound } from "lucide-react";
+import { Building2, Check, ChevronDown, LoaderCircle, LogOut, UserRound } from "lucide-react";
+import * as React from "react";
+import * as radix from "radix-ui";
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
 
 function load(file, dependencies, globals = {}) {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), "utf8"), {
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), "utf8"), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText;
+  }).outputText);
   vm.runInNewContext(source, { exports, Buffer, process: { env: {} },
     require: name => { if (!(name in dependencies)) throw new Error(`Unexpected module ${name}`); return dependencies[name]; }, ...globals });
   return exports;
@@ -93,20 +96,32 @@ test("revoked membership leaves the existing session cookies unchanged", async (
   assert.equal(response.headers.get("set-cookie"), null);
 });
 
-test("switcher renders both scopes only for an organization member", () => {
+const quotaLabel = load("../lib/workspace/quota-label.ts", {});
+
+test("switcher shows the current workspace by name only for an organization member", () => {
   let user = { workspace: "personal", organizationMembership: { orgId: "b", role: "staff" } };
+  let workspaces = [];
   const { WorkspaceSwitcher } = load("../components/layouts/dashboard/workspace-switcher.tsx", {
+    react: React,
     "react/jsx-runtime": jsxRuntime,
-    "lucide-react": { Building2, ChevronDown, LoaderCircle, UserRound },
-    "@/hooks/dashboard/use-workspace-switcher": { useWorkspaceSwitcher: () => ({ user, switching: false, switchWorkspace() {} }) },
+    "radix-ui": radix,
+    "lucide-react": { Building2, Check, ChevronDown, LoaderCircle, LogOut, UserRound },
+    "@/components/ui/button": { Button: () => null },
+    "@/components/ui/dialog": Object.fromEntries(["Dialog", "DialogContent", "DialogDescription", "DialogFooter", "DialogHeader", "DialogTitle"].map(name => [name, () => null])),
+    "@/hooks/dashboard/use-workspace-switcher": { useWorkspaceSwitcher: () => ({ user, workspaces, switching: false, switchWorkspace() {}, leaveOrganization() {} }) },
+    "@/lib/workspace/quota-label": quotaLabel,
   });
-  const html = renderToStaticMarkup(jsxRuntime.jsx(WorkspaceSwitcher, {}));
-  assert.match(html, /aria-label="Chuyển không gian làm việc"/);
-  assert.match(html, /value="personal" selected/);
-  assert.match(html, /value="organization"/);
-  assert.match(html, /Dùng hạn mức cá nhân/);
+  const render = () => renderToStaticMarkup(jsxRuntime.jsx(WorkspaceSwitcher, {}));
+  let html = render();
+  assert.match(html, /aria-label="Không gian làm việc: Cá nhân. Chuyển không gian"/);
+  assert.match(html, /Đang xem dữ liệu cá nhân/);
+  user = { workspace: "organization", organizationMembership: { orgId: "b", role: "staff" } };
+  workspaces = [{ key: "organization", id: "b", name: "Công ty Minh Tâm", role: "staff", status: "active", plan: { code: "business_starter", name: "Starter" }, analysis: { available: 18, limit: 30 } }];
+  html = render();
+  assert.match(html, /Công ty Minh Tâm/);
+  assert.match(html, /Đang xem dữ liệu tổ chức/);
   user = { workspace: "personal", organizationMembership: null };
-  assert.equal(renderToStaticMarkup(jsxRuntime.jsx(WorkspaceSwitcher, {})), "");
+  assert.equal(render(), "");
 });
 
 test("switch cancels old queries before changing cookies and clears old data before navigation", async () => {
@@ -120,7 +135,9 @@ test("switch cancels old queries before changing cookies and clears old data bef
       useQueryClient: () => ({ cancelQueries: async () => events.push("cancel"), clear: () => events.push("clear") }),
     },
     sonner: { toast: { error: message => events.push(message) } },
-    "@/lib/api/client": { apiRequest: async () => { events.push("switch"); await pending; } },
+    "@/lib/api/auth": { authApi: { workspaceSession() {}, workspaces() {}, switchWorkspace: async () => { events.push("switch"); await pending; } } },
+    "@/lib/api/invitations": { invitationsApi: {} },
+    "@/lib/query-keys/auth": { authQueryKeys: { workspaceSession: ["workspace-session"], workspaces: ["workspace-session", "workspaces"] } },
   }, { window: { location: { pathname: "/subscription", assign: path => events.push(path) },
     localStorage: { setItem: key => events.push(key) },
     addEventListener: (key, fn) => { handlers[key] = fn; }, removeEventListener() {} } });
@@ -131,4 +148,50 @@ test("switch cancels old queries before changing cookies and clears old data bef
   assert.deepEqual(events, ["cancel", "switch", "clear", "lawscan_workspace_changed", "/dashboard"]);
   handlers.storage({ key: "lawscan_workspace_changed" });
   assert.equal(events.at(-1), "/review");
+});
+
+test("switching from a page can return to that page, but never to another site", async () => {
+  const events = [];
+  const { useWorkspaceSwitcher } = load("../hooks/dashboard/use-workspace-switcher.ts", {
+    react: { useState: () => [false, () => {}], useRef: () => ({ current: false }), useEffect: () => {} },
+    "@tanstack/react-query": {
+      useQuery: () => ({ data: { workspace: "personal" } }),
+      useQueryClient: () => ({ cancelQueries: async () => {}, clear: () => {} }),
+    },
+    sonner: { toast: { error: message => events.push(message) } },
+    "@/lib/api/auth": { authApi: { workspaceSession() {}, workspaces() {}, switchWorkspace: async () => {} } },
+    "@/lib/api/invitations": { invitationsApi: {} },
+    "@/lib/query-keys/auth": { authQueryKeys: { workspaceSession: ["workspace-session"], workspaces: ["workspace-session", "workspaces"] } },
+  }, { window: { location: { assign: path => events.push(path) }, localStorage: { setItem() {} }, addEventListener() {}, removeEventListener() {} } });
+  const freshSwitcher = useWorkspaceSwitcher;
+  for (const [returnTo, expected] of [["/contract-drafts", "/contract-drafts"], ["//evil.example", "/dashboard"], ["/\\evil.example", "/dashboard"], ["https://evil.example", "/dashboard"]]) {
+    // Each attempt is a fresh page load, so it gets a fresh switcher.
+    await freshSwitcher().switchWorkspace("organization", returnTo);
+    assert.equal(events.at(-1), expected);
+  }
+});
+
+test("the quota picker shows both places with their units and is hidden without an organization", () => {
+  let user = { workspace: "personal", organizationMembership: { orgId: "b", role: "staff" } };
+  const switches = [];
+  const workspaces = [
+    { key: "personal", id: "a", name: "Lê Thu Hà", role: null, status: "active", plan: { code: "personal_free", name: "Miễn phí" }, analysis: { available: 2, limit: 3 }, drafting: { available: 1, limit: 1 } },
+    { key: "organization", id: "b", name: "Công ty Minh Tâm", role: "staff", status: "active", plan: { code: "business_starter", name: "Starter" }, analysis: { available: 18, limit: 30 }, drafting: { available: 9, limit: 10 } },
+  ];
+  const { QuotaScopePicker } = load("../components/workspace/quota-scope-picker.tsx", {
+    "react/jsx-runtime": jsxRuntime,
+    "next/navigation": { usePathname: () => "/review" },
+    "@/components/layouts/dashboard/workspace-switcher": { WorkspaceIcon: () => null },
+    "@/hooks/dashboard/use-workspace-switcher": { useWorkspaceSwitcher: () => ({ user, workspaces, switching: false, switchWorkspace: (...args) => switches.push(args) }) },
+    "@/lib/workspace/quota-label": quotaLabel,
+  });
+  const html = renderToStaticMarkup(jsxRuntime.jsx(QuotaScopePicker, { kind: "analysis" }));
+  assert.match(html, /Lưu vào và tính hạn mức của/);
+  assert.match(html, /aria-checked="true"[^>]*>.*Cá nhân/);
+  assert.match(html, /Miễn phí · còn 2\/3 lượt rà soát/);
+  assert.match(html, /Công ty Minh Tâm/);
+  assert.match(html, /Starter · còn 18\/30 lượt rà soát/);
+  assert.match(renderToStaticMarkup(jsxRuntime.jsx(QuotaScopePicker, { kind: "drafting" })), /Starter · còn 9\/10 lượt soạn thảo/);
+  user = { workspace: "personal", organizationMembership: null };
+  assert.equal(renderToStaticMarkup(jsxRuntime.jsx(QuotaScopePicker, { kind: "analysis" })), "");
 });

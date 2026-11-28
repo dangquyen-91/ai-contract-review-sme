@@ -53,16 +53,20 @@ test('Sharing fully replaces recognized personal data including values in titles
   expect(result.text).not.toContain('•••');
 });
 
-test('Priorities show at most three items by severity, count every finding, and do not change the saved results', () => {
+test('Priorities show at most three failed checks by group, count every issue, and do not change the saved results', () => {
   const findings = [
-    { severity: 'low', title: 'Low item' }, { severity: 'high', title: 'High one', recommendations: ['Clarify pricing'] },
-    { severity: 'medium', title: 'Medium item' }, { severity: 'high', title: 'High two', recommendations: ['Clarify pricing'] },
+    { checkGroup: 'drafting', outcome: 'failed', label: 'Lỗi soạn thảo', title: 'Drafting item' },
+    { checkGroup: 'compliance', outcome: 'failed', label: 'Vi phạm', title: 'Violation one', recommendations: ['Clarify pricing'] },
+    { checkGroup: 'clarity', outcome: 'failed', label: 'Chưa rõ ràng', title: 'Unclear item' },
+    { checkGroup: 'compliance', outcome: 'failed', label: 'Vi phạm', title: 'Violation two', recommendations: ['Clarify pricing'] },
+    { checkGroup: 'balance', outcome: 'passed', label: 'Đạt', title: 'Passed item' },
   ];
   const result = buildShareSummary({ contractType: 'Dịch vụ', updatedAt, sourceText: '', summaryPoints: [], findings });
-  expect(result.findingCounts).toEqual({ high: 2, medium: 1, low: 1 });
-  expect(result.text.indexOf('High one')).toBeLessThan(result.text.indexOf('Medium item'));
-  expect(result.text).not.toContain('Low item');
+  expect(result.issueCounts).toMatchObject({ violations: 2, unclear: 1, drafting: 1, total: 4 });
+  expect(result.text.indexOf('Violation one')).toBeLessThan(result.text.indexOf('Unclear item'));
+  expect(result.text).not.toContain('Drafting item');
+  expect(result.text).not.toContain('Passed item');
   expect(result.text).toContain('Còn 1 điểm khác');
   expect(result.text.split('Clarify pricing')).toHaveLength(2);
-  expect(findings[0].severity).toBe('low');
+  expect(findings[0].checkGroup).toBe('drafting');
 });

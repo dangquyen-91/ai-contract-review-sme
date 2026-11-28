@@ -1,5 +1,6 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string; invitationId: string }> }) {
   const { id, invitationId } = await context.params;
@@ -10,7 +11,7 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   if (session.error) return session.error;
   const token = session.accessToken;
   try {
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/organizations/${id}/invitations/${invitationId}`, {
+    const upstream = await fetch(backendApiUrl(`/organizations/${id}/invitations/${invitationId}`), {
       method: "DELETE", headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
     });
     return NextResponse.json(await upstream.json(), { status: upstream.status });

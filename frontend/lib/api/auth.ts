@@ -1,7 +1,16 @@
 import { apiRequest, refreshSession } from "@/lib/api/client";
-import type { AuthResult, AuthSession, EmailVerificationChallenge, LoginInput, LogoutResult, RegisterInput } from "@/types/auth";
+import type { AuthResult, AuthSession, AuthUser, EmailVerificationChallenge, LoginInput, LogoutResult, RegisterInput, Workspace, WorkspaceSummary } from "@/types/auth";
 
 export const authApi = {
+  workspaceSession() {
+    return apiRequest<AuthUser>({ url: "/auth/workspace" });
+  },
+  workspaces() {
+    return apiRequest<{ items: WorkspaceSummary[] }>({ url: "/auth/workspaces" });
+  },
+  switchWorkspace(workspace: Workspace) {
+    return apiRequest<void>({ url: "/auth/workspace", method: "POST", data: { workspace } });
+  },
   forgotPassword(email: string) {
     return apiRequest<{ challengeId: string; expiresAt: string; resendAfterSeconds: number; message: string }>({ url: "/auth/forgot-password", timeout: 30_000, method: "POST", data: { email } });
   },

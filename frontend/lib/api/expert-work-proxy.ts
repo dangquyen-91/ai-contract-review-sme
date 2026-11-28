@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function proxyMyExpertWork(request: NextRequest) {
   const session = await getApiSession();
@@ -11,7 +12,7 @@ export async function proxyMyExpertWork(request: NextRequest) {
     if (value) query.set(key, value);
   }
   try {
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/reviews/my-verifications?${query}`, {
+    const upstream = await fetch(backendApiUrl(`/reviews/my-verifications?${query}`), {
       headers: { Authorization: `Bearer ${session.accessToken}` }, cache: "no-store", signal: AbortSignal.timeout(20000),
     });
     return NextResponse.json(await upstream.json(), { status: upstream.status, headers: { "Cache-Control": "no-store" } });

@@ -1,3 +1,4 @@
+import { listWorkspaces } from '../services/identity/workspace.service';
 import { toPublicUser } from '../services/identity/publicUser';
 import { Request, Response } from 'express';
 import { asyncHandler } from '../utils/asyncHandler';
@@ -65,4 +66,10 @@ export const completeOnboardingHandler = asyncHandler(async (req: Request, res: 
 
   const { user, access } = await authService.completeOnboarding(req.user.sub);
   ok(res, { user: toPublicUser(user, access) });
+});
+
+export const listWorkspacesHandler = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.user) throw AppError.unauthorized();
+  res.setHeader('Cache-Control', 'no-store');
+  ok(res, await listWorkspaces(req.user.sub));
 });

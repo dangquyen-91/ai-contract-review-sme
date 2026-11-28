@@ -1,5 +1,6 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function proxyOrganizationMutation(request: NextRequest, id: string, suffix = "") {
   const session = await getApiSession();
@@ -7,7 +8,7 @@ export async function proxyOrganizationMutation(request: NextRequest, id: string
   const token = session.accessToken;
   if (!/^[a-f\d]{24}$/i.test(id)) return NextResponse.json({ success: false, error: { message: "Mã tổ chức không hợp lệ." } }, { status: 400 });
   try {
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/organizations/${id}${suffix}`, {
+    const upstream = await fetch(backendApiUrl(`/organizations/${id}${suffix}`), {
       method: request.method,
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       ...(request.method !== "DELETE" ? { body: await request.text() } : {}),

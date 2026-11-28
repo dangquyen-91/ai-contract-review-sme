@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 import { isSameOriginRequest } from "@/lib/api/request-origin";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function proxyExpertVerification(request: NextRequest, reviewId: string, action: "get" | "request" | "share-original") {
   const session = await getApiSession();
@@ -17,7 +18,7 @@ export async function proxyExpertVerification(request: NextRequest, reviewId: st
   }
   try {
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/reviews/${reviewId}/verification${writing ? `/${action}` : ""}`,
+      backendApiUrl(`/reviews/${reviewId}/verification${writing ? `/${action}` : ""}`),
       {
         method: writing ? "POST" : "GET",
         headers: { Authorization: `Bearer ${session.accessToken}`, ...(writing ? { "Content-Type": "application/json" } : {}) },

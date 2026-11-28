@@ -8,14 +8,18 @@ import { z } from 'zod';
 import * as React from 'react';
 import * as jsx from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
+import * as lucide from 'lucide-react';
 import { reportFixture, calendarReportFixture } from './fixtures/report.mjs';
+
+// CSS modules resolve every class name to itself.
+const cssModule = new Proxy({}, { get: (_target, name) => String(name) });
 
 function load(file, dependencies = {}, globals = {}) {
   const exports = {};
   const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
   }).outputText;
-  vm.runInNewContext(source, { exports, URLSearchParams, AbortSignal, process: { env: {} }, require: key => dependencies[key] ?? (key === 'react/jsx-runtime' ? jsx : key.startsWith('@/') ? load(`../${key.slice(2)}.ts`) : key.startsWith('.') ? load(new URL(`${key}.ts`, new URL(file, import.meta.url))) : undefined), ...globals });
+  vm.runInNewContext(source, { exports, URLSearchParams, AbortSignal, process: { env: {} }, require: key => dependencies[key] ?? (key === 'react/jsx-runtime' ? jsx : key === 'lucide-react' ? lucide : key.endsWith('.css') ? cssModule : key.startsWith('@/') ? load(`../${key.slice(2)}.ts`) : key.startsWith('.') ? load(new URL(`${key}.ts`, new URL(file, import.meta.url))) : undefined), ...globals });
   return exports;
 }
 
@@ -129,21 +133,21 @@ test('Admin and Owner render and export different report features, including whe
     'next/dynamic': { default: () => ({ title }) => React.createElement('h2', null, title) },
     './chart-loading': { ChartLoading: () => null },
     './report-detail-table': { ReportDetailTable: () => null },
-    './report-risk-distribution': { ReportRiskDistribution: () => React.createElement('h2', null, 'Phân bố rủi ro hợp đồng') },
+    './report-risk-distribution': { ReportRiskDistribution: () => React.createElement('h2', null, 'Phân bố hợp đồng có vi phạm') },
   });
   const report = calendarReportFixture(new URLSearchParams('period=month&organizationId=' + 'b'.repeat(24)));
   const admin = renderToStaticMarkup(React.createElement(ReportMetrics, { report })) + renderToStaticMarkup(React.createElement(ReportCharts, { report }));
   assert.match(admin, /Thanh toán đã nhận/);
   assert.match(admin, /10 không gian/);
-  assert.doesNotMatch(admin, /rủi ro/);
-  assert.doesNotMatch(reportCsv(report), /rủi ro/);
+  assert.doesNotMatch(admin, /vi phạm/);
+  assert.doesNotMatch(reportCsv(report), /vi phạm/);
   report.role = 'owner';
   // Even an unexpected financial payload must not add features to the Owner report.
   const owner = renderToStaticMarkup(React.createElement(ReportMetrics, { report })) + renderToStaticMarkup(React.createElement(ReportCharts, { report }));
-  assert.match(owner, /rủi ro/);
+  assert.match(owner, /vi phạm/);
   assert.doesNotMatch(owner, /Thanh toán đã nhận|10 không gian/);
   const csv = reportCsv(report);
-  assert.match(csv, /Tỷ lệ rủi ro cao/);
+  assert.match(csv, /Tỷ lệ hợp đồng có vi phạm/);
   assert.doesNotMatch(csv, /Thanh toán đã nhận|Tiền nhận|Tiền đã nhận|Không gian/);
 });
 

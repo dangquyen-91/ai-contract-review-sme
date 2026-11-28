@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 import { isSameOriginRequest } from "./request-origin";
+import { backendApiUrl } from "@/lib/api/backend";
 
 const idPattern = /^[a-f\d]{24}$/i;
 
@@ -32,7 +33,7 @@ export async function proxyExpertWorkspace(request: NextRequest, reviewId?: stri
   }
   if (request.method !== "GET" && !isSameOriginRequest(request)) return NextResponse.json({ success: false, error: { message: "Nguồn yêu cầu không hợp lệ." } }, { status: 403 });
   try {
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/reviews/${suffix}`, {
+    const upstream = await fetch(backendApiUrl(`/reviews/${suffix}`), {
       method: request.method,
       headers: { Authorization: `Bearer ${session.accessToken}`, ...(request.method !== "GET" ? { "Content-Type": "application/json" } : {}) },
       ...(["POST", "PUT"].includes(request.method) ? { body: (await request.text()) || "{}" } : {}),

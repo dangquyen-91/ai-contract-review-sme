@@ -2,8 +2,7 @@ import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
 import type { ContractClause, UpstreamPayload } from "@/types/contracts";
 import { clauseLabel } from "@/lib/review/clause-label";
-
-const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
+import { backendApiUrl } from "@/lib/api/backend";
 
 async function readPayload(response: Response): Promise<UpstreamPayload> {
   return response.json().catch(() => ({ success: false, error: { message: "Máy chủ trả về dữ liệu không hợp lệ." } }));
@@ -22,7 +21,7 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/cont
   const auth = await access(id);
   if (auth.response) return auth.response;
   const headers = { Authorization: `Bearer ${auth.token}` };
-  const base = `${apiBaseUrl}/api/v1/contracts/${id}`;
+  const base = backendApiUrl(`/contracts/${id}`);
   try {
     const responses = await Promise.all(["", "/clauses", "/risks"].map((path) =>
       fetch(`${base}${path}`, { headers, cache: "no-store" }),

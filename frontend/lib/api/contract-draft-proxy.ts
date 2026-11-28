@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 import { isSameOriginRequest } from "@/lib/api/request-origin";
+import { backendApiUrl } from "@/lib/api/backend";
 
 const draftIdPattern = /^[a-f\d]{24}$/i;
 const postActions = new Set([
@@ -15,6 +16,7 @@ const postActions = new Set([
 function allowedDraftMethods(path: string[]): readonly string[] {
   if (path.length === 0) return ["GET", "POST"];
   if (path.length === 1 && path[0] === "templates") return ["GET"];
+  if (path.length === 1 && path[0] === "import") return ["POST"];
   if (path[0] === "legal-sources" && (path.length === 1 || (path.length === 2 && draftIdPattern.test(path[1])))) return ["GET"];
   if (!draftIdPattern.test(path[0])) return [];
   if (path.length === 1) return ["GET", "PATCH", "DELETE"];
@@ -60,17 +62,18 @@ export async function proxyContractDraft(request: NextRequest, path: string[]) {
   if (path[1] === "export")
     query.set("format", request.nextUrl.searchParams.get("format") ?? "docx");
   try {
-    const reference = path[1] === "reference";
+    const upload = path[0] === "import";
+    const reference = path[1] === "reference" || upload;
     const body =
       request.method !== "GET"
         ? reference
           ? await request.arrayBuffer()
           : await request.text()
         : undefined;
-    if (body instanceof ArrayBuffer && body.byteLength > 3 * 1024 * 1024)
+    if (body instanceof ArrayBuffer && body.byteLength > (upload ? 11 : 3) * 1024 * 1024)
       return NextResponse.json({ success: false }, { status: 413 });
     const response = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contract-drafts${path.length ? "/" + path.join("/") : ""}?${query}`,
+      backendApiUrl(`/contract-drafts${path.length ? "/" + path.join("/") : ""}?${query}`),
       {
         method: request.method,
         headers: {
@@ -82,7 +85,7 @@ export async function proxyContractDraft(request: NextRequest, path: string[]) {
         ...(request.method !== "GET" ? { body } : {}),
         cache: "no-store",
         signal: AbortSignal.timeout(
-          ["generate", "assistant"].includes(path[1])
+          ["generate", "assistant"].includes(path[1]) || upload
             ? 100_000
             : path[1] === "publish"
               ? 90_000

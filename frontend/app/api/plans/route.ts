@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function GET() {
   try {
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/plans`, {
+    const upstream = await fetch(backendApiUrl(`/plans`), {
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     });

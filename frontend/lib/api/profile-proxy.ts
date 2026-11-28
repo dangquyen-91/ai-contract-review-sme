@@ -4,6 +4,7 @@ import { encodeSessionUser, userSessionCookie } from '@/lib/auth/auth-session';
 import { rememberedCookieAge } from '@/lib/auth/token-expiry';
 import { emailVerificationCookie } from '@/lib/auth/email-verification-session';
 import { getApiSession } from '@/lib/auth/api-session';
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function proxyProfile(request: NextRequest, action: '' | 'avatar' | 'password' = '') {
   if (request.method !== 'GET' && !isSameOriginRequest(request)) return NextResponse.json({ success: false }, { status: 403 });
@@ -28,7 +29,7 @@ export async function proxyProfile(request: NextRequest, action: '' | 'avatar' |
         body = JSON.stringify(await request.json());
       }
     }
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? 'http://localhost:4000'}/api/v1/profile${action ? `/${action}` : ''}`, {
+    const upstream = await fetch(backendApiUrl(`/profile${action ? `/${action}` : ''}`), {
       method: request.method, headers, body, cache: 'no-store', signal: AbortSignal.timeout(30_000),
     });
     const payload = await upstream.json();

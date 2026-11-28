@@ -14,7 +14,9 @@ import {
   pinDraftSchema,
   draftProposalParamsSchema,
   draftExportQuerySchema,
+  draftImportSchema,
 } from '../validations/contractDraft.validation';
+import { uploadDraftImport } from '../middlewares/draftImportUpload.middleware';
 import { uploadStudioReference } from '../middlewares/studioReferenceUpload.middleware';
 import {
   studioLawQuerySchema,
@@ -27,6 +29,7 @@ import {
   previewStudioLawHandler,
   listDraftsHandler,
   createDraftHandler,
+  importDraftHandler,
   getDraftHandler,
   deleteDraftHandler,
   pinDraftHandler,
@@ -59,6 +62,7 @@ router.get(
 );
 router.get('/', validate({ query: draftListQuerySchema }), listDraftsHandler);
 router.post('/', validate({ body: createDraftSchema }), createDraftHandler);
+router.post('/import', uploadDraftImport, validate({ body: draftImportSchema }), importDraftHandler);
 router.get('/:id', validate({ params: draftIdSchema }), getDraftHandler);
 router.delete(
   '/:id',

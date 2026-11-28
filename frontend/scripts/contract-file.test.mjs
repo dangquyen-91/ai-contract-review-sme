@@ -3,15 +3,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
 
 const id = '0123456789abcdef01234567';
 const signedUrl = 'https://api.cloudinary.com/v1_1/test-cloud/raw/download?signature=test';
 function setup(responses, token = 'test-session', redacted = false) {
   const calls = [];
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL('../app/api/contracts/[id]/file/route.ts', import.meta.url), 'utf8'), {
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL('../app/api/contracts/[id]/file/route.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
+  }).outputText);
   vm.runInNewContext(source, {
     exports, require: (name) => name === '@/lib/auth/api-session'
       // The route verifies the session server-side; `token` stands for a valid session.

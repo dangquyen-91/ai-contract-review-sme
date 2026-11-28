@@ -441,7 +441,7 @@ try {
     }
     await fillSelector(selector, 'personal');
     await waitFor(`location.pathname === '/review' && document.querySelector('${selector}')?.value === 'personal'`);
-    await waitFor('document.body.innerText.includes("Dùng hạn mức cá nhân") || innerWidth < 640');
+    await waitFor('document.body.innerText.includes("Đang xem dữ liệu cá nhân") || innerWidth < 640');
     await call('Page.reload');
     await waitFor(`document.querySelector('${selector}')?.value === 'personal'`);
     await fillSelector(selector, 'organization');
