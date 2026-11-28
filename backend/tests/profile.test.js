@@ -226,3 +226,19 @@ test('Google-only accounts use email verification to set a password; legacy link
     .set('Authorization', auth(legacy));
   expect(legacyProfile.body.data.user.hasPassword).toBeNull();
 });
+
+test('deleting the avatar works without one, needs a token and never touches another account', async () => {
+  const owner = await user();
+  const other = await user({ avatarUrl: 'https://res.cloudinary.com/test/other.webp', avatarPublicId: 'lawscan/avatars/other' });
+  cloudinary.uploader.destroy.mockClear();
+  const none = await request(app).delete('/api/v1/profile/avatar').set('Authorization', auth(owner));
+  expect(none.status).toBe(200);
+  expect(none.body.data.user.avatarUrl).toBeNull();
+  expect(cloudinary.uploader.destroy).not.toHaveBeenCalled();
+  const anonymous = await request(app).delete('/api/v1/profile/avatar');
+  expect(anonymous.status).toBe(401);
+  expect(anonymous.body.error.message).toBe('Missing bearer token');
+  const kept = await UserModel.findById(other.id).select('+avatarPublicId');
+  expect(kept.avatarUrl).toBe('https://res.cloudinary.com/test/other.webp');
+  expect(kept.avatarPublicId).toBe('lawscan/avatars/other');
+});
