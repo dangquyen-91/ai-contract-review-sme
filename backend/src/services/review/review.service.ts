@@ -158,6 +158,31 @@ export async function cancelReview(orgId: string, reviewId: string) {
   return getReview(orgId, reviewId);
 }
 
+/**
+ * Stops a queued or running review from the admin console and returns its units. A job
+ * whose worker is gone would never finish on its own, so it is closed here directly.
+ */
+export async function cancelReviewAsAdministrator(reviewId: string) {
+  const review = await ReviewModel.findById(reviewId).select('orgId contractId status').lean();
+  if (!review) throw AppError.notFound('Không tìm thấy yêu cầu rà soát.');
+  await cancelReview(String(review.orgId), reviewId);
+  const after = await ReviewModel.findById(reviewId).select('status').lean();
+  if (after && ['queued', 'running'].includes(after.status) && !(await isReviewJobAlive(reviewId))) {
+    await finishUnsuccessfulReview(reviewId, 'CANCELLED', 'Tác vụ đã được quản trị viên hủy và hoàn lượt.');
+  }
+  const [final, contract] = await Promise.all([
+    ReviewModel.findById(reviewId).select('status').lean(),
+    ContractModel.findById(review.contractId).select('title').lean(),
+  ]);
+  return {
+    id: reviewId,
+    status: final?.status ?? null,
+    orgId: String(review.orgId),
+    contractTitle: contract?.title ?? null,
+    previousStatus: review.status,
+  };
+}
+
 interface RetryReviewParams {
   orgId: string;
   userId: string;

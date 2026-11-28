@@ -10,6 +10,7 @@ import { redactionPolicyFor } from '../contract/redactionPolicy.service';
 import { normalizeUploadFileName } from '../../utils/uploadFileName';
 import { AppError } from '../../errors/AppError';
 import type { ExpertWorkQuery } from '../../validations/verification.validation';
+import { escapeRegExp } from '../../utils/regex';
 
 export async function archiveExpertWork(session: HydratedDocument<ExpertReview>, workspace: { contract: { title: string; type?: string | null } }, dbSession: ClientSession) {
   if (!session.expertId || !['approved', 'returned'].includes(session.status)) return;
@@ -37,7 +38,6 @@ export async function historicalExpertWork(expertId: string, reviewId: string, a
   return JSON.parse(record.workspaceJson);
 }
 
-const escapeRegex = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export async function listExpertWork(expertId: string, query: ExpertWorkQuery) {
   const expert = new Types.ObjectId(expertId);
@@ -60,7 +60,7 @@ export async function listExpertWork(expertId: string, query: ExpertWorkQuery) {
   ];
   const match: Record<string, unknown> = {};
   if (query.status !== 'all') match.status = query.status;
-  if (query.search) match.displayTitle = { $regex: escapeRegex(query.search), $options: 'i' };
+  if (query.search) match.displayTitle = { $regex: escapeRegExp(query.search), $options: 'i' };
   if (query.type) match.contractType = query.type;
   if (query.from || query.to) match.sortDate = {
     ...(query.from ? { $gte: new Date(`${query.from}T00:00:00+07:00`) } : {}),

@@ -1,5 +1,7 @@
 import { asyncHandler } from '../utils/asyncHandler';
-import { ok } from '../utils/ApiResponse';
+import { ok, paginated } from '../utils/ApiResponse';
+import { managerPaymentListSchema } from '../validations/payment.validation';
+import { listAllPayments } from '../services/billing/paymentHistory.service';
 import { getIdempotencyKey } from '../validations/subscription.validation';
 import * as service from '../services/billing/payment.service';
 
@@ -25,4 +27,10 @@ export const cancelPaymentHandler = asyncHandler(async (req, res) => {
 export const payosWebhookHandler = asyncHandler(async (req, res) => {
   await service.receivePaymentWebhook(req.body);
   res.status(200).json({ success: true });
+});
+export const listAllPaymentsHandler = asyncHandler(async (req, res) => {
+  const { page, limit, ...filters } = managerPaymentListSchema.parse(req.query);
+  const { items, total } = await listAllPayments(page, limit, filters);
+  res.setHeader('Cache-Control', 'private, no-store');
+  paginated(res, items, { page, limit, total });
 });

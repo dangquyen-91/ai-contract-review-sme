@@ -25,7 +25,6 @@ const request = require('supertest');
 const JSZip = require('jszip');
 const { createApp } = require('../dist/app');
 require('../dist/config/logger').logger.silent = true;
-const { UserModel } = require('../dist/models/user.model');
 const { OrganizationModel } = require('../dist/models/organization.model');
 const { ContractDraftModel } = require('../dist/models/contractDraft.model');
 const { DraftAssistantProposalModel } = require('../dist/models/draftAssistantProposal.model');

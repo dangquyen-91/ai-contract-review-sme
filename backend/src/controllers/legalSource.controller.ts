@@ -14,6 +14,8 @@ import {
   ReplaceLegalSourceContentInput,
   UpdateLegalSourceInput,
 } from '../validations/legalSource.validation';
+import { recordAudit, requestActor } from '../services/audit/audit.service';
+import { LegalSourceModel } from '../models/legalSource.model';
 
 const actorOf = (req: Request) => ({ id: req.user!.sub, role: req.user!.role });
 
@@ -36,6 +38,10 @@ function accepted(res: Response, source: { _id: unknown }) {
   ok(res, source, 202);
 }
 
+/** A readable label for audit records; deleted sources have none. */
+const legalSourceTitle = async (id: string) =>
+  ((await LegalSourceModel.findById(id).select('title').lean()) as { title?: string } | null)?.title ?? null;
+
 export const previewLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
   const { file, referenceFile } = uploadedFiles(req);
   ok(res, await legalSourceService.previewLegalSource(file, req.body as PreviewNewLegalSourceInput, referenceFile));
@@ -49,6 +55,7 @@ export const createLegalSourceHandler = asyncHandler(async (req: Request, res: R
     referenceFile,
     actor: actorOf(req),
   });
+  await recordAudit({ action: 'legal_source.create', actor: requestActor(req.user), target: { type: 'legal_source', id: String(source._id), label: source.title } });
   accepted(res, source);
 });
 
@@ -101,21 +108,22 @@ export const previewContentReplacementHandler = asyncHandler(async (req: Request
 
 export const applyReparseHandler = asyncHandler(async (req: Request, res: Response) => {
   const { expectedArticleCount } = req.body as PreviewLegalSourceInput;
-  accepted(res, await legalSourceContentService.applyReparse(req.params.id, actorOf(req), expectedArticleCount));
+  const result = await legalSourceContentService.applyReparse(req.params.id, actorOf(req), expectedArticleCount);
+  await recordAudit({ action: 'legal_source.reparse', actor: requestActor(req.user), target: { type: 'legal_source', id: req.params.id, label: await legalSourceTitle(req.params.id) } });
+  accepted(res, result);
 });
 
 export const replaceContentHandler = asyncHandler(async (req: Request, res: Response) => {
   const { file, referenceFile } = uploadedFiles(req);
-  accepted(
-    res,
-    await legalSourceContentService.applyContentReplacement(
-      req.params.id,
-      actorOf(req),
-      file,
-      req.body as ReplaceLegalSourceContentInput,
-      referenceFile,
-    ),
+  const result = await legalSourceContentService.applyContentReplacement(
+    req.params.id,
+    actorOf(req),
+    file,
+    req.body as ReplaceLegalSourceContentInput,
+    referenceFile,
   );
+  await recordAudit({ action: 'legal_source.replace', actor: requestActor(req.user), target: { type: 'legal_source', id: req.params.id, label: await legalSourceTitle(req.params.id) }, changes: { file: file?.name ?? null } });
+  accepted(res, result);
 });
 
 export const getLegalSourcePartFileHandler = asyncHandler(async (req: Request, res: Response) => {
@@ -141,10 +149,14 @@ export const listLegalSourceHistoryHandler = asyncHandler(async (req: Request, r
 });
 
 export const updateLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
-  ok(res, await legalSourceService.updateLegalSource(req.params.id, actorOf(req), req.body as UpdateLegalSourceInput));
+  const source = await legalSourceService.updateLegalSource(req.params.id, actorOf(req), req.body as UpdateLegalSourceInput);
+  await recordAudit({ action: 'legal_source.update', actor: requestActor(req.user), target: { type: 'legal_source', id: req.params.id, label: await legalSourceTitle(req.params.id) }, changes: { fields: Object.keys(req.body ?? {}) } });
+  ok(res, source);
 });
 
 export const deleteLegalSourceHandler = asyncHandler(async (req: Request, res: Response) => {
+  const label = await legalSourceTitle(req.params.id);
   await legalSourceService.deleteLegalSource(req.params.id, actorOf(req));
+  await recordAudit({ action: 'legal_source.delete', actor: requestActor(req.user), target: { type: 'legal_source', id: req.params.id, label } });
   res.status(204).send();
 });

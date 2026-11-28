@@ -5,10 +5,14 @@ import * as service from '../services/organization/invitation.service';
 import { sessionFor } from '../services/identity/auth.service';
 import { sessionResponse } from './auth.controller';
 import { invitationPaginationSchema } from '../validations/invitation.validation';
+import { recordAudit, requestActor } from '../services/audit/audit.service';
+import { UserModel } from '../models/user.model';
 
 export const createInvitationHandler = asyncHandler(async (req, res) => {
   if (!req.user) throw AppError.unauthorized();
-  ok(res, await service.createInvitation(req.user.sub, req.params.id, req.body), 201);
+  const invitation = await service.createInvitation(req.user.sub, req.params.id, req.body);
+  await recordAudit({ action: 'invitation.create', actor: requestActor(req.user), orgId: req.params.id, target: { type: 'invitation', id: String(invitation.id ?? ''), label: req.body.email }, changes: { role: req.body.role ?? 'staff' } });
+  ok(res, invitation, 201);
 });
 export const listInvitationsHandler = asyncHandler(async (req, res) => {
   if (!req.user) throw AppError.unauthorized();
@@ -18,7 +22,9 @@ export const listInvitationsHandler = asyncHandler(async (req, res) => {
 });
 export const revokeInvitationHandler = asyncHandler(async (req, res) => {
   if (!req.user) throw AppError.unauthorized();
-  ok(res, await service.revokeInvitation(req.user.sub, req.params.id, req.params.invitationId));
+  const invitation = await service.revokeInvitation(req.user.sub, req.params.id, req.params.invitationId);
+  await recordAudit({ action: 'invitation.revoke', actor: requestActor(req.user), orgId: req.params.id, target: { type: 'invitation', id: req.params.invitationId, label: (invitation as { email?: string } | undefined)?.email ?? null } });
+  ok(res, invitation);
 });
 export const listMembersHandler = asyncHandler(async (req, res) => {
   if (!req.user) throw AppError.unauthorized();
@@ -32,7 +38,9 @@ export const previewInvitationHandler = asyncHandler(async (req, res) => {
 });
 export const removeMemberHandler = asyncHandler(async (req, res) => {
   if (!req.user) throw AppError.unauthorized();
+  const member = await UserModel.findById(req.params.userId).select('email').lean();
   await service.removeMember(req.user.sub, req.params.id, req.params.userId);
+  await recordAudit({ action: 'member.remove', actor: requestActor(req.user), orgId: req.params.id, target: { type: 'user', id: req.params.userId, label: member?.email ?? null } });
   res.status(204).send();
 });
 export const leaveOrganizationHandler = asyncHandler(async (req, res) => {

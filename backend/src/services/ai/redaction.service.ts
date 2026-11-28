@@ -1,4 +1,5 @@
 import { SENSITIVE_DATA_TYPES } from '../../models/contractProfile.model';
+import { escapeRegExp } from '../../utils/regex';
 
 export type SensitiveDataType = (typeof SENSITIVE_DATA_TYPES)[number];
 
@@ -139,7 +140,6 @@ export function summarizeSensitiveData(spans: SensitiveSpan[]) {
   return { total: spans.length, counts };
 }
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 function boundedPattern(value: string): string {
   const escaped = escapeRegExp(value);

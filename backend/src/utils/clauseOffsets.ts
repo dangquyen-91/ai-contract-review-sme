@@ -1,11 +1,8 @@
-export interface ClauseSpan {
+
+import { escapeRegExp } from './regex';export interface ClauseSpan {
   markerIndex: number;
   startOffset: number;
   endOffset: number;
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 function findMarker(fullText: string, marker: string, from: number): number {

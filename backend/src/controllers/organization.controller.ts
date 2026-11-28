@@ -12,6 +12,8 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { ok, paginated } from '../utils/ApiResponse';
 import { listOrganizationsQuerySchema } from '../validations/organization.validation';
 import { vietnamAddressDirectory } from '../services/organization/vietnamAddress';
+import { recordAudit, requestActor } from '../services/audit/audit.service';
+import { OrganizationModel } from '../models/organization.model';
 
 export const organizationAddressOptionsHandler = asyncHandler(async (_req, res) => {
   ok(res, vietnamAddressDirectory);
@@ -57,6 +59,8 @@ export const updateOrganizationHandler = asyncHandler(async (req: Request, res: 
 
 export const deleteOrganizationHandler = asyncHandler(async (req: Request, res: Response) => {
   const user = getOrganizationUser(req);
+  const organization = await OrganizationModel.findById(req.params.id).select('name').lean();
   await deleteOrganization(req.params.id, user.orgId, user.sub);
+  await recordAudit({ action: 'organization.delete', actor: requestActor(req.user), orgId: req.params.id, target: { type: 'organization', id: req.params.id, label: organization?.name ?? null } });
   res.status(204).send();
 });

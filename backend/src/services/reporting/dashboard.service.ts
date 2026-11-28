@@ -14,6 +14,7 @@ import { DashboardQuery } from '../../validations/dashboard.validation';
 import { resolveReportPeriods, CalendarReportWindow } from './reportPeriods';
 import { REPORT_TIMEZONE } from './reportFormulas';
 import { getComparedReports } from './reports.service';
+import { countStuckAiJobs } from './aiJobs.service';
 
 type Count = { _id: string; count: number };
 type TrendRow = { date: string; [key: string]: number | string | null };
@@ -48,7 +49,7 @@ async function operational(
   const report = await getComparedReports(actor, { ...query, comparison: 'none' }, now);
   const orgId = actor.role === 'owner' ? new Types.ObjectId(actor.orgId) : undefined;
   const scope = orgId ? { orgId } : {};
-  const [states, openVerification, organizations, users, unfulfilled] = await Promise.all([
+  const [states, openVerification, organizations, users, unfulfilled, stuck] = await Promise.all([
     ReviewModel.aggregate<Count>([
       { $match: { ...scope, status: { $in: ['queued', 'running'] } } },
       { $group: { _id: '$status', count: { $sum: 1 } } },
@@ -61,6 +62,7 @@ async function operational(
     actor.role === 'administrator'
       ? PaymentModel.countDocuments({ status: 'paid', fulfilledAt: null })
       : 0,
+    actor.role === 'administrator' ? countStuckAiJobs(now) : 0,
   ]);
   const state = counts(states);
   return {
@@ -74,7 +76,14 @@ async function operational(
       queued: state.queued ?? 0,
       running: state.running ?? 0,
       ...(actor.role === 'administrator'
-        ? { organizations, users, receivedAmount: report.payments?.amount ?? 0, unfulfilled }
+        ? {
+            organizations,
+            users,
+            receivedAmount: report.payments?.amount ?? 0,
+            paidOrders: report.payments?.count ?? 0,
+            unfulfilled,
+            stuck,
+          }
         : { openVerification }),
     },
     distribution:
@@ -93,21 +102,25 @@ async function operational(
 async function workspace(
   actor: AccessTokenPayload,
   window: CalendarReportWindow,
+  mine = false,
 ): Promise<InsightData> {
   const orgId = new Types.ObjectId(actor.role === 'user' ? actor.sub : actor.orgId);
   const scope = { orgId };
+  // "Mine": what this person uploaded, requested or used, inside the same organization.
+  const me = new Types.ObjectId(actor.sub);
+  const own = (field: string) => (mine ? { [field]: me } : {});
   const monthly = window.days > 31;
   const [contractStates, uploads, reviews, openVerification, usage] = await Promise.all([
     ContractModel.aggregate<Count>([
-      { $match: scope },
+      { $match: { ...scope, ...own('uploadedBy') } },
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]),
     ContractModel.aggregate<{ _id: string; count: number }>([
-      { $match: { ...scope, createdAt: range(window) } },
+      { $match: { ...scope, ...own('uploadedBy'), createdAt: range(window) } },
       { $group: { _id: dateGroup('$createdAt', monthly), count: { $sum: 1 } } },
     ]),
     ReviewModel.aggregate<{ _id: { date: string; status: string }; count: number }>([
-      { $match: { ...scope, finishedAt: range(window), status: { $in: ['completed', 'failed'] } } },
+      { $match: { ...scope, ...own('requestedBy'), finishedAt: range(window), status: { $in: ['completed', 'failed'] } } },
       {
         $group: {
           _id: { date: dateGroup('$finishedAt', monthly), status: '$status' },
@@ -115,9 +128,9 @@ async function workspace(
         },
       },
     ]),
-    ExpertReviewModel.countDocuments({ ...scope, status: { $in: ['requested', 'in_progress'] } }),
+    ExpertReviewModel.countDocuments({ ...scope, ...own('requestedBy'), status: { $in: ['requested', 'in_progress'] } }),
     UsageRunModel.aggregate<{ _id: string; count: number }>([
-      { $match: { ...scope, updatedAt: range(window), status: 'succeeded' } },
+      { $match: { ...scope, ...own('userId'), updatedAt: range(window), status: 'succeeded' } },
       { $group: { _id: '$kind', count: { $sum: '$units' } } },
     ]),
   ]);
@@ -256,7 +269,7 @@ async function expert(
 
 async function management(window: CalendarReportWindow): Promise<InsightData> {
   const monthly = window.days > 31;
-  const [organizations, [sources]] = await Promise.all([
+  const [organizations, [sources], [payments], unfulfilled] = await Promise.all([
     OrganizationModel.countDocuments({}),
     LegalSourceModel.aggregate<{
       statuses: Count[];
@@ -274,6 +287,13 @@ async function management(window: CalendarReportWindow): Promise<InsightData> {
         },
       },
     ]),
+    // Same receipts as the reports: paid in the period, in VND.
+    PaymentModel.aggregate<{ amount: number; count: number }>([
+      { $match: { status: 'paid', currency: 'VND', paidAt: range(window) } },
+      { $group: { _id: null, amount: { $sum: '$amount' }, count: { $sum: 1 } } },
+    ]),
+    // Paid but not yet activated, right now; the Manager follows these up in the payment history.
+    PaymentModel.countDocuments({ paidAt: { $ne: null }, fulfilledAt: null }),
   ]);
   const statuses = counts(sources?.statuses ?? []);
   const ingestion = counts(sources?.ingestion ?? []);
@@ -286,6 +306,9 @@ async function management(window: CalendarReportWindow): Promise<InsightData> {
       ingestionPending:
         (ingestion.queued ?? 0) + (ingestion.running ?? 0) + (ingestion.paused ?? 0),
       updated: (sources?.updated ?? []).reduce((sum, row) => sum + row.count, 0),
+      paidAmount: payments?.amount ?? 0,
+      paidOrders: payments?.count ?? 0,
+      unfulfilled,
     },
     distribution: ['in_force', 'amended', 'repealed', 'not_yet_effective'].map((key) => ({
       key,
@@ -308,6 +331,9 @@ export async function getDashboardInsights(
     throw AppError.forbidden('Vai trò không có trang tổng quan.');
   if (['owner', 'staff'].includes(actor.role) && !actor.orgId)
     throw AppError.forbidden('Cần chọn không gian tổ chức.');
+  const mine = query.mine === 'true';
+  if (mine && actor.role !== 'staff')
+    throw AppError.badRequest('Chỉ nhân viên tổ chức xem được báo cáo công việc của riêng mình.');
   const { current } = resolveReportPeriods({ period: query.period, comparison: 'none' }, now);
   const data =
     actor.role === 'administrator' || actor.role === 'owner'
@@ -316,7 +342,7 @@ export async function getDashboardInsights(
         ? await expert(actor, current)
         : actor.role === 'manager'
           ? await management(current)
-          : await workspace(actor, current);
+          : await workspace(actor, current, mine);
   return {
     role: actor.role,
     scope: {
@@ -329,6 +355,7 @@ export async function getDashboardInsights(
               ? 'expert'
               : 'system',
       id: actor.role === 'user' || actor.role === 'expert' ? actor.sub : (actor.orgId ?? null),
+      mine,
     },
     computedAt: now.toISOString(),
     timezone: REPORT_TIMEZONE,

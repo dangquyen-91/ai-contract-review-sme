@@ -9,6 +9,7 @@ import {
   managedTemplateListSchema,
   managedTemplateRevisionSchema,
   saveManagedTemplateSchema,
+  managedTemplatePreviewSchema,
 } from '../validations/managedTemplate.validation';
 
 const router = Router();
@@ -22,6 +23,12 @@ router.post(
   '/',
   validate({ body: createManagedTemplateSchema }),
   controller.createManagedTemplateHandler,
+);
+// Renders unsaved edits exactly as users will see the contract; nothing is stored.
+router.post(
+  '/preview',
+  validate({ body: managedTemplatePreviewSchema }),
+  controller.previewManagedTemplateHandler,
 );
 router.get(
   '/:id',

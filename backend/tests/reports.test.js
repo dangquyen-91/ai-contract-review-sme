@@ -347,3 +347,22 @@ test('calendar reports aggregate both periods on the server and isolate Owner sc
   expect(noComparison.comparison.period).toBeNull();
   expect(noComparison.trend.buckets.every((row) => row.previous === null)).toBe(true);
 });
+
+test('the workspace ranking groups personal accounts into one unnamed row', async () => {
+  const org = await OrganizationModel.create({ name: 'Ranking company' });
+  const personalA = id();
+  const personalB = id();
+  const finished = (orgId, status = 'completed') => ({
+    _id: id(), orgId, contractId: id(), idempotencyKey: String(id()), status, createdAt: start, finishedAt: inside,
+  });
+  await ReviewModel.collection.insertMany([
+    finished(org._id), finished(org._id), finished(org._id), finished(org._id),
+    finished(personalA), finished(personalA, 'failed'),
+    finished(personalB),
+  ]);
+  const report = await getReports({ role: 'administrator', sub: String(id()) }, 1, undefined, now);
+  expect(report.usage).toEqual([
+    { id: String(org._id), name: 'Ranking company', completed: 4, failed: 0, total: 4 },
+    { id: 'personal', name: 'Tài khoản cá nhân (2 tài khoản)', completed: 2, failed: 1, total: 3 },
+  ]);
+});

@@ -7,11 +7,14 @@ import {
 import { CONTRACT_TEMPLATES, getTemplate, type ContractTemplate } from './templates';
 import { withGroups } from './templateFields';
 import { accountTemplate, assertTemplateScope } from './templatePolicy';
+import { templateCategory } from './templateCategories';
+import { buildStudioTemplate } from './studioTemplate';
 import {
   type TemplateDefinition,
   managedTemplateCodes,
   templateDefinitionSchema,
 } from '../../validations/managedTemplate.validation';
+import { searchPattern } from '../../utils/regex';
 
 type RecordDocument = InstanceType<typeof ManagedTemplateModel>;
 
@@ -70,7 +73,7 @@ function summary(record: RecordDocument) {
 }
 export async function listManagedTemplates(page: number, q: string) {
   await ensureManagedTemplates();
-  const search = q ? new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') : null;
+  const search = q ? searchPattern(q) : null;
   const filter = search ? { $or: [{ name: search }, { description: search }] } : {};
   const [records, total] = await Promise.all([
     ManagedTemplateModel.find(filter)
@@ -141,6 +144,28 @@ export async function saveManagedTemplate(
   if (!updated) throw AppError.conflict('Mẫu đã thay đổi. Hãy tải lại trước khi lưu.');
   return getManagedTemplate(id);
 }
+/**
+ * The contract a user would open from this definition, built from unsaved edits with the
+ * same builder as a new draft: default values and today's dates, other fields left blank.
+ */
+export function previewManagedTemplate(definition: TemplateDefinition) {
+  const parsed = templateDefinitionSchema.parse(definition);
+  const base = getTemplate(parsed.code);
+  const template = withGroups({ ...base, ...parsed, version: base.version });
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+  const values = Object.fromEntries(
+    template.fields.flatMap((field) =>
+      field.defaultValue
+        ? [[field.key, field.defaultValue]]
+        : ['signingDate', 'startDate'].includes(field.key)
+          ? [[field.key, today]]
+          : field.key === 'termType'
+            ? [[field.key, 'fixed']]
+            : [],
+    ),
+  );
+  return { template, document: buildStudioTemplate(template, values, '', template.parties[0].code) };
+}
 export async function publishManagedTemplate(userId: string, id: string, revision: number) {
   await mongoose.connection.transaction(async (session) => {
     const record = await ManagedTemplateModel.findOne({ _id: id, revision }).session(session);
@@ -156,6 +181,7 @@ export async function publishManagedTemplate(userId: string, id: string, revisio
       fields: definition.fields,
       sections: definition.sections,
       reviewNotes: definition.reviewNotes ?? [],
+      category: definition.category,
     });
     // Re-validate the structured definition; contract drafts retain their own immutable snapshot.
     const version = Math.max(record.publishedVersion + 1, getTemplate(definition.code).version);
@@ -212,6 +238,7 @@ function forAccount(template: ContractTemplate, id: string, personal: boolean) {
   return {
     ...template,
     id,
+    category: templateCategory(template),
     ...(personal && template.code === 'labor' ? { parties: policy.parties } : {}),
   };
 }

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { PLAN_CODES, TOP_UP_PACK_CODES } from '../models/subscription.model';
 import { PAYMENT_ACTIONS } from '../models/payment.model';
+import { PAYMENT_HISTORY_PURPOSES, PAYMENT_HISTORY_STATUSES } from '../services/billing/paymentHistory.service';
 
 const subscriptionPaymentSchema = z
   .object({
@@ -34,4 +35,11 @@ export const paymentParamsSchema = z.object({
 });
 export const paymentListSchema = z.object({
   page: z.coerce.number().int().min(1).max(10000).default(1),
+});
+export const managerPaymentListSchema = z.object({
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  status: z.enum(PAYMENT_HISTORY_STATUSES).or(z.literal('')).default(''),
+  purpose: z.enum(PAYMENT_HISTORY_PURPOSES).or(z.literal('')).default(''),
+  search: z.string().trim().max(100).default(''),
 });

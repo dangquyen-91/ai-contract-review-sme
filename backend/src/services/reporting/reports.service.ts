@@ -29,7 +29,9 @@ type Day = {
   durationSumMs: number;
   timedReviews: number;
 };
-type Usage = { _id: Types.ObjectId; completed: number; failed: number };
+// `personal` collects every personal account, which reports never name one by one.
+type Usage = { _id: Types.ObjectId | 'personal'; completed: number; failed: number; accounts: number };
+export const PERSONAL_USAGE_ID = 'personal';
 type ReviewStatistics = {
   outcomes: Outcomes[];
   issues: { _id: string; count: number }[];
@@ -160,6 +162,17 @@ async function getReportSnapshot(
                 total: { $sum: 1 },
               },
             },
+            // A personal account's workspace id is a user id, not an organization.
+            { $lookup: { from: OrganizationModel.collection.name, localField: '_id', foreignField: '_id', as: 'organization' } },
+            {
+              $group: {
+                _id: { $cond: [{ $gt: [{ $size: '$organization' }, 0] }, '$_id', PERSONAL_USAGE_ID] },
+                completed: { $sum: '$completed' },
+                failed: { $sum: '$failed' },
+                total: { $sum: '$total' },
+                accounts: { $sum: 1 },
+              },
+            },
             { $sort: { total: -1, _id: 1 } },
             { $limit: 10 },
           ],
@@ -219,7 +232,7 @@ async function getReportSnapshot(
   const daysByDate = new Map(stats?.daily.map((row) => [row._id, row]));
   const names = new Map(organizations.map((org) => [String(org._id), org.name]));
   // Resolve only organization names. Never include individual users' names or emails in aggregate reports.
-  const usageIds = stats?.usage.map((row) => row._id) ?? [];
+  const usageIds = stats?.usage.map((row) => row._id).filter((id) => id !== PERSONAL_USAGE_ID) ?? [];
   const usageOrganizations = await OrganizationModel.find({ _id: { $in: usageIds } })
     .select('_id name')
     .lean();
@@ -297,7 +310,10 @@ async function getReportSnapshot(
     })),
     usage: (stats?.usage ?? []).map((row) => ({
       id: String(row._id),
-      name: names.get(String(row._id)) ?? 'Không gian cá nhân',
+      name:
+        row._id === PERSONAL_USAGE_ID
+          ? `Tài khoản cá nhân (${row.accounts} tài khoản)`
+          : (names.get(String(row._id)) ?? 'Tổ chức đã xóa'),
       completed: row.completed,
       failed: row.failed,
       total: row.completed + row.failed,

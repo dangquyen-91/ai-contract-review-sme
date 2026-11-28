@@ -39,6 +39,8 @@ export interface ContractTemplate {
   parties: { code: string; name: string }[];
   formGroups?: FormGroup[];
   reviewNotes?: string[];
+  // Where the template is grouped in the template library.
+  category?: string;
 }
 import { buildDetailedTemplate } from './templates.v2';
 import { buildLaborTemplate } from './templates.labor';

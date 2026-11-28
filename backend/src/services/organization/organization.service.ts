@@ -12,6 +12,7 @@ import {
   CreateOrganizationInput,
   UpdateOrganizationInput,
 } from '../../validations/organization.validation';
+import { searchPattern } from '../../utils/regex';
 
 function ensureOrganizationAccess(organizationId: string, userOrganizationId: string) {
   if (organizationId !== userOrganizationId) throw AppError.forbidden();
@@ -48,7 +49,7 @@ export async function createOrganization(userId: string, input: CreateOrganizati
 export async function listOrganizations(page: number, limit: number, filters: { search?: string; industry?: string } = {}) {
   const query: mongoose.FilterQuery<InstanceType<typeof OrganizationModel>> = {};
   if (filters.search) {
-    const search = new RegExp(filters.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const search = searchPattern(filters.search);
     query.$or = [{ name: search }, { taxCode: search }];
   }
   if (filters.industry) query.industry = filters.industry;

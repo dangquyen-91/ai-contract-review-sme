@@ -53,6 +53,8 @@ export const templateDefinitionSchema = z
       .min(1)
       .max(20),
     reviewNotes: z.array(z.string().max(1000)).max(10).default([]),
+    // Library category; empty means the default category of the contract type.
+    category: z.string().trim().max(60).optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -142,3 +144,4 @@ export const managedTemplateListSchema = z.object({
   q: z.string().trim().max(160).default(''),
 });
 export type TemplateDefinition = z.infer<typeof templateDefinitionSchema>;
+export const managedTemplatePreviewSchema = z.object({ definition: templateDefinitionSchema }).strict();

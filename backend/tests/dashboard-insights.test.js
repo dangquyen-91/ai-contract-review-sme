@@ -74,7 +74,7 @@ test('staff sees the organization, personal workspace sees only the actor, and p
     query,
     now,
   );
-  expect(staff.scope).toEqual({ type: 'organization', id: String(org) });
+  expect(staff.scope).toEqual({ type: 'organization', id: String(org), mine: false });
   expect(staff.metrics).toMatchObject({
     contracts: 4,
     uploads: 2,
@@ -91,7 +91,7 @@ test('staff sees the organization, personal workspace sees only the actor, and p
     query,
     now,
   );
-  expect(personal.scope).toEqual({ type: 'personal', id: String(user) });
+  expect(personal.scope).toEqual({ type: 'personal', id: String(user), mine: false });
   expect(personal.metrics).toMatchObject({ contracts: 1, uploads: 1, completed: 1, failed: 0 });
   expect(personal.metrics.receivedAmount).toBeUndefined();
 });
@@ -250,6 +250,65 @@ test('manager reports stored legal status and sources whose latest update is in 
   });
   expect(result.trend.reduce((sum, row) => sum + row.updated, 0)).toBe(2);
   expect(result.metrics.receivedAmount).toBeUndefined();
+});
+
+test('manager sees receipts paid in the period and orders still waiting for activation', async () => {
+  const org = id();
+  const row = (fields, index) => ({
+    orderCode: 9300000000000 + index, orgId: org, createdBy: id(), idempotencyKey: `insight-${index}`,
+    purpose: 'subscription', planCode: 'business_starter', action: 'purchase', currency: 'VND',
+    amount: 499000, isOpen: false, expiresAt: inside, createdAt: inside, ...fields,
+  });
+  await PaymentModel.collection.insertMany([
+    { status: 'paid', paidAt: inside, fulfilledAt: inside },
+    { status: 'paid', paidAt: start, fulfilledAt: start, amount: 99000 },
+    // Paid before the period: not a receipt of this period, still waiting for activation.
+    { status: 'paid', paidAt: new Date(start - 1), fulfilledAt: null, amount: 199000 },
+    { status: 'pending', paidAt: null },
+    { status: 'cancelled', paidAt: null },
+  ].map(row));
+  const result = await getDashboardInsights({ sub: String(id()), role: 'manager' }, query, now);
+  expect(result.metrics).toMatchObject({ paidAmount: 598000, paidOrders: 2, unfulfilled: 1 });
+  const admin = await getDashboardInsights({ sub: String(id()), role: 'administrator' }, query, now);
+  expect(admin.metrics).toMatchObject({ receivedAmount: 598000, paidOrders: 2, unfulfilled: 1, stuck: 0 });
+});
+
+test('staff can narrow the organization report to their own work', async () => {
+  const org = id(), me = id(), colleague = id();
+  await ContractModel.collection.insertMany([
+    { orgId: org, uploadedBy: me, status: 'reviewed', createdAt: inside },
+    { orgId: org, uploadedBy: me, status: 'processing', createdAt: inside },
+    { orgId: org, uploadedBy: colleague, status: 'reviewed', createdAt: inside },
+  ]);
+  await ReviewModel.collection.insertMany([
+    { orgId: org, requestedBy: me, status: 'completed', finishedAt: inside },
+    { orgId: org, requestedBy: colleague, status: 'completed', finishedAt: inside },
+    { orgId: org, requestedBy: colleague, status: 'failed', finishedAt: inside },
+  ]);
+  await ExpertReviewModel.collection.insertMany([
+    { orgId: org, requestedBy: colleague, status: 'requested' },
+  ]);
+  await UsageRunModel.collection.insertMany([
+    { orgId: org, userId: me, kind: 'analysis', units: 2, status: 'succeeded', updatedAt: inside, idempotencyKey: 'mine-1' },
+    { orgId: org, userId: colleague, kind: 'analysis', units: 3, status: 'succeeded', updatedAt: inside, idempotencyKey: 'mine-2' },
+  ]);
+  const staff = { sub: String(me), role: 'staff', orgId: String(org) };
+  const all = await getDashboardInsights(staff, query, now);
+  expect(all.scope.mine).toBe(false);
+  expect(all.metrics).toMatchObject({ contracts: 3, uploads: 3, completed: 2, failed: 1, openVerification: 1, analysisUnits: 5 });
+  const mine = await getDashboardInsights(staff, { ...query, mine: 'true' }, now);
+  expect(mine.scope).toMatchObject({ type: 'organization', id: String(org), mine: true });
+  expect(mine.metrics).toMatchObject({ contracts: 2, processing: 1, uploads: 2, completed: 1, failed: 0, openVerification: 0, analysisUnits: 2 });
+});
+
+test('only staff may narrow a report to their own work', async () => {
+  for (const actor of [
+    { sub: String(id()), role: 'owner', orgId: String(id()) },
+    { sub: String(id()), role: 'user' },
+    { sub: String(id()), role: 'manager' },
+  ]) {
+    await expect(getDashboardInsights(actor, { ...query, mine: 'true' }, now)).rejects.toMatchObject({ statusCode: 400 });
+  }
 });
 
 test('empty expert durations are unknown; invalid organization roles fail closed', async () => {

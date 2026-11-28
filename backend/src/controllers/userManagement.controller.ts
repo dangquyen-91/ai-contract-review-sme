@@ -5,11 +5,13 @@ import { User, UserModel } from '../models/user.model';
 import { MembershipModel } from '../models/membership.model';
 import { accessOf, AccountAccess } from '../services/identity/account.service';
 import { AppError } from '../errors/AppError';
+import { recordAudit, requestActor } from '../services/audit/audit.service';
 import {
   createUserBody,
   listUsersQuery,
   updateUserBody,
 } from '../validations/userManagement.validation';
+import { escapeRegExp } from '../utils/regex';
 
 const selection =
   '_id name email platformRole isActive emailVerifiedAt createdAt updatedAt permissionsVersion';
@@ -73,7 +75,7 @@ export async function listUsers(req: Request, res: Response, next: NextFunction)
     const { search, role, status, page, limit } = listUsersQuery.parse(req.query);
     const filter: FilterQuery<User> = { deletedAt: null, ...(role ? await roleFilter(role) : {}) };
     if (search) {
-      const pattern = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = escapeRegExp(search);
       filter.$or = [
         { name: { $regex: pattern, $options: 'i' } },
         { email: { $regex: pattern, $options: 'i' } },
@@ -111,6 +113,12 @@ export async function createUser(req: Request, res: Response, next: NextFunction
       platformRole: input.role === 'user' ? null : input.role,
       hasCompletedOnboarding: input.role !== 'user',
       isActive: input.isActive,
+    });
+    await recordAudit({
+      action: 'user.create',
+      actor: requestActor(req.user),
+      target: { type: 'user', id: user.id, label: user.email },
+      changes: { role: input.role, isActive: input.isActive },
     });
     res.status(201).json({ success: true, data: serialize(await findManagedUser(user.id)) });
   } catch (error) {
@@ -153,6 +161,22 @@ export async function updateUser(req: Request, res: Response, next: NextFunction
     ).select(selection);
     if (!updated) throw AppError.conflict('Tài khoản vừa thay đổi. Vui lòng tải lại.');
     const [view] = await withAccess([updated]);
+    // Record what changed, never credentials.
+    const audited = Object.fromEntries(
+      Object.entries({
+        name: input.name !== undefined && input.name !== user.name ? { from: user.name, to: input.name } : undefined,
+        email: input.email !== undefined && input.email !== user.email ? { from: user.email, to: input.email } : undefined,
+        isActive: input.isActive !== undefined && input.isActive !== user.isActive ? { from: user.isActive, to: input.isActive } : undefined,
+        role: roleChanged ? { from: access.role, to: input.role } : undefined,
+      }).filter(([, value]) => value !== undefined),
+    );
+    if (Object.keys(audited).length)
+      await recordAudit({
+        action: 'user.update',
+        actor: requestActor(req.user),
+        target: { type: 'user', id: user.id, label: updated.email },
+        changes: audited,
+      });
     res.json({ success: true, data: serialize(view) });
   } catch (error) {
     next(error);
@@ -174,6 +198,12 @@ export async function deleteUser(req: Request, res: Response, next: NextFunction
       if (!result.modifiedCount)
         throw AppError.conflict('Tài khoản vừa thay đổi. Vui lòng tải lại.');
       await MembershipModel.deleteOne({ userId: user._id }, { session });
+    });
+    await recordAudit({
+      action: 'user.delete',
+      actor: requestActor(req.user),
+      target: { type: 'user', id: user.id, label: user.email },
+      changes: { role: access.role },
     });
     res.status(204).send();
   } catch (error) {

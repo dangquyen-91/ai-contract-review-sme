@@ -23,6 +23,7 @@ import {
   activateContractReviewPurchase,
 } from './contractReviewPurchase.service';
 import { activateTopUp, quoteTopUp } from './topUp.service';
+import { recordAudit } from '../audit/audit.service';
 
 type Payment = HydratedDocument<PaymentData>;
 type Purchase =
@@ -351,18 +352,28 @@ export async function listPayments(userId: string, orgId: string, page: number) 
   return { items: orders.map(view), page, pageSize: 20 };
 }
 
+/** Marks the order fulfilled once and records it; repeated notifications record nothing. */
+async function markFulfilled(order: Payment, extra: Record<string, unknown> = {}) {
+  const result = await PaymentModel.updateOne(
+    { _id: order._id, fulfilledAt: null },
+    { $set: { fulfilledAt: new Date(), isOpen: false, ...extra }, $unset: { fulfillmentError: 1, providerError: 1 } },
+  );
+  if (result.modifiedCount)
+    await recordAudit({
+      action: 'payment.fulfilled',
+      actor: { role: 'system' },
+      orgId: order.orgId.toString(),
+      target: { type: 'payment', id: String(order.orderCode), label: order.planCode ?? order.packCode ?? order.purpose ?? null },
+      changes: { amount: order.amount, purpose: order.purpose ?? 'subscription', action: order.action },
+    });
+}
+
 async function fulfill(order: Payment) {
   if (order.fulfilledAt) return;
   try {
     if (order.purpose === 'contract_review') {
       await activateContractReviewPurchase(order);
-      await PaymentModel.updateOne(
-        { _id: order._id, fulfilledAt: null },
-        {
-          $set: { fulfilledAt: new Date(), isOpen: false },
-          $unset: { fulfillmentError: 1, providerError: 1 },
-        },
-      );
+      await markFulfilled(order);
       return;
     }
     if (order.purpose === 'top_up') {
@@ -376,13 +387,7 @@ async function fulfill(order: Payment) {
         },
         order.paidAt!,
       );
-      await PaymentModel.updateOne(
-        { _id: order._id, fulfilledAt: null },
-        {
-          $set: { fulfilledAt: new Date(), isOpen: false },
-          $unset: { fulfillmentError: 1, providerError: 1 },
-        },
-      );
+      await markFulfilled(order);
       return;
     }
     if (!order.planCode) throw AppError.conflict('Đơn thanh toán thiếu thông tin gói dịch vụ.');
@@ -398,14 +403,15 @@ async function fulfill(order: Payment) {
       order.paidAt!,
     );
     // Stable paymentReference makes a crash between activation and this update recoverable.
-    await PaymentModel.updateOne(
-      { _id: order._id, fulfilledAt: null },
-      {
-        $set: { fulfilledAt: new Date(), subscriptionPeriodId: period._id, isOpen: false },
-        $unset: { fulfillmentError: 1, providerError: 1 },
-      },
-    );
+    await markFulfilled(order, { subscriptionPeriodId: period._id });
   } catch (error) {
+    await recordAudit({
+      action: 'payment.activation_failed',
+      actor: { role: 'system' },
+      orgId: order.orgId.toString(),
+      target: { type: 'payment', id: String(order.orderCode), label: order.planCode ?? order.packCode ?? order.purpose ?? null },
+      changes: { reason: error instanceof AppError ? error.message : 'Kích hoạt chưa thành công.' },
+    });
     await PaymentModel.updateOne(
       { _id: order._id, fulfilledAt: null },
       {

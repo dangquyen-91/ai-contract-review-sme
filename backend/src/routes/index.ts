@@ -10,9 +10,11 @@ import invitationRoutes from './invitation.routes';
 import profileRoutes from './profile.routes';
 import contractDraftRoutes from './contractDraft.routes';
 import managedTemplateRoutes from './managedTemplate.routes';
+import managerPaymentRoutes from './managerPayment.routes';
 import reportsRoutes from './reports.routes';
 import dashboardRoutes from './dashboard.routes';
 import { listPlansHandler, listTopUpPacksHandler } from '../controllers/subscription.controller';
+import adminOperationsRoutes from './adminOperations.routes';
 
 const router = Router();
 
@@ -22,9 +24,11 @@ router.use('/auth', authRoutes);
 router.use('/profile', profileRoutes);
 router.use('/contract-drafts', contractDraftRoutes);
 router.use('/manager/contract-templates', managedTemplateRoutes);
+router.use('/manager/payments', managerPaymentRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/admin/users', userManagementRoutes);
+router.use('/admin', adminOperationsRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/invitations', invitationRoutes);
 router.get('/plans', listPlansHandler);

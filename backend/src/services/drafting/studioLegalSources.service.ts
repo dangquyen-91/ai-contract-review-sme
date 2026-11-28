@@ -9,9 +9,9 @@ import { SALES_LEGAL_SOURCE_CODES } from '../legal/legalSourceCatalog.data';
 import { inForceSourceFilter } from '../legal/legalSourceAvailability';
 
 import { studioLawQuerySchema } from '../../validations/studio.validation';
+import { escapeRegExp, searchPattern } from '../../utils/regex';
 export { studioLawIdsSchema, studioLawQuerySchema } from '../../validations/studio.validation';
 const pageSize = 20;
-const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 function availableSources() {
   const now = new Date();
   return {
@@ -34,7 +34,7 @@ async function templateLawFilter(templateCode?: string) {
   return { code: { $in: codes } };
 }
 export async function listStudioLaws(query: z.infer<typeof studioLawQuerySchema>) {
-  const search = query.q ? new RegExp(escapeRegex(query.q), 'i') : null;
+  const search = query.q ? searchPattern(query.q) : null;
   const lawFilter = await templateLawFilter(query.templateCode);
   const [result] = await LegalSourceModel.aggregate([
     { $match: { ...availableSources(), ...lawFilter,
@@ -86,13 +86,13 @@ export async function studioLawContext(ids: string[], message: string, templateC
   const stopWords = new Set(['cho', 'của', 'với', 'theo', 'hợp', 'đồng', 'điều', 'tôi', 'hãy', 'sửa', 'thêm', 'vào', 'này', 'một', 'các', 'người', 'lao', 'động', 'trong', 'được', 'thực', 'hiện', 'công', 'việc']);
   const terms = [...new Set(message.toLocaleLowerCase('vi').match(/[\p{L}\d]{3,}/gu) ?? [])]
     .filter(term => !stopWords.has(term)).slice(0, 16);
-  const expression = terms.length ? new RegExp(terms.map(escapeRegex).join('|'), 'i') : null;
+  const expression = terms.length ? new RegExp(terms.map(escapeRegExp).join('|'), 'i') : null;
   return Promise.all(sources.map(async source => {
     const base = { legalSourceId: source._id };
     let chunks = expression ? await LegalKnowledgeChunkModel.aggregate([
       { $match: { ...base, chunkText: expression } },
       { $set: { relevance: { $sum: terms.map(term => ({ $cond: [
-        { $regexMatch: { input: '$chunkText', regex: escapeRegex(term), options: 'i' } }, 1, 0,
+        { $regexMatch: { input: '$chunkText', regex: escapeRegExp(term), options: 'i' } }, 1, 0,
       ] })) } } },
       { $sort: { relevance: -1, order: 1, _id: 1 } }, { $limit: 2 },
       { $project: { chunkText: 1, articleRef: 1 } },

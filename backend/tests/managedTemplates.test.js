@@ -138,3 +138,58 @@ test('extra fields appear in new user drafts and catalog reads never restore a r
   expect((await catalog()).body.data.templates.some(item => item.id === builtin.id)).toBe(false);
   expect((await ManagedTemplateModel.findById(builtin.id)).status).toBe('retired');
 });
+
+test('the library groups templates by a category the Manager publishes, defaulting by contract type', async () => {
+  const before = (await catalog()).body.data.templates;
+  expect(before.find((item) => item.code === 'labor').category).toBe('Lao động');
+  expect(before.find((item) => item.code === 'life_insurance').category).toBe('Bảo hiểm');
+  const template = await create();
+  const definition = { ...editDefinition(template.definition), category: '  Nhà ở  ' };
+  const saved = await call('patch', `/${template.id}`).send({ revision: template.revision, definition });
+  expect(saved.status).toBe(200);
+  expect(saved.body.data.definition.category).toBe('Nhà ở');
+  // A saved draft does not change the library until it is published.
+  expect((await catalog()).body.data.templates.some((item) => item.id === template.id)).toBe(false);
+  const published = await publish(saved.body.data);
+  const listed = (await catalog()).body.data.templates.find((item) => item.id === published.id);
+  expect(listed.category).toBe('Nhà ở');
+  // Clearing the category falls back to the default of the contract type.
+  const cleared = await call('patch', `/${published.id}`).send({ revision: published.revision, definition: { ...definition, category: '' } });
+  await publish(cleared.body.data);
+  expect((await catalog()).body.data.templates.find((item) => item.id === published.id).category).toBe('Bất động sản');
+});
+
+test('a category longer than 60 characters is rejected', async () => {
+  const template = await create();
+  const response = await call('patch', `/${template.id}`).send({ revision: template.revision, definition: { ...editDefinition(template.definition), category: 'x'.repeat(61) } });
+  expect(response.status).toBe(400);
+});
+
+const previewText = (node) => (node.text ?? '') + (node.content ?? []).map(previewText).join('') + (node.type === 'templateField' ? `[${node.attrs.key}]` : '');
+
+test('a Manager previews unsaved edits as the contract users will open, without saving them', async () => {
+  const template = await create('life_insurance');
+  const definition = editDefinition(template.definition);
+  definition.sections[0].title = 'ĐIỀU KHOẢN XEM TRƯỚC';
+  definition.sections[0].body += '\nNội dung chưa lưu dành cho {{insuredPerson}}.';
+  const response = await call('post', '/preview').send({ definition });
+  expect(response.status).toBe(200);
+  expect(response.headers['cache-control']).toBe('no-store');
+  const text = previewText(response.body.data.document);
+  expect(text).toContain('CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM');
+  expect(text).toContain('Nội dung chưa lưu dành cho');
+  expect(response.body.data.template.sections[0].title).toBe('ĐIỀU KHOẢN XEM TRƯỚC');
+  // Today's date fills the signing date, as in a new draft.
+  const signing = JSON.stringify(response.body.data.document).match(/"key":"signingDate","value":"(\d{4}-\d{2}-\d{2})"/);
+  expect(signing?.[1]).toBe(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }));
+  const stored = await ManagedTemplateModel.findById(template.id);
+  expect(stored.revision).toBe(template.revision);
+  expect(stored.draftJson).not.toContain('Nội dung chưa lưu');
+});
+
+test('an invalid definition cannot be previewed, and only a Manager may preview', async () => {
+  const template = await create();
+  const definition = editDefinition(template.definition);
+  expect((await call('post', '/preview').send({ definition: { ...definition, name: '' } })).status).toBe(400);
+  expect((await call('post', '/preview', personal).send({ definition })).status).toBe(403);
+});
