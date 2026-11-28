@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { AppError } from '../../errors/AppError';
 import type { ContractTemplate } from './templates';
 import { normalizeStudioDocument, type StudioDocument, type StudioNode } from './studioDocument';
 import { studioParagraph, studioTextNode } from './studioNodes';
@@ -193,5 +194,30 @@ export function legacyStudioDocument(content: string, template: ContractTemplate
       });
     }
   }
+  return normalizeStudioDocument({ type: 'doc', content: nodes }, template);
+}
+
+const IMPORT_MAX_BLOCKS = 1500;
+
+/** Turns the plain text of an uploaded contract into an editable studio document. */
+export function importedStudioDocument(text: string, template: ContractTemplate): StudioDocument {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  if (lines.length > IMPORT_MAX_BLOCKS)
+    throw AppError.badRequest(
+      `Tài liệu có quá nhiều đoạn (tối đa ${IMPORT_MAX_BLOCKS}). Vui lòng tách bớt nội dung.`,
+    );
+  const nodes = lines.map((line, index): StudioNode => {
+    const upper = /\p{L}/u.test(line) && line === line.toLocaleUpperCase('vi-VN') && line.length <= 160;
+    if (/^điều\s+\d+/i.test(line) || /^(chương|phần|mục)\s+[\dIVXLC]+\b/i.test(line))
+      return { type: 'heading', attrs: { level: 2, textAlign: null }, content: [studioTextNode(line)] };
+    if (upper && index < 8 && /HỢP ĐỒNG|THỎA THUẬN|BIÊN BẢN|PHỤ LỤC/.test(line))
+      return { type: 'heading', attrs: { level: 1, textAlign: 'center' }, content: [studioTextNode(line)] };
+    if (upper && index < 8)
+      return studioParagraph([{ ...studioTextNode(line), marks: [{ type: 'bold' }] }], 'center');
+    return studioParagraph([studioTextNode(line)]);
+  });
   return normalizeStudioDocument({ type: 'doc', content: nodes }, template);
 }

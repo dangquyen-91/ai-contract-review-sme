@@ -13,7 +13,7 @@ import { UserModel } from '../../models/user.model';
 import { ContractModel } from '../../models/contract.model';
 import { ContractVersionModel } from '../../models/contractVersion.model';
 import { AccessTokenPayload } from '../../middlewares/auth.middleware';
-import { DraftInput, updateDraftSchema } from '../../validations/contractDraft.validation';
+import { DraftImportInput, DraftInput, updateDraftSchema } from '../../validations/contractDraft.validation';
 import { ContractTemplate, getTemplate, TemplateCode } from './templates';
 import { generateDraftContent } from './generation.service';
 import { createDraftDocx } from './docx.service';
@@ -22,7 +22,9 @@ import { countDocxPages } from '../contract/documentPageCount.service';
 import { fileHashOf } from '../contract/contractVersion.service';
 import { reserveUsage, finishUsage } from '../billing/usage.service';
 import { draftingError } from './draftingErrors';
-import { buildStudioTemplate, legacyStudioDocument } from './studioTemplate';
+import { buildStudioTemplate, importedStudioDocument, legacyStudioDocument } from './studioTemplate';
+import { readUploadText } from './uploadText.service';
+import { DRAFT_IMPORT_MAX_BYTES } from '../../config/draftImport';
 import { normalizeStudioDocument, studioInput, studioText } from './studioDocument';
 import { createStudioDocx } from './studioDocx.service';
 import { validateStudioLaws } from './studioLegalSources.service';
@@ -111,7 +113,7 @@ export async function getDraft(actor: AccessTokenPayload, id: string) {
   await requireDraftAccess(actor);
   return view(await findDraft(actor, id));
 }
-export async function createDraft(actor: AccessTokenPayload, input: DraftInput) {
+export async function createDraft(actor: AccessTokenPayload, input: DraftInput, importedText?: string) {
   const organization = await requireDraftAccess(actor);
   const personal = actor.role === 'user';
   const template = await publishedAccountTemplate(input.templateCode, personal, input.templateId);
@@ -121,7 +123,9 @@ export async function createDraft(actor: AccessTokenPayload, input: DraftInput) 
     : { companyName: organization.name, companyAddress: organization.address ?? '', companyTaxCode: organization.taxCode ?? '' };
   const values = { ...defaults, ...Object.fromEntries(Object.entries(prefilled).filter(([key]) => template.fields.some(field => field.key === key))), ...input.input };
   validateInput(input.templateCode, values, input.ourParty, false, template);
-  const document = input.editorMode === 'studio' ? buildStudioTemplate(template, values, organization.name, input.ourParty) : null;
+  const document = importedText !== undefined
+    ? importedStudioDocument(importedText, template)
+    : input.editorMode === 'studio' ? buildStudioTemplate(template, values, organization.name, input.ourParty) : null;
   const draft = await ContractDraftModel.create({
     ownerType: actor.orgId ? 'organization' : 'personal', orgId: actor.orgId ?? null, createdBy: actor.sub, title: input.title,
     templateCode: input.templateCode, templateVersion: template.version, ourParty: input.ourParty,
@@ -130,6 +134,22 @@ export async function createDraft(actor: AccessTokenPayload, input: DraftInput) 
     ...(document ? { documentJson: JSON.stringify(document), content: studioText(document, template) } : {}),
   });
   return view(draft);
+}
+/** Creates a studio draft from the text of an uploaded contract file. */
+export async function importDraft(actor: AccessTokenPayload, input: DraftImportInput, file?: Express.Multer.File) {
+  await requireDraftAccess(actor);
+  if (!file || file.buffer.length > DRAFT_IMPORT_MAX_BYTES)
+    throw AppError.badRequest('Vui lòng chọn tệp hợp đồng tối đa 10 MB.');
+  const { name, text } = await readUploadText(file, 60);
+  const title = (input.title?.trim() || name.replace(/\.(docx|pdf|txt)$/i, '').trim()).slice(0, 200);
+  return createDraft(actor, {
+    templateCode: input.templateCode,
+    ...(input.templateId ? { templateId: input.templateId } : {}),
+    title: title.length >= 2 ? title : 'Hợp đồng tải lên',
+    ourParty: input.ourParty,
+    input: {},
+    editorMode: 'studio',
+  }, text);
 }
 export async function updateDraft(actor: AccessTokenPayload, id: string, input: z.infer<typeof updateDraftSchema>) {
   await requireDraftAccess(actor);

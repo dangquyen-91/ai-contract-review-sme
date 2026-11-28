@@ -85,7 +85,7 @@ export function DraftListRow({
           <DropdownMenu.Content
             align="end"
             sideOffset={6}
-            className="z-[80] min-w-52 rounded-xl border border-slate-200 bg-white p-1.5 text-sm shadow-xl"
+            className="z-[120] min-w-52 rounded-xl border border-slate-200 bg-white p-1.5 text-sm shadow-xl"
           >
             <DropdownMenu.Item
               onSelect={() => void pin()}

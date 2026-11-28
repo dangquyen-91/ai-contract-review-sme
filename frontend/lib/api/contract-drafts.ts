@@ -12,6 +12,14 @@ export const contractDraftsApi = {
   pin: (id: string, pinned: boolean) => apiRequest<DraftSummary>({ url: `${base}/${id}/pin`, method: 'PATCH', data: { pinned } }),
   remove: (id: string, revision: number) => apiRequest<{ id: string }>({ url: `${base}/${id}`, method: 'DELETE', data: { revision } }),
   create: (input: { templateId?: string; templateCode: TemplateCode; title: string; ourParty: string; input: Record<string, string>; editorMode?: 'studio' }) => apiRequest<ContractDraft>({ url: base, method: 'POST', data: input }),
+  importFile: (input: { file: File; templateCode: TemplateCode; templateId?: string; ourParty: string }) => {
+    const data = new FormData();
+    data.append('templateCode', input.templateCode);
+    if (input.templateId) data.append('templateId', input.templateId);
+    data.append('ourParty', input.ourParty);
+    data.append('file', input.file);
+    return apiRequest<ContractDraft>({ url: `${base}/import`, method: 'POST', data, timeout: 60_000 });
+  },
   openStudio: (id: string, revision: number) => apiRequest<ContractDraft>({ url: `${base}/${id}/studio`, method: 'POST', data: { revision } }),
   copyLatest: (id: string, revision: number) => apiRequest<ContractDraft>({ url: `${base}/${id}/copy-latest`, method: 'POST', data: { revision } }),
   saveStudio: (id: string, revision: number, input: { title: string; ourParty: string; input: Record<string, string>; document: StudioDocument; legalSourceIds?: string[] }) => apiRequest<ContractDraft>({ url: `${base}/${id}`, method: 'PATCH', data: { ...input, content: '', revision } }),
