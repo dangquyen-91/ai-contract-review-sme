@@ -35,6 +35,11 @@ export const removeMemberHandler = asyncHandler(async (req, res) => {
   await service.removeMember(req.user.sub, req.params.id, req.params.userId);
   res.status(204).send();
 });
+export const leaveOrganizationHandler = asyncHandler(async (req, res) => {
+  if (!req.user) throw AppError.unauthorized();
+  await service.leaveOrganization(req.user.sub, req.params.id);
+  res.status(204).send();
+});
 export const acceptInvitationHandler = asyncHandler(async (req, res) => {
   if (!req.user) throw AppError.unauthorized();
   const user = await service.acceptInvitation(req.user.sub, req.body.token);

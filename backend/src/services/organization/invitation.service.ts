@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'crypto';
-import mongoose, { ClientSession } from 'mongoose';
+import mongoose, { ClientSession, Types } from 'mongoose';
 import { AppError } from '../../errors/AppError';
 import { OrganizationInvitationModel } from '../../models/organizationInvitation.model';
 import { OrganizationModel } from '../../models/organization.model';
@@ -218,20 +218,40 @@ export async function removeMember(ownerId: string, orgId: string, memberId: str
     if (member.id === ownerId || membership.role === 'owner') {
       throw AppError.conflict('The organization owner cannot be removed');
     }
-    await MembershipModel.deleteOne({ _id: membership._id }, { session });
-    await UserModel.updateOne(
-      { _id: member._id },
-      { $set: { hasCompletedOnboarding: false }, $inc: { permissionsVersion: 1 } },
-      { session },
-    );
-    // A previous pending link must not silently restore access after removal.
-    await OrganizationInvitationModel.updateMany(
-      { orgId, email: member.email, status: 'pending' },
-      { $set: { status: 'revoked' } },
-      { session },
-    );
-    // Contracts, reviews, chat, subscriptions and already consumed quota belong to the organization.
+    await detachMember(orgId, membership._id, member, session);
   });
+}
+
+/** A staff member leaves the organization on their own; the owner must delete it instead. */
+export async function leaveOrganization(userId: string, orgId: string) {
+  await mongoose.connection.transaction(async (session) => {
+    await lockSubscriptionOrganization(orgId, session);
+    const membership = await findMembership(userId, orgId, session);
+    const member = membership ? await UserModel.findById(userId).session(session) : null;
+    if (!membership || !member) throw AppError.notFound('Bạn không còn là thành viên tổ chức này.');
+    if (membership.role === 'owner')
+      throw AppError.conflict('Chủ tổ chức không thể rời tổ chức. Hãy xóa tổ chức nếu không còn sử dụng.');
+    await detachMember(orgId, membership._id, member, session);
+  });
+}
+
+/** Ends a membership; the user keeps their account but must refresh their session. */
+async function detachMember(
+  orgId: string,
+  membershipId: Types.ObjectId,
+  member: { _id: Types.ObjectId; email: string },
+  session: ClientSession,
+) {
+  await MembershipModel.deleteOne({ _id: membershipId }, { session });
+  // The user stays onboarded and continues in their personal workspace.
+  await UserModel.updateOne({ _id: member._id }, { $inc: { permissionsVersion: 1 } }, { session });
+  // A previous pending link must not silently restore access after leaving.
+  await OrganizationInvitationModel.updateMany(
+    { orgId, email: member.email, status: 'pending' },
+    { $set: { status: 'revoked' } },
+    { session },
+  );
+  // Contracts, reviews, chat, subscriptions and already consumed quota belong to the organization.
 }
 
 export async function listReceivedInvitations(userId: string) {

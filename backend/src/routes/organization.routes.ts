@@ -37,6 +37,7 @@ import {
   revokeInvitationHandler,
   listMembersHandler,
   removeMemberHandler,
+  leaveOrganizationHandler,
 } from '../controllers/invitation.controller';
 import {
   createInvitationSchema,
@@ -142,6 +143,7 @@ router.delete(
   validate({ params: memberParamsSchema }),
   removeMemberHandler,
 );
+router.post('/:id/leave', validate({ params: organizationIdParamSchema }), leaveOrganizationHandler);
 router.post(
   '/',
   requireRole('user'),

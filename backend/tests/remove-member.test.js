@@ -243,7 +243,8 @@ test('removal frees one paid seat while retaining the account, organization data
   expect(await membershipOf(staff.id)).toBeNull();
   expect(removed.platformRole).toBeFalsy();
   expect(removed.isActive).toBe(true);
-  expect(removed.hasCompletedOnboarding).toBe(false);
+  // A removed member stays onboarded and continues in the personal workspace.
+  expect(removed.hasCompletedOnboarding).toBe(true);
   expect(removed.permissionsVersion).toBe(1);
   expect(await SubscriptionPeriodModel.findById(paid._id).lean()).toEqual(before);
   expect((await ContractModel.findById(contract.id)).uploadedBy.toString()).toBe(staff.id);
@@ -290,7 +291,7 @@ test('old access stays invalid even after rejoining the same org with the same r
     .send({ refreshToken: old.refreshToken });
   expect(refreshed.status).toBe(200);
   expect(refreshed.body.data.user.orgId).toBeNull();
-  expect(refreshed.body.data.user.hasCompletedOnboarding).toBe(false);
+  expect(refreshed.body.data.user.hasCompletedOnboarding).toBe(true);
   expect(
     (await request(app).get(path).set('Authorization', `Bearer ${refreshed.body.data.accessToken}`))
       .status,

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { validate } from '../middlewares/validate.middleware';
 import {
   completeOnboardingHandler,
+  listWorkspacesHandler,
   loginHandler,
   refreshHandler,
   registerHandler,
@@ -97,5 +98,6 @@ router.post(
 router.post('/refresh', validate({ body: refreshSchema }), refreshHandler);
 
 router.post('/onboarding/complete', requireAuth, completeOnboardingHandler);
+router.get('/workspaces', requireAuth, listWorkspacesHandler);
 
 export default router;
