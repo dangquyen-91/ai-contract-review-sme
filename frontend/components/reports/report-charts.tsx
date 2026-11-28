@@ -39,6 +39,13 @@ const formatMoney = (value: number) =>
     notation: value >= 1_000_000 ? "compact" : "standard",
     maximumFractionDigits: 1,
   })} đ`;
+// Axis labels stay on one line: 100k, 1,5tr.
+const formatMoneyTick = (value: number) =>
+  value >= 1_000_000
+    ? `${(value / 1_000_000).toLocaleString("vi-VN", { maximumFractionDigits: 1 })}tr`
+    : value >= 1_000
+      ? `${(value / 1_000).toLocaleString("vi-VN", { maximumFractionDigits: 0 })}k`
+      : String(value);
 const formatShare = (value: number) =>
   `${value.toLocaleString("vi-VN", { maximumFractionDigits: 1 })}%`;
 
@@ -217,6 +224,7 @@ export function ReportCharts({ report }: { report: OperationalReport }) {
           description="Tiền VND đã được xác nhận, theo ngày thanh toán; không phải lợi nhuận."
           series={single("receivedAmount", "Thanh toán đã nhận")}
           formatValue={formatMoney}
+          formatTick={formatMoneyTick}
           summary={{
             value: `${report.payments.amount.toLocaleString("vi-VN")} đ`,
             caption: `${formatCount(report.payments.count)} giao dịch`,

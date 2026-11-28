@@ -72,7 +72,7 @@ function DashboardDataView({ view, children }: DataProps) {
       ? data.role
       : "user";
   const activeKey =
-    role === "user" ? view : view === "review" ? "upload" : "contracts";
+    role === "user" || view === "subscription" ? view : view === "review" ? "upload" : "contracts";
 
   return (
     <DashboardFrame

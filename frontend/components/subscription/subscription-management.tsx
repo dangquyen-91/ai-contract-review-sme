@@ -11,6 +11,7 @@ import type { SubscriptionPlan, UsageCounter } from "@/types/subscription";
 import { PaymentHistory } from "./payment-history";
 import { TopUpPacks } from "./top-up-packs";
 import { RenewalAction } from "./renewal-action";
+import { subscriptionPlansHref } from "@/lib/subscription/plans-link";
 
 const bonusNote = (counter?: UsageCounter) =>
   counter?.bonus ? ` (gồm ${counter.bonus} lượt mua thêm)` : "";
@@ -18,7 +19,8 @@ const bonusNote = (counter?: UsageCounter) =>
 const date = (value: string) =>
   new Date(value).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
 
-export function SubscriptionManagement({ orgId }: { orgId: string }) {
+/** `readOnly`: an organization member who is not the Owner sees the plan and quota only. */
+export function SubscriptionManagement({ orgId, readOnly = false }: { orgId: string; readOnly?: boolean }) {
   const { subscription, schedule, cancel } = useSubscriptionManagement(orgId);
   const plans = useSubscriptionPlans();
   const [action, setAction] = useState<SubscriptionPlan | "cancel" | null>(
@@ -40,11 +42,7 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold">Gói dịch vụ hiện tại</h2>
           <Button variant="outline" size="sm" asChild>
-            <Link
-              href={`/goi-dich-vu?audience=${current?.plan?.audience ?? "personal"}`}
-            >
-              Xem các gói
-            </Link>
+            <Link href={subscriptionPlansHref}>Xem các gói</Link>
           </Button>
         </div>
         {subscription.isPending ? (
@@ -93,15 +91,19 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
                     Tổ chức đang dùng thử đến <strong>{date(current.trial.endsAt)}</strong>. Sau đó cần
                     gói trả phí để tiếp tục dùng AI.
                   </p>
-                  <Button asChild size="sm">
-                    <Link href="/goi-dich-vu?audience=business">Chọn gói</Link>
-                  </Button>
+                  {!readOnly && (
+                    <Button asChild size="sm">
+                      <Link href={subscriptionPlansHref}>Chọn gói</Link>
+                    </Button>
+                  )}
                 </div>
               )}
-              <RenewalAction
-                renewal={current.renewal}
-                planName={(code) => plans.data?.find((plan) => plan.code === code)?.name ?? code}
-              />
+              {!readOnly && (
+                <RenewalAction
+                  renewal={current.renewal}
+                  planName={(code) => plans.data?.find((plan) => plan.code === code)?.name ?? code}
+                />
+              )}
               {current.scheduledDowngrade && (
                 <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 p-3">
                   <p>
@@ -114,16 +116,18 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
                     </strong>{" "}
                     từ {date(current.scheduledDowngrade.effectiveAt)}.
                   </p>
-                  <Button
-                    variant="outline"
-                    disabled={pending}
-                    onClick={() => {
-                      cancel.reset();
-                      setAction("cancel");
-                    }}
-                  >
-                    Hủy lịch hạ gói
-                  </Button>
+                  {!readOnly && (
+                    <Button
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() => {
+                        cancel.reset();
+                        setAction("cancel");
+                      }}
+                    >
+                      Hủy lịch hạ gói
+                    </Button>
+                  )}
                 </div>
               )}
               {plans.error && (
@@ -134,7 +138,13 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
                   </Button>
                 </p>
               )}
-              {current.status === "active" && targets.length > 0 && (
+              {readOnly && (
+                <p className="rounded-lg bg-muted/50 p-3 text-xs leading-5 text-muted-foreground">
+                  Chỉ chủ tổ chức được đổi gói, mua thêm lượt và xem lịch sử thanh toán.
+                  Hãy liên hệ chủ tổ chức nếu cần thêm hạn mức.
+                </p>
+              )}
+              {!readOnly && current.status === "active" && targets.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {targets.map((plan) => (
                     <Button
@@ -156,7 +166,7 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
                   ))}
                 </div>
               )}
-              {current.plan && current.plan.price > 0 && (
+              {!readOnly && current.plan && current.plan.price > 0 && (
                 <p className="text-xs leading-5 text-muted-foreground">
                   Hạ gói chỉ chọn gói cho kỳ tới và có hiệu lực khi kỳ hiện tại kết
                   thúc; bạn thanh toán gói đó khi gia hạn và có thể hủy lịch trước đó.
@@ -200,10 +210,12 @@ export function SubscriptionManagement({ orgId }: { orgId: string }) {
           />
         )}
       </section>
-      {current && <TopUpPacks orgId={orgId} current={current} />}
-      <div className="mt-6">
-        <PaymentHistory orgId={orgId} />
-      </div>
+      {!readOnly && current && <TopUpPacks orgId={orgId} current={current} />}
+      {!readOnly && (
+        <div className="mt-6">
+          <PaymentHistory orgId={orgId} />
+        </div>
+      )}
     </>
   );
 }

@@ -20,13 +20,17 @@ export function OrganizationCreateForm({
   onChange,
   onSubmit,
   onBack,
+  showHeader = true,
 }: {
   error: string;
   isSubmitting: boolean;
   setupCompleted: boolean;
   onChange: () => void;
   onSubmit: (values: OrganizationCreateFormValues) => void;
-  onBack: () => void;
+  /** Omitted inside a dialog, which closes instead of going back. */
+  onBack?: () => void;
+  /** A dialog shows its own title. */
+  showHeader?: boolean;
 }) {
   const industryQuery = useIndustryOptionsQuery();
   const { industries } = industryQuery;
@@ -46,35 +50,39 @@ export function OrganizationCreateForm({
 
   return (
     <>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onBack}
-        className="mb-7 inline-flex items-center gap-2 rounded text-xs font-medium text-slate-500 transition-colors hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500 disabled:opacity-50"
-      >
-        <ArrowLeft size={15} />
-        Quay lại lựa chọn
-      </button>
-      <header>
-        <div className="mb-4 flex items-center gap-3">
-          <span className="grid size-11 place-items-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600">
-            <Building2 size={22} strokeWidth={1.7} aria-hidden="true" />
-          </span>
-          <p className="text-[11px] font-semibold uppercase tracking-[1.2px] text-blue-600">
-            Không gian làm việc chung
+      {onBack && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onBack}
+          className="mb-7 inline-flex items-center gap-2 rounded text-xs font-medium text-slate-500 transition-colors hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-500 disabled:opacity-50"
+        >
+          <ArrowLeft size={15} />
+          Quay lại lựa chọn
+        </button>
+      )}
+      {showHeader && (
+        <header>
+          <div className="mb-4 flex items-center gap-3">
+            <span className="grid size-11 place-items-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600">
+              <Building2 size={22} strokeWidth={1.7} aria-hidden="true" />
+            </span>
+            <p className="text-[11px] font-semibold uppercase tracking-[1.2px] text-blue-600">
+              Không gian làm việc chung
+            </p>
+          </div>
+          <h1 className="text-[clamp(30px,3.5vw,44px)] font-semibold leading-tight tracking-[-1.3px] text-slate-900">
+            Tạo doanh nghiệp của bạn
+          </h1>
+          <p className="mt-3 max-w-lg text-sm leading-6 text-slate-500">
+            Điền thông tin để thiết lập không gian làm việc cho đội ngũ. Bạn có
+            thể cập nhật các thông tin này sau trong phần quản trị.
           </p>
-        </div>
-        <h1 className="text-[clamp(30px,3.5vw,44px)] font-semibold leading-tight tracking-[-1.3px] text-slate-900">
-          Tạo doanh nghiệp của bạn
-        </h1>
-        <p className="mt-3 max-w-lg text-sm leading-6 text-slate-500">
-          Điền thông tin để thiết lập không gian làm việc cho đội ngũ. Bạn có
-          thể cập nhật các thông tin này sau trong phần quản trị.
-        </p>
-      </header>
+        </header>
+      )}
       <FormProvider {...form}>
         <form
-          className="mt-7 grid gap-5"
+          className={`${showHeader ? "mt-7" : ""} grid gap-5`}
           onSubmit={form.handleSubmit(onSubmit)}
           onChange={onChange}
           noValidate
@@ -158,7 +166,9 @@ export function OrganizationCreateForm({
                 {...form.register("industry")}
               >
                 <option value="">
-                  {industryQuery.isPending ? "Đang tải danh sách…" : "Chưa chọn ngành"}
+                  {industryQuery.isPending
+                    ? "Đang tải danh sách…"
+                    : "Chưa chọn ngành"}
                 </option>
                 {industries.map((industry) => (
                   <option key={industry.code} value={industry.code}>

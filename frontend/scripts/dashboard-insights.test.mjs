@@ -41,6 +41,19 @@ test('proxy authenticates, rejects scope injection and forwards verified credent
   assert.equal((await proxy(true, 403).get('')).status, 403);
 });
 
+test('a staff report narrowed to the caller passes only mine=true through', async () => {
+  const ctx = proxy();
+  for (const suffix of ['?mine=false', '?mine=1', '?mine=yes']) assert.equal((await ctx.get(suffix)).status, 400);
+  assert.equal(ctx.calls.length, 0);
+  assert.equal((await ctx.get('?period=week&mine=true')).status, 200);
+  assert.ok(ctx.calls[0].url.endsWith('/api/v1/dashboard/insights?period=week&mine=true'));
+});
+
+test('the insights cache separates the whole organization from one person', () => {
+  const { dashboardKeys } = load('../lib/query-keys/dashboard.ts');
+  assert.notDeepEqual([...dashboardKeys.insights('staff', 'month', 'org', true)], [...dashboardKeys.insights('staff', 'month', 'org')]);
+});
+
 test('CSV formats displayed metrics and Vietnam dates, preserves counts and neutralizes formula labels', () => {
   const config = load('../config/dashboard-insights.ts');
   const { insightCsv, formatInsight } = load('../lib/reports/insight-format.ts', {

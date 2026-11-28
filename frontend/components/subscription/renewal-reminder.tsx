@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useReviewAllowance } from "@/hooks/review/use-review-allowance";
 import { useSubscriptionPlans } from "@/hooks/subscription/use-subscription-plans";
+import { subscriptionPlansHref } from "@/lib/subscription/plans-link";
 
 const date = (value: string) =>
   new Date(value).toLocaleDateString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
@@ -21,7 +22,7 @@ export function RenewalReminder({ accountId }: { accountId?: string }) {
     return (
       <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-950">
         <span>Dùng thử kết thúc ngày {date(trial.endsAt)}. Chọn gói để tiếp tục dùng AI cho tổ chức.</span>
-        <Link href="/goi-dich-vu?audience=business" className="font-semibold text-primary hover:underline">
+        <Link href={subscriptionPlansHref} className="font-semibold text-primary hover:underline">
           Chọn gói
         </Link>
       </div>

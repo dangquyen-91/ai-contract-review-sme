@@ -13,7 +13,7 @@ export function ReportChange({ change }: { change?: ReportMetricChange }) {
       {change.unit === "percentage_points"
         ? `${signed(change.difference ?? 0)} điểm % so với kỳ so sánh`
         : change.status === "no_baseline"
-          ? "Kỳ so sánh bằng 0; chưa tính % tăng trưởng"
+          ? "Kỳ so sánh chưa có số liệu; chưa tính % tăng trưởng"
           : `${signed(change.changePercent ?? 0)}% so với kỳ so sánh`}
     </p>
   );

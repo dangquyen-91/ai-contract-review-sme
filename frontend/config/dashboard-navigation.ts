@@ -12,18 +12,19 @@ export type NavigationItem = {
   icon: Parameters<typeof Icon>[0]["name"];
   group?: string;
   href?: string;
-  pending?: boolean;
   count?: boolean;
   mobile?: boolean;
   workspaceTab?: boolean;
+  // Opens this dialog in place; `href` stays as the page to open without it.
+  dialog?: "create-organization";
 };
 
 const adminNavigation: NavigationItem[] = [
   { key: "overview", href: "/admin", label: "Tổng quan", icon: "briefcase", group: "Không gian quản trị", mobile: true },
   { key: "userManagement", href: userManagementPath, label: "Người dùng", icon: "team", mobile: true },
-  { key: "ai-jobs", href: "/admin/ai-jobs", label: "Giám sát AI", icon: "sparkle", group: "Vận hành", pending: true, mobile: true },
+  { key: "ai-jobs", href: "/admin/ai-jobs", label: "Giám sát AI", icon: "sparkle", group: "Vận hành", mobile: true },
   { key: "reports", href: "/admin/reports", label: "Báo cáo & thống kê", icon: "chart", mobile: true },
-  { key: "audit-log", href: "/admin/audit-log", label: "Nhật ký quản trị", icon: "shield", pending: true, mobile: true },
+  { key: "audit-log", href: "/admin/audit-log", label: "Nhật ký quản trị", icon: "shield", mobile: true },
 ];
 
 const supportNavigation: NavigationItem[] = [
@@ -32,7 +33,7 @@ const supportNavigation: NavigationItem[] = [
 ];
 
 export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
-  const reports: NavigationItem[] = permissions.reports(role) ? [{ key: "reports", href: roleReportConfig[role].href, label: "Báo cáo & thống kê", icon: "chart", mobile: true }] : [];
+  const reports: NavigationItem[] = permissions.reports(role) ? [{ key: "reports", href: roleReportConfig[role].href, label: role === "staff" ? "Báo cáo công việc" : "Báo cáo & thống kê", icon: "chart", mobile: true }] : [];
   if (role === "administrator") return adminNavigation;
   if (role === "expert") return [
     { key: "expert-overview", href: routes.expertOverview, label: "Tổng quan", icon: "chart", group: "Không gian chuyên gia", mobile: true },
@@ -43,6 +44,7 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
   if (role === "manager") return [
     { key: "overview", href: "/management", label: "Tổng quan", icon: "chart", group: "Không gian quản lý", mobile: true },
     { key: "organizations", href: "/management/organizations", label: "Tổ chức", icon: "building", mobile: true },
+    { key: "payments", href: "/management/payments", label: "Lịch sử giao dịch", icon: "document", mobile: true },
     { key: "legal-sources", href: "/management/legal-sources", label: "Kho pháp lý", icon: "scales", mobile: true },
     { key: "contract-templates", href: "/management/contract-templates", label: "Mẫu hợp đồng", icon: "document", mobile: true },
     ...reports,
@@ -54,7 +56,7 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
     { key: "contract", href: "/contract", label: "Hợp đồng", icon: "document", count: true, mobile: true },
     { key: "drafts", href: "/contract-drafts", label: "Tạo hợp đồng", icon: "document", mobile: true },
     ...reports,
-    { key: "create-organization", href: "/chon-to-chuc", label: "Tạo tổ chức", icon: "building", group: "Hỗ trợ", mobile: true },
+    { key: "create-organization", href: "/chon-to-chuc", dialog: "create-organization", label: "Tạo tổ chức", icon: "building", group: "Hỗ trợ", mobile: true },
     ...supportNavigation.map((item) => ({ ...item, ...(item.key === "plans" ? { key: "subscription", href: routes.subscription } : {}), group: undefined })),
   ];
 
@@ -68,6 +70,7 @@ export function getDashboardNavigation(role: DashboardRole): NavigationItem[] {
       { key: "administration", href: organizationDashboardPath(role, "administration"), label: "Quản trị", icon: "team" as const, mobile: true, workspaceTab: true },
       { key: "members", href: organizationDashboardPath(role, "members"), label: "Thành viên & lời mời", icon: "team" as const, mobile: true, workspaceTab: true },
     ] : []),
-    ...supportNavigation,
+    // Plans of the workspace stay inside the dashboard, as for personal accounts.
+    ...supportNavigation.map((item) => (item.key === "plans" ? { ...item, key: "subscription", href: routes.subscription } : item)),
   ];
 }

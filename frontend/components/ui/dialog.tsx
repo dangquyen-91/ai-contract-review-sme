@@ -39,7 +39,7 @@ function DialogOverlay({
     <DialogPrimitive.Overlay
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 z-[100] bg-slate-950/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 motion-reduce:animate-none",
+        "fixed inset-0 z-100 bg-slate-950/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 motion-reduce:animate-none",
         className
       )}
       {...props}
@@ -71,7 +71,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-[50%] left-[50%] z-[101] grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-lg duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 motion-reduce:animate-none sm:max-w-lg",
+          "fixed top-[50%] left-[50%] z-101 grid max-h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-lg duration-200 outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 motion-reduce:animate-none sm:max-w-lg",
           className
         )}
         {...props}
@@ -79,6 +79,11 @@ function DialogContent({
         onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); onEscapeKeyDown?.(event); }}
         onInteractOutside={(event) => { if (busy) event.preventDefault(); onInteractOutside?.(event); }}
         onOpenAutoFocus={(event) => {
+          // A dialog kept mounted and toggled by `open` was mounted long before it opened:
+          // what had focus at this moment is what to return to.
+          const active = document.activeElement
+          if (active instanceof HTMLElement && active !== document.body && !(event.currentTarget instanceof Node && event.currentTarget.contains(active)))
+            previousFocus.current = active
           onOpenAutoFocus?.(event)
         }}
         onCloseAutoFocus={(event) => {

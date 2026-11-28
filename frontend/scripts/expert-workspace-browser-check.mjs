@@ -50,10 +50,12 @@ import React from 'react';import {createRoot} from 'react-dom/client';import {Qu
 import {VerificationQueue} from '@/components/expert-verification/verification-queue';import {VerificationOverview} from '@/components/expert-verification/verification-overview';import {VerificationWorkspace} from '@/components/expert-verification/verification-workspace';
 import {VerificationMyWork} from '@/components/expert-verification/verification-my-work';
 import {ContractContent} from '@/components/contract/contract-content';import {NuqsAdapter} from 'nuqs/adapters/react';
-import {ContractListBackButton} from '@/components/contract/contract-list-back-button';
+import {useBackToContractList} from '@/hooks/contracts/use-back-to-contract-list';
 import {VerificationNavigationProvider} from '@/providers/verification-navigation-provider';
 import {ReviewResultHeader} from '@/components/review/results/review-result-header';import {ReviewAnalysisPane} from '@/components/review/results/review-analysis-pane';
-const client=new QueryClient({defaultOptions:{queries:{retry:false}}});const filter=new URLSearchParams(location.search).get('status')||'all';const h=React.createElement;
+const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+// The contract page's back action now lives in a hook; render it as a plain button for the fixture.
+function ContractListBackButton({data}){const back=useBackToContractList(data,location.pathname.split('/')[2]);return React.createElement('button',{type:'button',onClick:back},'Về danh sách hợp đồng');}const filter=new URLSearchParams(location.search).get('status')||'all';const h=React.createElement;
 function SenderResults(){const {data}=useQuery({queryKey:['contracts','${'d'.repeat(24)}','review-result'],queryFn:async()=>{const r=await fetch('/api/contracts/${'d'.repeat(24)}/review-result');return(await r.json()).data;}});return data?h('main',null,h('h1',null,'Kết quả hợp đồng'),h(ReviewResultHeader,{result:data,role:'user',onShareSummary(){}}),h(ReviewAnalysisPane,{result:data,sectionId:'fixture-result',isDocx:false,onJumpToClause(){}})):h('h1',null,'Đang tải');}
 const role=new URLSearchParams(location.search).get('role')||'user';
 const fixtureData={role,contractScopeId:'scope',organization:{id:'scope'},contracts:[],totalContracts:0,user:{name:'Test',email:'fixture@example.com'}};
@@ -171,44 +173,44 @@ try {
   await navigate('/contract?search=no-such-contract&status=reviewed&verificationStatus=approved&page=2');
   await wait('document.body.textContent.includes("Không có hợp đồng phù hợp")');
   await click('Xóa bộ lọc');
-  await wait('document.querySelectorAll("article").length===10');
+  await wait('document.querySelectorAll("[data-contract-id]").length===10');
   assert.doesNotMatch(await evaluate('location.search'), /search=|status=|verificationStatus=|page=/);
   for (const role of ['user', 'staff', 'owner']) {
     await navigate('/contract?role=' + role + '&page=2');
-    await wait('document.querySelectorAll("article").length===2');
-    const originState = await evaluate(`(()=>{const card=document.querySelector('article');window.scrollTo(0,Math.min(250,document.documentElement.scrollHeight-innerHeight));return {href:location.pathname+location.search,top:card.getBoundingClientRect().top,id:card.dataset.contractId};})()`);
-    await evaluate('document.querySelector("article button").click()');
+    await wait('document.querySelectorAll("[data-contract-id]").length===2');
+    const originState = await evaluate(`(()=>{const card=document.querySelector('[data-contract-id]');window.scrollTo(0,Math.min(250,document.documentElement.scrollHeight-innerHeight));return {href:location.pathname+location.search,top:card.getBoundingClientRect().top,id:card.dataset.contractId};})()`);
+    await evaluate('document.querySelector("[data-contract-id] button").click()');
     await wait('document.body?.textContent.includes("Báo cáo thử nghiệm")');
     await click('Về danh sách hợp đồng');
-    await wait('document.querySelectorAll("article").length===2');
+    await wait('document.querySelectorAll("[data-contract-id]").length===2');
     await wait(`document.activeElement?.dataset.contractId===${JSON.stringify(originState.id)}`);
     assert.equal(await evaluate('location.pathname+location.search'), originState.href);
-    assert.ok(Math.abs(await evaluate('document.querySelector("article").getBoundingClientRect().top') - originState.top) < 3, 'List scroll position should be restored');
-    await evaluate('document.querySelector("article button").click()');
+    assert.ok(Math.abs(await evaluate('document.querySelector("[data-contract-id]").getBoundingClientRect().top') - originState.top) < 3, 'List scroll position should be restored');
+    await evaluate('document.querySelector("[data-contract-id] button").click()');
     await wait('document.body?.textContent.includes("Báo cáo thử nghiệm")');
     await evaluate('history.back()');
-    await wait('document.querySelectorAll("article").length===2');
+    await wait('document.querySelectorAll("[data-contract-id]").length===2');
     await wait(`document.activeElement?.dataset.contractId===${JSON.stringify(originState.id)}`);
     assert.equal(await evaluate('location.pathname+location.search'), originState.href);
-    assert.ok(Math.abs(await evaluate('document.querySelector("article").getBoundingClientRect().top') - originState.top) < 3, 'Browser Back should restore list position');
+    assert.ok(Math.abs(await evaluate('document.querySelector("[data-contract-id]").getBoundingClientRect().top') - originState.top) < 3, 'Browser Back should restore list position');
   }
   console.log('PASS reset all filters and scoped report return preserving page and scroll for user/staff/owner');
   for (const role of ['user', 'staff', 'owner']) {
     await navigate('/contracts-fixture?role=' + role);
-    await wait('document.querySelectorAll("article").length===10');
+    await wait('document.querySelectorAll("[data-contract-id]").length===10');
     assert.equal(await evaluate('document.querySelector("h1").textContent'), role === 'user' ? 'Hợp đồng của tôi' : 'Hợp đồng tổ chức');
   }
   await click('Sau');
-  await wait('document.querySelectorAll("article").length===2');
+  await wait('document.querySelectorAll("[data-contract-id]").length===2');
   assert.match(await evaluate('location.search'), /page=2/);
   await click('Chờ tiếp nhận');
-  await wait('document.querySelectorAll("article").length===4');
+  await wait('document.querySelectorAll("[data-contract-id]").length===4');
   assert.match(await evaluate('location.search'), /verificationStatus=requested/);
   assert.equal(await evaluate('document.querySelector("[role=radio][data-state=checked]").textContent'), 'Chờ tiếp nhận');
   assert.doesNotMatch(await evaluate('location.search'), /page=2/);
   await fill('input[type=search]', 'Hợp đồng mẫu 2');
   await click('Tìm kiếm');
-  await wait('document.querySelectorAll("article").length===1');
+  await wait('document.querySelectorAll("[data-contract-id]").length===1');
   await evaluate(`document.querySelector('article button').click()`);
   await wait('document.body.dataset.opened==="report"');
   await fetch(origin + '/fixture/reset');
@@ -224,17 +226,17 @@ try {
     await fs.writeFile(path.join(dir, `contracts-${width}.png`), Buffer.from(shot.data, 'base64'));
   }
   await navigate('/contracts-fixture?verificationStatus=approved');
-  await wait('document.querySelectorAll("article").length===4');
+  await wait('document.querySelectorAll("[data-contract-id]").length===4');
   assert.ok(await evaluate('document.body.textContent.includes("Yêu cầu thuộc lượt rà soát trước")'));
   await navigate('/contracts-fixture?verificationStatus=not_sent');
-  await wait('document.querySelectorAll("article").length===4');
-  assert.equal(await evaluate('[...document.querySelectorAll("article button")].some(e=>e.textContent==="Xem thông tin xác minh")'), false);
+  await wait('document.querySelectorAll("[data-contract-id]").length===4');
+  assert.equal(await evaluate('[...document.querySelectorAll("[data-contract-id] button")].some(e=>e.textContent==="Xem thông tin xác minh")'), false);
   await evaluate('document.querySelector("[role=radio][data-state=checked]").focus()');
   await call('Input.dispatchKeyEvent', { type: 'keyDown', key: 'ArrowRight', code: 'ArrowRight', windowsVirtualKeyCode: 39 });
   await wait('document.querySelector("[role=radio][data-state=checked]").textContent==="Chờ tiếp nhận"');
-  await wait('document.querySelectorAll("article").length===4');
+  await wait('document.querySelectorAll("[data-contract-id]").length===4');
   await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
-  assert.ok(await evaluate('[...document.querySelectorAll("article .animate-pulse")].every(e=>getComputedStyle(e).animationName==="none")'));
+  assert.ok(await evaluate('[...document.querySelectorAll("[data-contract-id] .animate-pulse")].every(e=>getComputedStyle(e).animationName==="none")'));
   await call('Emulation.setEmulatedMedia', { features: [] });
   console.log('PASS contract tracking for user/staff/owner, URL filters, pagination, request dialog, old review warning and responsive cards');
   await fetch(origin + '/fixture/reset?mode=overview');

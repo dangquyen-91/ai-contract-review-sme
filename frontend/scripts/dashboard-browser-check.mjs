@@ -22,6 +22,9 @@ await fs.mkdir(shots, { recursive: true });
 const stylesheet = path.join(root, 'styles/globals.css');
 const css = (await postcss([tailwind({ base: root })]).process(readFileSync(stylesheet, 'utf8'), { from: stylesheet })).css;
 const loader = path.join(dir, 'loader.cjs'), entry = path.join(dir, 'entry.js'), link = path.join(dir, 'link.js');
+// CSS modules: inject the stylesheet and map each class name to itself.
+const cssLoader = path.join(dir, 'css-loader.cjs');
+await fs.writeFile(cssLoader, String.raw`module.exports=function(source){const names=[...source.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map(m=>m[1]);return 'const s=document.createElement("style");s.textContent='+JSON.stringify(source)+';document.head.append(s);export default '+JSON.stringify(Object.fromEntries(names.map(name=>[name,name])))+';';}`);
 await fs.writeFile(loader, `const ts=require(${JSON.stringify(require.resolve('typescript'))});module.exports=function(s){return ts.transpileModule(s,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText}`);
 await fs.writeFile(link, `import React from 'react';export default function Link({children,...props}){return React.createElement('a',props,children)}`);
 await fs.writeFile(entry, `
@@ -36,7 +39,7 @@ const { webpack } = require('next/dist/compiled/webpack/webpack');
 await new Promise((resolve, reject) => webpack({ mode: 'development', devtool: false, entry,
   output: { path: dir, filename: 'app.js' },
   resolve: { extensions: ['.tsx', '.ts', '.js'], alias: { '@': root, 'next/link': link }, modules: [path.join(root, 'node_modules'), 'node_modules'] },
-  module: { rules: [{ test: /\.tsx?$/, exclude: /node_modules/, use: loader }] },
+  module: { rules: [{ test: /\.tsx?$/, exclude: /node_modules/, use: loader }, { test: /\.module\.css$/, use: cssLoader }] },
 }, (error, stats) => error || stats.hasErrors() ? reject(error || new Error(stats.toString({ all: false, errors: true }))) : resolve()));
 const bundle = await fs.readFile(path.join(dir, 'app.js'));
 const html = `<!doctype html><html lang="vi"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>${css}</style><style>body{margin:0;background:#f6f7f9;font-family:Arial}#root{padding:24px}@media(max-width:500px){#root{padding:16px}}</style><div id="root"></div><script src="/app.js"></script></html>`;
@@ -100,7 +103,8 @@ try {
   await wait('document.body.textContent.includes("2026-10-01")');
   assert.ok(requests.some(query => query === '?period=quarter'));
   await fetch(origin + '/fixture/state?empty=true'); await click('Làm mới');
-  await wait('document.body.textContent.includes("Chưa có hoạt động trong kỳ đã chọn.")');
+  // An empty period has too little activity to draw a trend; counts are shown instead of charts.
+  await wait('document.body.textContent.includes("Chưa đủ hoạt động trong kỳ để vẽ biểu đồ xu hướng.")');
   assert.equal(await evaluate('document.querySelectorAll(".recharts-wrapper > .recharts-surface").length'), 0);
   await fetch(origin + '/fixture/state?failure=true'); await click('Làm mới');
   await wait('!!document.querySelector("[role=alert]")');

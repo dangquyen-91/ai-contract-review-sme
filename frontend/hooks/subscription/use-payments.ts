@@ -1,11 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { paymentsApi } from "@/lib/api/payments";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { managedPaymentsApi, paymentsApi } from "@/lib/api/payments";
 import { paymentKeys } from "@/lib/query-keys/payments";
 import { invitationKeys } from "@/lib/query-keys/invitations";
 import { dashboardKeys } from "@/lib/query-keys/dashboard";
-import type { PaymentOrder } from "@/types/payment";
+import type { ManagedPaymentFilters, PaymentOrder } from "@/types/payment";
 
 export function usePaymentHistory(orgId: string, page = 1) {
   return useQuery({
@@ -60,4 +60,13 @@ export function usePaymentActions(orgId: string) {
     onSuccess: remember,
   });
   return { sync, cancel };
+}
+
+/** Manager: every order on the platform, filtered and paginated on the server. */
+export function useManagedPayments(page: number, limit: number, filters: ManagedPaymentFilters) {
+  return useQuery({
+    queryKey: paymentKeys.managed(page, limit, filters),
+    queryFn: ({ signal }) => managedPaymentsApi.list(page, limit, filters, signal),
+    placeholderData: keepPreviousData,
+  });
 }

@@ -56,3 +56,16 @@ test('proxy preserves conflicts and reports uncertain outcomes without claiming 
   assert.equal((await context.run([], 'POST', { text: 'x'.repeat(500001) })).status, 413);
   assert.equal(context.calls.length, 0);
 });
+
+test('preview is a POST to the Manager preview route only', async () => {
+  const context = setup();
+  const definition = { code: 'labor', name: 'Mẫu xem trước' };
+  assert.equal((await context.run(['preview'], 'POST', { definition })).status, 200);
+  assert.match(context.calls[0].url, /\/api\/v1\/manager\/contract-templates\/preview\?$/);
+  assert.equal(context.calls[0].options.method, 'POST');
+  assert.deepEqual(JSON.parse(context.calls[0].options.body), { definition });
+  for (const [path, method] of [[['preview'], 'GET'], [['preview'], 'PATCH'], [['preview', 'extra'], 'POST']])
+    assert.equal((await context.run(path, method, method === 'GET' ? undefined : {})).status, 404);
+  assert.equal((await setup({ role: 'user' }).run(['preview'], 'POST', { definition })).status, 403);
+  assert.equal(context.calls.length, 1);
+});

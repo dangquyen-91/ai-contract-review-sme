@@ -26,9 +26,6 @@ export const invitationsApi = {
   removeMember(orgId: string, userId: string) {
     return apiRequest<void>({ url: `/organizations/${orgId}/members/${userId}`, method: "DELETE" });
   },
-  leaveOrganization(orgId: string) {
-    return apiRequest<void>({ url: `/organizations/${orgId}/leave`, method: "POST", data: {} });
-  },
   invitations(orgId: string, page = 1) {
     return list<OrganizationInvitation>(`/organizations/${orgId}/invitations`, page);
   },

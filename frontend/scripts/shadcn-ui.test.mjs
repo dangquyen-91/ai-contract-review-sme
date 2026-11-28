@@ -77,7 +77,7 @@ const { cn } = load('lib/utils.ts');
 const { Badge } = load('components/ui/badge.tsx');
 const { InvitationFormDialog } = load('components/invitations/invitation-form-dialog.tsx');
 const { MemberCapacityDialog } = load('components/members/member-capacity-dialog.tsx');
-const { SectionDetailDialog } = load('components/management/section-detail-dialog.tsx');
+const { AuditEventDialog } = load('components/admin-operations/audit-event-dialog.tsx');
 const { ReviewBlockedNotice } = load('components/review/timeline/review-blocked-notice.tsx');
 let shareState;
 modules.set('hooks/contracts/use-contract-share-summary.ts', { exports: { useContractShareSummary: () => shareState } });
@@ -710,19 +710,21 @@ test('Capacity Dialog offers the correct action for pending invitations and rest
   } finally { await React.act(async () => { root.unmount(); }); await flush(); host.remove(); }
 });
 
-test('Management detail retains its field values, closes by Escape and restores the selected-row button', async () => {
+test('Audit event detail reads its changes as from → to, closes by Escape and restores the row button', async () => {
   const host = document.createElement('div'); document.body.append(host);
   const root = createRoot(host);
+  const event = {
+    id: 'e1', action: 'user.update', createdAt: '2026-11-28T03:00:00.000Z', orgId: 'o1',
+    organization: { id: 'o1', type: 'organization', name: 'Công ty FPT' },
+    actor: { id: 'a1', role: 'administrator', name: 'Admin LawScan', email: 'admin@example.com' },
+    target: { type: 'user', id: 'u1', label: 'staff@example.com' },
+    changes: { isActive: { from: true, to: false }, role: { from: 'staff', to: 'expert' } },
+  };
   function App() {
-    const [open, setOpen] = React.useState(false);
-    const trigger = React.useRef(null);
+    const [selected, setSelected] = React.useState(null);
     return React.createElement(React.Fragment, null,
-      React.createElement('button', { id: 'detail-opener', ref: trigger, onClick: () => setOpen(true) }, 'Details'),
-      open && React.createElement(SectionDetailDialog, {
-        section: 'users', selected: ['Test User', 'test@example.com', 'Staff', 'Test organization', 'Hoạt động'],
-        config: { title: 'Người dùng', columns: ['Tên', 'Email', 'Vai trò', 'Tổ chức', 'Trạng thái'], rows: [], statusIndex: 4 },
-        previousFocusRef: trigger, onClose: () => setOpen(false),
-      }),
+      React.createElement('button', { id: 'detail-opener', onClick: () => setSelected(event) }, 'Xem'),
+      React.createElement(AuditEventDialog, { event: selected, onClose: () => setSelected(null) }),
     );
   }
   try {
@@ -730,8 +732,12 @@ test('Management detail retains its field values, closes by Escape and restores 
     const opener = document.getElementById('detail-opener'); opener.focus();
     await React.act(async () => { opener.click(); }); await flush();
     const dialog = document.querySelector('[role="dialog"]');
-    assert.equal(document.getElementById(dialog.getAttribute('aria-labelledby')).textContent, 'Test User');
-    assert.equal([...dialog.querySelectorAll('dd')].map((cell) => cell.textContent).join('|'), 'Test User|test@example.com|Staff|Test organization|Hoạt động');
+    assert.equal(document.getElementById(dialog.getAttribute('aria-labelledby')).textContent, 'Cập nhật tài khoản');
+    for (const text of ['Admin LawScan', 'Quản trị viên', 'admin@example.com', 'Tài khoản', 'staff@example.com', 'Tổ chức: Công ty FPT'])
+      assert.ok(dialog.textContent.includes(text), text);
+    const change = (field) => [...dialog.querySelectorAll(`[data-change="${field}"] dd span`)].map((cell) => cell.textContent);
+    assert.deepEqual(change('isActive'), ['Đang hoạt động', 'Đã khóa']);
+    assert.deepEqual(change('role'), ['Nhân viên', 'Chuyên gia']);
     await React.act(async () => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); }); await flush();
     assert.equal(document.querySelector('[role="dialog"]'), null);
     assert.equal(document.activeElement.id, opener.id);
@@ -787,4 +793,48 @@ test('Invitation Dialog labels itself, blocks dismissal while sending and restor
   } finally {
     await React.act(async () => { root.unmount(); }); await flush(); host.remove();
   }
+});
+
+test('creating an organization from the menu opens a form in place instead of leaving the page', async () => {
+  const submitted = [];
+  modules.set('hooks/onboarding/use-onboarding-workflow.ts', { exports: { useOnboardingWorkflow: () => ({
+    busy: false, error: '', setupCompleted: false, clearError() {}, createOrganization: async (values) => { submitted.push(values); },
+  }) } });
+  modules.set('hooks/organizations/use-industry-options.ts', { exports: { useIndustryOptionsQuery: () => ({ industries: [{ code: 'legal', name: 'Pháp lý' }], isPending: false, isFetching: false, refetch() {} }) } });
+  modules.set('hooks/organizations/use-vietnam-addresses.ts', { exports: { useVietnamAddresses: () => ({ data: { provinces: [] }, isPending: false, isError: false, refetch() {} }) } });
+  let membership = null;
+  modules.set('hooks/dashboard/use-organization-membership.ts', { exports: { useOrganizationMembership: () => membership } });
+  const { DashboardNavigation } = load('components/layouts/dashboard/dashboard-sidebar.tsx');
+  const items = [
+    { key: 'review', href: '/review', label: 'Tải & rà soát', icon: 'upload' },
+    { key: 'create-organization', href: '/chon-to-chuc', dialog: 'create-organization', label: 'Tạo tổ chức', icon: 'building' },
+  ];
+  const host = document.createElement('div'); document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await React.act(async () => root.render(React.createElement(DashboardNavigation, { items, activeKey: 'review' })));
+    assert.equal(host.querySelector('a[href="/chon-to-chuc"]'), null);
+    assert.ok(host.querySelector('a[href="/review"]'));
+    const trigger = [...host.querySelectorAll('button')].find((node) => node.textContent.includes('Tạo tổ chức'));
+    assert.equal(trigger.getAttribute('aria-haspopup'), 'dialog');
+    assert.equal(document.querySelector('[role="dialog"]'), null);
+    await React.act(async () => trigger.click()); await flush();
+    const dialog = document.querySelector('[role="dialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent, /Tạo tổ chức của bạn/);
+    assert.ok(dialog.querySelector('#organization-name'));
+    // The onboarding page's "back to choices" link has no place in the dialog.
+    assert.ok(!dialog.textContent.includes('Quay lại lựa chọn'));
+    assert.equal(window.location.pathname, '/');
+  } finally { await React.act(async () => root.unmount()); await flush(); host.remove(); }
+  // An account already in an organization cannot create another: the item is hidden, its group heading kept.
+  membership = { orgId: 'org', role: 'staff' };
+  const grouped = [
+    { key: 'review', href: '/review', label: 'Tải & rà soát', icon: 'upload' },
+    { key: 'create-organization', href: '/chon-to-chuc', dialog: 'create-organization', label: 'Tạo tổ chức', icon: 'building', group: 'Hỗ trợ' },
+    { key: 'subscription', href: '/subscription', label: 'Gói dịch vụ', icon: 'sparkle' },
+  ];
+  const html = renderToStaticMarkup(React.createElement(DashboardNavigation, { items: grouped, activeKey: 'review' }));
+  assert.doesNotMatch(html, /Tạo tổ chức/);
+  assert.match(html, /Hỗ trợ<\/p>.*Gói dịch vụ/s);
 });

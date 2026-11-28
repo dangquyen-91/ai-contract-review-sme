@@ -13,6 +13,7 @@ import {
 } from "@/lib/subscription/payment-state";
 import { formatMoney, formatPlanNumber } from "@/lib/subscription/subscription-plans";
 import type { OrganizationSubscription, TopUpPack, UsageKind } from "@/types/subscription";
+import { subscriptionPlansHref } from "@/lib/subscription/plans-link";
 
 export const TOP_UP_SECTION_ID = "mua-them-luot";
 
@@ -82,7 +83,7 @@ export function TopUpPacks({
         <div className="mt-3 space-y-2 text-sm">
           <p>Mua thêm lượt dành cho tài khoản đang có gói trả phí.</p>
           <Button asChild size="sm">
-            <Link href={`/goi-dich-vu?audience=${audience ?? "personal"}`}>Xem gói trả phí</Link>
+            <Link href={subscriptionPlansHref}>Xem gói trả phí</Link>
           </Button>
         </div>
       ) : packs.isPending ? (

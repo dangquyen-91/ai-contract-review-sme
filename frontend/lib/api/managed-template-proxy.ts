@@ -16,7 +16,9 @@ export async function proxyManagedTemplate(
   const methods =
     path.length === 0
       ? ["GET", "POST"]
-      : /^[a-f\d]{24}$/i.test(path[0])
+      : path.length === 1 && path[0] === "preview"
+        ? ["POST"]
+        : /^[a-f\d]{24}$/i.test(path[0])
         ? path.length === 1
           ? ["GET", "PATCH", "DELETE"]
           : path.length === 2 && ["publish", "retire"].includes(path[1])

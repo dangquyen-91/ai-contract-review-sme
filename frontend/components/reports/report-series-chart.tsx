@@ -54,7 +54,7 @@ function SummaryDelta({
 }) {
   if (!change || change.status === "no_data") return null;
   if (change.status === "no_baseline")
-    return <span className={styles.chartDelta}>Kỳ so sánh bằng 0</span>;
+    return <span className={styles.chartDelta}>Kỳ so sánh chưa có số liệu</span>;
   const points = change.unit === "percentage_points";
   const amount = points ? change.difference : change.changePercent;
   if (amount == null) return null;
@@ -150,6 +150,7 @@ export function ReportSeriesChart({
   summary,
   unit = "",
   formatValue,
+  formatTick,
   chartType = "bar",
   wide = false,
 }: {
@@ -162,6 +163,8 @@ export function ReportSeriesChart({
   summary?: ReportChartSummary;
   unit?: string;
   formatValue?: (value: number) => string;
+  /** Short axis labels, when `formatValue` is too long for the axis. */
+  formatTick?: (value: number) => string;
   chartType?: "bar" | "line";
   wide?: boolean;
 }) {
@@ -203,7 +206,11 @@ export function ReportSeriesChart({
       tickMargin={4}
       tick={chartTick}
       tickFormatter={(value) =>
-        formatValue ? formatValue(Number(value)) : compactTick(value)
+        formatTick
+          ? formatTick(Number(value))
+          : formatValue
+            ? formatValue(Number(value))
+            : compactTick(value)
       }
     />,
     <Tooltip

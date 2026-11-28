@@ -97,6 +97,12 @@ const backend = http.createServer(async (req, res) => {
   if (url.pathname === '/api/v1/auth/verify-email') { assert.equal(body.code, '123456'); actions.push('verify'); return send(session); }
   if (['/api/v1/auth/login', '/api/v1/auth/google', '/api/v1/auth/refresh'].includes(url.pathname)) { actions.push(url.pathname.split('/').at(-1)); return send(session); }
   if (url.pathname === `/api/v1/organizations/${orgId}/subscription`) return send(subscription);
+  // The server decides the checkout action and price; no paid plan is active here, so it is a purchase.
+  if (url.pathname === `/api/v1/organizations/${orgId}/subscription/quote`) {
+    const quoted = [freePlan, plan, proPlan].find(item => item.code === url.searchParams.get('planCode'));
+    if (!quoted) return send({ message: 'Không tìm thấy gói dịch vụ.' }, 404);
+    return send({ planCode: quoted.code, action: 'purchase', needsSchedule: false, listPrice: quoted.price, credit: 0, amount: quoted.price, quotedAt: new Date().toISOString(), blockReason: null, blockCode: null, blockStatus: null });
+  }
   const payments = `/api/v1/organizations/${orgId}/payments`;
   if (url.pathname === payments && req.method === 'GET') return send({ items: [...(order ? [order] : []), ...historicalOrders], page: 1, pageSize: 20 });
   if (url.pathname === payments && req.method === 'POST') {
@@ -148,7 +154,7 @@ try {
     const id = ++seq, timer = setTimeout(() => { pending.delete(id); reject(new Error(`CDP timeout: ${method}`)); }, 15000);
     pending.set(id, { resolve, reject, timer }); socket.send(JSON.stringify({ id, method, params }));
   });
-  const googleScript = `window.google={accounts:{id:{initialize:function(o){window.fixtureGoogle=o.callback},renderButton:function(el){var b=document.createElement('button');b.textContent='Google fixture';b.id='fixture-google';b.onclick=function(){window.fixtureGoogle({credential:'fixture-google-token'})};el.appendChild(b)}}}};`;
+  const googleScript = `window.google={accounts:{id:{initialize:function(o){window.fixtureGoogle=o.callback},renderButton:function(el,options){var b=document.createElement('button');b.textContent='Google fixture';b.id='fixture-google';b.onclick=function(){window.fixtureGoogle({credential:'fixture-google-token',state:options&&options.state})};el.appendChild(b)}}}};`;
   socket.onmessage = ({ data }) => {
     const message = JSON.parse(data);
     if (pending.has(message.id)) { const p = pending.get(message.id); pending.delete(message.id); clearTimeout(p.timer); if (message.error) p.reject(new Error(message.error.message)); else p.resolve(message.result); }
@@ -366,10 +372,14 @@ try {
   await waitFor('document.body.textContent.includes("Đang chờ xác nhận thanh toán")');
   assert.equal(await evaluate('document.body.textContent.includes("Thanh toán thành công")'), false);
   order.status = 'paid'; order.paidAt = new Date().toISOString();
+  // The page checks the order once on arrival; wait until that check releases the button.
+  await waitFor('[...document.querySelectorAll("button")].some(b=>b.textContent.includes("Kiểm tra lại trạng thái") && !b.disabled)');
   await evaluate('[...document.querySelectorAll("button")].find(b=>b.textContent.includes("Kiểm tra lại trạng thái")).click()');
   await waitFor('document.body.textContent.includes("Đã nhận tiền, đang hoàn tất kích hoạt")');
   assert.equal(await evaluate('document.body.textContent.includes("Thanh toán thành công")'), false);
   order.fulfilledAt = new Date().toISOString();
+  // The page checks the order once on arrival; wait until that check releases the button.
+  await waitFor('[...document.querySelectorAll("button")].some(b=>b.textContent.includes("Kiểm tra lại trạng thái") && !b.disabled)');
   await evaluate('[...document.querySelectorAll("button")].find(b=>b.textContent.includes("Kiểm tra lại trạng thái")).click()');
   await waitFor('document.body.textContent.includes("Thanh toán thành công")');
   await shot('payment-success-desktop.png');

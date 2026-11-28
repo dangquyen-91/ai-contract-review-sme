@@ -97,12 +97,14 @@ try {
   await shot('profile-desktop.png');
   await fill('#profile-name', 'Updated Profile'); await fill('#profile-phone', '0901234567');
   await evaluate('document.querySelector("#profile-name").closest("form").requestSubmit()');
-  await waitFor('document.querySelector("#profile-name")?.value === "Updated Profile" && document.querySelector("aside")?.innerText.includes("Updated Profile")');
+  // The header avatar shows the saved name's initials (the sidebar shows the workspace, not the person).
+  await waitFor('document.querySelector("#profile-name")?.value === "Updated Profile" && document.querySelector("[aria-label=\\"Mở menu tài khoản\\"]")?.textContent.trim() === "UP"');
   assert.equal(updates, 1);
   await evaluate(`(() => { const input=document.querySelector('input[type=file]'); const bytes=Uint8Array.from(atob(${JSON.stringify(png)}), c=>c.charCodeAt(0)); const transfer=new DataTransfer(); transfer.items.add(new File([bytes],'avatar.png',{type:'image/png'})); input.files=transfer.files; input.dispatchEvent(new Event('change',{bubbles:true})); })()`);
   await waitFor('Array.from(document.querySelectorAll("button")).some(button => button.textContent === "Lưu ảnh")');
   await evaluate('Array.from(document.querySelectorAll("button")).find(button => button.textContent === "Lưu ảnh").click()');
-  await waitFor('!!document.querySelector("header img[src*=cloudinary]") && !!document.querySelector("aside img[src*=cloudinary]")');
+  // The new avatar replaces the initials in the header account menu.
+  await waitFor('!!document.querySelector("header img[src*=cloudinary]")');
   assert.equal(uploads, 1);
   for (const width of [390, 320]) {
     await call('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: true });
@@ -126,7 +128,7 @@ try {
   await evaluate('document.querySelector("#profile-current-password").closest("form").requestSubmit()');
   await waitFor('location.pathname === "/dang-nhap"');
   assert.equal(passwordChanged, true);
-  console.log('PASS profile: no-org account, invitations, name/phone save, header/sidebar avatar, menu, password failure/success, desktop/mobile layouts');
+  console.log('PASS profile: no-org account, invitations, name/phone save, header avatar, menu, password failure/success, desktop/mobile layouts');
   console.log(`Screenshots: ${artifacts}`);
 } finally {
   socket?.close(); chrome?.kill(); frontend.kill(); backend.closeAllConnections(); backend.close();

@@ -14,6 +14,7 @@ import { getDashboardNavigation } from "@/config/dashboard-navigation";
 import { useOrganizationDashboard } from "@/providers/dashboard-provider";
 import { UploadedReviewDialog } from "@/components/review/upload/uploaded-review-dialog";
 import type { OrganizationDashboardRole } from "@/lib/routing/organization-dashboard-route";
+import { routes } from "@/config/routes";
 
 export function OrganizationDashboardFrame({
   role,
@@ -54,7 +55,7 @@ export function OrganizationWorkspace({
     roleLabel,
     selectTab,
   } = workspace;
-  const activeKey = pathname === "/reports" ? "reports" : pathname.startsWith("/management/organizations")
+  const activeKey = pathname === "/reports" ? "reports" : pathname === routes.subscription ? "subscription" : pathname.startsWith("/management/organizations")
     ? "organizations"
     : pathname.startsWith("/management/legal-sources")
       ? "legal-sources"

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CreateOrganizationTrigger } from "@/components/organizations/create-organization-dialog";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -59,7 +60,7 @@ export function StaffOrganizationRequired({ email, role = "staff" }: { email: st
           <li><strong>Chấp nhận và vào làm việc</strong><p>Đăng nhập bằng email được mời, sau đó chấp nhận lời mời để vào {personal ? "không gian của tổ chức" : `dashboard ${roleName}`}.</p></li>
         </ol>
         <p className={"m-[0] pt-[20px] [border-top:1px_solid_#e9eef5] text-[#65748b] text-[12px] leading-[1.6]"}>Nếu chưa thấy email, hãy kiểm tra thư rác hoặc nhờ Owner gửi lại lời mời.</p>
-        {personal && <Link href="/chon-to-chuc" className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-[#2864dc] px-5 py-3 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-4">Tạo tổ chức của bạn</Link>}
+        {personal && <CreateOrganizationTrigger className="mt-6 inline-flex min-h-11 items-center rounded-xl bg-[#2864dc] px-5 py-3 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-4">Tạo tổ chức của bạn</CreateOrganizationTrigger>}
         {error && <p className={"text-[#b42338] text-[13px] leading-[1.6] mt-[16px]"} role="alert">{error}</p>}
         <div className={"flex flex-wrap gap-[12px] mt-[24px] [&_button]:inline-flex [&_button]:min-h-[44px] [&_button]:items-center [&_button]:justify-center [&_button]:gap-[10px] [&_button]:rounded-[10px] [&_button]:p-[10px_17px] [&_button]:text-[13px] [&_button]:font-semibold [&_button]:cursor-pointer [&_button:disabled]:opacity-[.6] [&_button:disabled]:cursor-wait [&_button:focus-visible]:[outline:3px_solid_#88b4ff] [&_button:focus-visible]:[outline-offset:4px] max-[600px]:flex-col"}>
           <button className={"[background:#245bd6] [border:1px_solid_#245bd6] text-[#fff] [&:hover]:[background:#194cbd] [&_svg]:w-[17px] [&_svg]:h-[17px]"} onClick={refresh} disabled={pending !== null}>{pending === "refresh" ? "Đang kiểm tra…" : "Đã tham gia? Kiểm tra lại"}<Icon name="arrow" /></button>

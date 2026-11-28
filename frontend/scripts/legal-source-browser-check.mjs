@@ -49,7 +49,8 @@ const fixtureSources = [
 ];
 const analytics = getLegalSourceAnalytics(fixtureSources);
 const shellSource = readFileSync(path.join(root, 'components/layouts/dashboard/dashboard-shell.tsx'), 'utf8');
-const shellClass = shellSource.match(/<div className=\{`([^`]+)\$\{className\}`\}>/)?.[1];
+// The shell's own classes (design tokens and keyboard focus rules) precede its per-layout parts.
+const shellClass = shellSource.match(/className=\{`(\[--ink[^`$]+)\$\{/)?.[1];
 assert.ok(shellClass, 'Fixture must include the real dashboard focus rules');
 const markup = renderToStaticMarkup(h('div', { className: shellClass }, h('main', { className: 'min-w-0 w-full p-5' },
   h(LegalSourceMetrics, { counts: [2, 2, 0, 335], pending: false }),

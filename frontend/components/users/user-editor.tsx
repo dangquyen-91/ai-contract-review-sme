@@ -8,8 +8,8 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogFooter } f
 import { getUserRoleLabel } from "@/lib/users/user-role";
 import { useManagedUser, useSaveManagedUser } from "@/hooks/users/use-user-management";
 import type { ManagedUser, ManagedUserRole } from "@/types/user-management";
+import { NativeSelect } from "@/components/ui/native-select";
 
-const selectClass = "h-11 rounded-lg border border-input bg-card px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30";
 type EditorProps = { user: ManagedUser | null; close: () => void; saved: () => void };
 
 export function UserEditor(props: EditorProps) {
@@ -51,7 +51,7 @@ function UserEditorForm({ user, close, saved }: { user: ManagedUser | null; clos
       <label className="block space-y-2 text-sm"><span>Họ tên</span><Input required minLength={2} maxLength={100} value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></label>
       <label className="block space-y-2 text-sm"><span>Email</span><Input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label>
       {!user && <label className="block space-y-2 text-sm"><span>Mật khẩu (tối thiểu 12 ký tự, tối đa 72 byte)</span><Input required type="password" minLength={12} maxLength={72} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" /></label>}
-      <label className="block space-y-2 text-sm"><span>Vai trò</span><select className={`${selectClass} w-full`} value={role} onChange={(event) => setRole(event.target.value as ManagedUserRole)}>{options.map((code) => <option key={code} value={code}>{getUserRoleLabel(code)}</option>)}</select></label>
+      <label className="block space-y-2 text-sm"><span>Vai trò</span><NativeSelect className="w-full" value={role} onChange={(event) => setRole(event.target.value as ManagedUserRole)}>{options.map((code) => <option key={code} value={code}>{getUserRoleLabel(code)}</option>)}</NativeSelect></label>
       {user && <p className="text-sm text-muted-foreground">Tổ chức: {user.organization?.name ?? "Chưa có tổ chức"}<br />Ngày tạo: {new Date(user.createdAt).toLocaleDateString("vi-VN")}</p>}
       <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} />Cho phép tài khoản hoạt động</label>
     </fieldset>

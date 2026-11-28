@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { Brand } from "@/components/ui/brand";
 import { Icon } from "@/components/ui/icon";
+import { CreateOrganizationTrigger } from "@/components/organizations/create-organization-dialog";
+import { useOrganizationMembership } from "@/hooks/dashboard/use-organization-membership";
 import type { NavigationItem } from "@/config/dashboard-navigation";
 
 type NavigationProps = {
@@ -20,6 +22,15 @@ export function DashboardNavigation({
   contractCount,
   mobile = false,
 }: NavigationProps) {
+  // An account belongs to one organization at most; a member cannot create another one.
+  const member = Boolean(useOrganizationMembership());
+  const visible = items.reduce<NavigationItem[]>((shown, item, index) => {
+    if (member && item.dialog === "create-organization") return shown;
+    const previous = items[index - 1];
+    // Keep a group heading when the item that carried it is hidden.
+    const group = item.group ?? (member && previous?.dialog === "create-organization" ? previous.group : undefined);
+    return [...shown, group ? { ...item, group } : item];
+  }, []);
   return (
     <nav
       aria-label={
@@ -31,7 +42,7 @@ export function DashboardNavigation({
           : "mt-6 grid content-start gap-1"
       }
     >
-      {items
+      {visible
         .filter((item) => !mobile || item.mobile)
         .map((item) => {
           const active = item.key === activeKey;
@@ -50,13 +61,6 @@ export function DashboardNavigation({
                   {contractCount}
                 </small>
               )}
-              {item.pending && !mobile && (
-                <span
-                  className="ml-auto size-1.5 rounded-full bg-slate-300"
-                  title="Chờ API"
-                  aria-label="Chờ API"
-                />
-              )}
             </>
           );
           return (
@@ -66,7 +70,11 @@ export function DashboardNavigation({
                   {item.group}
                 </p>
               )}
-              {item.href ? (
+              {item.dialog === "create-organization" ? (
+                <CreateOrganizationTrigger className={className}>
+                  {content}
+                </CreateOrganizationTrigger>
+              ) : item.href ? (
                 <Link
                   href={item.href}
                   onNavigate={

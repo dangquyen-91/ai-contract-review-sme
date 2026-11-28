@@ -13,14 +13,11 @@ import { userManagementPageSize } from "@/config/user-management";
 import { getUserRoleLabel, userRoleOptions } from "@/lib/users/user-role";
 import { useManagedUsers, useSetManagedUserStatus } from "@/hooks/users/use-user-management";
 import type { ManagedUser, ManagedUserRole, UserListParams } from "@/types/user-management";
+import { NativeSelect } from "@/components/ui/native-select";
+import { nameInitials } from "@/lib/format/initials";
+import styles from "@/styles/user_management/user-management.module.css";
 import { UserEditor } from "./user-editor";
 import { DeleteUserDialog } from "./delete-user-dialog";
-import styles from "@/styles/user_management/user-management.module.css";
-const selectClass = "h-11 rounded-lg border border-input bg-card px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/30";
-
-function initials(name: string) {
-  return name.trim().split(/\s+/).slice(-2).map((part) => part.charAt(0)).join("").toLocaleUpperCase("vi-VN") || "?";
-}
 
 export function UserManagement({ currentUserId }: { currentUserId: string }) {
   const [searchInput, setSearchInput] = useState("");
@@ -57,8 +54,8 @@ export function UserManagement({ currentUserId }: { currentUserId: string }) {
           <Button type="submit" size="sm" variant="ghost" className={styles.searchButton}>Tìm kiếm</Button>
         </div>
         <div className={styles.filters}>
-          <select aria-label="Lọc vai trò" className={selectClass} value={role} onChange={(event) => { setRole(event.target.value as ManagedUserRole | ""); setPage(1); }}><option value="">Tất cả vai trò</option>{userRoleOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</select>
-          <select aria-label="Lọc trạng thái" className={selectClass} value={status} onChange={(event) => { setStatus(event.target.value as UserListParams["status"]); setPage(1); }}><option value="">Tất cả trạng thái</option><option value="active">Hoạt động</option><option value="inactive">Tạm khóa</option></select>
+          <NativeSelect aria-label="Lọc vai trò" value={role} onChange={(event) => { setRole(event.target.value as ManagedUserRole | ""); setPage(1); }}><option value="">Tất cả vai trò</option>{userRoleOptions.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}</NativeSelect>
+          <NativeSelect aria-label="Lọc trạng thái" value={status} onChange={(event) => { setStatus(event.target.value as UserListParams["status"]); setPage(1); }}><option value="">Tất cả trạng thái</option><option value="active">Hoạt động</option><option value="inactive">Tạm khóa</option></NativeSelect>
           <Button size="icon-sm" variant="ghost" aria-label="Tải lại danh sách" title="Tải lại danh sách" onClick={() => { void list.refetch(); void allUsers.refetch(); }} disabled={list.isFetching || allUsers.isFetching} className={styles.refresh}><RefreshCw className={list.isFetching || allUsers.isFetching ? "animate-spin motion-reduce:animate-none" : ""} aria-hidden="true" /></Button>
         </div>
       </form>
@@ -71,7 +68,7 @@ export function UserManagement({ currentUserId }: { currentUserId: string }) {
               <caption className="sr-only">Danh sách người dùng, vai trò, tổ chức và trạng thái tài khoản</caption>
               <TableHeader><TableRow>{["Người dùng", "Vai trò", "Tổ chức", "Trạng thái", "Thao tác"].map((title) => <TableHead scope="col" key={title}>{title}</TableHead>)}</TableRow></TableHeader>
               <TableBody>{list.data.users.map((user) => <TableRow key={user.id}>
-                <TableCell><div className={styles.identity}><span className={styles.avatar} aria-hidden="true">{initials(user.name)}</span><div className={styles.identityText}><strong>{user.name}</strong><span className={styles.email}>{user.email}</span><span className={`${styles.verification} ${!user.emailVerified ? styles.unverified : ""}`}>{user.emailVerified ? <Check size={12} aria-hidden="true" /> : <Mail size={12} aria-hidden="true" />}{user.emailVerified ? "Đã xác minh email" : "Chưa xác minh email"}</span></div></div></TableCell>
+                <TableCell><div className={styles.identity}><span className={styles.avatar} aria-hidden="true">{(nameInitials(user.name) || "?")}</span><div className={styles.identityText}><strong>{user.name}</strong><span className={styles.email}>{user.email}</span><span className={`${styles.verification} ${!user.emailVerified ? styles.unverified : ""}`}>{user.emailVerified ? <Check size={12} aria-hidden="true" /> : <Mail size={12} aria-hidden="true" />}{user.emailVerified ? "Đã xác minh email" : "Chưa xác minh email"}</span></div></div></TableCell>
                 <TableCell><span className={`${styles.role} ${user.role === "administrator" ? styles.adminRole : ""}`}>{getUserRoleLabel(user.role)}</span></TableCell>
                 <TableCell><div className={`${styles.organization} ${!user.organization ? styles.noOrganization : ""}`}>{user.organization && <Building2 size={15} aria-hidden="true" />}<span>{user.organization?.name ?? "Chưa có tổ chức"}</span></div></TableCell>
                 <TableCell><Badge className={styles.status} variant={user.isActive ? "success" : "neutral"}><span className={user.isActive ? styles.activeDot : styles.inactiveDot} />{user.isActive ? "Hoạt động" : "Tạm khóa"}</Badge></TableCell>

@@ -6,6 +6,7 @@ export function dashboardInsightsFixture(role = 'expert', period = 'month', empt
     waiting: 127, inProgress: 6, approved: 19, returned: 4,
     legalSources: 68, inForce: 51, updated: 12, ingestionFailed: 2, ingestionPending: 3,
     analysisUnits: 38, chatUnits: 67, draftingUnits: 8,
+    paidAmount: 3780000, paidOrders: 31,
   };
   const distribution = role === 'administrator' ? [{ key: 'Công ty TNHH Thương mại và Dịch vụ Minh Khôi', value: 18 }, { key: 'An Phát Logistics', value: 12 }]
     : role === 'owner' ? [{ key: 'withViolations', value: 6 }, { key: 'withIssues', value: 11 }, { key: 'noIssues', value: 8 }]

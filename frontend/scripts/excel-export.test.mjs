@@ -67,6 +67,12 @@ test('five allowed dashboards export three styled sheets and preserve typed numb
       assert.equal(find(summary, 'Thanh toán đã nhận').numFmt, excelFormats.money);
       assert.equal(find(summary, 'Thời gian xử lý AI').value, 82.5);
       assert.equal(find(summary, 'Thời gian xử lý AI').numFmt, excelFormats.duration);
+    } else if (role === 'manager') {
+      // Managers follow payments too, but not AI processing time.
+      assert.equal(find(summary, 'Thanh toán đã nhận').value, 3780000);
+      assert.equal(find(summary, 'Thanh toán đã nhận').numFmt, excelFormats.money);
+      assert.equal(find(summary, 'Giao dịch thành công').value, 31);
+      assert.ok(!text(book).includes('Thời gian xử lý AI'));
     } else assert.ok(!text(book).includes('Thanh toán đã nhận'));
   }
   assert.throws(() => insightExcel(dashboardInsightsFixture('staff')), /không có quyền/);

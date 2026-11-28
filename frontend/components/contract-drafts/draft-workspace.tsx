@@ -70,6 +70,7 @@ export function DraftWorkspace({ user }: { user: AuthUser }) {
         </div>
       </div>
       <DraftLibraryDialog
+        organizationWide={user.role === "owner"}
         open={panel === "library"}
         onOpenChange={toggle("library")}
         templates={templates}

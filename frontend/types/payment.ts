@@ -42,3 +42,18 @@ export type ContractReviewQuote = {
   carryPurchaseId?: string | null;
   contractChat?: { allowance: number; used: number; reserved: number; available: number };
 };
+
+export type ManagedPaymentStatus = "fulfilled" | "activating" | "pending" | "cancelled" | "expired" | "failed";
+export type ManagedPaymentPurpose = "subscription" | "top_up" | "contract_review";
+export type ManagedPaymentFilters = { status: ManagedPaymentStatus | ""; purpose: ManagedPaymentPurpose | ""; search: string };
+/** One order in the Manager's read-only history; no payment link or QR code. */
+export type ManagedPayment = Pick<
+  PaymentOrder,
+  "orderCode" | "planCode" | "packCode" | "topUpKind" | "topUpUnits" | "reviewUnits" | "action" | "amount" | "currency" | "status" | "providerError" | "paidAt" | "fulfilledAt"
+> & {
+  purpose: ManagedPaymentPurpose;
+  account: { id: string; type: "organization" | "personal"; name: string };
+  createdBy: { name: string; email: string } | null;
+  createdAt: string;
+};
+export type ManagedPaymentList = { items: ManagedPayment[]; page: number; limit: number; total: number; totalPages: number };

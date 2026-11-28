@@ -1,7 +1,8 @@
 import type { ContractTemplate } from "./contract-drafts";
+import type { StudioDocument } from "./template-studio";
 export type TemplateDefinition = Pick<
   ContractTemplate,
-  "code" | "name" | "description" | "legalBasis" | "fields" | "reviewNotes"
+  "code" | "name" | "description" | "legalBasis" | "fields" | "reviewNotes" | "category"
 > & {
   sections: { key: string; title: string; body: string; guidance?: string }[];
 };
@@ -27,3 +28,4 @@ export type ManagedTemplateList = {
   page: number;
   pages: number;
 };
+export type TemplatePreview = { template: ContractTemplate; document: StudioDocument };

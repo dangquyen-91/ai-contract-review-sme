@@ -66,6 +66,7 @@ export const dashboardInsightConfig: Record<DashboardRole, InsightConfig> = {
       { key: "completed", label: "Rà soát thành công" },
       { key: "successRate", label: "Tỷ lệ thành công", format: "percent" },
       { key: "receivedAmount", label: "Thanh toán đã nhận", format: "money" },
+      { key: "paidOrders", label: "Giao dịch thành công" },
       {
         key: "averageDurationMs",
         label: "Thời gian xử lý AI",
@@ -78,12 +79,13 @@ export const dashboardInsightConfig: Record<DashboardRole, InsightConfig> = {
       "Tối đa 10 không gian, theo lượt rà soát thành công + thất bại trong kỳ.",
     labels: {},
     actions: [
-      { key: "queued", label: "Tác vụ AI đang chờ", href: "/admin/reports" },
-      { key: "running", label: "Tác vụ AI đang chạy", href: "/admin/reports" },
+      { key: "stuck", label: "Tác vụ AI có thể bị treo", href: "/admin/ai-jobs?status=stuck" },
+      { key: "queued", label: "Tác vụ AI đang chờ", href: "/admin/ai-jobs?status=queued" },
+      { key: "running", label: "Tác vụ AI đang chạy", href: "/admin/ai-jobs?status=running" },
       {
         key: "unfulfilled",
         label: "Thanh toán chờ hoàn tất kích hoạt",
-        href: "/admin/reports",
+        href: "/admin/audit-log?group=payment",
       },
     ],
   },
@@ -165,9 +167,11 @@ export const dashboardInsightConfig: Record<DashboardRole, InsightConfig> = {
   },
   manager: {
     title: "Tổng quan quản lý",
-    description: "Theo dõi tổ chức và tình trạng kho pháp lý của LawScan.",
+    description: "Theo dõi tổ chức, giao dịch và tình trạng kho pháp lý của LawScan.",
     metrics: [
       { key: "organizations", label: "Tổ chức", current: true },
+      { key: "paidAmount", label: "Thanh toán đã nhận", format: "money" },
+      { key: "paidOrders", label: "Giao dịch thành công" },
       { key: "legalSources", label: "Nguồn pháp lý", current: true },
       { key: "inForce", label: "Nguồn đang hiệu lực", current: true },
       { key: "updated", label: "Nguồn có cập nhật trong kỳ" },
@@ -185,6 +189,11 @@ export const dashboardInsightConfig: Record<DashboardRole, InsightConfig> = {
       not_yet_effective: "Chưa hiệu lực",
     },
     actions: [
+      {
+        key: "unfulfilled",
+        label: "Thanh toán chờ kích hoạt",
+        href: "/management/payments?status=activating",
+      },
       {
         key: "ingestionFailed",
         label: "Nguồn nạp dữ liệu thất bại",

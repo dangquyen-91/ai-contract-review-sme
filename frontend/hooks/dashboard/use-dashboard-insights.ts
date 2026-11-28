@@ -10,12 +10,13 @@ export function useDashboardInsights(
   role: DashboardRole,
   period: InsightPeriod,
   scopeId?: string,
+  mine = false,
 ) {
   return useQuery({
-    queryKey: dashboardKeys.insights(role, period, scopeId),
+    queryKey: dashboardKeys.insights(role, period, scopeId, mine),
     queryFn: async ({ signal }) => {
-      const data = await dashboardApi.getInsights(period, signal);
-      if (data.role !== role || (scopeId && data.scope.id !== scopeId)) {
+      const data = await dashboardApi.getInsights(period, signal, mine);
+      if (data.role !== role || (scopeId && data.scope.id !== scopeId) || Boolean(data.scope.mine) !== mine) {
         throw new Error(
           "Không gian làm việc đã thay đổi. Vui lòng tải lại trang.",
         );

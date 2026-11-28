@@ -41,10 +41,20 @@ export function RoleInsights({
   reportPage?: boolean;
 }) {
   const [period, setPeriod] = useState<InsightPeriod>("month");
-  const query = useDashboardInsights(role, period, scopeId);
+  // Staff can narrow their report from the whole organization to their own work.
+  const canNarrow = role === "staff" && reportPage;
+  const [mine, setMine] = useState(false);
+  const query = useDashboardInsights(role, period, scopeId, canNarrow && mine);
   const config = dashboardInsightConfig[role];
   const reportConfig = roleReportConfig[role];
-  const title = reportPage ? reportConfig.title : config.title;
+  const title =
+    canNarrow && mine ? "Báo cáo công việc của tôi" : reportPage ? reportConfig.title : config.title;
+  const description =
+    canNarrow && mine
+      ? "Hợp đồng bạn tải lên, lượt rà soát và xác minh bạn yêu cầu, và lượt AI bạn đã dùng trong tổ chức."
+      : reportPage
+        ? reportConfig.description
+        : config.description;
   const inputId = useId();
   const data = query.data;
   const ready = !!data && !query.isError;
@@ -69,7 +79,7 @@ export function RoleInsights({
     );
     const link = document.createElement("a");
     link.href = url;
-    link.download = `lawscan-${role}-${data.period.startDate}-${data.period.endDate}.csv`;
+    link.download = `lawscan-${role}${data.scope.mine ? "-cua-toi" : ""}-${data.period.startDate}-${data.period.endDate}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   }
@@ -82,13 +92,17 @@ export function RoleInsights({
       {reportPage ? (
         <ReportPageHeader
           title={title}
-          description={reportConfig.description}
+          description={description}
           scope={
             role === "manager"
               ? "Kho pháp lý & tổ chức"
               : role === "expert"
                 ? "Không gian chuyên gia"
-                : "Không gian tổ chức"
+                : canNarrow
+                  ? mine
+                    ? "Đang xem: công việc của bạn"
+                    : "Đang xem: toàn bộ tổ chức"
+                  : "Không gian tổ chức"
           }
         />
       ) : (
@@ -109,7 +123,7 @@ export function RoleInsights({
               {title}
             </Title>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              {reportPage ? reportConfig.description : config.description}
+              {description}
             </p>
           </div>
           {!reportPage && permissions.reports(role) && (
@@ -157,6 +171,31 @@ export function RoleInsights({
             <span className="text-xs text-muted-foreground">
               {data.period.startDate} → {data.period.endDate}
             </span>
+          )}
+          {canNarrow && (
+            <div
+              role="radiogroup"
+              aria-label="Phạm vi báo cáo"
+              className="inline-flex rounded-lg bg-muted p-1"
+            >
+              {([
+                [false, "Toàn tổ chức"],
+                [true, "Của tôi"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={label}
+                  type="button"
+                  role="radio"
+                  aria-checked={mine === value}
+                  onClick={() => setMine(value)}
+                  className={`min-h-8 rounded-md px-3 text-xs font-medium transition-colors ${
+                    mine === value ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           )}
         </div>
         <div className="flex flex-wrap gap-2">
@@ -378,7 +417,10 @@ export function RoleInsights({
                 </tbody>
               </table>
             </div>
-            <dl className="mt-4 grid gap-2 border-t border-border p-4">
+            <h3 className="border-t border-border px-4 pt-4 text-xs font-semibold text-muted-foreground">
+              {config.distributionTitle}
+            </h3>
+            <dl className="grid gap-2 p-4 pt-2">
               {data.distribution.map((row) => (
                 <div key={row.key} className="flex justify-between gap-4">
                   <dt>{insightLabel(config.labels, row)}</dt>

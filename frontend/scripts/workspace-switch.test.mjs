@@ -108,7 +108,7 @@ test("switcher shows the current workspace by name only for an organization memb
     "lucide-react": { Building2, Check, ChevronDown, LoaderCircle, LogOut, UserRound },
     "@/components/ui/button": { Button: () => null },
     "@/components/ui/dialog": Object.fromEntries(["Dialog", "DialogContent", "DialogDescription", "DialogFooter", "DialogHeader", "DialogTitle"].map(name => [name, () => null])),
-    "@/hooks/dashboard/use-workspace-switcher": { useWorkspaceSwitcher: () => ({ user, workspaces, switching: false, switchWorkspace() {}, leaveOrganization() {} }) },
+    "@/hooks/dashboard/use-workspace-switcher": { useWorkspaceSwitcher: () => ({ user, workspaces, switching: false, switchWorkspace() {} }) },
     "@/lib/workspace/quota-label": quotaLabel,
   });
   const render = () => renderToStaticMarkup(jsxRuntime.jsx(WorkspaceSwitcher, {}));

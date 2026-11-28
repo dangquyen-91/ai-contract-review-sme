@@ -8,58 +8,8 @@ import {
   topUpKindLabel,
 } from "@/lib/subscription/payment-state";
 import { formatMoney } from "@/lib/subscription/subscription-plans";
-import type { PaymentAction, PaymentOrder } from "@/types/payment";
-import type { PlanCode } from "@/types/subscription";
-
-const planNames: Record<PlanCode, string> = {
-  personal_free: "Personal Free",
-  personal_pro: "Personal Pro",
-  business_starter: "Business Starter",
-  business_pro: "Business Pro",
-};
-const actionNames: Record<PaymentAction, string> = {
-  purchase: "Mua gói",
-  renew: "Gia hạn",
-  upgrade: "Nâng cấp",
-  downgrade: "Hạ gói",
-};
-
-function orderBadge(order: PaymentOrder) {
-  if (order.fulfilledAt)
-    return {
-      label: "Đã thanh toán",
-      color: "bg-emerald-50 text-emerald-700 ring-emerald-600/10",
-    };
-  if (order.paidAt || order.status === "paid")
-    return {
-      label: "Đang kích hoạt",
-      color: "bg-amber-50 text-amber-700 ring-amber-600/10",
-    };
-  if (order.providerError?.includes("Partial payment"))
-    return {
-      label: "Cần kiểm tra",
-      color: "bg-amber-50 text-amber-700 ring-amber-600/10",
-    };
-  if (order.status === "cancelled")
-    return {
-      label: "Đã hủy",
-      color: "bg-slate-100 text-slate-500 ring-slate-500/10",
-    };
-  if (order.status === "expired")
-    return {
-      label: "Đã hết hạn",
-      color: "bg-slate-100 text-slate-500 ring-slate-500/10",
-    };
-  if (order.status === "failed")
-    return {
-      label: "Chưa thành công",
-      color: "bg-red-50 text-red-700 ring-red-600/10",
-    };
-  return {
-    label: "Chờ thanh toán",
-    color: "bg-blue-50 text-blue-700 ring-blue-600/10",
-  };
-}
+import { paymentActionNames as actionNames, paymentPlanNames as planNames, paymentStatusBadge } from "@/lib/subscription/payment-labels";
+import type { PaymentOrder } from "@/types/payment";
 
 export function PaymentOrderCard({
   order,
@@ -71,7 +21,7 @@ export function PaymentOrderCard({
   onAction: (code: number, kind: "sync" | "cancel") => Promise<void>;
 }) {
   const message = paymentMessage(order);
-  const badge = orderBadge(order);
+  const badge = paymentStatusBadge(order);
   const checkoutUrl = safeCheckoutUrl(order.checkoutUrl);
   const unfinished = isUnfinishedPayment(order);
   const paidDate = order.paidAt && new Date(order.paidAt);

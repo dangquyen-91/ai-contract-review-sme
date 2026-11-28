@@ -11,11 +11,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  templateCategorySuggestions,
   templateInputClass,
   templateStatusLabels,
 } from "@/config/managed-templates";
 import { TemplateFieldsEditor } from "./template-fields-editor";
 import { TemplateSectionsEditor } from "./template-sections-editor";
+import { TemplatePreview } from "./template-preview";
 import type {
   ManagedTemplate,
   TemplateDefinition,
@@ -58,6 +60,8 @@ export function ManagedTemplateEditor(props: Props) {
     { key: "sections", label: `Điều khoản (${definition.sections.length})` },
     { key: "published", label: "Bản đang phát hành" },
     { key: "history", label: "Lịch sử phiên bản" },
+    // Wide screens show the preview beside the editor instead.
+    { key: "preview", label: "Xem trước", narrowOnly: true },
   ];
   return (
     <div className="space-y-5">
@@ -128,7 +132,13 @@ export function ManagedTemplateEditor(props: Props) {
           className="rounded-xl border border-red-100 bg-red-50 p-4 text-sm text-red-700"
         >
           {error.message}
-          <Button variant="ghost" disabled={pending} onClick={() => void onReload()}>Tải lại mẫu</Button>
+          <Button
+            variant="ghost"
+            disabled={pending}
+            onClick={() => void onReload()}
+          >
+            Tải lại mẫu
+          </Button>
         </p>
       )}
       <nav
@@ -140,145 +150,183 @@ export function ManagedTemplateEditor(props: Props) {
             key={item.key}
             type="button"
             aria-pressed={tab === item.key}
-            className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium ${tab === item.key ? "bg-blue-600 text-white" : "bg-white text-slate-600"}`}
+            className={`shrink-0 rounded-lg px-4 py-2 text-sm font-medium ${tab === item.key ? "bg-blue-600 text-white" : "bg-white text-slate-600"} ${"narrowOnly" in item ? "xl:hidden" : ""}`}
             onClick={() => setTab(item.key)}
           >
             {item.label}
           </button>
         ))}
       </nav>
-      {tab === "info" && (
-        <div className="grid gap-5 rounded-2xl border border-slate-200 bg-white p-6">
-          <label className="grid gap-2 text-sm font-medium">
-            Tên mẫu
-            <input
-              disabled={pending}
-              className={templateInputClass}
-              maxLength={160}
-              value={definition.name}
-              onChange={(event) =>
-                onChange({ ...definition, name: event.target.value })
-              }
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            Mô tả
-            <textarea
-              disabled={pending}
-              className={templateInputClass}
-              rows={3}
-              maxLength={1000}
-              value={definition.description}
-              onChange={(event) =>
-                onChange({ ...definition, description: event.target.value })
-              }
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            Căn cứ pháp luật
-            <textarea
-              disabled={pending}
-              className={templateInputClass}
-              rows={5}
-              maxLength={4000}
-              value={definition.legalBasis}
-              onChange={(event) =>
-                onChange({ ...definition, legalBasis: event.target.value })
-              }
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-medium">
-            Ghi chú rà soát (mỗi ghi chú một dòng)
-            <textarea
-              disabled={pending}
-              className={templateInputClass}
-              rows={4}
-              value={definition.reviewNotes?.join("\n") ?? ""}
-              onChange={(event) =>
-                onChange({
-                  ...definition,
-                  reviewNotes: event.target.value.split("\n"),
-                })
-              }
-            />
-          </label>
-          <p className="text-xs leading-6 text-slate-500">
-            Thay đổi được lưu riêng ở bản nháp. Người dùng tiếp tục nhận bản đã
-            phát hành cho đến khi bạn xác nhận phát hành phiên bản mới.
-          </p>
-        </div>
-      )}
-      {tab === "fields" && (
-        <TemplateFieldsEditor
-          definition={definition}
-          onChange={onChange}
-          disabled={pending}
-        />
-      )}
-      {tab === "sections" && (
-        <TemplateSectionsEditor
-          definition={definition}
-          onChange={onChange}
-          disabled={pending}
-        />
-      )}
-      {tab === "published" && (
-        <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="flex items-center gap-2 text-lg font-semibold">
-            <Eye size={18} /> Nội dung người dùng đang nhận
-          </h2>
-          {!selected.publishedDefinition ? (
-            <p>Chưa có bản phát hành.</p>
-          ) : (
-            <>
-              <p className="text-sm leading-7 text-slate-500">
-                {selected.publishedDefinition.legalBasis}
+      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="min-w-0 space-y-5">
+          {tab === "preview" && (
+            <div className="xl:hidden">
+              <TemplatePreview definition={definition} />
+            </div>
+          )}
+          {tab === "info" && (
+            <div className="grid gap-5 rounded-2xl border border-slate-200 bg-white p-6">
+              <label className="grid gap-2 text-sm font-medium">
+                Tên mẫu
+                <input
+                  disabled={pending}
+                  className={templateInputClass}
+                  maxLength={160}
+                  value={definition.name}
+                  onChange={(event) =>
+                    onChange({ ...definition, name: event.target.value })
+                  }
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium">
+                Danh mục trong kho mẫu
+                <input
+                  disabled={pending}
+                  className={templateInputClass}
+                  maxLength={60}
+                  list="template-category-suggestions"
+                  placeholder="Để trống để dùng danh mục mặc định của loại hợp đồng"
+                  value={definition.category ?? ""}
+                  onChange={(event) =>
+                    onChange({ ...definition, category: event.target.value })
+                  }
+                />
+                <datalist id="template-category-suggestions">
+                  {templateCategorySuggestions.map((category) => (
+                    <option key={category} value={category} />
+                  ))}
+                </datalist>
+                <span className="text-xs font-normal text-slate-500">
+                  Người dùng thấy mẫu trong danh mục này sau khi phát hành. Danh
+                  mục không còn mẫu nào sẽ tự ẩn khỏi kho.
+                </span>
+              </label>
+              <label className="grid gap-2 text-sm font-medium">
+                Mô tả
+                <textarea
+                  disabled={pending}
+                  className={templateInputClass}
+                  rows={3}
+                  maxLength={1000}
+                  value={definition.description}
+                  onChange={(event) =>
+                    onChange({ ...definition, description: event.target.value })
+                  }
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium">
+                Căn cứ pháp luật
+                <textarea
+                  disabled={pending}
+                  className={templateInputClass}
+                  rows={5}
+                  maxLength={4000}
+                  value={definition.legalBasis}
+                  onChange={(event) =>
+                    onChange({ ...definition, legalBasis: event.target.value })
+                  }
+                />
+              </label>
+              <label className="grid gap-2 text-sm font-medium">
+                Ghi chú rà soát (mỗi ghi chú một dòng)
+                <textarea
+                  disabled={pending}
+                  className={templateInputClass}
+                  rows={4}
+                  value={definition.reviewNotes?.join("\n") ?? ""}
+                  onChange={(event) =>
+                    onChange({
+                      ...definition,
+                      reviewNotes: event.target.value.split("\n"),
+                    })
+                  }
+                />
+              </label>
+              <p className="text-xs leading-6 text-slate-500">
+                Thay đổi được lưu riêng ở bản nháp. Người dùng tiếp tục nhận bản
+                đã phát hành cho đến khi bạn xác nhận phát hành phiên bản mới.
               </p>
-              {selected.publishedDefinition.sections.map((section, index) => (
-                <div key={section.key}>
-                  <h3 className="font-semibold">
-                    Điều {index + 1}. {section.title}
-                  </h3>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-7">
-                    {section.body}
+            </div>
+          )}
+          {tab === "fields" && (
+            <TemplateFieldsEditor
+              definition={definition}
+              onChange={onChange}
+              disabled={pending}
+            />
+          )}
+          {tab === "sections" && (
+            <TemplateSectionsEditor
+              definition={definition}
+              onChange={onChange}
+              disabled={pending}
+            />
+          )}
+          {tab === "published" && (
+            <section className="space-y-5 rounded-2xl border border-slate-200 bg-white p-6">
+              <h2 className="flex items-center gap-2 text-lg font-semibold">
+                <Eye size={18} /> Nội dung người dùng đang nhận
+              </h2>
+              {!selected.publishedDefinition ? (
+                <p>Chưa có bản phát hành.</p>
+              ) : (
+                <>
+                  <p className="text-sm leading-7 text-slate-500">
+                    {selected.publishedDefinition.legalBasis}
                   </p>
-                </div>
-              ))}
-            </>
+                  {selected.publishedDefinition.sections.map(
+                    (section, index) => (
+                      <div key={section.key}>
+                        <h3 className="font-semibold">
+                          Điều {index + 1}. {section.title}
+                        </h3>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-7">
+                          {section.body}
+                        </p>
+                      </div>
+                    ),
+                  )}
+                </>
+              )}
+            </section>
           )}
-        </section>
-      )}
-      {tab === "history" && (
-        <section className="rounded-2xl border border-slate-200 bg-white p-6">
-          <h2 className="mb-4 text-lg font-semibold">
-            Các phiên bản đã phát hành
-          </h2>
-          {selected.versions.length ? (
-            <ul className="divide-y">
-              {selected.versions.map((version) => (
-                <li
-                  key={version.version}
-                  className="flex justify-between gap-4 py-3 text-sm"
-                >
-                  <span>Phiên bản {version.version}</span>
-                  <span className="text-slate-500">
-                    {new Date(version.publishedAt).toLocaleString("vi-VN")}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-slate-500">
-              {selected.publishedVersion
-                ? `Mẫu nền phiên bản ${selected.publishedVersion}. Lịch sử thay đổi được ghi khi phát hành tiếp theo.`
-                : "Chưa có phiên bản phát hành."}
-            </p>
+          {tab === "history" && (
+            <section className="rounded-2xl border border-slate-200 bg-white p-6">
+              <h2 className="mb-4 text-lg font-semibold">
+                Các phiên bản đã phát hành
+              </h2>
+              {selected.versions.length ? (
+                <ul className="divide-y">
+                  {selected.versions.map((version) => (
+                    <li
+                      key={version.version}
+                      className="flex justify-between gap-4 py-3 text-sm"
+                    >
+                      <span>Phiên bản {version.version}</span>
+                      <span className="text-slate-500">
+                        {new Date(version.publishedAt).toLocaleString("vi-VN")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  {selected.publishedVersion
+                    ? `Mẫu nền phiên bản ${selected.publishedVersion}. Lịch sử thay đổi được ghi khi phát hành tiếp theo.`
+                    : "Chưa có phiên bản phát hành."}
+                </p>
+              )}
+              <p className="mt-4 text-xs leading-6 text-slate-500">
+                Hợp đồng đã tạo luôn giữ nội dung và phiên bản tại thời điểm mở
+                mẫu.
+              </p>
+            </section>
           )}
-          <p className="mt-4 text-xs leading-6 text-slate-500">
-            Hợp đồng đã tạo luôn giữ nội dung và phiên bản tại thời điểm mở mẫu.
-          </p>
-        </section>
-      )}
+        </div>
+        <div className="hidden min-w-0 xl:sticky xl:top-6 xl:block">
+          <TemplatePreview definition={definition} />
+        </div>
+      </div>
       <Dialog
         open={confirm !== null}
         onOpenChange={(open) => {

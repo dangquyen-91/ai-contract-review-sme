@@ -11,12 +11,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useDraftList } from "@/hooks/contract-drafts/use-contract-drafts";
-import {
-  TEMPLATE_CATEGORIES,
-  searchText,
-  templateCategory,
-  type TemplateCategory,
-} from "@/lib/contract-drafts/template-categories";
+import { libraryCategories, searchText, templateCategory } from "@/lib/contract-drafts/template-categories";
 import type { ContractTemplate } from "@/types/contract-drafts";
 
 type Tab = "templates" | "mine";
@@ -32,6 +27,7 @@ export function DraftLibraryDialog({
   pending,
   createError,
   onOpenTemplate,
+  organizationWide = false,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -42,10 +38,13 @@ export function DraftLibraryDialog({
   pending: boolean;
   createError?: Error | null;
   onOpenTemplate: (template: ContractTemplate, party: string) => void;
+  /** An organization Owner sees every draft of the organization, not only their own. */
+  organizationWide?: boolean;
 }) {
+  const draftsLabel = organizationWide ? "Bản nháp trong tổ chức" : "Bản nháp của tôi";
   const [tab, setTab] = useState<Tab>("templates");
   const [query, setQuery] = useState("");
-  const [category, setCategory] = useState<TemplateCategory | null>(null);
+  const [category, setCategory] = useState<string | null>(null);
   const [selected, setSelected] = useState<ContractTemplate | null>(null);
 
   function choose(template: ContractTemplate) {
@@ -75,7 +74,7 @@ export function DraftLibraryDialog({
               {(
                 [
                   ["templates", "Mẫu hợp đồng"],
-                  ["mine", "Mẫu hợp đồng của tôi"],
+                  ["mine", draftsLabel],
                 ] as const
               ).map(([value, label]) => (
                 <button
@@ -102,7 +101,7 @@ export function DraftLibraryDialog({
                 type="search"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder={tab === "templates" ? "Tìm kiếm mẫu hợp đồng..." : "Tìm kiếm bản nháp của bạn..."}
+                placeholder={tab === "templates" ? "Tìm kiếm mẫu hợp đồng..." : organizationWide ? "Tìm kiếm bản nháp trong tổ chức..." : "Tìm kiếm bản nháp của bạn..."}
                 className="h-11 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none transition-colors placeholder:text-slate-400 focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
               />
             </label>
@@ -110,7 +109,7 @@ export function DraftLibraryDialog({
         </div>
         <div className="min-h-0 flex-1">
           {tab === "mine" ? (
-            <MyDrafts query={query} templates={templates} />
+            <MyDrafts query={query} templates={templates} organizationWide={organizationWide} />
           ) : selected ? (
             <TemplateRolePicker
               template={selected}
@@ -156,8 +155,8 @@ function TemplateBrowser({
   error?: Error | null;
   onRetry: () => void;
   query: string;
-  category: TemplateCategory | null;
-  onCategory: (category: TemplateCategory | null) => void;
+  category: string | null;
+  onCategory: (category: string | null) => void;
   pending: boolean;
   createError?: Error | null;
   onChoose: (template: ContractTemplate) => void;
@@ -165,17 +164,19 @@ function TemplateBrowser({
   const visible = useMemo(() => {
     const term = searchText(query);
     return templates
-      .filter((template) => !category || templateCategory(template.code) === category)
+      .filter((template) => !category || templateCategory(template) === category)
       .filter((template) => !term || searchText(template.name).includes(term))
       .sort((a, b) => a.name.localeCompare(b.name, "vi"));
   }, [templates, query, category]);
+  // Only categories that hold a template are listed; the Manager sets them per template.
+  const categories = useMemo(() => libraryCategories(templates), [templates]);
 
   return (
     <div className="flex h-full flex-col md:flex-row">
       <nav aria-label="Danh mục hợp đồng" className="shrink-0 border-b border-slate-100 px-5 py-3 md:w-64 md:border-b-0 md:px-7 md:py-5">
         <p className="mb-3 hidden px-2 text-sm font-semibold text-slate-900 md:block">Danh mục hợp đồng</p>
         <ul className="-mx-1 flex gap-1 overflow-x-auto pb-1 md:mx-0 md:flex-col md:overflow-visible md:pb-0">
-          {[null, ...TEMPLATE_CATEGORIES].map((item) => (
+          {[null, ...categories].map((item) => (
             <li key={item ?? "all"} className="shrink-0">
               <button
                 type="button"
@@ -305,7 +306,7 @@ function TemplateRolePicker({
   );
 }
 
-function MyDrafts({ query, templates }: { query: string; templates: ContractTemplate[] }) {
+function MyDrafts({ query, templates, organizationWide }: { query: string; templates: ContractTemplate[]; organizationWide: boolean }) {
   const [page, setPage] = useState(1);
   const drafts = useDraftList(page);
   const term = searchText(query);
@@ -327,10 +328,10 @@ function MyDrafts({ query, templates }: { query: string; templates: ContractTemp
           <div className="py-14 text-center">
             <FileText className="mx-auto mb-3 text-slate-300" size={30} aria-hidden="true" />
             <p className="text-sm font-medium text-slate-700">
-              {term ? "Không có bản nháp phù hợp" : "Bạn chưa có mẫu hợp đồng nào"}
+              {term ? "Không có bản nháp phù hợp" : organizationWide ? "Tổ chức chưa có bản nháp nào" : "Bạn chưa có bản nháp nào"}
             </p>
             <p className="mt-1 text-sm text-slate-500">
-              {term ? "Thử từ khóa khác." : "Bản nháp bạn tạo từ mẫu hoặc tải lên sẽ hiện ở đây."}
+              {term ? "Thử từ khóa khác." : organizationWide ? "Bản nháp các thành viên tạo từ mẫu hoặc tải lên sẽ hiện ở đây." : "Bản nháp bạn tạo từ mẫu hoặc tải lên sẽ hiện ở đây."}
             </p>
           </div>
         ) : (

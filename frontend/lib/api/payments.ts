@@ -1,5 +1,5 @@
-import { apiRequest } from "./client";
-import type { PaymentAction, PaymentHistory, PaymentOrder, ContractReviewQuote } from "@/types/payment";
+import { apiClient, apiRequest } from "./client";
+import type { PaymentAction, PaymentHistory, PaymentOrder, ContractReviewQuote, ManagedPayment, ManagedPaymentFilters, ManagedPaymentList } from "@/types/payment";
 import type { PlanCode, TopUpPack } from "@/types/subscription";
 
 const base = (orgId: string) => `/organizations/${orgId}/payments`;
@@ -19,4 +19,15 @@ export const paymentsApi = {
     apiRequest<PaymentOrder>({ url: base(orgId), method: "POST", data: input, headers: { "Idempotency-Key": key }, timeout: 35_000 }),
   sync: (orgId: string, code: number) => apiRequest<PaymentOrder>({ url: `${base(orgId)}/${code}/sync`, method: "POST", timeout: 35_000 }),
   cancel: (orgId: string, code: number) => apiRequest<PaymentOrder>({ url: `${base(orgId)}/${code}/cancel`, method: "POST", timeout: 35_000 }),
+};
+
+/** Read-only payment history across every account, for Managers. */
+export const managedPaymentsApi = {
+  async list(page: number, limit: number, filters: ManagedPaymentFilters, signal?: AbortSignal): Promise<ManagedPaymentList> {
+    const response = await apiClient.get<{ data: ManagedPayment[]; meta: Omit<ManagedPaymentList, "items"> }>(
+      "/manager/payments",
+      { params: { page, limit, ...filters }, signal },
+    );
+    return { items: response.data.data, ...response.data.meta };
+  },
 };

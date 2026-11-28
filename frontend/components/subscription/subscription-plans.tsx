@@ -10,25 +10,50 @@ import {
   isCurrentPlan,
   plansForAudience,
 } from "@/lib/subscription/plan-selection";
+import { SUBSCRIPTION_PLANS_ANCHOR } from "@/lib/subscription/plans-link";
 
-export function PersonalSubscriptionPlans({
+const copy = {
+  personal: {
+    title: "Gói dành cho cá nhân",
+    description: "Hạn mức riêng cho bạn. Không cần tạo hoặc tham gia tổ chức để sử dụng.",
+    empty: "Chưa có gói cá nhân để hiển thị.",
+  },
+  business: {
+    title: "Gói dành cho doanh nghiệp",
+    description: "Hạn mức dùng chung trong tổ chức; số thành viên bao gồm Owner.",
+    empty: "Chưa có gói doanh nghiệp để hiển thị.",
+  },
+};
+
+/**
+ * The plans of the current workspace, inside the dashboard. Only someone who pays for
+ * the workspace (a personal account or an organization Owner) can choose one.
+ */
+export function SubscriptionPlans({
   accountId,
+  audience,
+  canPurchase,
 }: {
   accountId: string;
+  audience: "personal" | "business";
+  canPurchase: boolean;
 }) {
   const plans = useSubscriptionPlans();
   const subscription = useSubscription(accountId);
-  const personal = plansForAudience(plans.data ?? [], "personal");
+  const available = plansForAudience(plans.data ?? [], audience);
+  const text = copy[audience];
   return (
     <section
-      className="@container/plans mt-8"
-      aria-labelledby="personal-plans-title"
+      id={SUBSCRIPTION_PLANS_ANCHOR}
+      className="@container/plans mt-8 scroll-mt-24"
+      aria-labelledby="subscription-plans-title"
     >
-      <h2 id="personal-plans-title" className="text-xl font-semibold">
-        Gói dành cho cá nhân
+      <h2 id="subscription-plans-title" className="text-xl font-semibold">
+        {text.title}
       </h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        Hạn mức riêng cho bạn. Không cần tạo hoặc tham gia tổ chức để sử dụng.
+        {text.description}
+        {!canPurchase && " Chỉ chủ tổ chức được chọn gói và thanh toán."}
       </p>
       {plans.isPending ? (
         <p role="status" className="mt-4 text-sm">
@@ -41,13 +66,11 @@ export function PersonalSubscriptionPlans({
             Thử lại
           </Button>
         </p>
-      ) : !personal.length ? (
-        <p className="mt-4 text-sm text-muted-foreground">
-          Chưa có gói cá nhân để hiển thị.
-        </p>
+      ) : !available.length ? (
+        <p className="mt-4 text-sm text-muted-foreground">{text.empty}</p>
       ) : (
         <div className="mt-5 grid gap-6 @min-[680px]/plans:grid-cols-2">
-          {personal.map((plan) => {
+          {available.map((plan) => {
             const current = isCurrentPlan(subscription.data, plan.code);
             return (
               <SubscriptionCatalogCard
@@ -57,10 +80,12 @@ export function PersonalSubscriptionPlans({
                 action={
                   plan.price === 0
                     ? { label: current ? "Đang sử dụng" : "Gói miễn phí" }
-                    : {
-                        label: current ? "Gia hạn gói" : "Nâng cấp gói",
-                        href: "/goi-dich-vu/xac-nhan?plan=" + plan.code,
-                      }
+                    : canPurchase
+                      ? {
+                          label: current ? "Gia hạn gói" : "Nâng cấp gói",
+                          href: "/goi-dich-vu/xac-nhan?plan=" + plan.code,
+                        }
+                      : { label: current ? "Đang sử dụng" : "Chủ tổ chức chọn gói" }
                 }
                 note={
                   plan.price === 0
@@ -74,7 +99,7 @@ export function PersonalSubscriptionPlans({
           })}
         </div>
       )}
-      <PersonalContractReviewOption accountId={accountId} />
+      {audience === "personal" && <PersonalContractReviewOption accountId={accountId} />}
     </section>
   );
 }

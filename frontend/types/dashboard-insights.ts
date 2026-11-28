@@ -6,6 +6,8 @@ export type DashboardInsights = {
   scope: {
     type: "personal" | "organization" | "expert" | "system";
     id: string | null;
+    // Staff report narrowed to the caller's own work.
+    mine?: boolean;
   };
   computedAt: string;
   timezone: string;
