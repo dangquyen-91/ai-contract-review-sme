@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { backendApiUrl } from "@/lib/api/backend";
 
 // Public catalog of top-up packs, proxied like /api/plans.
 export async function GET() {
   try {
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/top-up-packs`, {
+    const upstream = await fetch(backendApiUrl(`/top-up-packs`), {
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     });

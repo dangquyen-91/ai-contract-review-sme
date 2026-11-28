@@ -1,5 +1,6 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
+import { backendApiUrl } from "@/lib/api/backend";
 
 const objectIdPattern = /^[a-f\d]{24}$/i;
 
@@ -26,7 +27,7 @@ export async function proxyContractRequest(
   try {
     const idempotencyKey = request.headers.get("Idempotency-Key");
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${contractId}${target}`,
+      backendApiUrl(`/contracts/${contractId}${target}`),
       {
         method,
         headers: {
@@ -62,7 +63,7 @@ export async function proxyContractStream(request: NextRequest, contractId: stri
   }
   try {
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${contractId}${path}`,
+      backendApiUrl(`/contracts/${contractId}${path}`),
       {
         method: "POST",
         headers: {

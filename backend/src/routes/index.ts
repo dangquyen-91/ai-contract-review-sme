@@ -25,8 +25,6 @@ router.use('/manager/contract-templates', managedTemplateRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/admin/users', userManagementRoutes);
-// Compatibility alias for existing clients.
-router.use('/admin/userManagement', userManagementRoutes);
 router.use('/organizations', organizationRoutes);
 router.use('/invitations', invitationRoutes);
 router.get('/plans', listPlansHandler);

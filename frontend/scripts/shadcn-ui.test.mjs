@@ -54,6 +54,11 @@ function load(relative) {
   const resolve = (name) => {
     if (modules.has(name)) return modules.get(name).exports;
     if (name === 'next/link') return { __esModule: true, default: (props) => React.createElement('a', props) };
+    // CSS modules resolve every class name to itself.
+    if (name.endsWith('.css')) {
+      const classes = new Proxy({}, { get: (_target, key) => (key === 'default' ? classes : key === '__esModule' ? false : String(key)) });
+      return classes;
+    }
     if (name.startsWith('@/')) {
       const path = name.slice(2);
       return load(fs.existsSync(new URL(`../${path}.tsx`, import.meta.url)) ? `${path}.tsx` : `${path}.ts`);
@@ -435,33 +440,37 @@ test('Busy focus dialog disables review and deferral and blocks Escape dismissal
   } finally { await React.act(async () => root.unmount()); await flush(); host.remove(); }
 });
 
-test('Result header shows all severity counts and version update time; incomplete or missing data never implies safety', () => {
-  const result = { contract: { _id: 'contract', title: 'Test contract', updatedAt: '2026-10-15T08:00:00Z', currentVersion: { updatedAt: '2026-10-14T23:00:00Z', summaryStatus: 'completed', riskDetectionStatus: 'completed' } }, findings: [{ severity: 'low' }, { severity: 'high' }, { severity: 'medium' }, { severity: 'high' }] };
+test('Result header shows every issue group and version update time; incomplete or missing data never implies safety', () => {
+  const failed = (checkGroup) => ({ checkGroup, outcome: 'failed' });
+  const noIssues = { violations: 0, unclear: 0, missing: 0, negotiable: 0, drafting: 0, unverified: 0, referrals: 0, total: 0 };
+  const result = { contract: { _id: 'contract', title: 'Test contract', updatedAt: '2026-10-15T08:00:00Z', currentVersion: { updatedAt: '2026-10-14T23:00:00Z', summaryStatus: 'completed', riskDetectionStatus: 'completed', issueCounts: noIssues } }, findings: [failed('drafting'), failed('compliance'), failed('clarity'), failed('compliance')] };
   const render = () => {
     const host = document.createElement('div');
     host.innerHTML = renderToStaticMarkup(React.createElement(ReviewResultHeader, { result, onShareSummary() {} }));
     return host;
   };
   let header = render();
-  assert.deepEqual([...header.querySelectorAll('dl dd')].map((node) => node.textContent), ['2', '1', '1']);
+  assert.deepEqual([...header.querySelectorAll('dl dd')].map((node) => node.textContent), ['Vi phạm2', 'Chưa rõ ràng1', 'Thiếu nội dung0', 'Nên thương lượng0', 'Lỗi soạn thảo1']);
   assert.equal(header.querySelector('time').dateTime, '2026-10-14T23:00:00.000Z');
   assert.equal(header.querySelector('button').disabled, false);
   assert.match(header.textContent, /Đã hoàn tất phân tích/);
   result.contract.currentVersion.riskDetectionStatus = 'failed';
   result.contract.currentVersion.updatedAt = 'invalid';
   result.findings = [];
+  delete result.contract.currentVersion.issueCounts;
   header = render();
   assert.match(header.textContent, /Phân tích chưa hoàn tất/);
   assert.match(header.textContent, /có thể chưa đầy đủ/);
   assert.equal(header.querySelector('button').disabled, true);
   assert.equal(header.querySelector('time'), null);
   assert.match(header.textContent, /Chưa có thời điểm cập nhật/);
-  assert.ok(!header.textContent.includes('Không có rủi ro'));
+  assert.match(header.textContent, /Chưa có kết quả theo tiêu chí mới/);
+  assert.ok(!header.textContent.includes('Không phát hiện vấn đề'));
 });
 
 test('Share summary supports copying edited text, restoring the draft and returning focus to the full report', async () => {
   const original = 'TÓM TẮT\nNội dung đã che';
-  shareState = { isPending: false, isError: false, data: { redacted: true, text: original, findingCounts: { high: 4, medium: 4, low: 1 } } };
+  shareState = { isPending: false, isError: false, data: { redacted: true, text: original, issueCounts: { violations: 4, unclear: 4, missing: 0, negotiable: 1, drafting: 0, unverified: 0, referrals: 0, total: 9 } } };
   const copies = [];
   Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (text) => { copies.push(text); } } });
   const host = document.createElement('div'); document.body.append(host);
@@ -478,7 +487,7 @@ test('Share summary supports copying edited text, restoring the draft and return
     const opener = button('Open summary'); opener.focus();
     await React.act(async () => opener.click()); await flush();
     assert.ok(document.querySelector('article[aria-label="Bản xem trước tóm tắt"]'));
-    assert.match(document.body.textContent, /Mức rủi ro theo kết quả/);
+    assert.match(document.body.textContent, /9vấn đề\s*đã xác định/);
     assert.equal(document.querySelector('textarea'), null);
     await React.act(async () => button('Chỉnh nội dung').click());
     const input = document.querySelector('textarea');
@@ -535,15 +544,18 @@ test('Share button opens a clearly labelled UI preview with email disabled and n
   } finally { await React.act(async () => root.unmount()); await flush(); host.remove(); }
 });
 
-test('Formatted summary preserves ordinary text and renders each recognized priority as a labelled risk card', () => {
+test('Formatted summary preserves ordinary text and renders each recognized priority as a labelled issue card', () => {
   const { ShareSummaryPreview } = load('components/review/sharing/share-summary-preview.tsx');
   const html = renderToStaticMarkup(React.createElement(ShareSummaryPreview, {
-    text: 'TÓM TẮT\nVẤN ĐỀ ƯU TIÊN\n1. [Cao] High item\n2. [Trung bình] Medium item\n3. [Thấp] Low item\nCustom edited line',
-    counts: { high: 1, medium: 1, low: 1 },
+    text: 'TÓM TẮT\nVẤN ĐỀ CẦN XỬ LÝ\n1. [Vi phạm] Violation item\n2. [Chưa rõ ràng] Unclear item\n3. [Không rõ] Unknown label\nCustom edited line',
+    counts: { violations: 1, unclear: 1, missing: 0, negotiable: 0, drafting: 0, unverified: 0, referrals: 0, total: 2 },
   }));
-  assert.match(html, /Rủi ro cao/); assert.match(html, /Rủi ro trung bình/); assert.match(html, /Rủi ro thấp/);
-  assert.match(html, /High item/); assert.match(html, /Custom edited line/);
-  assert.match(html, /bg-rose-100/); assert.match(html, /bg-amber-100/); assert.match(html, /bg-blue-50/);
+  assert.match(html, /<h3[^>]*>VẤN ĐỀ CẦN XỬ LÝ<\/h3>/);
+  assert.match(html, /bg-\[#fdebec\][^"]*">Vi phạm<\/span><p[^>]*>Violation item/);
+  assert.match(html, /bg-\[#fbf3db\][^"]*">Chưa rõ ràng<\/span><p[^>]*>Unclear item/);
+  // An unknown label stays plain text instead of becoming an issue card.
+  assert.match(html, /<p class="break-words text-muted-foreground">3\. \[Không rõ\] Unknown label<\/p>/);
+  assert.match(html, /Custom edited line/);
 });
 
 test('A failed share request does not show a stale draft and prevents copying', async () => {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 import { isSameOriginRequest } from "@/lib/api/request-origin";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function proxyManagedTemplate(
   request: NextRequest,
@@ -34,7 +35,7 @@ export async function proxyManagedTemplate(
     if (body && new TextEncoder().encode(body).length > 500000)
       return NextResponse.json({ success: false }, { status: 413 });
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/manager/contract-templates${path.length ? "/" + path.join("/") : ""}?${query}`,
+      backendApiUrl(`/manager/contract-templates${path.length ? "/" + path.join("/") : ""}?${query}`),
       {
         method: request.method,
         headers: {

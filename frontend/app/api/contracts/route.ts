@@ -1,5 +1,6 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function GET(request: NextRequest) {
   const session = await getApiSession();
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
     if (value) params.set(key, value);
   }
   try {
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts?${params}`, {
+    const upstream = await fetch(backendApiUrl(`/contracts?${params}`), {
       headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store",
     });
     return NextResponse.json(await upstream.json(), { status: upstream.status });
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
   const accessToken = session.accessToken;
 
   try {
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts`, {
+    const upstream = await fetch(backendApiUrl(`/contracts`), {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, Prefer: "respond-async" },
       body: await request.formData(),

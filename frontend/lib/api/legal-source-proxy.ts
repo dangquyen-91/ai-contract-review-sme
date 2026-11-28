@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
+import { backendApiUrl } from "@/lib/api/backend";
 
 type LegalSourceAction = "catalog" | "create" | "delete" | "detail" | "preview" | "parts" | "resume" | "update";
 
@@ -25,7 +26,7 @@ export async function proxyLegalSource(request: Request, action: LegalSourceActi
     const body = ["create", "preview", "parts"].includes(action) ? await request.formData() : action === "update" ? await request.text() : undefined;
     const suffix = action === "preview" || action === "catalog" ? `/${action}` : id ? `/${id}${action === "parts" || action === "resume" ? `/${action}` : ""}` : "";
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/kb/legal-sources${suffix}`,
+      backendApiUrl(`/kb/legal-sources${suffix}`),
       {
         method: action === "detail" || action === "catalog" ? "GET" : action === "delete" ? "DELETE" : action === "update" ? "PATCH" : "POST",
         headers: { Authorization: `Bearer ${session.accessToken}`, ...(action === "update" ? { "Content-Type": "application/json" } : {}) },

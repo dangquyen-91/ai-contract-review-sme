@@ -1,5 +1,6 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function GET(request: NextRequest, context: RouteContext<"/api/contracts/[id]/reviews">) {
   const session = await getApiSession();
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/cont
     return NextResponse.json({ success: false, error: { message: "Mã hợp đồng không hợp lệ." } }, { status: 400 });
   }
   try {
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/reviews`, {
+    const upstream = await fetch(backendApiUrl(`/contracts/${id}/reviews`), {
       headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
     });
     return NextResponse.json(await upstream.json(), { status: upstream.status });
@@ -29,7 +30,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/con
     return NextResponse.json({ success: false, error: { message: "Idempotency-Key không hợp lệ." } }, { status: 400 });
   }
   try {
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/reviews`, {
+    const upstream = await fetch(backendApiUrl(`/contracts/${id}/reviews`), {
       method: "POST",
       headers: { Authorization: `Bearer ${session.accessToken}`, "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
       body: await request.text(), cache: "no-store",

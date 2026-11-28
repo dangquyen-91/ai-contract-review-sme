@@ -5,12 +5,13 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as jsx from 'react/jsx-runtime';
 import { NextRequest, NextResponse } from 'next/server.js';
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
 
 function load(file, dependencies) {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText;
+  }).outputText);
   vm.runInNewContext(source, { exports, require: (name) => {
     if (name === 'react/jsx-runtime') return jsx;
     if (!(name in dependencies)) throw new Error(`Unexpected dependency: ${name}`);
@@ -75,9 +76,9 @@ test('personal dashboard retains the original review workflow without an organiz
 });
 
 test('personal dashboard loads saved contracts without requesting or creating an organization', async () => {
-  const source = ts.transpileModule(fs.readFileSync(new URL('../app/api/dashboard/route.ts', import.meta.url), 'utf8'), {
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL('../app/api/dashboard/route.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
+  }).outputText);
   const exports = {};
   const user = { ...account, id: 'account-id', name: 'Personal user' };
   let calls = 0;
@@ -118,9 +119,9 @@ test('personal dashboard loads saved contracts without requesting or creating an
 });
 
 test('dashboard proxy preserves backend permission errors and reports unavailable upstream', async () => {
-  const source = ts.transpileModule(fs.readFileSync(new URL('../app/api/dashboard/route.ts', import.meta.url), 'utf8'), {
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL('../app/api/dashboard/route.ts', import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
+  }).outputText);
   const exports = {};
   let unavailable = false;
   vm.runInNewContext(source, {

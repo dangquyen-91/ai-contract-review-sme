@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 import { proxyContractRequest } from "@/lib/api/contract-proxy";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function GET(request: NextRequest, context: RouteContext<"/api/contracts/[id]/versions">) {
   const { id } = await context.params;
@@ -17,7 +18,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/con
 
   try {
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/versions`,
+      backendApiUrl(`/contracts/${id}/versions`),
       {
         method: "POST",
         headers: { Authorization: `Bearer ${session.accessToken}`, Prefer: "respond-async" },

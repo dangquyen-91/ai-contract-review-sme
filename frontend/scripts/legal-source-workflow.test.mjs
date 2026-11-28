@@ -18,7 +18,7 @@ function load(path, dependencies = {}) {
 const schema = load('../schemas/legal-source.schema.ts', { zod: { z } });
 function form() {
   const node = dom.window.document.createElement('form');
-  node.innerHTML = '<input name="code" value="law_2026"><input name="title" value="Test law"><input name="citationLabel" value="LAW-01"><input name="sourceType" value="decree"><input name="status" value="in_force"><input name="expiryDate" value=""><input name="expectedArticleCount" value=""><input name="file" type="file">';
+  node.innerHTML = '<input name="code" value="law_2026"><input name="title" value="Test law"><input name="citationLabel" value="LAW-01"><input name="sourceType" value="decree"><input name="status" value="in_force"><input name="expiryDate" value=""><input name="expectedArticleCount" value=""><input name="originPublisher" value="national_database"><input name="originUrl" value="https://vbpl.vn/van-ban/law-2026"><input name="file" type="file">';
   Object.defineProperty(node.elements.file, 'files', { value: [new dom.window.File(['Article 1'], 'law.txt', { type: 'text/plain' })] });
   return node;
 }
@@ -56,6 +56,16 @@ test('Upload omits empty optional dates/counts and validates expected article co
   assert.throws(() => prepareLegalUpload(node, true), /5000/);
   node.elements.expectedArticleCount.value = '12';
   assert.equal(prepareLegalUpload(node, true).get('expectedArticleCount'), '12');
+});
+
+test('Upload with metadata requires where the document was taken from', () => {
+  const node = form();
+  node.elements.originPublisher.value = '';
+  node.elements.originUrl.value = '';
+  assert.throws(() => prepareLegalUpload(node, true), /Chọn nơi lấy văn bản và nhập đường link văn bản/);
+  node.elements.originPublisher.value = 'national_database';
+  node.elements.originUrl.value = 'ftp://vbpl.vn/law';
+  assert.throws(() => prepareLegalUpload(node, true), /http:\/\/ hoặc https:\/\//);
 });
 
 function harness(previewRequest, save) {

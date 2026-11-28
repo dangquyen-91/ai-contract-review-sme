@@ -4,16 +4,22 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import * as jsx from 'react/jsx-runtime';
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
+
+// CSS modules resolve every class name to itself.
+const cssModule = new Proxy({}, { get: (_target, key) => (key === 'default' ? cssModule : key === '__esModule' ? false : String(key)) });
 
 function load(path, dependencies = {}, globals = {}) {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL(path, import.meta.url), 'utf8'), {
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL(path, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
-  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? (name === "@/components/ui/button" ? { Button: "button" } : {}), URL, ...globals });
+  }).outputText);
+  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? (name === "@/components/ui/button" ? { Button: "button" } : name.endsWith(".css") ? cssModule : {}), URL, ...globals });
   return exports;
 }
 
+const clauseLabels = load('../lib/review/clause-label.ts');
+const issueDisplay = load('../config/issue-display.ts');
 const id = '0123456789abcdef01234567';
 const raw = 'CCCD: 079203001234';
 function proxySetup(token = 'session', failedPath) {
@@ -22,6 +28,7 @@ function proxySetup(token = 'session', failedPath) {
   const { GET } = load('../app/api/contracts/[id]/review-result/route.ts', {
     'next/server': { NextResponse: { json: (body, options) => Response.json(body, options) } },
     '@/lib/auth/api-session': { getApiSession: async () => token ? { accessToken: token } : { error: Response.json({ success: false }, { status: 401 }) } },
+    '@/lib/review/clause-label': clauseLabels,
   }, {
     process: { env: { API_BASE_URL: 'http://backend.test' } },
     fetch: async (url) => {
@@ -44,7 +51,10 @@ test('Review proxy never requests raw text and exposes only clause positions', a
   assert.ok(!ctx.calls.some((url) => url.endsWith('/text')));
   assert.ok(!JSON.stringify(result).includes(raw));
   assert.equal(result.data.extractedText, undefined);
-  assert.deepEqual(result.data.clauses[0], { _id: 'clause-1', index: 0, startOffset: 0, endOffset: raw.length });
+  const [clause] = result.data.clauses;
+  assert.deepEqual({ _id: clause._id, index: clause.index, startOffset: clause.startOffset, endOffset: clause.endOffset }, { _id: 'clause-1', index: 0, startOffset: 0, endOffset: raw.length });
+  assert.equal(clause.text, undefined);
+  assert.equal(clause.summary, undefined);
   assert.equal(response.headers.get('cache-control'), 'private, no-store');
 });
 
@@ -85,7 +95,8 @@ function setup(mimeType = 'application/pdf', findings) {
   const verificationFindings = load('../lib/review/verification-findings.ts');
   const { RiskFindingCard } = load('../components/review/results/risk-finding-card.tsx', {
     'react/jsx-runtime': jsx, '@/components/ui/icon': { Icon: () => null },
-    '@/config/risk-display': load('../config/risk-display.ts'),
+    '@/config/issue-display': issueDisplay,
+    '@/lib/review/clause-label': clauseLabels,
     '@/components/expert-verification/finding-verification-info': { FindingVerificationBadge: () => null, FindingVerificationInfo: () => null },
   });
   const { ReviewResultHeader } = load('../components/review/results/review-result-header.tsx', {
@@ -96,6 +107,10 @@ function setup(mimeType = 'application/pdf', findings) {
   const { RiskDetails } = load('../components/review/results/risk-details.tsx', {
     react, 'react/jsx-runtime': jsx,
     '@/hooks/contracts/use-contracts': { useUpdateProposedRevisionMutation: () => ({}), useRemoveProposedRevisionMutation: () => ({}) },
+    '@/lib/review/clause-label': clauseLabels,
+    '@/lib/review/legal-source-links': load('../lib/review/legal-source-links.ts'),
+    './legal-source-link': { LegalSourceLink: () => null },
+    sonner: { toast: {} },
   });
   // ReviewResults delegates the findings list and the document text to sub-components.
   const { ReviewAnalysisPane } = load('../components/review/results/review-analysis-pane.tsx', {
@@ -104,7 +119,10 @@ function setup(mimeType = 'application/pdf', findings) {
     '@/components/review/results/risk-finding-card': { RiskFindingCard },
     '@/lib/review/analysis-coverage': load('../lib/review/analysis-coverage.ts'),
     '@/lib/review/verification-findings': verificationFindings,
-    '@/styles/review/review-workspace.module.css': { default: {} },
+    '@/lib/review/clause-label': clauseLabels,
+    '@/config/issue-display': issueDisplay,
+    '@/components/review/results/executive-summary': { ExecutiveSummary: () => null },
+    '@/components/review/results/review-coverage': { ReviewCoverage: () => null },
   });
   const documentText = load('../components/review/document/contract-document-text.tsx', { react, 'react/jsx-runtime': jsx });
   // The results view is exported as ReviewWorkbench.
@@ -112,7 +130,7 @@ function setup(mimeType = 'application/pdf', findings) {
     '@/components/review/results/review-analysis-pane': { ReviewAnalysisPane },
     '@/components/review/document/contract-document-text': documentText,
     react, 'react/jsx-runtime': jsx, '@/hooks/contracts/use-contracts': hooks,
-    '@/styles/review/review-workspace.module.css': { default: {} }, '@/components/ui/icon': { Icon: () => null },
+    '@/components/ui/icon': { Icon: () => null },
     '@/components/review/document/redacted-document': { RedactedDocument },
     '@/components/review/results/contract-chat': { ContractChat: () => null },
     '@/components/review/results/risk-details': { RiskDetails },
@@ -127,7 +145,7 @@ function setup(mimeType = 'application/pdf', findings) {
   const result = {
     contract: { _id: id, title: 'Test', updatedAt: 'version-1', currentVersion: { mimeType } },
     clauses: [{ _id: 'clause-1', index: 0, startOffset: 0, endOffset: raw.length }],
-    findings: findings ?? [{ _id: 'finding-1', clauseId: 'clause-1', severity: 'high', title: 'Risk', problem: [], consequences: [] }],
+    findings: findings ?? [{ _id: 'finding-1', clauseId: 'clause-1', checkGroup: 'compliance', outcome: 'failed', title: 'Risk', problem: [], consequences: [] }],
   };
   function resolve(node) {
     if (Array.isArray(node)) return node.map(resolve);
@@ -157,56 +175,58 @@ function setup(mimeType = 'application/pdf', findings) {
   return { click, text, find, queries: () => queries, setFull: (state) => { fullState = { ...fullState, ...state }; render(); }, retries: () => retries };
 }
 
-test('Risk cards sort by severity without changing input data and filters work without the AI-context panel', () => {
+test('Issue cards follow the contract order then the issue group, without changing input data, and filters work without the AI-context panel', () => {
   const findings = [
-    { _id: 'low', severity: 'low', title: 'Low risk', findingType: 'missing_clause' },
-    { _id: 'high', severity: 'high', title: 'High risk', clauseId: 'clause-1' },
-    { _id: 'medium', severity: 'medium', title: 'Medium risk', clauseId: 'clause-1' },
+    { _id: 'missing', checkGroup: 'drafting', outcome: 'failed', title: 'Missing clause', findingType: 'missing_clause' },
+    { _id: 'unclear', checkGroup: 'clarity', outcome: 'failed', title: 'Unclear', clauseId: 'clause-1' },
+    { _id: 'violation', checkGroup: 'compliance', outcome: 'failed', title: 'Violation', clauseId: 'clause-1' },
   ];
   const ctx = setup('application/pdf', findings);
-  const cards = () => ctx.find((node) => Boolean(node.props['data-risk-severity']));
-  assert.deepEqual(cards().map((node) => node.props['data-risk-severity']), ['high', 'medium', 'low']);
-  assert.deepEqual(findings.map((finding) => finding._id), ['low', 'high', 'medium']);
-  ctx.click('Rủi ro cao · 1');
-  assert.deepEqual(cards().map((node) => node.props['data-risk-severity']), ['high']);
-  ctx.click('Xem phân tích và đề xuất');
+  const cards = () => ctx.find((node) => Boolean(node.props['data-finding-group'])).map((node) => node.props['data-finding-group']);
+  assert.deepEqual(cards(), ['compliance', 'clarity', 'drafting']);
+  assert.deepEqual(findings.map((finding) => finding._id), ['missing', 'unclear', 'violation']);
+  ctx.click('Vi phạm 1');
+  assert.deepEqual(cards(), ['compliance']);
+  ctx.click('Bằng chứng và đề xuất');
   assert.equal(ctx.find((node) => node.type === 'button' && node.props['aria-expanded'] === true).length, 1);
-  ctx.click('Rủi ro thấp · 1');
+  ctx.click('Lỗi soạn thảo 1');
   assert.equal(ctx.find((node) => node.type === 'button' && node.props['aria-expanded'] === true).length, 0);
   assert.equal(ctx.find((node) => node.type === 'button' && Boolean(node.props['aria-label']?.includes('Xem vị trí'))).length, 0);
   assert.equal(ctx.queries()[1].enabled, false);
-  ctx.click('Tất cả · 3');
+  ctx.click('Tất cả 3');
   assert.equal(cards().length, 3);
 });
 
-test('Collapsed risks separate the first problem, impact and recommendation; expanding reveals all original points', () => {
+test('A collapsed issue previews only its first problem; expanding reveals every original point', () => {
   const finding = {
-    _id: 'high', severity: 'high', title: 'High risk', clauseId: 'clause-1',
+    _id: 'violation', checkGroup: 'compliance', outcome: 'failed', title: 'Violation', clauseId: 'clause-1',
     problem: [' ', 'Problem one', 'Problem two'], consequences: ['Impact one', 'Impact two'],
     recommendations: ['Action one', 'Action two'], legalBasis: [], citations: [],
   };
   const ctx = setup('application/pdf', [finding]);
-  const card = () => ctx.find((node) => node.props['data-risk-severity'] === 'high')[0];
-  const preview = () => ctx.find((node) => node.type === 'dl', card());
-  assert.equal(preview().length, 1);
-  assert.deepEqual(ctx.find((node) => node.type === 'dt', card()).map((node) => ctx.text(node)), ['Vấn đề', 'Ảnh hưởng', 'Đề xuất']);
-  for (const value of ['Problem one', 'Impact one', 'Action one']) assert.ok(ctx.text().includes(value));
-  for (const value of ['Problem two', 'Impact two', 'Action two']) assert.ok(!ctx.text().includes(value));
-  ctx.click('Xem phân tích và đề xuất');
-  assert.equal(preview().length, 0);
-  for (const value of ['Problem two', 'Impact two', 'Action two']) assert.ok(ctx.text().includes(value));
+  const card = () => ctx.find((node) => node.props['data-finding-group'] === 'compliance')[0];
+  const headings = () => ctx.find((node) => node.type === 'h4', card()).map((node) => ctx.text(node)).filter((heading) => heading !== 'Violation');
+  assert.ok(ctx.text().includes('Problem one'));
+  for (const value of ['Problem two', 'Impact one', 'Action one']) assert.ok(!ctx.text().includes(value));
+  assert.deepEqual(headings(), []);
+  ctx.click('Bằng chứng và đề xuất');
+  assert.deepEqual(headings(), ['Vấn đề', 'Ảnh hưởng', 'Đề xuất xử lý']);
+  for (const value of ['Problem two', 'Impact one', 'Impact two', 'Action one', 'Action two']) assert.ok(ctx.text().includes(value));
   const control = ctx.find((node) => node.type === 'button' && node.props['aria-expanded'] === true)[0];
   assert.equal(ctx.find((node) => node.props.id === control.props['aria-controls']).length, 1);
-  ctx.click('Ẩn chi tiết');
-  assert.equal(preview().length, 1);
+  ctx.click('Thu gọn');
+  assert.deepEqual(headings(), []);
   assert.ok(!ctx.text().includes('Action two'));
   assert.equal(ctx.queries()[1].enabled, false);
 });
 
-test('A missing clause with empty analysis fields explains unavailable data and never offers a location', () => {
-  const ctx = setup('application/pdf', [{ _id: 'missing', severity: 'low', title: 'Missing clause', findingType: 'missing_clause' }]);
+test('A missing clause with empty analysis fields shows no empty sections and never offers a location', () => {
+  const ctx = setup('application/pdf', [{ _id: 'missing', checkGroup: 'completeness', outcome: 'failed', title: 'Missing clause', findingType: 'missing_clause' }]);
   assert.ok(ctx.text().includes('Điều khoản này chưa có trong hợp đồng.'));
-  assert.ok(ctx.text().includes('Chưa có đề xuất xử lý trong kết quả phân tích.'));
+  ctx.click('Bằng chứng và đề xuất');
+  for (const heading of ['Vấn đề', 'Ảnh hưởng', 'Đề xuất xử lý']) {
+    assert.equal(ctx.find((node) => node.type === 'h4' && ctx.text(node) === heading).length, 0);
+  }
   assert.equal(ctx.find((node) => node.type === 'button' && Boolean(node.props['aria-label']?.includes('Xem vị trí'))).length, 0);
 });
 

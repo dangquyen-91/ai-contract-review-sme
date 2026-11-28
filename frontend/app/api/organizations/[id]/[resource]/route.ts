@@ -1,5 +1,6 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
+import { backendApiUrl } from "@/lib/api/backend";
 
 const resources = new Set(["members", "invitations", "subscription"]);
 
@@ -15,7 +16,7 @@ async function forward(request: NextRequest, context: ResourceContext, method: "
   const token = session.accessToken;
   try {
     const query = method === "GET" && resource !== "subscription" ? `?${new URLSearchParams({ page: request.nextUrl.searchParams.get("page") ?? "1", limit: "20" })}` : "";
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/organizations/${id}/${resource}${query}`, {
+    const upstream = await fetch(backendApiUrl(`/organizations/${id}/${resource}${query}`), {
       method,
       headers: { Authorization: `Bearer ${token}`, ...(method === "POST" ? { "Content-Type": "application/json" } : {}) },
       body: method === "POST" ? JSON.stringify(await request.json()) : undefined,

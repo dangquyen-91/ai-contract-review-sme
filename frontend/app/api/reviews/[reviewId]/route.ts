@@ -1,5 +1,6 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function GET(request: NextRequest, context: RouteContext<"/api/reviews/[reviewId]">) {
   const session = await getApiSession();
@@ -10,7 +11,7 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/revi
     return NextResponse.json({ success: false, error: { message: "Mã lượt rà soát không hợp lệ." } }, { status: 400 });
   }
   try {
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/reviews/${reviewId}`, {
+    const upstream = await fetch(backendApiUrl(`/reviews/${reviewId}`), {
       headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
     });
     return NextResponse.json(await upstream.json(), { status: upstream.status });

@@ -1,5 +1,6 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
+import { backendApiUrl } from "@/lib/api/backend";
 
 const objectIdPattern = /^[a-f\d]{24}$/i;
 const idempotencyKeyPattern = /^[a-zA-Z0-9_-]{8,128}$/;
@@ -17,7 +18,7 @@ export async function proxyReviewAction(request: NextRequest, reviewId: string, 
   }
   try {
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/reviews/${reviewId}/${action}`,
+      backendApiUrl(`/reviews/${reviewId}/${action}`),
       {
         method: "POST",
         headers: {

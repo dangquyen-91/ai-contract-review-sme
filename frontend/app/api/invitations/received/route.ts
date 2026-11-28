@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isSameOriginRequest } from "@/lib/api/request-origin";
 import { getApiSession } from "@/lib/auth/api-session";
+import { backendApiUrl } from "@/lib/api/backend";
 
 async function proxy(request: NextRequest, decline = false) {
   if (decline && !isSameOriginRequest(request)) return NextResponse.json({ success: false }, { status: 403 });
@@ -14,7 +15,7 @@ async function proxy(request: NextRequest, decline = false) {
       if (typeof invitationId !== "string" || !/^[a-f\d]{24}$/i.test(invitationId)) return NextResponse.json({ success: false }, { status: 400 });
       suffix = `/${invitationId}/decline`;
     }
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/invitations/received${suffix}`, {
+    const upstream = await fetch(backendApiUrl(`/invitations/received${suffix}`), {
       method: decline ? "POST" : "GET", headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
     });
     return NextResponse.json(await upstream.json(), { status: upstream.status, headers: { "Cache-Control": "no-store" } });

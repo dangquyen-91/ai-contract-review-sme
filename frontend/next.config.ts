@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
     // On Windows this workspace spends tens of seconds compacting the disk
     // cache. Keep Turbopack's in-memory cache and avoid that extra filesystem IO.
     turbopackFileSystemCacheForDev: process.platform !== "win32",
+    // proxy.ts buffers API request bodies; legal documents may be uploaded up to 20 MB.
+    proxyClientMaxBodySize: "25mb",
   },
   async redirects() {
     return [

@@ -1,5 +1,6 @@
 import { getApiSession } from "@/lib/auth/api-session";
 import { NextRequest, NextResponse } from "next/server";
+import { backendApiUrl } from "@/lib/api/backend";
 
 type ContractFilePayload = {
   data?: { url?: string; fileName?: string; mimeType?: string };
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/cont
       ...(versionId ? { versionId } : {}),
     }).toString();
     const metadataResponse = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/contracts/${id}/file${query ? `?${query}` : ""}`,
+      backendApiUrl(`/contracts/${id}/file${query ? `?${query}` : ""}`),
       { headers: { Authorization: `Bearer ${accessToken}` }, cache: "no-store", signal: request.signal },
     );
     if (!metadataResponse.ok) {

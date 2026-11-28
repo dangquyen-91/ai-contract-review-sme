@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 import { isSameOriginRequest } from "@/lib/api/request-origin";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function proxyExpertConsultation(request: NextRequest, reviewId: string, method: "GET" | "POST") {
   const session = await getApiSession();
@@ -20,7 +21,7 @@ export async function proxyExpertConsultation(request: NextRequest, reviewId: st
   }
   try {
     const response = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/reviews/${reviewId}/verification/messages${params.size ? `?${params}` : ""}`,
+      backendApiUrl(`/reviews/${reviewId}/verification/messages${params.size ? `?${params}` : ""}`),
       {
         method,
         headers: { Authorization: `Bearer ${session.accessToken}`, ...(method === "POST" ? { "Content-Type": "application/json" } : {}) },

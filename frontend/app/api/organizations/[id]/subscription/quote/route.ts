@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 import { planCodes } from "@/types/subscription";
+import { backendApiUrl } from "@/lib/api/backend";
 
 // Server-side plan checkout quote: action and price (with upgrade credit) for one plan.
 export async function GET(request: NextRequest, context: RouteContext<"/api/organizations/[id]/subscription/quote">) {
@@ -12,7 +13,7 @@ export async function GET(request: NextRequest, context: RouteContext<"/api/orga
   if (session.error) return session.error;
   try {
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/organizations/${id}/subscription/quote?${new URLSearchParams({ planCode })}`,
+      backendApiUrl(`/organizations/${id}/subscription/quote?${new URLSearchParams({ planCode })}`),
       { headers: { Authorization: `Bearer ${session.accessToken}` }, cache: "no-store", signal: AbortSignal.timeout(15_000) },
     );
     return NextResponse.json(await upstream.json(), { status: upstream.status });

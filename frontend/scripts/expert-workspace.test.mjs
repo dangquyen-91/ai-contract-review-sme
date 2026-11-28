@@ -7,10 +7,11 @@ import { z } from 'zod';
 import * as React from 'react';
 import * as jsx from 'react/jsx-runtime';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
 
 function load(file, dependencies = {}, globals = {}) {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText);
   vm.runInNewContext(source, { exports, require: (name) => {
     if (name in dependencies) return dependencies[name];
     if (name === 'react/jsx-runtime') return jsx;
@@ -19,7 +20,9 @@ function load(file, dependencies = {}, globals = {}) {
   return exports;
 }
 const helpers = load('../lib/review/verification-workspace.ts');
-const summaryHelpers = load('../lib/review/verification-summary.ts');
+const issueDisplay = load('../config/issue-display.ts');
+const issueCounts = load('../lib/review/issue-counts.ts', { '@/config/issue-display': issueDisplay });
+const summaryHelpers = load('../lib/review/verification-summary.ts', { './issue-counts': issueCounts });
 test('queue filtering handles Vietnamese accents and sort without mutating server results', () => {
   const { filterVerificationQueue: filter } = load('../lib/review/verification-queue-list.ts');
   const rows = [
@@ -33,15 +36,17 @@ test('queue filtering handles Vietnamese accents and sort without mutating serve
   assert.equal(rows[0]._id, 'a');
   assert.equal(filter(rows, 'không tồn tại', '', 'oldest').length, 0);
 });
-test('completion totals distinguish verdicts and exclude rejected items from retained risks', () => {
+test('completion totals distinguish verdicts and exclude rejected items from retained issues', () => {
   const rows = [
-    { _id: '1', severity: 'high', verification: { verdict: 'confirmed' } },
-    { _id: '2', severity: 'medium', verification: { verdict: 'adjusted' } },
-    { _id: '3', severity: 'high', verification: { verdict: 'rejected' } },
-    { _id: '4', severity: 'low', verification: { verdict: 'added' } },
-    { _id: '5', severity: 'high' },
+    { _id: '1', checkGroup: 'compliance', outcome: 'failed', verification: { verdict: 'confirmed' } },
+    { _id: '2', checkGroup: 'clarity', outcome: 'failed', verification: { verdict: 'adjusted' } },
+    { _id: '3', checkGroup: 'compliance', outcome: 'failed', verification: { verdict: 'rejected' } },
+    { _id: '4', checkGroup: 'drafting', outcome: 'failed', verification: { verdict: 'added' } },
+    { _id: '5', checkGroup: 'compliance', outcome: 'failed' },
   ];
-  assert.equal(JSON.stringify(summaryHelpers.verificationSummary(rows)), JSON.stringify({ confirmed: 1, adjusted: 1, rejected: 1, added: 1, pending: 1, high: 2, medium: 1, low: 1 }));
+  const summary = summaryHelpers.verificationSummary(rows);
+  assert.deepEqual({ ...summary, issues: undefined }, { confirmed: 1, adjusted: 1, rejected: 1, added: 1, pending: 1, issues: undefined });
+  assert.deepEqual({ violations: summary.issues.violations, unclear: summary.issues.unclear, drafting: summary.issues.drafting, total: summary.issues.total }, { violations: 2, unclear: 1, drafting: 1, total: 4 });
   assert.equal(summaryHelpers.nextPendingFinding(rows, '4')._id, '5');
   assert.equal(summaryHelpers.nextPendingFinding(rows, '5')._id, '5');
   assert.equal(summaryHelpers.nextPendingFinding(rows.slice(0, 4), '1'), undefined);
@@ -76,18 +81,18 @@ test('only the expert who claimed an open verification may edit', () => {
   assert.equal(helpers.canEditVerification({ status: 'returned', expertId: 'expert' }, 'expert'), false);
 });
 
-test('adjusting a severity does not overwrite other fields containing redacted text', () => {
-  const finding = { title: 'Cá nhân 1', severity: 'high', problem: ['••••'], consequences: [], recommendations: [] };
-  const changes = helpers.changedFindingFields(finding, { ...finding, severity: 'medium', riskCode: 'OTHER' });
-  assert.equal(JSON.stringify(changes), '{"severity":"medium"}');
-  assert.equal(Object.keys(helpers.changedFindingFields(finding, { ...finding, riskCode: 'OTHER' })).length, 0);
+test('adjusting the issue group does not overwrite other fields containing redacted text', () => {
+  const finding = { title: 'Cá nhân 1', checkGroup: 'compliance', problem: ['••••'], consequences: [], recommendations: [] };
+  const changes = helpers.changedFindingFields(finding, { ...finding, checkGroup: 'clarity', outcome: 'failed' });
+  assert.equal(JSON.stringify(changes), '{"checkGroup":"clarity"}');
+  assert.equal(Object.keys(helpers.changedFindingFields(finding, { ...finding, outcome: 'failed' })).length, 0);
 });
 
 test('finding validation matches backend title, reason and bullet limits', () => {
-  const { verificationFindingSchema } = load('../schemas/verification-finding.schema.ts', { zod: { z }, '@/config/risk-display': { riskCodeLabels: { OTHER: 'Other' } } });
-  const valid = { title: 'Rủi ro', severity: 'high', riskCode: 'OTHER', problem: 'Một vấn đề', consequences: '', recommendations: '', reason: '', clauseIndex: '0' };
+  const { verificationFindingSchema } = load('../schemas/verification-finding.schema.ts', { zod: { z }, '@/types/contracts': { ISSUE_GROUPS: ['compliance', 'clarity', 'completeness', 'balance', 'drafting'] } });
+  const valid = { title: 'Rủi ro', checkGroup: 'compliance', problem: 'Một vấn đề', consequences: '', recommendations: '', reason: '', clauseIndex: '0' };
   assert.equal(verificationFindingSchema.safeParse(valid).success, true);
-  for (const change of [{ title: ' ' }, { problem: ' ' }, { problem: Array(21).fill('Ý').join('\n') }, { problem: 'a'.repeat(2001) }, { reason: 'a'.repeat(2001) }, { clauseIndex: '-1' }, { severity: 'critical' }]) {
+  for (const change of [{ title: ' ' }, { problem: ' ' }, { problem: Array(21).fill('Ý').join('\n') }, { problem: 'a'.repeat(2001) }, { reason: 'a'.repeat(2001) }, { clauseIndex: '-1' }, { checkGroup: 'critical' }]) {
     assert.equal(verificationFindingSchema.safeParse({ ...valid, ...change }).success, false);
   }
 });
@@ -242,25 +247,27 @@ test('rejected findings stay available but do not enter active risk totals', () 
 });
 
 test('history comparison distinguishes unchanged snapshots, additions and removals', () => {
-  const before = { title: 'Tiêu đề', severity: 'high', problem: ['Một vấn đề'] };
+  const before = { title: 'Tiêu đề', checkGroup: 'compliance', problem: ['Một vấn đề'] };
   assert.equal(findingHelpers.verificationSnapshotChanges(before, { ...before, problem: [...before.problem] }).length, 0);
-  assert.equal(findingHelpers.verificationSnapshotChanges(before, { ...before, severity: 'medium' })[0].key, 'severity');
+  assert.equal(findingHelpers.verificationSnapshotChanges(before, { ...before, checkGroup: 'clarity' })[0].key, 'checkGroup');
   assert.equal(findingHelpers.verificationSnapshotChanges(undefined, before).length, 3);
   assert.equal(findingHelpers.verificationSnapshotChanges(before, null).length, 3);
 });
 
 test('proposal and history render actual saved text and escape markup', () => {
-  const { FindingProposedRevision } = load('../components/expert-verification/finding-proposed-revision.tsx');
+  const cssModule = new Proxy({}, { get: (_target, name) => String(name) });
+  const { FindingProposedRevision } = load('../components/expert-verification/finding-proposed-revision.tsx', { '@/styles/review/review-design.module.css': cssModule });
   const proposal = renderToStaticMarkup(React.createElement(FindingProposedRevision, { revision: { revisedText: '<script>proposal</script>', reason: 'Làm rõ thời hạn.' } }));
   assert.match(proposal, /chưa thay đổi văn bản hợp đồng/);
   assert.match(proposal, /Chưa có đoạn gốc/);
   assert.doesNotMatch(proposal, /<script>/);
   const { VerificationActionComparison } = load('../components/expert-verification/verification-action-comparison.tsx', {
-    '@/config/risk-display': { riskCodeLabels: { OTHER: 'Khác' } },
+    '@/config/issue-display': issueDisplay,
+    'lucide-react': { ChevronDown: () => null },
     '@/lib/review/verification-findings': findingHelpers,
   });
-  const html = renderToStaticMarkup(React.createElement(VerificationActionComparison, { action: { action: 'adjust', before: { severity: 'high' }, after: { severity: 'medium' } } }));
-  assert.match(html, /Cao/); assert.match(html, /Trung bình/);
+  const html = renderToStaticMarkup(React.createElement(VerificationActionComparison, { action: { action: 'adjust', before: { checkGroup: 'compliance' }, after: { checkGroup: 'clarity' } } }));
+  assert.match(html, /Vi phạm/); assert.match(html, /Chưa rõ ràng/);
   assert.match(html, /Trước/); assert.match(html, /Sau/);
 });
 
@@ -275,7 +282,7 @@ test('requester result sync survives header remounts and refreshes on a new expe
   const { useVerificationResultSync } = load('../hooks/expert-verification/use-verification-result-sync.ts', {
     react: { useEffect: fn => fn() },
     '@tanstack/react-query': { useQueryClient: () => client },
-    '@/lib/query-keys/contracts': { contractKeys: { result: id => ['contracts', id, 'review-result'], findings: id => ['contracts', id, 'findings'], detail: id => ['contracts', id, 'detail'], chat: id => ['contracts', id, 'chat'], lists: ['contracts', 'list'] } },
+    '@/lib/query-keys/contracts': { contractKeys: { result: id => ['contracts', id, 'review-result'], findings: id => ['contracts', id, 'findings'], detail: id => ['contracts', id, 'detail'], versions: id => ['contracts', id, 'versions'], chat: id => ['contracts', id, 'chat'], lists: ['contracts', 'list'] } },
     '@/lib/query-keys/dashboard': { dashboardKeys: { all: ['dashboard'] } },
   });
   const result = { verification: { reviewId: 'review', attempt: 1, status: 'approved' }, actions: [{ _id: 'action' }] };

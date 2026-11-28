@@ -4,11 +4,12 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { NextRequest, NextResponse } from 'next/server.js';
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
 
 function setup({ role = 'owner', orgId = 'b'.repeat(24), authenticated = true, upstreamStatus = 200, fail = false } = {}) {
   const calls = [];
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/api/contract-draft-proxy.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL('../lib/api/contract-draft-proxy.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText);
   const deps = {
     'next/server': { NextRequest, NextResponse },
     '@/lib/auth/api-session': { getApiSession: async () => authenticated ? { user: { role, orgId }, accessToken: 'verified-server-token' } : { error: NextResponse.json({ success: false }, { status: 401 }) } },
@@ -47,7 +48,7 @@ test('studio law proxy forwards search, pagination and selected IDs with read-on
 
 test('line item totals keep decimal precision and reject incomplete or invalid rows', () => {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/contract-drafts/draft-line-items.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL('../lib/contract-drafts/draft-line-items.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText);
   vm.runInNewContext(source, { exports, BigInt });
   const { totalLineItems, readLineItems } = exports;
   const first = { name: 'Product', unit: 'kg', quantity: '1.125', unitPrice: '1000.25' };
@@ -63,7 +64,7 @@ test('copy-latest forwards revisions and preserves the created response', async 
 });
 test('Vietnamese money input groups displayed amounts without changing their API value', () => {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/contract-drafts/money-input.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL('../lib/contract-drafts/money-input.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText);
   vm.runInNewContext(source, { exports });
   const { formatMoneyInput, parseMoneyInput } = exports;
   for (const [canonical, display] of [['', ''], ['0', '0'], ['10000000', '10.000.000'], ['30000000.50', '30.000.000,50'], ['123456789012345', '123.456.789.012.345']]) {

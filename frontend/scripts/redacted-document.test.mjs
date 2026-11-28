@@ -7,12 +7,15 @@ import * as jsx from 'react/jsx-runtime';
 import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
+// CSS modules resolve every class name to itself.
+const cssModule = new Proxy({}, { get: (_target, key) => (key === 'default' ? cssModule : key === '__esModule' ? false : String(key)) });
+
 function load(path, dependencies) {
   const exports = {};
   const source = ts.transpileModule(fs.readFileSync(new URL(path, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2022 },
   }).outputText;
-  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? (name === "@/components/ui/button" ? { Button: "button" } : {}), URL });
+  vm.runInNewContext(source, { exports, require: (name) => dependencies[name] ?? (name === "@/components/ui/button" ? { Button: "button" } : name.endsWith(".css") ? cssModule : {}), URL });
   return exports;
 }
 
@@ -113,7 +116,6 @@ function renderReview(queryState = {}, textResponse = { text: 'CCCD: •••�
     'react': React,
     'react/jsx-runtime': jsx,
     '@/hooks/contracts/use-contracts': hooks,
-    '@/styles/review/review-workspace.module.css': { default: {} },
     '@/components/ui/icon': { Icon: () => null },
     '@/components/review/document/redacted-document': { RedactedDocument },
     '@/components/review/results/contract-chat': { ContractChat: () => null },

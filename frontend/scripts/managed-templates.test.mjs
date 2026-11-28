@@ -4,10 +4,11 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { NextRequest, NextResponse } from 'next/server.js';
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
 
 function setup({ role = 'manager', authenticated = true, status = 200, fail = false } = {}) {
   const exports = {}, calls = [];
-  const source = ts.transpileModule(fs.readFileSync(new URL('../lib/api/managed-template-proxy.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL('../lib/api/managed-template-proxy.ts', import.meta.url), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText);
   const dependencies = {
     'next/server': { NextRequest, NextResponse },
     '@/lib/auth/api-session': { getApiSession: async () => authenticated ? { user: { role }, accessToken: 'server-token' } : { error: NextResponse.json({}, { status: 401 }) } },

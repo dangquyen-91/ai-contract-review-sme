@@ -4,11 +4,12 @@ import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { AuthUser } from "@/types/auth";
 import { dashboardRoles } from "@/config/permissions";
+import { backendApiUrl } from "@/lib/api/backend";
 
 // Authorization comes exclusively from the backend, never lawscan_user.
 export async function verifySession(refreshToken?: string): Promise<{ user: AuthUser; accessToken: string } | null> {
   if (!refreshToken) return null;
-  const response = await fetch((process.env.API_BASE_URL ?? "http://localhost:4000") + "/api/v1/auth/refresh", {
+  const response = await fetch(backendApiUrl("/auth/refresh"), {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refreshToken }), cache: "no-store",
     signal: AbortSignal.timeout(15000),

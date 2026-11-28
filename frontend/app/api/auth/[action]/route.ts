@@ -6,6 +6,7 @@ import type { AuthUser } from "@/types/auth";
 import { isSameOriginRequest } from "@/lib/api/request-origin";
 import { emailVerificationCookie, emailVerificationCookieAge, encodeEmailVerification } from "@/lib/auth/email-verification-session";
 import { getApiSession } from "@/lib/auth/api-session";
+import { backendApiUrl } from "@/lib/api/backend";
 
 const allowedActions = new Set(["login", "register", "refresh", "workspace", "logout", "verify-email", "resend-verification", "google", "forgot-password", "reset-password"]);
 
@@ -44,7 +45,6 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
     return NextResponse.json({ success: false, error: { message: "Endpoint không hợp lệ." } }, { status: 404 });
   }
 
-  const apiBaseUrl = process.env.API_BASE_URL ?? "http://localhost:4000";
   const secure = process.env.NODE_ENV === "production";
 
   if (action === "logout") {
@@ -98,7 +98,7 @@ export async function POST(request: NextRequest, context: RouteContext<"/api/aut
     }
 
     const upstreamBody = isRefresh ? { refreshToken, ...(switchingWorkspace ? { workspace: requestBody.workspace } : {}) } : requestBody;
-    const upstream = await fetch(`${apiBaseUrl}/api/v1/auth/${isRefresh ? "refresh" : action}`, {
+    const upstream = await fetch(backendApiUrl(`/auth/${isRefresh ? "refresh" : action}`), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(upstreamBody),

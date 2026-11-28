@@ -5,12 +5,13 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import * as jsx from 'react/jsx-runtime';
 import { NextRequest, NextResponse } from 'next/server.js';
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
 
 function load(file, deps = {}, globals = {}) {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX },
-  }).outputText;
+  }).outputText);
   vm.runInNewContext(source, { exports, URL, URLSearchParams, Number, Boolean, Promise, Error, AbortSignal, process: { env: {} },
     require: (name) => { if (!(name in deps)) throw new Error(`Missing module ${name}`); return deps[name]; }, ...globals });
   return exports;

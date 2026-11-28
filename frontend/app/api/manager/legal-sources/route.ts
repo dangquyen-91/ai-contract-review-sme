@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
 import { mutateLegalSource } from "@/lib/api/legal-source-proxy";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function POST(request: Request) {
   return mutateLegalSource(request);
@@ -16,7 +17,7 @@ export async function GET() {
         { status: 403 },
       );
     const upstream = await fetch(
-      `${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/kb/legal-sources`,
+      backendApiUrl(`/kb/legal-sources`),
       {
         headers: { Authorization: `Bearer ${session.accessToken}` },
         cache: "no-store",

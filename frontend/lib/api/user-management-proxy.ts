@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getApiSession } from "@/lib/auth/api-session";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export async function proxyUserManagement(request: Request, id?: string) {
   try {
@@ -17,7 +18,7 @@ export async function proxyUserManagement(request: Request, id?: string) {
       catch { return NextResponse.json({ success: false, error: { message: "Dữ liệu JSON không hợp lệ." } }, { status: 400 }); }
     }
     const query = request.method === "GET" && !id ? new URL(request.url).search : "";
-    const upstream = await fetch(`${process.env.API_BASE_URL ?? "http://localhost:4000"}/api/v1/admin/users${id ? `/${id}` : ""}${query}`, {
+    const upstream = await fetch(backendApiUrl(`/admin/users${id ? `/${id}` : ""}${query}`), {
       method: request.method,
       headers: { Authorization: `Bearer ${session.accessToken}`, "Content-Type": "application/json" },
       body, cache: "no-store", signal: AbortSignal.timeout(15000),

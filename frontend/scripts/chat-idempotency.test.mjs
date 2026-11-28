@@ -5,12 +5,13 @@ import vm from 'node:vm';
 import { randomUUID } from 'node:crypto';
 import ts from 'typescript';
 import { NextRequest, NextResponse } from 'next/server.js';
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
 
 function load(file, deps, globals = {}) {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
+  }).outputText);
   vm.runInNewContext(source, {
     exports, require: (name) => {
       assert.ok(name in deps, `Missing module ${name}`);
@@ -85,6 +86,7 @@ test('regular chat forwards the generated key and preserves quota errors', async
       }), contractId, '/chat', { method: 'POST' }),
     },
     '@/lib/api/contract-stream': {},
+    '@/lib/review/issue-counts': { reviewIssueCounts: () => undefined },
   });
   for (let i = 0; i < 2; i++) {
     const response = await contractsApi.askAboutContract(contractId, 'Question');

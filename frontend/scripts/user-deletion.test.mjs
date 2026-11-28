@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
 import { NextResponse } from 'next/server.js';
+import { withBackendHelper } from './fixtures/inline-backend.mjs';
 
 function load(file, dependencies, globals = {}) {
   const exports = {};
-  const source = ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
+  const source = withBackendHelper(ts.transpileModule(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
+  }).outputText);
   vm.runInNewContext(source, { exports, process: { env: {} }, AbortSignal, URL,
     require: name => {
       if (!(name in dependencies)) throw new Error(`Unexpected module ${name}`);
@@ -52,7 +53,7 @@ test('deletion invalidates filtered lists and clears the deleted user detail onl
 test('delete proxy preserves 204 responses and backend rejection without touching live data', async () => {
   let status = 204;
   const calls = [];
-  const { proxyUserManagement } = load('../lib/api/userManagement-proxy.ts', {
+  const { proxyUserManagement } = load('../lib/api/user-management-proxy.ts', {
     'next/server': { NextResponse },
     '@/lib/auth/api-session': { getApiSession: async () => ({ accessToken: 'fixture', user: { role: 'administrator' } }) },
   }, { fetch: async (url, options) => {

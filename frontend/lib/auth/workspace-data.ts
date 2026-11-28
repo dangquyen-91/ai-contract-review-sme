@@ -1,6 +1,7 @@
 import "server-only";
 import { notFound } from "next/navigation";
 import { requirePermission } from "@/lib/auth/access";
+import { backendApiUrl } from "@/lib/api/backend";
 
 export function validateResourceId(id: string) {
   if (!/^[a-f\d]{24}$/i.test(id)) notFound();
@@ -9,7 +10,7 @@ export function validateResourceId(id: string) {
 // Always recheck permission at the data boundary; layouts may be reused by Next.
 export async function getWorkspaceResource<T>(path: string): Promise<T> {
   const { accessToken } = await requirePermission("contracts");
-  const response = await fetch((process.env.API_BASE_URL ?? "http://localhost:4000") + "/api/v1" + path, {
+  const response = await fetch(backendApiUrl(path), {
     headers: { Authorization: "Bearer " + accessToken }, cache: "no-store",
     signal: AbortSignal.timeout(15000),
   });
